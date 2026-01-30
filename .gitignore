@@ -1,0 +1,9 @@
+venv/
+__pycache__/
+.env
+.vscode/
+.pytest_cache/
+CLAUDE.md
+.claude/
+basic-app.md
+technical-architecture.md
