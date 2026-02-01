@@ -1,5 +1,5 @@
-from sqlalchemy import Column, BigInteger, String, Text, Date, TIMESTAMP, Index, text
-from sqlalchemy.orm import relationship
+import sqlalchemy # Column, BigInteger, String, Text, Date, TIMESTAMP, Index, text
+import sqlalchemy.orm # relationship
 from app.models.base import Base
 
 

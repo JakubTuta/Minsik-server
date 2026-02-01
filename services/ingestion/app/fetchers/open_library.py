@@ -1,8 +1,8 @@
 import logging
-from typing import Dict, Any, Optional
+import typing # Dict, Any, Optional
 from datetime import datetime
 from app.fetchers.base import BaseFetcher
-from app.config import settings
+import app.config
 from app.utils import slugify
 
 logger = logging.getLogger(__name__)
@@ -11,8 +11,8 @@ logger = logging.getLogger(__name__)
 class OpenLibraryFetcher(BaseFetcher):
     def __init__(self):
         super().__init__(
-            api_url=settings.open_library_api_url,
-            rate_limit=settings.open_library_rate_limit
+            api_url=app.config.settings.open_library_api_url,
+            rate_limit=app.config.settings.open_library_rate_limit
         )
         self.subjects = [
             "science_fiction",
@@ -27,7 +27,7 @@ class OpenLibraryFetcher(BaseFetcher):
             "psychology"
         ]
 
-    async def fetch_books(self, count: int, language: str = "en") -> list[Dict[str, Any]]:
+    async def fetch_books(self, count: int, language: str = "en") -> list[typing.Dict[str, Any]]:
         books = []
         per_subject = max(count // len(self.subjects), 10)
 
@@ -52,7 +52,7 @@ class OpenLibraryFetcher(BaseFetcher):
 
         return books[:count]
 
-    async def parse_book_data(self, raw_data: Dict[str, Any], language: str = "en") -> Optional[Dict[str, Any]]:
+    async def parse_book_data(self, raw_data: typing.typing.Dict[str, Any], language: str = "en") -> typing.Optional[typing.Dict[str, Any]]:
         try:
             work_key = raw_data.get("key")
             if not work_key:
@@ -113,30 +113,30 @@ class OpenLibraryFetcher(BaseFetcher):
             logger.error(f"Error parsing Open Library book data: {str(e)}")
             return None
 
-    async def _fetch_work_details(self, work_key: str) -> Optional[Dict[str, Any]]:
+    async def _fetch_work_details(self, work_key: str) -> typing.Optional[typing.Dict[str, Any]]:
         url = f"{self.api_url}{work_key}.json"
         return await self._fetch_with_retry(url)
 
-    async def _fetch_author_details(self, author_key: str) -> Optional[Dict[str, Any]]:
+    async def _fetch_author_details(self, author_key: str) -> typing.Optional[typing.Dict[str, Any]]:
         url = f"{self.api_url}{author_key}.json"
         return await self._fetch_with_retry(url)
 
     def _get_cover_url(self, cover_id: int, size: str = "L") -> str:
         return f"https://covers.openlibrary.org/b/id/{cover_id}-{size}.jpg"
 
-    def _get_author_photo_url(self, author_data: Dict[str, Any]) -> Optional[str]:
+    def _get_author_photo_url(self, author_data: typing.typing.Dict[str, Any]) -> typing.Optional[str]:
         photos = author_data.get("photos")
         if photos and len(photos) > 0:
             return f"https://covers.openlibrary.org/a/id/{photos[0]}-L.jpg"
         return None
 
-    def _extract_description(self, work_data: Dict[str, Any]) -> Optional[str]:
+    def _extract_description(self, work_data: typing.typing.Dict[str, Any]) -> typing.Optional[str]:
         description = work_data.get("description")
         if isinstance(description, dict):
             return description.get("value")
         return description
 
-    def _extract_publication_year(self, work_data: Dict[str, Any]) -> Optional[int]:
+    def _extract_publication_year(self, work_data: typing.typing.Dict[str, Any]) -> typing.Optional[int]:
         first_publish = work_data.get("first_publish_date")
         if first_publish:
             try:
@@ -146,7 +146,7 @@ class OpenLibraryFetcher(BaseFetcher):
                 pass
         return None
 
-    def _extract_formats(self, work_data: Dict[str, Any]) -> list[str]:
+    def _extract_formats(self, work_data: typing.typing.Dict[str, Any]) -> list[str]:
         formats = set()
 
         editions = work_data.get("editions", {}).get("entries", [])
@@ -166,7 +166,7 @@ class OpenLibraryFetcher(BaseFetcher):
 
         return list(formats)
 
-    def _extract_cover_history(self, work_data: Dict[str, Any], primary_cover_id: Optional[int]) -> list[Dict[str, Any]]:
+    def _extract_cover_history(self, work_data: typing.typing.Dict[str, Any], primary_cover_id: typing.typing.Optional[int]) -> list[typing.Dict[str, Any]]:
         cover_history = []
 
         if primary_cover_id:

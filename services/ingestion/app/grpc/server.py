@@ -3,33 +3,27 @@ import logging
 import uuid
 import asyncio
 import json
-from concurrent import futures
-from datetime import datetime
-from redis import Redis
-from rq import Queue
+import concurrent.futures
+import datetime
+import redis
+import rq
 
-from app.config import settings
-from app.workers import process_ingestion_job
-
-try:
-    from app.proto import ingestion_pb2, ingestion_pb2_grpc
-except ImportError:
-    import sys
-    import os
-    sys.path.insert(0, os.path.join(os.path.dirname(__file__), '..'))
-    from proto import ingestion_pb2, ingestion_pb2_grpc
+import app.config
+import app.workers
+import app.proto.ingestion_pb2 as ingestion_pb2
+import app.proto.ingestion_pb2_grpc as ingestion_pb2_grpc
 
 logger = logging.getLogger(__name__)
 
-redis_client = Redis(
-    host=settings.redis_host,
-    port=settings.redis_port,
-    db=settings.redis_db,
-    password=settings.redis_password if settings.redis_password else None,
+redis_client = redis.Redis(
+    host=app.config.settings.redis_host,
+    port=app.config.settings.redis_port,
+    db=app.config.settings.redis_db,
+    password=app.config.settings.redis_password if app.config.settings.redis_password else None,
     decode_responses=True
 )
 
-task_queue = Queue('ingestion', connection=redis_client)
+task_queue = rq.Queue('ingestion', connection=redis_client)
 
 
 class IngestionService(ingestion_pb2_grpc.IngestionServiceServicer):
@@ -73,7 +67,7 @@ class IngestionService(ingestion_pb2_grpc.IngestionServiceServicer):
                 "successful": 0,
                 "failed": 0,
                 "error": None,
-                "started_at": int(datetime.now().timestamp()),
+                "started_at": int(datetime.datetime.now().timestamp()),
                 "completed_at": None
             }
             redis_client.setex(f"ingestion_job:{job_id}", 3600, json.dumps(job_data))
@@ -147,7 +141,7 @@ class IngestionService(ingestion_pb2_grpc.IngestionServiceServicer):
 
             job_data = json.loads(job_data_str)
             job_data["status"] = "cancelled"
-            job_data["completed_at"] = int(datetime.now().timestamp())
+            job_data["completed_at"] = int(datetime.datetime.now().timestamp())
             redis_client.setex(f"ingestion_job:{job_id}", 3600, json.dumps(job_data))
 
             logger.info(f"Cancelled ingestion job {job_id}")
@@ -165,10 +159,10 @@ class IngestionService(ingestion_pb2_grpc.IngestionServiceServicer):
 
 
 async def serve():
-    server = grpc.aio.server(futures.ThreadPoolExecutor(max_workers=10))
+    server = grpc.aio.server(concurrent.futures.ThreadPoolExecutor(max_workers=10))
     ingestion_pb2_grpc.add_IngestionServiceServicer_to_server(IngestionService(), server)
 
-    listen_addr = f"{settings.ingestion_service_host}:{settings.ingestion_grpc_port}"
+    listen_addr = f"{app.config.settings.ingestion_service_host}:{app.config.settings.ingestion_grpc_port}"
     server.add_insecure_port(listen_addr)
 
     logger.info(f"Starting Ingestion gRPC server on {listen_addr}")

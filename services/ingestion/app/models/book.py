@@ -1,6 +1,6 @@
-from sqlalchemy import Column, BigInteger, String, Integer, Text, DECIMAL, TIMESTAMP, Index, text
+import sqlalchemy # Column, BigInteger, String, Integer, Text, DECIMAL, TIMESTAMP, Index, text
 from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
-from sqlalchemy.orm import relationship
+import sqlalchemy.orm # relationship
 from datetime import datetime
 from app.models.base import Base
 

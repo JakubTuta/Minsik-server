@@ -2,12 +2,13 @@ import asyncio
 import logging
 import signal
 import sys
-from app.config import settings
-from app.grpc import serve
-from app.models import engine, Base
+
+import app.config
+import app.grpc
+import app.models
 
 logging.basicConfig(
-    level=getattr(logging, settings.log_level),
+    level=getattr(logging, app.config.settings.log_level),
     format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
     handlers=[
         logging.StreamHandler(sys.stdout)
@@ -18,12 +19,12 @@ logger = logging.getLogger(__name__)
 
 
 async def init_db():
-    async with engine.begin() as conn:
-        await conn.run_sync(Base.metadata.create_all)
+    async with app.models.engine.begin() as conn:
+        await conn.run_sync(app.models.Base.metadata.create_all)
 
 
 async def shutdown(signal_received=None):
-    await engine.dispose()
+    await app.models.engine.dispose()
 
 
 async def main():
@@ -37,7 +38,7 @@ async def main():
                 lambda s=sig: asyncio.create_task(shutdown(s))
             )
 
-        await serve()
+        await app.grpc.serve()
 
     except KeyboardInterrupt:
         await shutdown()

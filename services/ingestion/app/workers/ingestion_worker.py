@@ -1,24 +1,24 @@
 import asyncio
 import logging
-from typing import Dict, Any, Optional
-from datetime import datetime
-from sqlalchemy import select, func
-from sqlalchemy.dialects.postgresql import insert
-from redis import Redis
+import typing
+import datetime
+import sqlalchemy
+import sqlalchemy.dialects.postgresql
+import redis
 import json
 
-from app.config import settings
-from app.models import AsyncSessionLocal, Book, Author, Genre, BookAuthor, BookGenre
-from app.fetchers import OpenLibraryFetcher, GoogleBooksFetcher
-from app.utils import slugify
+import app.config
+import app.models
+import app.fetchers
+import app.utils
 
 logger = logging.getLogger(__name__)
 
-redis_client = Redis(
-    host=settings.redis_host,
-    port=settings.redis_port,
-    db=settings.redis_db,
-    password=settings.redis_password if settings.redis_password else None,
+redis_client = redis.Redis(
+    host=app.config.settings.redis_host,
+    port=app.config.settings.redis_port,
+    db=app.config.settings.redis_db,
+    password=app.config.settings.redis_password if app.config.settings.redis_password else None,
     decode_responses=True
 )
 
@@ -32,20 +32,20 @@ async def process_ingestion_job(job_id: str, total_books: int, source: str, lang
         if source == "both":
             books_per_source = total_books // 2
 
-            async with OpenLibraryFetcher() as ol_fetcher:
+            async with app.fetchers.OpenLibraryFetcher() as ol_fetcher:
                 ol_books = await ol_fetcher.fetch_books(books_per_source, language)
                 books_data.extend(ol_books)
 
-            async with GoogleBooksFetcher() as gb_fetcher:
+            async with app.fetchers.GoogleBooksFetcher() as gb_fetcher:
                 gb_books = await gb_fetcher.fetch_books(books_per_source, language)
                 books_data.extend(gb_books)
 
         elif source == "open_library":
-            async with OpenLibraryFetcher() as ol_fetcher:
+            async with app.fetchers.OpenLibraryFetcher() as ol_fetcher:
                 books_data = await ol_fetcher.fetch_books(total_books, language)
 
         elif source == "google_books":
-            async with GoogleBooksFetcher() as gb_fetcher:
+            async with app.fetchers.GoogleBooksFetcher() as gb_fetcher:
                 books_data = await gb_fetcher.fetch_books(total_books, language)
 
         else:
@@ -55,7 +55,7 @@ async def process_ingestion_job(job_id: str, total_books: int, source: str, lang
         successful = 0
         failed = 0
 
-        async with AsyncSessionLocal() as session:
+        async with app.models.AsyncSessionLocal() as session:
             for book_data in books_data:
                 try:
                     await _process_single_book(session, book_data)
@@ -79,15 +79,15 @@ async def process_ingestion_job(job_id: str, total_books: int, source: str, lang
         raise
 
 
-async def _process_single_book(session, book_data: Dict[str, Any]):
+async def _process_single_book(session, book_data: typing.Dict[str, Any]):
     book_title = book_data.get("title")
     book_language = book_data.get("language")
     book_slug = book_data.get("slug")
 
     result = await session.execute(
-        select(Book).where(
-            Book.language == book_language,
-            Book.slug == book_slug
+        sqlalchemy.select(app.models.Book).where(
+            app.models.Book.language == book_language,
+            app.models.Book.slug == book_slug
         )
     )
     existing_book = result.scalar_one_or_none()
@@ -98,7 +98,7 @@ async def _process_single_book(session, book_data: Dict[str, Any]):
         await _create_new_book(session, book_data)
 
 
-async def _create_new_book(session, book_data: Dict[str, Any]):
+async def _create_new_book(session, book_data: typing.Dict[str, Any]):
     author_ids = []
     for author_data in book_data.get("authors", []):
         author_id = await _get_or_create_author(session, author_data)
@@ -111,7 +111,7 @@ async def _create_new_book(session, book_data: Dict[str, Any]):
         if genre_id:
             genre_ids.append(genre_id)
 
-    book = Book(
+    book = app.models.Book(
         title=book_data.get("title"),
         language=book_data.get("language"),
         slug=book_data.get("slug"),
@@ -122,22 +122,22 @@ async def _create_new_book(session, book_data: Dict[str, Any]):
         primary_cover_url=book_data.get("primary_cover_url"),
         open_library_id=book_data.get("open_library_id"),
         google_books_id=book_data.get("google_books_id"),
-        ts_vector=func.to_tsvector('english', book_data.get("title"))
+        ts_vector=sqlalchemy.func.to_tsvector('english', book_data.get("title"))
     )
 
     session.add(book)
     await session.flush()
 
     for author_id in author_ids:
-        book_author = BookAuthor(book_id=book.book_id, author_id=author_id)
+        book_author = app.models.BookAuthor(book_id=book.book_id, author_id=author_id)
         session.add(book_author)
 
     for genre_id in genre_ids:
-        book_genre = BookGenre(book_id=book.book_id, genre_id=genre_id)
+        book_genre = app.models.BookGenre(book_id=book.book_id, genre_id=genre_id)
         session.add(book_genre)
 
 
-async def _update_existing_book(session, existing_book: Book, book_data: Dict[str, Any]):
+async def _update_existing_book(session, existing_book: app.models.Book, book_data: typing.Dict[str, Any]):
     existing_formats = set(existing_book.formats or [])
     new_formats = set(book_data.get("formats", []))
     merged_formats = list(existing_formats | new_formats)
@@ -155,7 +155,7 @@ async def _update_existing_book(session, existing_book: Book, book_data: Dict[st
 
     existing_book.formats = merged_formats
     existing_book.cover_history = merged_cover_history
-    existing_book.updated_at = datetime.now()
+    existing_book.updated_at = datetime.datetime.now()
 
     if not existing_book.description and book_data.get("description"):
         existing_book.description = book_data.get("description")
@@ -167,21 +167,21 @@ async def _update_existing_book(session, existing_book: Book, book_data: Dict[st
         existing_book.google_books_id = book_data.get("google_books_id")
 
 
-async def _get_or_create_author(session, author_data: Dict[str, Any]) -> Optional[int]:
+async def _get_or_create_author(session, author_data: typing.Dict[str, Any]) -> Optional[int]:
     if not author_data.get("name"):
         return None
 
     author_slug = author_data.get("slug")
 
     result = await session.execute(
-        select(Author).where(Author.slug == author_slug)
+        sqlalchemy.select(app.models.Author).where(app.models.Author.slug == author_slug)
     )
     existing_author = result.scalar_one_or_none()
 
     if existing_author:
         return existing_author.author_id
 
-    author = Author(
+    author = app.models.Author(
         name=author_data.get("name"),
         slug=author_slug,
         bio=author_data.get("bio"),
@@ -197,21 +197,21 @@ async def _get_or_create_author(session, author_data: Dict[str, Any]) -> Optiona
     return author.author_id
 
 
-async def _get_or_create_genre(session, genre_data: Dict[str, Any]) -> Optional[int]:
+async def _get_or_create_genre(session, genre_data: typing.Dict[str, Any]) -> Optional[int]:
     if not genre_data.get("name"):
         return None
 
     genre_slug = genre_data.get("slug")
 
     result = await session.execute(
-        select(Genre).where(Genre.slug == genre_slug)
+        sqlalchemy.select(app.models.Genre).where(app.models.Genre.slug == genre_slug)
     )
     existing_genre = result.scalar_one_or_none()
 
     if existing_genre:
         return existing_genre.genre_id
 
-    genre = Genre(
+    genre = app.models.Genre(
         name=genre_data.get("name"),
         slug=genre_slug
     )
@@ -229,7 +229,7 @@ async def _update_job_status(
     total: int,
     successful: int = 0,
     failed: int = 0,
-    error: Optional[str] = None
+    error: typing.Optional[str] = None
 ):
     job_data = {
         "job_id": job_id,
@@ -239,8 +239,8 @@ async def _update_job_status(
         "successful": successful,
         "failed": failed,
         "error": error,
-        "started_at": int(datetime.now().timestamp()) if status == "running" else None,
-        "completed_at": int(datetime.now().timestamp()) if status in ["completed", "failed"] else None
+        "started_at": int(datetime.datetime.now().timestamp()) if status == "running" else None,
+        "completed_at": int(datetime.datetime.now().timestamp()) if status in ["completed", "failed"] else None
     }
 
     redis_client.setex(

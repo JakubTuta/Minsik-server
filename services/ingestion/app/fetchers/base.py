@@ -1,25 +1,25 @@
 import httpx
 import asyncio
 import logging
-from typing import Optional, Dict, Any
-from abc import ABC, abstractmethod
-from app.config import settings
+import typing # Optional, Dict, Any
+import abc # abc.ABC, abstractmethod
+import app.config
 
 logger = logging.getLogger(__name__)
 
 
-class BaseFetcher(ABC):
+class BaseFetcher(abc.ABC):
     def __init__(self, api_url: str, rate_limit: int = 100):
         self.api_url = api_url
         self.rate_limit = rate_limit
-        self.client: Optional[httpx.AsyncClient] = None
+        self.client: typing.typing.Optional[httpx.AsyncClient] = None
         self._semaphore = asyncio.Semaphore(rate_limit)
-        self._retry_delay = settings.ingestion_retry_delay
-        self._max_retries = settings.ingestion_max_retries
+        self._retry_delay = app.config.settings.ingestion_retry_delay
+        self._max_retries = app.config.settings.ingestion_max_retries
 
     async def __aenter__(self):
         self.client = httpx.AsyncClient(
-            timeout=settings.request_timeout,
+            timeout=app.config.settings.request_timeout,
             follow_redirects=True
         )
         return self
@@ -28,7 +28,7 @@ class BaseFetcher(ABC):
         if self.client:
             await self.client.aclose()
 
-    async def _fetch_with_retry(self, url: str, params: Optional[Dict[str, Any]] = None) -> Optional[Dict[str, Any]]:
+    async def _fetch_with_retry(self, url: str, params: typing.typing.Optional[typing.Dict[str, Any]] = None) -> typing.Optional[typing.Dict[str, Any]]:
         for attempt in range(self._max_retries):
             try:
                 async with self._semaphore:
@@ -48,10 +48,10 @@ class BaseFetcher(ABC):
 
         return None
 
-    @abstractmethod
-    async def fetch_books(self, count: int, language: str = "en") -> list[Dict[str, Any]]:
+    @abc.abstractmethod
+    async def fetch_books(self, count: int, language: str = "en") -> list[typing.Dict[str, Any]]:
         pass
 
-    @abstractmethod
-    async def parse_book_data(self, raw_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+    @abc.abstractmethod
+    async def parse_book_data(self, raw_data: typing.typing.Dict[str, Any]) -> typing.Optional[typing.Dict[str, Any]]:
         pass
