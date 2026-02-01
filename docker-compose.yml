@@ -1,0 +1,160 @@
+services:
+  # ============================================================================
+  # PostgreSQL - Development Configuration
+  # ============================================================================
+  postgres:
+    image: postgres:15-alpine
+    container_name: minsik-postgres-dev
+    environment:
+      POSTGRES_DB: ${DB_NAME}
+      POSTGRES_USER: ${DB_USER}
+      POSTGRES_PASSWORD: ${DB_PASSWORD}
+      # Development-friendly settings
+      POSTGRES_INITDB_ARGS: "--encoding=UTF8"
+    ports:
+      # EXPOSED for local access (DB clients, debugging)
+      - "${DB_PORT}:5432"
+    volumes:
+      # Data persistence
+      - postgres_data_dev:/var/lib/postgresql/data
+      # Initialize database schemas on first run
+      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 10s
+    networks:
+      - minsik-network
+    restart: unless-stopped
+    # No resource limits in development (use all available)
+
+  # ============================================================================
+  # Redis - Development Configuration
+  # ============================================================================
+  redis:
+    image: redis:7-alpine
+    container_name: minsik-redis-dev
+    command: >
+      redis-server
+      --requirepass ${REDIS_PASSWORD}
+      --maxmemory 256mb
+      --maxmemory-policy allkeys-lru
+      --save ""
+      --appendonly no
+    ports:
+      # EXPOSED for local access (Redis CLI, debugging)
+      - "${REDIS_PORT}:6379"
+    volumes:
+      # Data persistence (optional in dev, useful for testing)
+      - redis_data_dev:/data
+    healthcheck:
+      test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
+      interval: 10s
+      timeout: 3s
+      retries: 5
+    networks:
+      - minsik-network
+    restart: unless-stopped
+
+  # ============================================================================
+  # Ingestion Service - Development Configuration
+  # ============================================================================
+  ingestion-service:
+    build:
+      context: .
+      dockerfile: services/ingestion/Dockerfile
+    container_name: minsik-ingestion-service-dev
+    environment:
+      ENV: development
+      DEBUG: ${DEBUG}
+      LOG_LEVEL: ${LOG_LEVEL}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_POOL_SIZE: ${DB_POOL_SIZE}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_DB: ${REDIS_DB}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_MAX_CONNECTIONS: ${REDIS_MAX_CONNECTIONS}
+      INGESTION_SERVICE_HOST: ${INGESTION_SERVICE_HOST}
+      INGESTION_GRPC_PORT: ${INGESTION_GRPC_PORT}
+      OPEN_LIBRARY_API_URL: ${OPEN_LIBRARY_API_URL}
+      OPEN_LIBRARY_RATE_LIMIT: ${OPEN_LIBRARY_RATE_LIMIT}
+      GOOGLE_BOOKS_API_URL: ${GOOGLE_BOOKS_API_URL}
+      GOOGLE_BOOKS_API_KEY: ${GOOGLE_BOOKS_API_KEY}
+      REQUEST_TIMEOUT: ${REQUEST_TIMEOUT}
+    ports:
+      # EXPOSED for local access (gRPC debugging)
+      - "${INGESTION_GRPC_PORT}:50054"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - minsik-network
+    restart: unless-stopped
+    # No resource limits in development
+
+  # ============================================================================
+  # RQ Worker - Development Configuration
+  # ============================================================================
+  rq-worker:
+    build:
+      context: .
+      dockerfile: services/ingestion/Dockerfile
+    container_name: minsik-rq-worker-dev
+    command: rq worker ingestion --url redis://:${REDIS_PASSWORD}@${REDIS_HOST}:${REDIS_PORT}/${REDIS_DB}
+    environment:
+      ENV: development
+      DEBUG: ${DEBUG}
+      LOG_LEVEL: ${LOG_LEVEL}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_POOL_SIZE: ${DB_POOL_SIZE}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_DB: ${REDIS_DB}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_MAX_CONNECTIONS: ${REDIS_MAX_CONNECTIONS}
+      OPEN_LIBRARY_API_URL: ${OPEN_LIBRARY_API_URL}
+      OPEN_LIBRARY_RATE_LIMIT: ${OPEN_LIBRARY_RATE_LIMIT}
+      GOOGLE_BOOKS_API_URL: ${GOOGLE_BOOKS_API_URL}
+      GOOGLE_BOOKS_API_KEY: ${GOOGLE_BOOKS_API_KEY}
+      REQUEST_TIMEOUT: ${REQUEST_TIMEOUT}
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - minsik-network
+    restart: unless-stopped
+    # No resource limits in development
+
+# ============================================================================
+# Volumes - Development (named volumes for easy cleanup)
+# ============================================================================
+volumes:
+  postgres_data_dev:
+    driver: local
+  redis_data_dev:
+    driver: local
+
+# ============================================================================
+# Networks - Development
+# ============================================================================
+networks:
+  minsik-network:
+    driver: bridge
+    name: minsik-dev-network

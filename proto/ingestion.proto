@@ -1,0 +1,47 @@
+syntax = "proto3";
+
+package ingestion.v1;
+
+service IngestionService {
+  rpc TriggerIngestion(TriggerIngestionRequest) returns (TriggerIngestionResponse);
+  rpc GetIngestionStatus(GetIngestionStatusRequest) returns (GetIngestionStatusResponse);
+  rpc CancelIngestion(CancelIngestionRequest) returns (CancelIngestionResponse);
+}
+
+message TriggerIngestionRequest {
+  int32 total_books = 1;
+  string source = 2;
+  string language = 3;
+}
+
+message TriggerIngestionResponse {
+  string job_id = 1;
+  string status = 2;
+  int32 total_books = 3;
+  string message = 4;
+}
+
+message GetIngestionStatusRequest {
+  string job_id = 1;
+}
+
+message GetIngestionStatusResponse {
+  string job_id = 1;
+  string status = 2;
+  int32 processed = 3;
+  int32 total = 4;
+  int32 successful = 5;
+  int32 failed = 6;
+  string error = 7;
+  int64 started_at = 8;
+  int64 completed_at = 9;
+}
+
+message CancelIngestionRequest {
+  string job_id = 1;
+}
+
+message CancelIngestionResponse {
+  bool success = 1;
+  string message = 2;
+}
