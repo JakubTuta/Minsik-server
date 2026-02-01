@@ -1,5 +1,5 @@
 import logging
-import typing # Dict, Any, Optional
+import typing
 from datetime import datetime
 from app.fetchers.base import BaseFetcher
 import app.config
@@ -27,7 +27,7 @@ class GoogleBooksFetcher(BaseFetcher):
             "technology"
         ]
 
-    async def fetch_books(self, count: int, language: str = "en") -> list[typing.Dict[str, Any]]:
+    async def fetch_books(self, count: int, language: str = "en") -> list[typing.Dict[str, typing.Any]]:
         books = []
         per_query = max(count // len(self.search_queries), 10)
 
@@ -60,7 +60,7 @@ class GoogleBooksFetcher(BaseFetcher):
 
         return books[:count]
 
-    async def parse_book_data(self, raw_data: typing.typing.Dict[str, Any], language: str = "en") -> typing.Optional[typing.Dict[str, Any]]:
+    async def parse_book_data(self, raw_data: typing.Dict[str, typing.Any], language: str = "en") -> typing.Optional[typing.Dict[str, typing.Any]]:
         try:
             volume_info = raw_data.get("volumeInfo", {})
 
@@ -125,7 +125,7 @@ class GoogleBooksFetcher(BaseFetcher):
             logger.error(f"Error parsing Google Books data: {str(e)}")
             return None
 
-    def _extract_formats(self, raw_data: typing.typing.Dict[str, Any]) -> list[str]:
+    def _extract_formats(self, raw_data: typing.Dict[str, typing.Any]) -> list[str]:
         formats = set()
 
         access_info = raw_data.get("accessInfo", {})
@@ -146,7 +146,7 @@ class GoogleBooksFetcher(BaseFetcher):
 
         return list(formats)
 
-    def _extract_cover_history(self, volume_info: typing.typing.Dict[str, Any], primary_cover_url: typing.typing.Optional[str]) -> list[typing.Dict[str, Any]]:
+    def _extract_cover_history(self, volume_info: typing.Dict[str, typing.Any], primary_cover_url: typing.Optional[str]) -> list[typing.Dict[str, typing.Any]]:
         cover_history = []
 
         if primary_cover_url:

@@ -79,7 +79,7 @@ async def process_ingestion_job(job_id: str, total_books: int, source: str, lang
         raise
 
 
-async def _process_single_book(session, book_data: typing.Dict[str, Any]):
+async def _process_single_book(session, book_data: typing.Dict[str, typing.Any]):
     book_title = book_data.get("title")
     book_language = book_data.get("language")
     book_slug = book_data.get("slug")
@@ -98,7 +98,7 @@ async def _process_single_book(session, book_data: typing.Dict[str, Any]):
         await _create_new_book(session, book_data)
 
 
-async def _create_new_book(session, book_data: typing.Dict[str, Any]):
+async def _create_new_book(session, book_data: typing.Dict[str, typing.Any]):
     author_ids = []
     for author_data in book_data.get("authors", []):
         author_id = await _get_or_create_author(session, author_data)
@@ -137,7 +137,7 @@ async def _create_new_book(session, book_data: typing.Dict[str, Any]):
         session.add(book_genre)
 
 
-async def _update_existing_book(session, existing_book: app.models.Book, book_data: typing.Dict[str, Any]):
+async def _update_existing_book(session, existing_book: app.models.Book, book_data: typing.Dict[str, typing.Any]):
     existing_formats = set(existing_book.formats or [])
     new_formats = set(book_data.get("formats", []))
     merged_formats = list(existing_formats | new_formats)
@@ -167,7 +167,7 @@ async def _update_existing_book(session, existing_book: app.models.Book, book_da
         existing_book.google_books_id = book_data.get("google_books_id")
 
 
-async def _get_or_create_author(session, author_data: typing.Dict[str, Any]) -> Optional[int]:
+async def _get_or_create_author(session, author_data: typing.Dict[str, typing.Any]) -> typing.Optional[int]:
     if not author_data.get("name"):
         return None
 
@@ -197,7 +197,7 @@ async def _get_or_create_author(session, author_data: typing.Dict[str, Any]) -> 
     return author.author_id
 
 
-async def _get_or_create_genre(session, genre_data: typing.Dict[str, Any]) -> Optional[int]:
+async def _get_or_create_genre(session, genre_data: typing.Dict[str, typing.Any]) -> typing.Optional[int]:
     if not genre_data.get("name"):
         return None
 
