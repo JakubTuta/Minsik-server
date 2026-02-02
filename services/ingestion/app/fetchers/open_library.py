@@ -52,6 +52,70 @@ class OpenLibraryFetcher(BaseFetcher):
 
         return books[:count]
 
+    async def search_book(self, title: str, author: str, limit: int = 10) -> list[typing.Dict[str, typing.Any]]:
+        books = []
+
+        url = f"{self.api_url}/search.json"
+        params = {
+            "title": title,
+            "author": author,
+            "limit": limit
+        }
+
+        data = await self._fetch_with_retry(url, params)
+        if not data or "docs" not in data:
+            return books
+
+        for doc in data["docs"][:limit]:
+            try:
+                work_key = doc.get("key")
+                if not work_key:
+                    continue
+
+                book_title = doc.get("title")
+                if not book_title:
+                    continue
+
+                author_names = doc.get("author_name", [])
+                isbn_list = doc.get("isbn", [])
+
+                cover_id = doc.get("cover_i")
+                cover_url = self._get_cover_url(cover_id) if cover_id else None
+
+                publication_year = doc.get("first_publish_year")
+
+                page_count = doc.get("number_of_pages_median")
+
+                publishers = doc.get("publisher", [])
+                publisher = publishers[0] if publishers else None
+
+                subjects = doc.get("subject", [])[:5]
+
+                languages = doc.get("language", [])
+                language = languages[0] if languages else "en"
+
+                books.append({
+                    "title": book_title,
+                    "authors": author_names,
+                    "description": None,
+                    "publication_year": publication_year,
+                    "language": language,
+                    "page_count": page_count,
+                    "cover_url": cover_url,
+                    "isbn": isbn_list[:5],
+                    "publisher": publisher,
+                    "genres": subjects,
+                    "open_library_id": work_key.split("/")[-1] if work_key else None,
+                    "google_books_id": None,
+                    "source": "open_library"
+                })
+
+            except Exception as e:
+                logger.error(f"Error parsing search result: {str(e)}")
+                continue
+
+        return books
+
     async def parse_book_data(self, raw_data: typing.Dict[str, typing.Any], language: str = "en") -> typing.Optional[typing.Dict[str, typing.Any]]:
         try:
             work_key = raw_data.get("key")

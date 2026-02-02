@@ -6,6 +6,7 @@ service IngestionService {
   rpc TriggerIngestion(TriggerIngestionRequest) returns (TriggerIngestionResponse);
   rpc GetIngestionStatus(GetIngestionStatusRequest) returns (GetIngestionStatusResponse);
   rpc CancelIngestion(CancelIngestionRequest) returns (CancelIngestionResponse);
+  rpc SearchBook(SearchBookRequest) returns (SearchBookResponse);
 }
 
 message TriggerIngestionRequest {
@@ -44,4 +45,32 @@ message CancelIngestionRequest {
 message CancelIngestionResponse {
   bool success = 1;
   string message = 2;
+}
+
+message SearchBookRequest {
+  string title = 1;
+  string author = 2;
+  string source = 3;
+  int32 limit = 4;
+}
+
+message BookResult {
+  string title = 1;
+  repeated string authors = 2;
+  string description = 3;
+  int32 publication_year = 4;
+  string language = 5;
+  int32 page_count = 6;
+  string cover_url = 7;
+  repeated string isbn = 8;
+  string publisher = 9;
+  repeated string genres = 10;
+  string open_library_id = 11;
+  string google_books_id = 12;
+  string source = 13;
+}
+
+message SearchBookResponse {
+  int32 total_results = 1;
+  repeated BookResult books = 2;
 }

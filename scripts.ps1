@@ -159,7 +159,7 @@ function Compile-Proto {
     $protoDefinitions = @(
         @{
             Source = "proto/ingestion.proto"
-            Destinations = @("services/ingestion/app/proto")
+            Destinations = @("services/ingestion/app/proto", "services/gateway/app/proto")
         }
     )
 
@@ -342,6 +342,11 @@ function Build-And-Push-Images {
     # Service definitions: name, dockerfile path, image name
     $services = @(
         @{
+            Name = "Gateway Service"
+            Dockerfile = "services/gateway/Dockerfile"
+            ImageName = "gateway-service"
+        },
+        @{
             Name = "Ingestion Service"
             Dockerfile = "services/ingestion/Dockerfile"
             ImageName = "ingestion-service"
@@ -495,6 +500,7 @@ function Run-Tests {
 
     # Service name mapping
     $serviceMap = @{
+        "gateway" = "gateway-service"
         "ingestion" = "ingestion-service"
     }
 
@@ -526,7 +532,7 @@ function Run-Tests {
 
         Write-Host "  Running: $pytestCmd" -ForegroundColor Gray
 
-        docker exec $containerName $pytestCmd
+        docker exec $containerName sh -c "$pytestCmd"
 
         if ($LASTEXITCODE -eq 0) {
             Write-Success "Tests passed!"
@@ -538,7 +544,7 @@ function Run-Tests {
         Write-Host "  All services" -ForegroundColor Gray
 
         # Run tests for all implemented services
-        $services = @("ingestion")
+        $services = @("gateway", "ingestion")
         $totalPassed = 0
         $totalFailed = 0
 

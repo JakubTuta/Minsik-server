@@ -59,6 +59,41 @@ services:
     restart: unless-stopped
 
   # ============================================================================
+  # Gateway Service - Development Configuration
+  # ============================================================================
+  gateway-service:
+    build:
+      context: .
+      dockerfile: services/gateway/Dockerfile
+    container_name: minsik-gateway-service-dev
+    environment:
+      ENV: development
+      DEBUG: ${DEBUG}
+      LOG_LEVEL: ${LOG_LEVEL}
+      GATEWAY_HOST: ${GATEWAY_HOST}
+      GATEWAY_HTTP_PORT: ${GATEWAY_HTTP_PORT}
+      GATEWAY_WORKERS: ${GATEWAY_WORKERS}
+      INGESTION_SERVICE_HOST: ${INGESTION_SERVICE_HOST}
+      INGESTION_GRPC_PORT: ${INGESTION_GRPC_PORT}
+      GRPC_POOL_SIZE: ${GRPC_POOL_SIZE}
+      GRPC_KEEPALIVE_TIME_MS: ${GRPC_KEEPALIVE_TIME_MS}
+      GRPC_KEEPALIVE_TIMEOUT_MS: ${GRPC_KEEPALIVE_TIMEOUT_MS}
+      GRPC_TIMEOUT: ${GRPC_TIMEOUT}
+      CORS_ORIGINS: "*"
+      CORS_ALLOW_CREDENTIALS: "true"
+      CORS_ALLOW_METHODS: "*"
+      CORS_ALLOW_HEADERS: "*"
+    ports:
+      # EXPOSED for client access
+      - "${GATEWAY_HTTP_PORT}:8040"
+    depends_on:
+      - ingestion-service
+    networks:
+      - minsik-network
+    restart: unless-stopped
+    # No resource limits in development
+
+  # ============================================================================
   # Ingestion Service - Development Configuration
   # ============================================================================
   ingestion-service:

@@ -53,5 +53,9 @@ class BaseFetcher(abc.ABC):
         pass
 
     @abc.abstractmethod
+    async def search_book(self, title: str, author: str, limit: int = 10) -> list[typing.Dict[str, typing.Any]]:
+        pass
+
+    @abc.abstractmethod
     async def parse_book_data(self, raw_data: typing.Dict[str, typing.Any]) -> typing.Optional[typing.Dict[str, typing.Any]]:
         pass

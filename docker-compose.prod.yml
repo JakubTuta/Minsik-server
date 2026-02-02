@@ -93,6 +93,51 @@ services:
     user: redis
 
   # ============================================================================
+  # Gateway Service - Production Configuration
+  # ============================================================================
+  gateway-service:
+    image: europe-central2-docker.pkg.dev/minsik-486117/server/gateway-service:latest
+    container_name: minsik-gateway-service
+    environment:
+      ENV: production
+      DEBUG: false
+      LOG_LEVEL: ERROR
+      GATEWAY_HOST: 0.0.0.0
+      GATEWAY_HTTP_PORT: 8040
+      GATEWAY_WORKERS: ${GATEWAY_WORKERS}
+      INGESTION_SERVICE_HOST: ${INGESTION_SERVICE_HOST}
+      INGESTION_GRPC_PORT: ${INGESTION_GRPC_PORT}
+      GRPC_POOL_SIZE: ${GRPC_POOL_SIZE}
+      GRPC_KEEPALIVE_TIME_MS: ${GRPC_KEEPALIVE_TIME_MS}
+      GRPC_KEEPALIVE_TIMEOUT_MS: ${GRPC_KEEPALIVE_TIMEOUT_MS}
+      GRPC_TIMEOUT: ${GRPC_TIMEOUT}
+      CORS_ORIGINS: "https://minsik.app,https://www.minsik.app"
+      CORS_ALLOW_CREDENTIALS: "true"
+      CORS_ALLOW_METHODS: "GET,POST,PUT,DELETE,PATCH"
+      CORS_ALLOW_HEADERS: "Content-Type,Authorization"
+    ports:
+      # EXPOSED to public internet (ONLY exposed service)
+      - "8040:8040"
+    depends_on:
+      - ingestion-service
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+    networks:
+      - minsik-internal
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # ============================================================================
   # Ingestion Service - Production Configuration
   # ============================================================================
   ingestion-service:

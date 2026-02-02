@@ -10,6 +10,9 @@ import rq
 
 import app.config
 import app.workers
+import app.fetchers.open_library
+import app.fetchers.google_books
+import app.services.book_service
 import app.proto.ingestion_pb2 as ingestion_pb2
 import app.proto.ingestion_pb2_grpc as ingestion_pb2_grpc
 
@@ -156,6 +159,103 @@ class IngestionService(ingestion_pb2_grpc.IngestionServiceServicer):
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(str(e))
             return ingestion_pb2.CancelIngestionResponse(success=False, message=str(e))
+
+    async def SearchBook(self, request, context):
+        try:
+            title = request.title
+            author = request.author or ""
+            source = request.source or "both"
+            limit = request.limit or 10
+
+            if not title:
+                context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+                context.set_details("title is required")
+                return ingestion_pb2.SearchBookResponse()
+
+            if source not in ["open_library", "google_books", "both"]:
+                context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+                context.set_details("source must be one of: open_library, google_books, both")
+                return ingestion_pb2.SearchBookResponse()
+
+            all_books = []
+
+            if source in ["open_library", "both"]:
+                async with app.fetchers.open_library.OpenLibraryFetcher() as fetcher:
+                    ol_books = await fetcher.search_book(title, author, limit)
+                    all_books.extend(ol_books)
+
+            if source in ["google_books", "both"]:
+                async with app.fetchers.google_books.GoogleBooksFetcher() as fetcher:
+                    gb_books = await fetcher.search_book(title, author, limit)
+                    all_books.extend(gb_books)
+
+            book_results = []
+            books_to_insert = []
+
+            for book in all_books[:limit]:
+                book_result = ingestion_pb2.BookResult(
+                    title=book.get("title", ""),
+                    authors=book.get("authors", []),
+                    description=book.get("description") or "",
+                    publication_year=book.get("publication_year") or 0,
+                    language=book.get("language", ""),
+                    page_count=book.get("page_count") or 0,
+                    cover_url=book.get("cover_url") or "",
+                    isbn=book.get("isbn", []),
+                    publisher=book.get("publisher") or "",
+                    genres=book.get("genres", []),
+                    open_library_id=book.get("open_library_id") or "",
+                    google_books_id=book.get("google_books_id") or "",
+                    source=book.get("source", "")
+                )
+                book_results.append(book_result)
+
+                book_for_db = {
+                    "title": book.get("title", ""),
+                    "language": book.get("language", "en"),
+                    "description": book.get("description"),
+                    "original_publication_year": book.get("publication_year"),
+                    "primary_cover_url": book.get("cover_url"),
+                    "open_library_id": book.get("open_library_id"),
+                    "google_books_id": book.get("google_books_id"),
+                    "authors": [
+                        {"name": author_name, "slug": None, "bio": None, "birth_date": None, "death_date": None, "photo_url": None, "open_library_id": None}
+                        for author_name in book.get("authors", [])
+                    ],
+                    "genres": [
+                        {"name": genre_name, "slug": None}
+                        for genre_name in book.get("genres", [])
+                    ],
+                    "formats": [],
+                    "cover_history": [
+                        {
+                            "year": book.get("publication_year") or 2024,
+                            "cover_url": book.get("cover_url"),
+                            "publisher": book.get("publisher", "Unknown")
+                        }
+                    ] if book.get("cover_url") else []
+                }
+                books_to_insert.append(book_for_db)
+
+            if books_to_insert:
+                try:
+                    insert_result = await app.services.book_service.insert_books(books_to_insert)
+                    logger.info(f"Inserted {insert_result['successful']} books, {insert_result['failed']} failed")
+                except Exception as e:
+                    logger.error(f"Error inserting books into database: {str(e)}")
+
+            logger.info(f"Search for '{title}' by '{author}' returned {len(book_results)} results from {source}")
+
+            return ingestion_pb2.SearchBookResponse(
+                total_results=len(book_results),
+                books=book_results
+            )
+
+        except Exception as e:
+            logger.error(f"Error searching for book: {str(e)}")
+            context.set_code(grpc.StatusCode.INTERNAL)
+            context.set_details(str(e))
+            return ingestion_pb2.SearchBookResponse()
 
 
 async def serve():

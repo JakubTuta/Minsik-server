@@ -60,6 +60,90 @@ class GoogleBooksFetcher(BaseFetcher):
 
         return books[:count]
 
+    async def search_book(self, title: str, author: str, limit: int = 10) -> list[typing.Dict[str, typing.Any]]:
+        books = []
+
+        url = f"{self.api_url}/volumes"
+        query = f"intitle:{title}"
+        if author:
+            query += f"+inauthor:{author}"
+
+        params = {
+            "q": query,
+            "maxResults": min(limit, 40)
+        }
+
+        if app.config.settings.google_books_api_key:
+            params["key"] = app.config.settings.google_books_api_key
+
+        data = await self._fetch_with_retry(url, params)
+        if not data or "items" not in data:
+            return books
+
+        for item in data["items"][:limit]:
+            try:
+                volume_info = item.get("volumeInfo", {})
+
+                book_title = volume_info.get("title")
+                if not book_title:
+                    continue
+
+                author_names = volume_info.get("authors", [])
+
+                description = volume_info.get("description")
+
+                published_date = volume_info.get("publishedDate", "")
+                publication_year = None
+                if published_date and len(published_date) >= 4:
+                    try:
+                        publication_year = int(published_date[:4])
+                    except ValueError:
+                        pass
+
+                language = volume_info.get("language", "en")
+
+                page_count = volume_info.get("pageCount")
+
+                image_links = volume_info.get("imageLinks", {})
+                cover_url = (
+                    image_links.get("large") or
+                    image_links.get("medium") or
+                    image_links.get("thumbnail")
+                )
+
+                industry_identifiers = volume_info.get("industryIdentifiers", [])
+                isbn_list = [
+                    identifier["identifier"]
+                    for identifier in industry_identifiers
+                    if identifier.get("type") in ["ISBN_10", "ISBN_13"]
+                ]
+
+                publisher = volume_info.get("publisher")
+
+                categories = volume_info.get("categories", [])
+
+                books.append({
+                    "title": book_title,
+                    "authors": author_names,
+                    "description": description,
+                    "publication_year": publication_year,
+                    "language": language,
+                    "page_count": page_count,
+                    "cover_url": cover_url,
+                    "isbn": isbn_list,
+                    "publisher": publisher,
+                    "genres": categories,
+                    "open_library_id": None,
+                    "google_books_id": item.get("id"),
+                    "source": "google_books"
+                })
+
+            except Exception as e:
+                logger.error(f"Error parsing search result: {str(e)}")
+                continue
+
+        return books
+
     async def parse_book_data(self, raw_data: typing.Dict[str, typing.Any], language: str = "en") -> typing.Optional[typing.Dict[str, typing.Any]]:
         try:
             volume_info = raw_data.get("volumeInfo", {})
