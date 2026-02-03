@@ -107,6 +107,8 @@ services:
       GATEWAY_WORKERS: ${GATEWAY_WORKERS}
       INGESTION_SERVICE_HOST: ${INGESTION_SERVICE_HOST}
       INGESTION_GRPC_PORT: ${INGESTION_GRPC_PORT}
+      BOOKS_SERVICE_HOST: ${BOOKS_SERVICE_HOST}
+      BOOKS_GRPC_PORT: ${BOOKS_GRPC_PORT}
       GRPC_POOL_SIZE: ${GRPC_POOL_SIZE}
       GRPC_KEEPALIVE_TIME_MS: ${GRPC_KEEPALIVE_TIME_MS}
       GRPC_KEEPALIVE_TIMEOUT_MS: ${GRPC_KEEPALIVE_TIMEOUT_MS}
@@ -120,6 +122,7 @@ services:
       - "8040:8040"
     depends_on:
       - ingestion-service
+      - books-service
     deploy:
       resources:
         limits:
@@ -166,6 +169,59 @@ services:
       GOOGLE_BOOKS_API_URL: ${GOOGLE_BOOKS_API_URL}
       GOOGLE_BOOKS_API_KEY: ${GOOGLE_BOOKS_API_KEY}
       REQUEST_TIMEOUT: ${REQUEST_TIMEOUT}
+    # NO EXPOSED PORTS - internal network only (security)
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+    networks:
+      - minsik-internal
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # ============================================================================
+  # Books Service - Production Configuration
+  # ============================================================================
+  books-service:
+    image: europe-central2-docker.pkg.dev/minsik-486117/server/books-service:latest
+    container_name: minsik-books-service
+    environment:
+      ENV: production
+      DEBUG: false
+      LOG_LEVEL: ERROR
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_POOL_SIZE: 3
+      DB_MAX_OVERFLOW: 5
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_DB: ${REDIS_DB}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_MAX_CONNECTIONS: 10
+      BOOKS_SERVICE_HOST: 0.0.0.0
+      BOOKS_GRPC_PORT: 50055
+      CACHE_BOOK_DETAIL_TTL: ${CACHE_BOOK_DETAIL_TTL}
+      CACHE_AUTHOR_DETAIL_TTL: ${CACHE_AUTHOR_DETAIL_TTL}
+      CACHE_AUTHOR_BOOKS_TTL: ${CACHE_AUTHOR_BOOKS_TTL}
+      CACHE_SEARCH_TTL: ${CACHE_SEARCH_TTL}
+      VIEW_COUNT_FLUSH_INTERVAL: ${VIEW_COUNT_FLUSH_INTERVAL}
+      SEARCH_AUTHOR_BOOKS_EXPANSION: ${SEARCH_AUTHOR_BOOKS_EXPANSION}
     # NO EXPOSED PORTS - internal network only (security)
     depends_on:
       postgres:

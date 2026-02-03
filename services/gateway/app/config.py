@@ -14,6 +14,9 @@ class Settings(BaseSettings):
     ingestion_service_host: str = Field(default="ingestion-service")
     ingestion_grpc_port: int = Field(default=50054)
 
+    books_service_host: str = Field(default="books-service")
+    books_grpc_port: int = Field(default=50055)
+
     grpc_pool_size: int = Field(default=1)
     grpc_keepalive_time_ms: int = Field(default=60000)
     grpc_keepalive_timeout_ms: int = Field(default=10000)
@@ -36,6 +39,10 @@ class Settings(BaseSettings):
     @property
     def ingestion_service_url(self) -> str:
         return f"{self.ingestion_service_host}:{self.ingestion_grpc_port}"
+
+    @property
+    def books_service_url(self) -> str:
+        return f"{self.books_service_host}:{self.books_grpc_port}"
 
     @property
     def cors_origins_list(self) -> list[str]:

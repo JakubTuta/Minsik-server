@@ -1,0 +1,169 @@
+syntax = "proto3";
+
+package books.v1;
+
+service BooksService {
+  rpc SearchBooksAndAuthors(SearchRequest) returns (SearchResponse);
+  rpc GetBook(GetBookRequest) returns (BookDetailResponse);
+  rpc GetAuthor(GetAuthorRequest) returns (AuthorDetailResponse);
+  rpc GetAuthorBooks(GetAuthorBooksRequest) returns (BooksListResponse);
+  rpc GetSeries(GetSeriesRequest) returns (SeriesDetailResponse);
+  rpc GetSeriesBooks(GetSeriesBooksRequest) returns (BooksListResponse);
+}
+
+message SearchRequest {
+  string query = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+  string type_filter = 4;
+}
+
+message SearchResult {
+  string type = 1;
+  int64 id = 2;
+  string title = 3;
+  string slug = 4;
+  string cover_url = 5;
+  repeated string authors = 6;
+  float relevance_score = 7;
+  int32 view_count = 8;
+}
+
+message SearchResponse {
+  repeated SearchResult results = 1;
+  int32 total_count = 2;
+}
+
+message GetBookRequest {
+  string slug = 1;
+}
+
+message BookDetail {
+  int64 book_id = 1;
+  string title = 2;
+  string slug = 3;
+  string description = 4;
+  string language = 5;
+  int32 original_publication_year = 6;
+  repeated string formats = 7;
+  string primary_cover_url = 8;
+  repeated CoverHistory cover_history = 9;
+  int32 rating_count = 10;
+  string avg_rating = 11;
+  int32 view_count = 12;
+  string last_viewed_at = 13;
+  repeated AuthorInfo authors = 14;
+  repeated GenreInfo genres = 15;
+  string open_library_id = 16;
+  string google_books_id = 17;
+  string created_at = 18;
+  string updated_at = 19;
+  SeriesInfo series = 20;
+  string series_position = 21;
+}
+
+message CoverHistory {
+  string url = 1;
+  int32 width = 2;
+  string size = 3;
+}
+
+message AuthorInfo {
+  int64 author_id = 1;
+  string name = 2;
+  string slug = 3;
+  string photo_url = 4;
+}
+
+message GenreInfo {
+  int64 genre_id = 1;
+  string name = 2;
+  string slug = 3;
+}
+
+message SeriesInfo {
+  int64 series_id = 1;
+  string name = 2;
+  string slug = 3;
+  int32 total_books = 4;
+}
+
+message BookDetailResponse {
+  BookDetail book = 1;
+}
+
+message GetAuthorRequest {
+  string slug = 1;
+}
+
+message AuthorDetail {
+  int64 author_id = 1;
+  string name = 2;
+  string slug = 3;
+  string bio = 4;
+  string birth_date = 5;
+  string death_date = 6;
+  string photo_url = 7;
+  int32 view_count = 8;
+  string last_viewed_at = 9;
+  int32 books_count = 10;
+  string open_library_id = 11;
+  string created_at = 12;
+  string updated_at = 13;
+}
+
+message AuthorDetailResponse {
+  AuthorDetail author = 1;
+}
+
+message GetAuthorBooksRequest {
+  string author_slug = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message BookSummary {
+  int64 book_id = 1;
+  string title = 2;
+  string slug = 3;
+  string description = 4;
+  int32 original_publication_year = 5;
+  string primary_cover_url = 6;
+  int32 rating_count = 7;
+  string avg_rating = 8;
+  int32 view_count = 9;
+  repeated GenreInfo genres = 10;
+  SeriesInfo series = 11;
+  string series_position = 12;
+}
+
+message BooksListResponse {
+  repeated BookSummary books = 1;
+  int32 total_count = 2;
+}
+
+message GetSeriesRequest {
+  string slug = 1;
+}
+
+message SeriesDetail {
+  int64 series_id = 1;
+  string name = 2;
+  string slug = 3;
+  string description = 4;
+  int32 total_books = 5;
+  int32 view_count = 6;
+  string last_viewed_at = 7;
+  string created_at = 8;
+  string updated_at = 9;
+}
+
+message SeriesDetailResponse {
+  SeriesDetail series = 1;
+}
+
+message GetSeriesBooksRequest {
+  string series_slug = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}

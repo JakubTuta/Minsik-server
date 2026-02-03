@@ -6,6 +6,7 @@ import app.config
 import app.models.book
 import app.models.author
 import app.models.genre
+import app.models.series
 import app.models.book_author
 import app.models.book_genre
 import app.utils
@@ -76,6 +77,15 @@ async def process_single_book(session: sqlalchemy.ext.asyncio.AsyncSession, book
 
 
 async def create_new_book(session: sqlalchemy.ext.asyncio.AsyncSession, book_data: typing.Dict[str, typing.Any]) -> None:
+    series_id = None
+    series_position = None
+
+    series_data = book_data.get("series")
+    if series_data:
+        series = await get_or_create_series(session, series_data)
+        series_id = series.series_id
+        series_position = series_data.get("position")
+
     new_book = app.models.book.Book(
         title=book_data.get("title"),
         language=book_data.get("language", "en"),
@@ -84,7 +94,9 @@ async def create_new_book(session: sqlalchemy.ext.asyncio.AsyncSession, book_dat
         original_publication_year=book_data.get("original_publication_year"),
         primary_cover_url=book_data.get("primary_cover_url"),
         open_library_id=book_data.get("open_library_id"),
-        google_books_id=book_data.get("google_books_id")
+        google_books_id=book_data.get("google_books_id"),
+        series_id=series_id,
+        series_position=series_position
     )
 
     session.add(new_book)
@@ -119,6 +131,12 @@ async def update_existing_book(session: sqlalchemy.ext.asyncio.AsyncSession, boo
 
     if book_data.get("google_books_id"):
         book.google_books_id = book_data.get("google_books_id")
+
+    series_data = book_data.get("series")
+    if series_data and not book.series_id:
+        series = await get_or_create_series(session, series_data)
+        book.series_id = series.series_id
+        book.series_position = series_data.get("position")
 
     existing_formats = book.formats or []
     for format_name in book_data.get("formats", []):
@@ -197,3 +215,29 @@ async def get_or_create_genre(session: sqlalchemy.ext.asyncio.AsyncSession, genr
     await session.flush()
 
     return new_genre
+
+
+async def get_or_create_series(session: sqlalchemy.ext.asyncio.AsyncSession, series_data: typing.Dict[str, typing.Any]) -> app.models.series.Series:
+    name = series_data.get("name")
+    slug = app.utils.slugify(name)
+
+    query = sqlalchemy.select(app.models.series.Series).where(
+        app.models.series.Series.slug == slug
+    )
+    result = await session.execute(query)
+    series = result.scalar_one_or_none()
+
+    if series:
+        if not series.description and series_data.get("description"):
+            series.description = series_data.get("description")
+        return series
+
+    new_series = app.models.series.Series(
+        name=name,
+        slug=slug,
+        description=series_data.get("description")
+    )
+    session.add(new_series)
+    await session.flush()
+
+    return new_series

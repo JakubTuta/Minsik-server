@@ -75,6 +75,8 @@ services:
       GATEWAY_WORKERS: ${GATEWAY_WORKERS}
       INGESTION_SERVICE_HOST: ${INGESTION_SERVICE_HOST}
       INGESTION_GRPC_PORT: ${INGESTION_GRPC_PORT}
+      BOOKS_SERVICE_HOST: ${BOOKS_SERVICE_HOST}
+      BOOKS_GRPC_PORT: ${BOOKS_GRPC_PORT}
       GRPC_POOL_SIZE: ${GRPC_POOL_SIZE}
       GRPC_KEEPALIVE_TIME_MS: ${GRPC_KEEPALIVE_TIME_MS}
       GRPC_KEEPALIVE_TIMEOUT_MS: ${GRPC_KEEPALIVE_TIMEOUT_MS}
@@ -88,6 +90,7 @@ services:
       - "${GATEWAY_HTTP_PORT}:8040"
     depends_on:
       - ingestion-service
+      - books-service
     networks:
       - minsik-network
     restart: unless-stopped
@@ -127,6 +130,51 @@ services:
     ports:
       # EXPOSED for local access (gRPC debugging)
       - "${INGESTION_GRPC_PORT}:50054"
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - minsik-network
+    restart: unless-stopped
+    # No resource limits in development
+
+  # ============================================================================
+  # Books Service - Development Configuration
+  # ============================================================================
+  books-service:
+    build:
+      context: .
+      dockerfile: services/books/Dockerfile
+    container_name: minsik-books-service-dev
+    environment:
+      ENV: development
+      DEBUG: ${DEBUG}
+      LOG_LEVEL: ${LOG_LEVEL}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_POOL_SIZE: ${DB_POOL_SIZE}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_DB: ${REDIS_DB}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_MAX_CONNECTIONS: ${REDIS_MAX_CONNECTIONS}
+      BOOKS_SERVICE_HOST: ${BOOKS_SERVICE_HOST}
+      BOOKS_GRPC_PORT: ${BOOKS_GRPC_PORT}
+      CACHE_BOOK_DETAIL_TTL: ${CACHE_BOOK_DETAIL_TTL}
+      CACHE_AUTHOR_DETAIL_TTL: ${CACHE_AUTHOR_DETAIL_TTL}
+      CACHE_AUTHOR_BOOKS_TTL: ${CACHE_AUTHOR_BOOKS_TTL}
+      CACHE_SEARCH_TTL: ${CACHE_SEARCH_TTL}
+      VIEW_COUNT_FLUSH_INTERVAL: ${VIEW_COUNT_FLUSH_INTERVAL}
+      SEARCH_AUTHOR_BOOKS_EXPANSION: ${SEARCH_AUTHOR_BOOKS_EXPANSION}
+    ports:
+      # EXPOSED for local access (gRPC debugging)
+      - "${BOOKS_GRPC_PORT}:50055"
     depends_on:
       postgres:
         condition: service_healthy

@@ -158,6 +158,7 @@ class OpenLibraryFetcher(BaseFetcher):
 
             formats = self._extract_formats(work_data)
             cover_history = self._extract_cover_history(work_data, cover_id)
+            series_info = await self._extract_series_info(work_key)
 
             return {
                 "title": title,
@@ -170,7 +171,8 @@ class OpenLibraryFetcher(BaseFetcher):
                 "primary_cover_url": primary_cover_url,
                 "open_library_id": work_key.split("/")[-1],
                 "authors": authors,
-                "genres": genres
+                "genres": genres,
+                "series": series_info
             }
 
         except Exception as e:
@@ -255,3 +257,63 @@ class OpenLibraryFetcher(BaseFetcher):
         cover_history.sort(key=lambda x: x["year"])
 
         return cover_history
+
+    async def _extract_series_info(self, work_key: str) -> typing.Optional[typing.Dict[str, typing.Any]]:
+        try:
+            editions_url = f"{self.api_url}{work_key}/editions.json"
+            editions_data = await self._fetch_with_retry(editions_url, {"limit": 10})
+
+            if not editions_data or "entries" not in editions_data:
+                return None
+
+            for edition in editions_data["entries"]:
+                series_list = edition.get("series")
+                if series_list and len(series_list) > 0:
+                    series_str = series_list[0]
+                    parsed = self._parse_series_string(series_str)
+                    if parsed:
+                        return parsed
+
+            return None
+
+        except Exception as e:
+            logger.error(f"Error extracting series info: {str(e)}")
+            return None
+
+    def _parse_series_string(self, series_str: str) -> typing.Optional[typing.Dict[str, typing.Any]]:
+        try:
+            if not series_str or not isinstance(series_str, str):
+                return None
+
+            series_str = series_str.strip()
+
+            if "#" in series_str:
+                parts = series_str.split("#")
+                name = parts[0].strip().rstrip(",").strip()
+
+                position_str = parts[1].strip()
+                position = None
+
+                try:
+                    if "." in position_str:
+                        position = float(position_str)
+                    else:
+                        position = float(position_str.split()[0])
+                except (ValueError, IndexError):
+                    position = None
+
+                return {
+                    "name": name,
+                    "slug": slugify(name),
+                    "position": position
+                }
+            else:
+                return {
+                    "name": series_str,
+                    "slug": slugify(series_str),
+                    "position": None
+                }
+
+        except Exception as e:
+            logger.error(f"Error parsing series string '{series_str}': {str(e)}")
+            return None

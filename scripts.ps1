@@ -63,7 +63,7 @@ COMMANDS:
       -Environment <env>             Environment (dev/prod, default: dev)
 
     -Logs                          View service logs
-      -LogService <service>          Specific service (postgres/redis/gateway/books/ingestion)
+      -LogService <service>          Specific service (postgres/redis/gateway/ingestion/books)
 
     -Clean                         Stop and remove all containers and volumes
 
@@ -75,7 +75,7 @@ COMMANDS:
 
   Testing:
     -Test                          Run tests
-      -TestService <service>         Test specific service (gateway/books/ingestion/all)
+      -TestService <service>         Test specific service (gateway/ingestion/books/all)
 
   Help:
     -Help                          Show this help message
@@ -352,6 +352,11 @@ function Build-And-Push-Images {
             ImageName = "ingestion-service"
         },
         @{
+            Name = "Books Service"
+            Dockerfile = "services/books/Dockerfile"
+            ImageName = "books-service"
+        },
+        @{
             Name = "RQ Worker"
             Dockerfile = "services/ingestion/Dockerfile"
             ImageName = "rq-worker"
@@ -502,6 +507,7 @@ function Run-Tests {
     $serviceMap = @{
         "gateway" = "gateway-service"
         "ingestion" = "ingestion-service"
+        "books" = "books-service"
     }
 
     if ($Service -and $Service -ne "all") {
@@ -544,7 +550,7 @@ function Run-Tests {
         Write-Host "  All services" -ForegroundColor Gray
 
         # Run tests for all implemented services
-        $services = @("gateway", "ingestion")
+        $services = @("gateway", "ingestion", "books")
         $totalPassed = 0
         $totalFailed = 0
 
