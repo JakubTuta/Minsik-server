@@ -188,7 +188,7 @@ async def get_or_create_author(session: sqlalchemy.ext.asyncio.AsyncSession, aut
 
     if author:
         if not author.bio and author_data.get("bio"):
-            author.bio = author_data.get("bio")
+            author.bio = app.utils.clean_description(author_data.get("bio"))
         if not author.birth_date and author_data.get("birth_date"):
             author.birth_date = app.utils.parse_date(author_data.get("birth_date"))
         if not author.death_date and author_data.get("death_date"):
@@ -202,7 +202,7 @@ async def get_or_create_author(session: sqlalchemy.ext.asyncio.AsyncSession, aut
     new_author = app.models.author.Author(
         name=name,
         slug=slug,
-        bio=author_data.get("bio"),
+        bio=app.utils.clean_description(author_data.get("bio")),
         birth_date=app.utils.parse_date(author_data.get("birth_date")),
         death_date=app.utils.parse_date(author_data.get("death_date")),
         photo_url=author_data.get("photo_url"),

@@ -103,7 +103,7 @@ async def get_series_books(
             "original_publication_year": book.original_publication_year,
             "primary_cover_url": book.primary_cover_url,
             "rating_count": book.rating_count,
-            "avg_rating": str(book.avg_rating) if book.avg_rating else None,
+            "avg_rating": str(book.avg_rating) if book.avg_rating else "0.00",
             "view_count": book.view_count,
             "series_position": str(book.series_position) if book.series_position else None,
             "genres": [

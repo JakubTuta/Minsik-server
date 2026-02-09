@@ -407,7 +407,7 @@ async def get_series_books(
                 "original_publication_year": book.original_publication_year,
                 "primary_cover_url": book.primary_cover_url,
                 "rating_count": book.rating_count,
-                "avg_rating": book.avg_rating,
+                "avg_rating": float(book.avg_rating),
                 "view_count": book.view_count,
                 "series_position": book.series_position if book.series_position else None,
                 "genres": [
