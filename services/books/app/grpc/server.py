@@ -156,7 +156,13 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                     books_count=author["books_count"],
                     open_library_id=author["open_library_id"],
                     created_at=author["created_at"],
-                    updated_at=author["updated_at"]
+                    updated_at=author["updated_at"],
+                    birth_place=author["birth_place"],
+                    nationality=author["nationality"],
+                    book_categories=author["book_categories"],
+                    books_avg_rating=author["books_avg_rating"],
+                    books_total_ratings=author["books_total_ratings"],
+                    books_total_views=author["books_total_views"]
                 )
 
                 return app.proto.books_pb2.AuthorDetailResponse(author=author_detail)
@@ -175,7 +181,9 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                     session,
                     request.author_slug,
                     request.limit or 10,
-                    request.offset or 0
+                    request.offset or 0,
+                    request.sort_by or "view_count",
+                    request.order or "desc"
                 )
 
                 book_summaries = []

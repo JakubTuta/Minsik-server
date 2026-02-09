@@ -1,7 +1,8 @@
 from google.protobuf.internal import containers as _containers
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
-from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Mapping, Optional as _Optional, Union as _Union
+from collections.abc import Iterable as _Iterable, Mapping as _Mapping
+from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
@@ -18,7 +19,7 @@ class SearchRequest(_message.Message):
     def __init__(self, query: _Optional[str] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., type_filter: _Optional[str] = ...) -> None: ...
 
 class SearchResult(_message.Message):
-    __slots__ = ("type", "id", "title", "slug", "cover_url", "authors", "relevance_score", "view_count")
+    __slots__ = ("type", "id", "title", "slug", "cover_url", "authors", "relevance_score", "view_count", "author_slugs", "series_slug")
     TYPE_FIELD_NUMBER: _ClassVar[int]
     ID_FIELD_NUMBER: _ClassVar[int]
     TITLE_FIELD_NUMBER: _ClassVar[int]
@@ -27,6 +28,8 @@ class SearchResult(_message.Message):
     AUTHORS_FIELD_NUMBER: _ClassVar[int]
     RELEVANCE_SCORE_FIELD_NUMBER: _ClassVar[int]
     VIEW_COUNT_FIELD_NUMBER: _ClassVar[int]
+    AUTHOR_SLUGS_FIELD_NUMBER: _ClassVar[int]
+    SERIES_SLUG_FIELD_NUMBER: _ClassVar[int]
     type: str
     id: int
     title: str
@@ -35,7 +38,9 @@ class SearchResult(_message.Message):
     authors: _containers.RepeatedScalarFieldContainer[str]
     relevance_score: float
     view_count: int
-    def __init__(self, type: _Optional[str] = ..., id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., cover_url: _Optional[str] = ..., authors: _Optional[_Iterable[str]] = ..., relevance_score: _Optional[float] = ..., view_count: _Optional[int] = ...) -> None: ...
+    author_slugs: _containers.RepeatedScalarFieldContainer[str]
+    series_slug: str
+    def __init__(self, type: _Optional[str] = ..., id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., cover_url: _Optional[str] = ..., authors: _Optional[_Iterable[str]] = ..., relevance_score: _Optional[float] = ..., view_count: _Optional[int] = ..., author_slugs: _Optional[_Iterable[str]] = ..., series_slug: _Optional[str] = ...) -> None: ...
 
 class SearchResponse(_message.Message):
     __slots__ = ("results", "total_count")
@@ -52,7 +57,7 @@ class GetBookRequest(_message.Message):
     def __init__(self, slug: _Optional[str] = ...) -> None: ...
 
 class BookDetail(_message.Message):
-    __slots__ = ("book_id", "title", "slug", "description", "language", "original_publication_year", "formats", "primary_cover_url", "cover_history", "rating_count", "avg_rating", "view_count", "last_viewed_at", "authors", "genres", "open_library_id", "google_books_id", "created_at", "updated_at")
+    __slots__ = ("book_id", "title", "slug", "description", "language", "original_publication_year", "formats", "primary_cover_url", "cover_history", "rating_count", "avg_rating", "view_count", "last_viewed_at", "authors", "genres", "open_library_id", "google_books_id", "created_at", "updated_at", "series", "series_position")
     BOOK_ID_FIELD_NUMBER: _ClassVar[int]
     TITLE_FIELD_NUMBER: _ClassVar[int]
     SLUG_FIELD_NUMBER: _ClassVar[int]
@@ -72,6 +77,8 @@ class BookDetail(_message.Message):
     GOOGLE_BOOKS_ID_FIELD_NUMBER: _ClassVar[int]
     CREATED_AT_FIELD_NUMBER: _ClassVar[int]
     UPDATED_AT_FIELD_NUMBER: _ClassVar[int]
+    SERIES_FIELD_NUMBER: _ClassVar[int]
+    SERIES_POSITION_FIELD_NUMBER: _ClassVar[int]
     book_id: int
     title: str
     slug: str
@@ -91,7 +98,9 @@ class BookDetail(_message.Message):
     google_books_id: str
     created_at: str
     updated_at: str
-    def __init__(self, book_id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., description: _Optional[str] = ..., language: _Optional[str] = ..., original_publication_year: _Optional[int] = ..., formats: _Optional[_Iterable[str]] = ..., primary_cover_url: _Optional[str] = ..., cover_history: _Optional[_Iterable[_Union[CoverHistory, _Mapping]]] = ..., rating_count: _Optional[int] = ..., avg_rating: _Optional[str] = ..., view_count: _Optional[int] = ..., last_viewed_at: _Optional[str] = ..., authors: _Optional[_Iterable[_Union[AuthorInfo, _Mapping]]] = ..., genres: _Optional[_Iterable[_Union[GenreInfo, _Mapping]]] = ..., open_library_id: _Optional[str] = ..., google_books_id: _Optional[str] = ..., created_at: _Optional[str] = ..., updated_at: _Optional[str] = ...) -> None: ...
+    series: SeriesInfo
+    series_position: str
+    def __init__(self, book_id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., description: _Optional[str] = ..., language: _Optional[str] = ..., original_publication_year: _Optional[int] = ..., formats: _Optional[_Iterable[str]] = ..., primary_cover_url: _Optional[str] = ..., cover_history: _Optional[_Iterable[_Union[CoverHistory, _Mapping]]] = ..., rating_count: _Optional[int] = ..., avg_rating: _Optional[str] = ..., view_count: _Optional[int] = ..., last_viewed_at: _Optional[str] = ..., authors: _Optional[_Iterable[_Union[AuthorInfo, _Mapping]]] = ..., genres: _Optional[_Iterable[_Union[GenreInfo, _Mapping]]] = ..., open_library_id: _Optional[str] = ..., google_books_id: _Optional[str] = ..., created_at: _Optional[str] = ..., updated_at: _Optional[str] = ..., series: _Optional[_Union[SeriesInfo, _Mapping]] = ..., series_position: _Optional[str] = ...) -> None: ...
 
 class CoverHistory(_message.Message):
     __slots__ = ("url", "width", "size")
@@ -125,6 +134,18 @@ class GenreInfo(_message.Message):
     slug: str
     def __init__(self, genre_id: _Optional[int] = ..., name: _Optional[str] = ..., slug: _Optional[str] = ...) -> None: ...
 
+class SeriesInfo(_message.Message):
+    __slots__ = ("series_id", "name", "slug", "total_books")
+    SERIES_ID_FIELD_NUMBER: _ClassVar[int]
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    SLUG_FIELD_NUMBER: _ClassVar[int]
+    TOTAL_BOOKS_FIELD_NUMBER: _ClassVar[int]
+    series_id: int
+    name: str
+    slug: str
+    total_books: int
+    def __init__(self, series_id: _Optional[int] = ..., name: _Optional[str] = ..., slug: _Optional[str] = ..., total_books: _Optional[int] = ...) -> None: ...
+
 class BookDetailResponse(_message.Message):
     __slots__ = ("book",)
     BOOK_FIELD_NUMBER: _ClassVar[int]
@@ -138,7 +159,7 @@ class GetAuthorRequest(_message.Message):
     def __init__(self, slug: _Optional[str] = ...) -> None: ...
 
 class AuthorDetail(_message.Message):
-    __slots__ = ("author_id", "name", "slug", "bio", "birth_date", "death_date", "photo_url", "view_count", "last_viewed_at", "books_count", "open_library_id", "created_at", "updated_at")
+    __slots__ = ("author_id", "name", "slug", "bio", "birth_date", "death_date", "photo_url", "view_count", "last_viewed_at", "books_count", "open_library_id", "created_at", "updated_at", "birth_place", "nationality", "book_categories")
     AUTHOR_ID_FIELD_NUMBER: _ClassVar[int]
     NAME_FIELD_NUMBER: _ClassVar[int]
     SLUG_FIELD_NUMBER: _ClassVar[int]
@@ -152,6 +173,9 @@ class AuthorDetail(_message.Message):
     OPEN_LIBRARY_ID_FIELD_NUMBER: _ClassVar[int]
     CREATED_AT_FIELD_NUMBER: _ClassVar[int]
     UPDATED_AT_FIELD_NUMBER: _ClassVar[int]
+    BIRTH_PLACE_FIELD_NUMBER: _ClassVar[int]
+    NATIONALITY_FIELD_NUMBER: _ClassVar[int]
+    BOOK_CATEGORIES_FIELD_NUMBER: _ClassVar[int]
     author_id: int
     name: str
     slug: str
@@ -165,7 +189,10 @@ class AuthorDetail(_message.Message):
     open_library_id: str
     created_at: str
     updated_at: str
-    def __init__(self, author_id: _Optional[int] = ..., name: _Optional[str] = ..., slug: _Optional[str] = ..., bio: _Optional[str] = ..., birth_date: _Optional[str] = ..., death_date: _Optional[str] = ..., photo_url: _Optional[str] = ..., view_count: _Optional[int] = ..., last_viewed_at: _Optional[str] = ..., books_count: _Optional[int] = ..., open_library_id: _Optional[str] = ..., created_at: _Optional[str] = ..., updated_at: _Optional[str] = ...) -> None: ...
+    birth_place: str
+    nationality: str
+    book_categories: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, author_id: _Optional[int] = ..., name: _Optional[str] = ..., slug: _Optional[str] = ..., bio: _Optional[str] = ..., birth_date: _Optional[str] = ..., death_date: _Optional[str] = ..., photo_url: _Optional[str] = ..., view_count: _Optional[int] = ..., last_viewed_at: _Optional[str] = ..., books_count: _Optional[int] = ..., open_library_id: _Optional[str] = ..., created_at: _Optional[str] = ..., updated_at: _Optional[str] = ..., birth_place: _Optional[str] = ..., nationality: _Optional[str] = ..., book_categories: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class AuthorDetailResponse(_message.Message):
     __slots__ = ("author",)
@@ -174,17 +201,21 @@ class AuthorDetailResponse(_message.Message):
     def __init__(self, author: _Optional[_Union[AuthorDetail, _Mapping]] = ...) -> None: ...
 
 class GetAuthorBooksRequest(_message.Message):
-    __slots__ = ("author_slug", "limit", "offset")
+    __slots__ = ("author_slug", "limit", "offset", "sort_by", "order")
     AUTHOR_SLUG_FIELD_NUMBER: _ClassVar[int]
     LIMIT_FIELD_NUMBER: _ClassVar[int]
     OFFSET_FIELD_NUMBER: _ClassVar[int]
+    SORT_BY_FIELD_NUMBER: _ClassVar[int]
+    ORDER_FIELD_NUMBER: _ClassVar[int]
     author_slug: str
     limit: int
     offset: int
-    def __init__(self, author_slug: _Optional[str] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ...) -> None: ...
+    sort_by: str
+    order: str
+    def __init__(self, author_slug: _Optional[str] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., sort_by: _Optional[str] = ..., order: _Optional[str] = ...) -> None: ...
 
 class BookSummary(_message.Message):
-    __slots__ = ("book_id", "title", "slug", "description", "original_publication_year", "primary_cover_url", "rating_count", "avg_rating", "view_count", "genres")
+    __slots__ = ("book_id", "title", "slug", "description", "original_publication_year", "primary_cover_url", "rating_count", "avg_rating", "view_count", "genres", "series", "series_position")
     BOOK_ID_FIELD_NUMBER: _ClassVar[int]
     TITLE_FIELD_NUMBER: _ClassVar[int]
     SLUG_FIELD_NUMBER: _ClassVar[int]
@@ -195,6 +226,8 @@ class BookSummary(_message.Message):
     AVG_RATING_FIELD_NUMBER: _ClassVar[int]
     VIEW_COUNT_FIELD_NUMBER: _ClassVar[int]
     GENRES_FIELD_NUMBER: _ClassVar[int]
+    SERIES_FIELD_NUMBER: _ClassVar[int]
+    SERIES_POSITION_FIELD_NUMBER: _ClassVar[int]
     book_id: int
     title: str
     slug: str
@@ -205,7 +238,9 @@ class BookSummary(_message.Message):
     avg_rating: str
     view_count: int
     genres: _containers.RepeatedCompositeFieldContainer[GenreInfo]
-    def __init__(self, book_id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., description: _Optional[str] = ..., original_publication_year: _Optional[int] = ..., primary_cover_url: _Optional[str] = ..., rating_count: _Optional[int] = ..., avg_rating: _Optional[str] = ..., view_count: _Optional[int] = ..., genres: _Optional[_Iterable[_Union[GenreInfo, _Mapping]]] = ...) -> None: ...
+    series: SeriesInfo
+    series_position: str
+    def __init__(self, book_id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., description: _Optional[str] = ..., original_publication_year: _Optional[int] = ..., primary_cover_url: _Optional[str] = ..., rating_count: _Optional[int] = ..., avg_rating: _Optional[str] = ..., view_count: _Optional[int] = ..., genres: _Optional[_Iterable[_Union[GenreInfo, _Mapping]]] = ..., series: _Optional[_Union[SeriesInfo, _Mapping]] = ..., series_position: _Optional[str] = ...) -> None: ...
 
 class BooksListResponse(_message.Message):
     __slots__ = ("books", "total_count")
@@ -214,3 +249,47 @@ class BooksListResponse(_message.Message):
     books: _containers.RepeatedCompositeFieldContainer[BookSummary]
     total_count: int
     def __init__(self, books: _Optional[_Iterable[_Union[BookSummary, _Mapping]]] = ..., total_count: _Optional[int] = ...) -> None: ...
+
+class GetSeriesRequest(_message.Message):
+    __slots__ = ("slug",)
+    SLUG_FIELD_NUMBER: _ClassVar[int]
+    slug: str
+    def __init__(self, slug: _Optional[str] = ...) -> None: ...
+
+class SeriesDetail(_message.Message):
+    __slots__ = ("series_id", "name", "slug", "description", "total_books", "view_count", "last_viewed_at", "created_at", "updated_at")
+    SERIES_ID_FIELD_NUMBER: _ClassVar[int]
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    SLUG_FIELD_NUMBER: _ClassVar[int]
+    DESCRIPTION_FIELD_NUMBER: _ClassVar[int]
+    TOTAL_BOOKS_FIELD_NUMBER: _ClassVar[int]
+    VIEW_COUNT_FIELD_NUMBER: _ClassVar[int]
+    LAST_VIEWED_AT_FIELD_NUMBER: _ClassVar[int]
+    CREATED_AT_FIELD_NUMBER: _ClassVar[int]
+    UPDATED_AT_FIELD_NUMBER: _ClassVar[int]
+    series_id: int
+    name: str
+    slug: str
+    description: str
+    total_books: int
+    view_count: int
+    last_viewed_at: str
+    created_at: str
+    updated_at: str
+    def __init__(self, series_id: _Optional[int] = ..., name: _Optional[str] = ..., slug: _Optional[str] = ..., description: _Optional[str] = ..., total_books: _Optional[int] = ..., view_count: _Optional[int] = ..., last_viewed_at: _Optional[str] = ..., created_at: _Optional[str] = ..., updated_at: _Optional[str] = ...) -> None: ...
+
+class SeriesDetailResponse(_message.Message):
+    __slots__ = ("series",)
+    SERIES_FIELD_NUMBER: _ClassVar[int]
+    series: SeriesDetail
+    def __init__(self, series: _Optional[_Union[SeriesDetail, _Mapping]] = ...) -> None: ...
+
+class GetSeriesBooksRequest(_message.Message):
+    __slots__ = ("series_slug", "limit", "offset")
+    SERIES_SLUG_FIELD_NUMBER: _ClassVar[int]
+    LIMIT_FIELD_NUMBER: _ClassVar[int]
+    OFFSET_FIELD_NUMBER: _ClassVar[int]
+    series_slug: str
+    limit: int
+    offset: int
+    def __init__(self, series_slug: _Optional[str] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ...) -> None: ...

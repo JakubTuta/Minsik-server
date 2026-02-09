@@ -92,12 +92,16 @@ class BooksClient:
         self,
         author_slug: str,
         limit: int = 10,
-        offset: int = 0
+        offset: int = 0,
+        sort_by: str = "view_count",
+        order: str = "desc"
     ) -> books_pb2.BooksListResponse:
         request = books_pb2.GetAuthorBooksRequest(
             author_slug=author_slug,
             limit=limit,
-            offset=offset
+            offset=offset,
+            sort_by=sort_by,
+            order=order
         )
 
         try:

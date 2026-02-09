@@ -213,10 +213,16 @@ async def get_author(
                 "bio": author.bio,
                 "birth_date": author.birth_date,
                 "death_date": author.death_date,
+                "birth_place": author.birth_place,
+                "nationality": author.nationality,
                 "photo_url": author.photo_url,
                 "view_count": author.view_count,
                 "last_viewed_at": author.last_viewed_at,
                 "books_count": author.books_count,
+                "book_categories": list(author.book_categories),
+                "books_avg_rating": float(author.books_avg_rating),
+                "books_total_ratings": author.books_total_ratings,
+                "books_total_views": author.books_total_views,
                 "open_library_id": author.open_library_id,
                 "created_at": author.created_at,
                 "updated_at": author.updated_at
@@ -238,14 +244,21 @@ async def get_author(
     response_model=app.models.books_responses.AuthorBooksResponse,
     summary="Get author's books",
     description="""
-    Get all books by an author, paginated.
+    Get all books by an author, paginated and sorted.
 
-    Books are sorted by:
-    1. View count (descending)
-    2. Rating count (descending)
-    3. Publication date (newest first)
+    **Sort Options (sort_by):**
+    - `publication_year` - Original publication year
+    - `avg_rating` - Average rating
+    - `view_count` - View count (default)
 
-    **Example:** `/api/v1/authors/j-r-r-tolkien/books?limit=10&offset=0`
+    **Order Options:**
+    - `asc` - Ascending order
+    - `desc` - Descending order (default)
+
+    **Examples:**
+    - `/api/v1/authors/j-r-r-tolkien/books?sort_by=publication_year&order=asc`
+    - `/api/v1/authors/j-r-r-tolkien/books?sort_by=avg_rating&order=desc`
+    - `/api/v1/authors/j-r-r-tolkien/books?limit=10&offset=0`
     """
 )
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
@@ -253,13 +266,17 @@ async def get_author_books(
     request: fastapi.Request,
     slug: str = Path(..., description="Author slug"),
     limit: int = Query(10, ge=1, le=100, description="Number of books per page"),
-    offset: int = Query(0, ge=0, description="Pagination offset")
+    offset: int = Query(0, ge=0, description="Pagination offset"),
+    sort_by: str = Query("view_count", regex="^(publication_year|avg_rating|view_count)$", description="Sort field"),
+    order: str = Query("desc", regex="^(asc|desc)$", description="Sort order")
 ):
     try:
         response = await app.grpc_clients.books_client.get_author_books(
             author_slug=slug,
             limit=limit,
-            offset=offset
+            offset=offset,
+            sort_by=sort_by,
+            order=order
         )
 
         books = []

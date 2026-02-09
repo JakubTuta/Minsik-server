@@ -92,10 +92,16 @@ class AuthorDetailData(pydantic.BaseModel):
     bio: typing.Optional[str] = None
     birth_date: typing.Optional[str] = None
     death_date: typing.Optional[str] = None
+    birth_place: typing.Optional[str] = None
+    nationality: typing.Optional[str] = None
     photo_url: typing.Optional[str] = None
     view_count: int
     last_viewed_at: typing.Optional[str] = None
     books_count: int
+    book_categories: typing.List[str] = []
+    books_avg_rating: float
+    books_total_ratings: int
+    books_total_views: int
     open_library_id: typing.Optional[str] = None
     created_at: str
     updated_at: str

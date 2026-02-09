@@ -112,6 +112,12 @@ message AuthorDetail {
   string open_library_id = 11;
   string created_at = 12;
   string updated_at = 13;
+  string birth_place = 14;
+  string nationality = 15;
+  repeated string book_categories = 16;
+  string books_avg_rating = 17;
+  int32 books_total_ratings = 18;
+  int32 books_total_views = 19;
 }
 
 message AuthorDetailResponse {
@@ -122,6 +128,8 @@ message GetAuthorBooksRequest {
   string author_slug = 1;
   int32 limit = 2;
   int32 offset = 3;
+  string sort_by = 4;
+  string order = 5;
 }
 
 message BookSummary {

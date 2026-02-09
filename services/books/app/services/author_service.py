@@ -9,6 +9,8 @@ import app.config
 import app.models.author
 import app.models.book
 import app.models.book_author
+import app.models.genre
+import app.models.book_genre
 import app.cache
 
 logger = logging.getLogger(__name__)
@@ -40,7 +42,10 @@ async def get_author_by_slug(
     books_count_result = await session.execute(books_count_stmt)
     books_count = books_count_result.scalar() or 0
 
-    author_data = _author_to_dict(author, books_count)
+    book_categories = await _get_author_book_categories(session, author.author_id)
+    books_aggregates = await _get_author_books_aggregates(session, author.author_id)
+
+    author_data = _author_to_dict(author, books_count, book_categories, books_aggregates)
 
     await app.cache.set_cached(
         cache_key,
@@ -57,9 +62,11 @@ async def get_author_books(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     author_slug: str,
     limit: int,
-    offset: int
+    offset: int,
+    sort_by: str = "view_count",
+    order: str = "desc"
 ) -> typing.Tuple[typing.List[typing.Dict[str, typing.Any]], int]:
-    cache_key = f"author_books:{author_slug}:limit:{limit}:offset:{offset}"
+    cache_key = f"author_books:{author_slug}:limit:{limit}:offset:{offset}:sort:{sort_by}:order:{order}"
     cached = await app.cache.get_cached(cache_key)
     if cached:
         return cached["books"], cached["total"]
@@ -71,15 +78,16 @@ async def get_author_books(
     if not author:
         return [], 0
 
+    sort_column = _get_sort_column(sort_by)
+    order_func = sqlalchemy.desc if order == "desc" else sqlalchemy.asc
+
     stmt = (
         select(app.models.book.Book)
         .join(app.models.book_author.BookAuthor)
         .options(selectinload(app.models.book.Book.genres))
         .filter(app.models.book_author.BookAuthor.author_id == author.author_id)
         .order_by(
-            app.models.book.Book.view_count.desc().nullslast(),
-            app.models.book.Book.rating_count.desc().nullslast(),
-            app.models.book.Book.created_at.desc()
+            order_func(sort_column).nullslast()
         )
         .limit(limit)
         .offset(offset)
@@ -115,7 +123,66 @@ async def _track_author_view(author_id: int) -> None:
         logger.error(f"Failed to track author view: {str(e)}")
 
 
-def _author_to_dict(author: app.models.author.Author, books_count: int) -> typing.Dict[str, typing.Any]:
+def _get_sort_column(sort_by: str):
+    sort_mapping = {
+        "publication_year": app.models.book.Book.original_publication_year,
+        "avg_rating": app.models.book.Book.avg_rating,
+        "view_count": app.models.book.Book.view_count,
+    }
+    return sort_mapping.get(sort_by, app.models.book.Book.view_count)
+
+
+async def _get_author_book_categories(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    author_id: int
+) -> typing.List[str]:
+    stmt = (
+        select(app.models.genre.Genre.name)
+        .select_from(app.models.book_genre.BookGenre)
+        .join(app.models.book_author.BookAuthor,
+              app.models.book_genre.BookGenre.book_id == app.models.book_author.BookAuthor.book_id)
+        .join(app.models.genre.Genre,
+              app.models.book_genre.BookGenre.genre_id == app.models.genre.Genre.genre_id)
+        .filter(app.models.book_author.BookAuthor.author_id == author_id)
+        .distinct()
+    )
+
+    result = await session.execute(stmt)
+    categories = [row[0] for row in result.fetchall()]
+    return categories
+
+
+async def _get_author_books_aggregates(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    author_id: int
+) -> typing.Dict[str, typing.Any]:
+    stmt = (
+        select(
+            func.avg(app.models.book.Book.avg_rating).label("avg_rating"),
+            func.sum(app.models.book.Book.rating_count).label("total_ratings"),
+            func.sum(app.models.book.Book.view_count).label("total_views")
+        )
+        .select_from(app.models.book.Book)
+        .join(app.models.book_author.BookAuthor)
+        .filter(app.models.book_author.BookAuthor.author_id == author_id)
+    )
+
+    result = await session.execute(stmt)
+    row = result.first()
+
+    return {
+        "avg_rating": float(row.avg_rating) if row.avg_rating else 0.0,
+        "total_ratings": int(row.total_ratings) if row.total_ratings else 0,
+        "total_views": int(row.total_views) if row.total_views else 0
+    }
+
+
+def _author_to_dict(
+    author: app.models.author.Author,
+    books_count: int,
+    book_categories: typing.List[str],
+    books_aggregates: typing.Dict[str, typing.Any]
+) -> typing.Dict[str, typing.Any]:
     return {
         "author_id": author.author_id,
         "name": author.name,
@@ -123,10 +190,16 @@ def _author_to_dict(author: app.models.author.Author, books_count: int) -> typin
         "bio": author.bio or "",
         "birth_date": author.birth_date.isoformat() if author.birth_date else "",
         "death_date": author.death_date.isoformat() if author.death_date else "",
+        "birth_place": author.birth_place or "",
+        "nationality": author.nationality or "",
         "photo_url": author.photo_url or "",
         "view_count": author.view_count or 0,
         "last_viewed_at": author.last_viewed_at.isoformat() if author.last_viewed_at else "",
         "books_count": books_count,
+        "book_categories": book_categories,
+        "books_avg_rating": str(books_aggregates["avg_rating"]),
+        "books_total_ratings": books_aggregates["total_ratings"],
+        "books_total_views": books_aggregates["total_views"],
         "open_library_id": author.open_library_id or "",
         "created_at": author.created_at.isoformat() if author.created_at else "",
         "updated_at": author.updated_at.isoformat() if author.updated_at else ""
