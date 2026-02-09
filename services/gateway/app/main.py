@@ -1,19 +1,20 @@
-import logging
-import sys
-import signal
 import contextlib
+import logging
+import signal
+import sys
+
+import app.config
+import app.grpc_clients
+import app.middleware.cors as cors_middleware
+import app.middleware.logging as logging_middleware
+import app.middleware.rate_limit as rate_limit_middleware
+import app.routes.admin
+import app.routes.books
+import app.routes.health
 import fastapi
 import uvicorn
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
-import app.config
-import app.routes.health
-import app.routes.admin
-import app.routes.books
-import app.middleware.cors as cors_middleware
-import app.middleware.logging as logging_middleware
-import app.middleware.rate_limit as rate_limit_middleware
-import app.grpc_clients
 
 settings = app.config.settings
 health_router = app.routes.health.router
@@ -24,10 +25,8 @@ limiter = rate_limit_middleware.limiter
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[
-        logging.StreamHandler(sys.stdout)
-    ]
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
 )
 
 logger = logging.getLogger(__name__)
@@ -84,14 +83,11 @@ app = fastapi.FastAPI(
     openapi_url="/openapi.json",
     contact={
         "name": "Minsik Team",
-        "url": "https://github.com/your-org/minsik",
-        "email": "support@minsik.app"
+        "url": "https://github.com/JakubTuta/Minsik-server",
+        "email": "jakubtutka02@gmail.com",
     },
-    license_info={
-        "name": "MIT",
-        "url": "https://opensource.org/licenses/MIT"
-    },
-    lifespan=lifespan
+    license_info={"name": "MIT", "url": "https://opensource.org/licenses/MIT"},
+    lifespan=lifespan,
 )
 
 if settings.env == "development":
@@ -123,5 +119,5 @@ if __name__ == "__main__":
         port=settings.gateway_http_port,
         workers=settings.gateway_workers,
         log_level=settings.log_level.lower(),
-        access_log=True
+        access_log=True,
     )

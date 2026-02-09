@@ -79,18 +79,25 @@ async def process_single_book(session: sqlalchemy.ext.asyncio.AsyncSession, book
 async def create_new_book(session: sqlalchemy.ext.asyncio.AsyncSession, book_data: typing.Dict[str, typing.Any]) -> None:
     series_id = None
     series_position = None
+    series_name = None
 
     series_data = book_data.get("series")
     if series_data:
         series = await get_or_create_series(session, series_data)
         series_id = series.series_id
         series_position = series_data.get("position")
+        series_name = series_data.get("name")
+
+    title = app.utils.format_title_with_series(book_data.get("title"), series_name)
+    language = book_data.get("language", "en")
+    if isinstance(language, str):
+        language = language.lower()
 
     new_book = app.models.book.Book(
-        title=book_data.get("title"),
-        language=book_data.get("language", "en"),
-        slug=app.utils.slugify(book_data.get("title")),
-        description=book_data.get("description"),
+        title=title,
+        language=language,
+        slug=app.utils.slugify(title),
+        description=app.utils.clean_description(book_data.get("description")),
         original_publication_year=book_data.get("original_publication_year"),
         primary_cover_url=book_data.get("primary_cover_url"),
         open_library_id=book_data.get("open_library_id"),
@@ -102,29 +109,36 @@ async def create_new_book(session: sqlalchemy.ext.asyncio.AsyncSession, book_dat
     session.add(new_book)
     await session.flush()
 
+    added_author_ids = set()
     for author_data in book_data.get("authors", []):
         author = await get_or_create_author(session, author_data)
-        book_author = app.models.book_author.BookAuthor(
-            book_id=new_book.book_id,
-            author_id=author.author_id
-        )
-        session.add(book_author)
+        if author.author_id not in added_author_ids:
+            book_author = app.models.book_author.BookAuthor(
+                book_id=new_book.book_id,
+                author_id=author.author_id
+            )
+            session.add(book_author)
+            added_author_ids.add(author.author_id)
 
+    added_genre_ids = set()
     for genre_data in book_data.get("genres", []):
         genre = await get_or_create_genre(session, genre_data)
-        book_genre = app.models.book_genre.BookGenre(
-            book_id=new_book.book_id,
-            genre_id=genre.genre_id
-        )
-        session.add(book_genre)
+        if genre.genre_id not in added_genre_ids:
+            book_genre = app.models.book_genre.BookGenre(
+                book_id=new_book.book_id,
+                genre_id=genre.genre_id
+            )
+            session.add(book_genre)
+            added_genre_ids.add(genre.genre_id)
 
-    new_book.formats = book_data.get("formats", [])
+    formats = book_data.get("formats", [])
+    new_book.formats = [fmt.lower() if isinstance(fmt, str) else fmt for fmt in formats]
     new_book.cover_history = book_data.get("cover_history", [])
 
 
 async def update_existing_book(session: sqlalchemy.ext.asyncio.AsyncSession, book: app.models.book.Book, book_data: typing.Dict[str, typing.Any]) -> None:
     if not book.description and book_data.get("description"):
-        book.description = book_data.get("description")
+        book.description = app.utils.clean_description(book_data.get("description"))
 
     if book_data.get("open_library_id"):
         book.open_library_id = book_data.get("open_library_id")
@@ -138,10 +152,16 @@ async def update_existing_book(session: sqlalchemy.ext.asyncio.AsyncSession, boo
         book.series_id = series.series_id
         book.series_position = series_data.get("position")
 
+        new_title = app.utils.format_title_with_series(book.title, series_data.get("name"))
+        if new_title != book.title:
+            book.title = new_title
+            book.slug = app.utils.slugify(new_title)
+
     existing_formats = book.formats or []
     for format_name in book_data.get("formats", []):
-        if format_name not in existing_formats:
-            existing_formats.append(format_name)
+        format_normalized = format_name.lower() if isinstance(format_name, str) else format_name
+        if format_normalized not in existing_formats:
+            existing_formats.append(format_normalized)
     book.formats = existing_formats
 
     existing_covers = book.cover_history or []
@@ -170,9 +190,9 @@ async def get_or_create_author(session: sqlalchemy.ext.asyncio.AsyncSession, aut
         if not author.bio and author_data.get("bio"):
             author.bio = author_data.get("bio")
         if not author.birth_date and author_data.get("birth_date"):
-            author.birth_date = author_data.get("birth_date")
+            author.birth_date = app.utils.parse_date(author_data.get("birth_date"))
         if not author.death_date and author_data.get("death_date"):
-            author.death_date = author_data.get("death_date")
+            author.death_date = app.utils.parse_date(author_data.get("death_date"))
         if not author.photo_url and author_data.get("photo_url"):
             author.photo_url = author_data.get("photo_url")
         if author_data.get("open_library_id"):
@@ -183,8 +203,8 @@ async def get_or_create_author(session: sqlalchemy.ext.asyncio.AsyncSession, aut
         name=name,
         slug=slug,
         bio=author_data.get("bio"),
-        birth_date=author_data.get("birth_date"),
-        death_date=author_data.get("death_date"),
+        birth_date=app.utils.parse_date(author_data.get("birth_date")),
+        death_date=app.utils.parse_date(author_data.get("death_date")),
         photo_url=author_data.get("photo_url"),
         open_library_id=author_data.get("open_library_id")
     )
@@ -196,6 +216,8 @@ async def get_or_create_author(session: sqlalchemy.ext.asyncio.AsyncSession, aut
 
 async def get_or_create_genre(session: sqlalchemy.ext.asyncio.AsyncSession, genre_data: typing.Dict[str, typing.Any]) -> app.models.genre.Genre:
     name = genre_data.get("name")
+    if isinstance(name, str):
+        name = name.lower()
     slug = app.utils.slugify(name)
 
     query = sqlalchemy.select(app.models.genre.Genre).where(

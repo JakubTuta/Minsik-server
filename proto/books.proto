@@ -27,6 +27,8 @@ message SearchResult {
   repeated string authors = 6;
   float relevance_score = 7;
   int32 view_count = 8;
+  repeated string author_slugs = 9;
+  string series_slug = 10;
 }
 
 message SearchResponse {

@@ -39,7 +39,9 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                             cover_url=result["cover_url"],
                             authors=result["authors"],
                             relevance_score=result["relevance_score"],
-                            view_count=result["view_count"]
+                            view_count=result["view_count"],
+                            author_slugs=result["author_slugs"],
+                            series_slug=result["series_slug"]
                         )
                     )
 

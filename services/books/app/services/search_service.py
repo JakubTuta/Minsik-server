@@ -63,9 +63,19 @@ async def search_books_and_authors(
                 )
                 results.extend(series_books)
 
-    results.sort(key=lambda x: x["relevance_score"], reverse=True)
+    seen_items = {}
+    for result in results:
+        key = (result["type"], result["id"])
+        if key not in seen_items:
+            seen_items[key] = result
+        else:
+            if result["relevance_score"] > seen_items[key]["relevance_score"]:
+                seen_items[key] = result
 
-    final_results = results[:limit]
+    deduplicated_results = list(seen_items.values())
+    deduplicated_results.sort(key=lambda x: x["relevance_score"], reverse=True)
+
+    final_results = deduplicated_results[:limit]
 
     await app.cache.set_cached(
         cache_key,
@@ -100,12 +110,15 @@ async def _search_books(
                         ELSE 1.0
                     END * :popularity_weight)
             ) as final_rank,
-            ARRAY_AGG(a.name) FILTER (WHERE a.name IS NOT NULL) as author_names
+            ARRAY_AGG(a.name) FILTER (WHERE a.name IS NOT NULL) as author_names,
+            ARRAY_AGG(a.slug) FILTER (WHERE a.slug IS NOT NULL) as author_slugs,
+            s.slug as series_slug
         FROM books.books b
         LEFT JOIN books.book_authors ba ON b.book_id = ba.book_id
         LEFT JOIN books.authors a ON ba.author_id = a.author_id
+        LEFT JOIN books.series s ON b.series_id = s.series_id
         WHERE b.ts_vector @@ plainto_tsquery('english', :query)
-        GROUP BY b.book_id, b.title, b.slug, b.primary_cover_url, b.view_count, b.last_viewed_at, b.ts_vector
+        GROUP BY b.book_id, b.title, b.slug, b.primary_cover_url, b.view_count, b.last_viewed_at, b.ts_vector, s.slug
         ORDER BY final_rank DESC
         LIMIT :limit OFFSET :offset
     """)
@@ -142,7 +155,9 @@ async def _search_books(
             "cover_url": row.primary_cover_url or "",
             "authors": row.author_names or [],
             "relevance_score": float(row.final_rank),
-            "view_count": row.views
+            "view_count": row.views,
+            "author_slugs": row.author_slugs or [],
+            "series_slug": row.series_slug or ""
         })
 
     return books, total
@@ -210,7 +225,9 @@ async def _search_authors(
             "cover_url": row.photo_url or "",
             "authors": [],
             "relevance_score": float(row.final_rank),
-            "view_count": row.views
+            "view_count": row.views,
+            "author_slugs": [],
+            "series_slug": ""
         })
 
     return authors, total
@@ -228,10 +245,15 @@ async def _get_author_top_books(
             b.slug,
             b.primary_cover_url,
             COALESCE(b.view_count, 0) as view_count,
-            COALESCE(b.rating_count, 0) as rating_count
+            COALESCE(b.rating_count, 0) as rating_count,
+            ARRAY_AGG(a.slug) FILTER (WHERE a.slug IS NOT NULL) as author_slugs,
+            s.slug as series_slug
         FROM books.books b
         JOIN books.book_authors ba ON b.book_id = ba.book_id
+        LEFT JOIN books.authors a ON ba.author_id = a.author_id
+        LEFT JOIN books.series s ON b.series_id = s.series_id
         WHERE ba.author_id = :author_id
+        GROUP BY b.book_id, b.title, b.slug, b.primary_cover_url, b.view_count, b.rating_count, b.created_at, s.slug
         ORDER BY
             COALESCE(b.view_count, 0) DESC,
             COALESCE(b.rating_count, 0) DESC,
@@ -254,7 +276,9 @@ async def _get_author_top_books(
             "cover_url": row.primary_cover_url or "",
             "authors": [],
             "relevance_score": 0.4,
-            "view_count": row.view_count
+            "view_count": row.view_count,
+            "author_slugs": row.author_slugs or [],
+            "series_slug": row.series_slug or ""
         })
 
     return books
@@ -322,7 +346,9 @@ async def _search_series(
             "cover_url": "",
             "authors": [f"{row.book_count} books"],
             "relevance_score": float(row.final_rank),
-            "view_count": row.views
+            "view_count": row.views,
+            "author_slugs": [],
+            "series_slug": ""
         })
 
     return series_list, total
@@ -340,9 +366,15 @@ async def _get_series_top_books(
             b.slug,
             b.primary_cover_url,
             b.series_position,
-            COALESCE(b.view_count, 0) as view_count
+            COALESCE(b.view_count, 0) as view_count,
+            ARRAY_AGG(a.slug) FILTER (WHERE a.slug IS NOT NULL) as author_slugs,
+            s.slug as series_slug
         FROM books.books b
+        LEFT JOIN books.book_authors ba ON b.book_id = ba.book_id
+        LEFT JOIN books.authors a ON ba.author_id = a.author_id
+        LEFT JOIN books.series s ON b.series_id = s.series_id
         WHERE b.series_id = :series_id
+        GROUP BY b.book_id, b.title, b.slug, b.primary_cover_url, b.series_position, b.view_count, b.created_at, s.slug
         ORDER BY
             b.series_position ASC NULLS LAST,
             b.created_at ASC
@@ -364,7 +396,9 @@ async def _get_series_top_books(
             "cover_url": row.primary_cover_url or "",
             "authors": [],
             "relevance_score": 0.4,
-            "view_count": row.view_count
+            "view_count": row.view_count,
+            "author_slugs": row.author_slugs or [],
+            "series_slug": row.series_slug or ""
         })
 
     return books

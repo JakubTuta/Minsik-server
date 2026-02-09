@@ -6,6 +6,7 @@ from fastapi import Query, Path
 import app.config
 import app.grpc_clients
 import app.middleware.rate_limit as rate_limit_middleware
+import app.models.books_responses
 
 logger = logging.getLogger(__name__)
 
@@ -16,7 +17,7 @@ limiter = rate_limit_middleware.limiter
 
 @router.get(
     "/search",
-    response_model=typing.Dict[str, typing.Any],
+    response_model=app.models.books_responses.SearchResponse,
     summary="Search books and authors",
     description="""
     Search for books and authors by text query.
@@ -63,7 +64,9 @@ async def search_books_and_authors(
                 "cover_url": result.cover_url,
                 "authors": list(result.authors),
                 "relevance_score": result.relevance_score,
-                "view_count": result.view_count
+                "view_count": result.view_count,
+                "author_slugs": list(result.author_slugs),
+                "series_slug": result.series_slug
             })
 
         return {
@@ -86,7 +89,7 @@ async def search_books_and_authors(
 
 @router.get(
     "/books/{slug}",
-    response_model=typing.Dict[str, typing.Any],
+    response_model=app.models.books_responses.BookDetailResponse,
     summary="Get book details",
     description="""
     Get full details of a book by slug.
@@ -177,7 +180,7 @@ async def get_book(
 
 @router.get(
     "/authors/{slug}",
-    response_model=typing.Dict[str, typing.Any],
+    response_model=app.models.books_responses.AuthorDetailResponse,
     summary="Get author details",
     description="""
     Get full details of an author by slug.
@@ -232,7 +235,7 @@ async def get_author(
 
 @router.get(
     "/authors/{slug}/books",
-    response_model=typing.Dict[str, typing.Any],
+    response_model=app.models.books_responses.AuthorBooksResponse,
     summary="Get author's books",
     description="""
     Get all books by an author, paginated.
@@ -301,7 +304,7 @@ async def get_author_books(
 
 @router.get(
     "/series/{slug}",
-    response_model=typing.Dict[str, typing.Any],
+    response_model=app.models.books_responses.SeriesDetailResponse,
     summary="Get series details",
     description="""
     Get full details of a series by slug.
@@ -351,7 +354,7 @@ async def get_series(
 
 @router.get(
     "/series/{slug}/books",
-    response_model=typing.Dict[str, typing.Any],
+    response_model=app.models.books_responses.SeriesBooksResponse,
     summary="Get series books",
     description="""
     Get all books in a series, paginated.
