@@ -165,7 +165,7 @@ class TestRegisterEndpoint:
             json={
                 "email": "user@example.com",
                 "username": "bookworm42",
-                "password": "securepassword123"
+                "password": "Secure123"
             }
         )
 
@@ -190,7 +190,7 @@ class TestRegisterEndpoint:
             json={
                 "email": "taken@example.com",
                 "username": "newuser",
-                "password": "securepassword123"
+                "password": "Secure123"
             }
         )
 
@@ -210,7 +210,7 @@ class TestRegisterEndpoint:
             json={
                 "email": "user@example.com",
                 "username": "valid-user",
-                "password": "securepassword123"
+                "password": "Secure123"
             }
         )
 
@@ -229,7 +229,7 @@ class TestRegisterEndpoint:
             json={
                 "email": "user@example.com",
                 "username": "bookworm42",
-                "password": "securepassword123"
+                "password": "Secure123"
             }
         )
 
@@ -244,7 +244,7 @@ class TestRegisterEndpoint:
             json={
                 "email": "not-an-email",
                 "username": "bookworm42",
-                "password": "securepassword123"
+                "password": "Secure123"
             }
         )
 
@@ -268,7 +268,7 @@ class TestRegisterEndpoint:
             json={
                 "email": "user@example.com",
                 "username": "ab",
-                "password": "securepassword123"
+                "password": "Secure123"
             }
         )
 
@@ -280,7 +280,7 @@ class TestRegisterEndpoint:
             json={
                 "email": "user@example.com",
                 "username": "user name with spaces",
-                "password": "securepassword123"
+                "password": "Secure123"
             }
         )
 
@@ -295,7 +295,7 @@ class TestLoginEndpoint:
             "/api/v1/auth/login",
             json={
                 "email": "user@example.com",
-                "password": "securepassword123"
+                "password": "Secure123"
             }
         )
 
@@ -350,7 +350,7 @@ class TestLoginEndpoint:
             "/api/v1/auth/login",
             json={
                 "email": "user@example.com",
-                "password": "securepassword123"
+                "password": "Secure123"
             }
         )
 
@@ -364,7 +364,7 @@ class TestLoginEndpoint:
             "/api/v1/auth/login",
             json={
                 "email": "not-an-email",
-                "password": "securepassword123"
+                "password": "Secure123"
             }
         )
 

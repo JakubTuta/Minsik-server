@@ -41,14 +41,25 @@ class UserResponse(pydantic.BaseModel):
 class RegisterRequest(pydantic.BaseModel):
     email: pydantic.EmailStr
     username: str = pydantic.Field(min_length=3, max_length=50, pattern=r"^[a-zA-Z0-9_-]+$")
-    password: str = pydantic.Field(min_length=8, max_length=128)
+    password: str = pydantic.Field(min_length=8, max_length=64)
+
+    @pydantic.field_validator("password")
+    @classmethod
+    def validate_password_complexity(cls, v: str) -> str:
+        if not any(c.isupper() for c in v):
+            raise ValueError("Password must contain at least one uppercase letter")
+        if not any(c.islower() for c in v):
+            raise ValueError("Password must contain at least one lowercase letter")
+        if not any(c.isdigit() for c in v):
+            raise ValueError("Password must contain at least one digit")
+        return v
 
     model_config = pydantic.ConfigDict(
         json_schema_extra={
             "example": {
                 "email": "user@example.com",
                 "username": "bookworm42",
-                "password": "securepassword123"
+                "password": "Secure123"
             }
         }
     )

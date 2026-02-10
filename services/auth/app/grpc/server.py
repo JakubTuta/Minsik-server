@@ -1,3 +1,4 @@
+import re
 import grpc
 import logging
 import jwt
@@ -8,6 +9,21 @@ import app.services.auth_service
 import app.services.token_service
 
 logger = logging.getLogger(__name__)
+
+_EMAIL_REGEX = re.compile(r'^[^@\s]+@[^@\s]+\.[^@\s]+$')
+
+
+def _validate_register_input(email: str, password: str) -> None:
+    if not _EMAIL_REGEX.match(email):
+        raise ValueError("invalid_email")
+    if not (8 <= len(password) <= 64):
+        raise ValueError("invalid_password")
+    if not any(c.isupper() for c in password):
+        raise ValueError("invalid_password")
+    if not any(c.islower() for c in password):
+        raise ValueError("invalid_password")
+    if not any(c.isdigit() for c in password):
+        raise ValueError("invalid_password")
 
 
 def _build_user_message(user: object) -> app.proto.auth_pb2.User:
@@ -31,6 +47,7 @@ class AuthServicer(app.proto.auth_pb2_grpc.AuthServiceServicer):
         context: grpc.aio.ServicerContext
     ) -> app.proto.auth_pb2.AuthResponse:
         try:
+            _validate_register_input(request.email, request.password)
             async with app.database.async_session_maker() as session:
                 user = await app.services.auth_service.register(
                     session,

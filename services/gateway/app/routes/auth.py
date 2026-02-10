@@ -50,7 +50,7 @@ def _auth_response_to_dict(response) -> typing.Dict[str, typing.Any]:
     **Constraints:**
     - `email`: Valid email address, must be unique
     - `username`: 3–50 characters, alphanumeric plus `_` and `-`, must be unique
-    - `password`: 8–128 characters
+    - `password`: 8–64 characters, must contain at least one uppercase letter, one lowercase letter, and one digit
 
     Returns JWT access token, refresh token, and user profile on success.
     """,
