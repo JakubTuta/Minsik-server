@@ -33,7 +33,17 @@ RUN mkdir -p app/proto && \
     mv books_pb2.py app/proto/ && \
     mv books_pb2_grpc.py app/proto/ && \
     mv books_pb2.pyi app/proto/ && \
-    sed -i 's/^import books_pb2/from . import books_pb2/g' app/proto/books_pb2_grpc.py
+    sed -i 's/^import books_pb2/from . import books_pb2/g' app/proto/books_pb2_grpc.py && \
+    python -m grpc_tools.protoc \
+    -I/app/proto_src \
+    --python_out=. \
+    --grpc_python_out=. \
+    --pyi_out=. \
+    /app/proto_src/auth.proto && \
+    mv auth_pb2.py app/proto/ && \
+    mv auth_pb2_grpc.py app/proto/ && \
+    mv auth_pb2.pyi app/proto/ && \
+    sed -i 's/^import auth_pb2/from . import auth_pb2/g' app/proto/auth_pb2_grpc.py
 
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1

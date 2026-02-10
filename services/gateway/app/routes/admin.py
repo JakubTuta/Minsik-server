@@ -1,16 +1,45 @@
 import fastapi
 import grpc
 import logging
+import typing
+import app.middleware.auth
+import app.middleware.rate_limit
 import app.models.requests
 import app.models.responses
 import app.grpc_clients
 import app.utils.responses
-import app.middleware.rate_limit
 
 router = fastapi.APIRouter(prefix="/api/v1/admin", tags=["Admin"])
 
 logger = logging.getLogger(__name__)
 limiter = app.middleware.rate_limit.limiter
+
+_AUTH_RESPONSES = {
+    401: {
+        "description": "Authentication required",
+        "content": {
+            "application/json": {
+                "example": {
+                    "success": False,
+                    "data": None,
+                    "error": {"code": "UNAUTHORIZED", "message": "Authentication required", "details": {}}
+                }
+            }
+        }
+    },
+    403: {
+        "description": "Admin privileges required",
+        "content": {
+            "application/json": {
+                "example": {
+                    "success": False,
+                    "data": None,
+                    "error": {"code": "FORBIDDEN", "message": "Admin privileges required", "details": {}}
+                }
+            }
+        }
+    }
+}
 
 
 @router.post(
@@ -18,7 +47,10 @@ limiter = app.middleware.rate_limit.limiter
     response_model=app.models.responses.APIResponse,
     summary="Trigger book ingestion",
     description="Start a background job to ingest books from external APIs (Open Library and/or Google Books)",
-    dependencies=[fastapi.Depends(lambda: limiter)],
+    dependencies=[
+        fastapi.Depends(lambda: limiter),
+        fastapi.Depends(app.middleware.auth.require_admin)
+    ],
     responses={
         200: {
             "description": "Ingestion job triggered successfully",
@@ -53,6 +85,7 @@ limiter = app.middleware.rate_limit.limiter
                 }
             }
         },
+        **_AUTH_RESPONSES,
         500: {
             "description": "Internal server error",
             "content": {
@@ -72,7 +105,10 @@ limiter = app.middleware.rate_limit.limiter
     }
 )
 @limiter.limit(app.middleware.rate_limit.get_admin_limit())
-async def trigger_ingestion(request: fastapi.Request, ingestion_request: app.models.requests.TriggerIngestionRequest):
+async def trigger_ingestion(
+    request: fastapi.Request,
+    ingestion_request: app.models.requests.TriggerIngestionRequest
+):
     try:
         async with app.grpc_clients.IngestionClient() as client:
             response = await client.trigger_ingestion(
@@ -122,7 +158,10 @@ async def trigger_ingestion(request: fastapi.Request, ingestion_request: app.mod
     response_model=app.models.responses.APIResponse,
     summary="Get ingestion job status",
     description="Retrieve the current status and progress of an ingestion job",
-    dependencies=[fastapi.Depends(lambda: limiter)],
+    dependencies=[
+        fastapi.Depends(lambda: limiter),
+        fastapi.Depends(app.middleware.auth.require_admin)
+    ],
     responses={
         200: {
             "description": "Job status retrieved successfully",
@@ -146,6 +185,7 @@ async def trigger_ingestion(request: fastapi.Request, ingestion_request: app.mod
                 }
             }
         },
+        **_AUTH_RESPONSES,
         404: {
             "description": "Job not found",
             "content": {
@@ -216,7 +256,10 @@ async def get_ingestion_status(request: fastapi.Request, job_id: str):
     response_model=app.models.responses.APIResponse,
     summary="Cancel ingestion job",
     description="Cancel a running or pending ingestion job",
-    dependencies=[fastapi.Depends(lambda: limiter)],
+    dependencies=[
+        fastapi.Depends(lambda: limiter),
+        fastapi.Depends(app.middleware.auth.require_admin)
+    ],
     responses={
         200: {
             "description": "Job cancelled successfully",
@@ -233,6 +276,7 @@ async def get_ingestion_status(request: fastapi.Request, job_id: str):
                 }
             }
         },
+        **_AUTH_RESPONSES,
         404: {
             "description": "Job not found",
             "content": {
@@ -290,26 +334,28 @@ async def cancel_ingestion(request: fastapi.Request, job_id: str):
             status_code=500
         )
 
+
 @router.post(
     "/books/search",
     response_model=app.models.responses.APIResponse,
     summary="Search for a specific book",
     description="Search for books by title and author from Open Library and/or Google Books APIs",
-    dependencies=[fastapi.Depends(lambda: limiter)],
+    dependencies=[
+        fastapi.Depends(lambda: limiter),
+        fastapi.Depends(app.middleware.auth.require_admin)
+    ],
     responses={
-        200: {
-            "description": "Search completed successfully"
-        },
-        400: {
-            "description": "Invalid request parameters"
-        },
-        500: {
-            "description": "Internal server error"
-        }
+        200: {"description": "Search completed successfully"},
+        **_AUTH_RESPONSES,
+        400: {"description": "Invalid request parameters"},
+        500: {"description": "Internal server error"}
     }
 )
 @limiter.limit(app.middleware.rate_limit.get_admin_limit())
-async def search_book(request: fastapi.Request, search_request: app.models.requests.SearchBookRequest):
+async def search_book(
+    request: fastapi.Request,
+    search_request: app.models.requests.SearchBookRequest
+):
     try:
         async with app.grpc_clients.IngestionClient() as client:
             response = await client.search_book(

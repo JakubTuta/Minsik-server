@@ -17,6 +17,13 @@ class Settings(BaseSettings):
     books_service_host: str = Field(default="books-service")
     books_grpc_port: int = Field(default=50055)
 
+    auth_service_host: str = Field(default="auth-service")
+    auth_grpc_port: int = Field(default=50051)
+
+    jwt_secret_key: str = Field(default="changeme")
+    jwt_algorithm: str = Field(default="HS256")
+    jwt_access_token_expire_minutes: int = Field(default=15)
+
     grpc_pool_size: int = Field(default=1)
     grpc_keepalive_time_ms: int = Field(default=60000)
     grpc_keepalive_timeout_ms: int = Field(default=10000)
@@ -43,6 +50,10 @@ class Settings(BaseSettings):
     @property
     def books_service_url(self) -> str:
         return f"{self.books_service_host}:{self.books_grpc_port}"
+
+    @property
+    def auth_service_url(self) -> str:
+        return f"{self.auth_service_host}:{self.auth_grpc_port}"
 
     @property
     def cors_origins_list(self) -> list[str]:

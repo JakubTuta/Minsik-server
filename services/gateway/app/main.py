@@ -9,6 +9,7 @@ import app.middleware.cors as cors_middleware
 import app.middleware.logging as logging_middleware
 import app.middleware.rate_limit as rate_limit_middleware
 import app.routes.admin
+import app.routes.auth
 import app.routes.books
 import app.routes.health
 import fastapi
@@ -19,6 +20,7 @@ from slowapi.errors import RateLimitExceeded
 settings = app.config.settings
 health_router = app.routes.health.router
 admin_router = app.routes.admin.router
+auth_router = app.routes.auth.router
 books_router = app.routes.books.router
 grpc_clients_module = app.grpc_clients
 limiter = rate_limit_middleware.limiter
@@ -37,11 +39,13 @@ async def lifespan(app: fastapi.FastAPI):
     logger.info("Starting Gateway service...")
     await grpc_clients_module.ingestion_client.connect()
     await grpc_clients_module.books_client.connect()
+    await grpc_clients_module.auth_client.connect()
     logger.info("Gateway service started successfully")
 
     yield
 
     logger.info("Shutting down Gateway service...")
+    await grpc_clients_module.auth_client.close()
     await grpc_clients_module.books_client.close()
     await grpc_clients_module.ingestion_client.close()
     logger.info("Gateway service shut down successfully")
@@ -66,7 +70,7 @@ app = fastapi.FastAPI(
     - Book ingestion management (admin)
     - Book catalog browsing and search
     - Author profiles and book listings
-    - User authentication (coming soon)
+    - User authentication (register, login, token refresh, profile)
     - Recommendations (coming soon)
 
     ### Admin Operations
@@ -101,6 +105,7 @@ if settings.rate_limit_enabled:
 
 app.include_router(health_router)
 app.include_router(admin_router)
+app.include_router(auth_router)
 app.include_router(books_router)
 
 
