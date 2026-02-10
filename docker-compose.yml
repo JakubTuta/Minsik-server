@@ -91,6 +91,7 @@ services:
     depends_on:
       - ingestion-service
       - books-service
+      - auth-service
     networks:
       - minsik-network
     restart: unless-stopped
@@ -179,6 +180,42 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+    networks:
+      - minsik-network
+    restart: unless-stopped
+    # No resource limits in development
+
+  # ============================================================================
+  # Auth Service - Development Configuration
+  # ============================================================================
+  auth-service:
+    build:
+      context: .
+      dockerfile: services/auth/Dockerfile
+    container_name: minsik-auth-service-dev
+    environment:
+      ENV: development
+      DEBUG: ${DEBUG}
+      LOG_LEVEL: ${LOG_LEVEL}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_POOL_SIZE: ${DB_POOL_SIZE}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW}
+      AUTH_SERVICE_HOST: ${AUTH_SERVICE_HOST}
+      AUTH_GRPC_PORT: ${AUTH_GRPC_PORT}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      JWT_ALGORITHM: ${JWT_ALGORITHM}
+      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRE_MINUTES}
+      JWT_REFRESH_TOKEN_EXPIRE_DAYS: ${JWT_REFRESH_TOKEN_EXPIRE_DAYS}
+    ports:
+      # EXPOSED for local access (gRPC debugging)
+      - "${AUTH_GRPC_PORT}:50051"
+    depends_on:
+      postgres:
         condition: service_healthy
     networks:
       - minsik-network

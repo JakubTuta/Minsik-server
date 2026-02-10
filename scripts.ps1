@@ -160,6 +160,14 @@ function Compile-Proto {
         @{
             Source = "proto/ingestion.proto"
             Destinations = @("services/ingestion/app/proto", "services/gateway/app/proto")
+        },
+        @{
+            Source = "proto/books.proto"
+            Destinations = @("services/books/app/proto", "services/gateway/app/proto")
+        },
+        @{
+            Source = "proto/auth.proto"
+            Destinations = @("services/auth/app/proto", "services/gateway/app/proto")
         }
     )
 
@@ -474,9 +482,38 @@ function Run-Migration {
 
     Write-Step "Running database migrations: $Action"
 
-    # This will be implemented when we add Alembic
-    Write-Warning-Message "Database migrations not implemented yet"
-    Write-Host "  Alembic will be added when we create the first service" -ForegroundColor Gray
+    # Services with Alembic migrations and their container names
+    $migrationServices = @(
+        @{ Service = "ingestion"; Container = "minsik-ingestion-service-dev" },
+        @{ Service = "auth";      Container = "minsik-auth-service-dev" }
+    )
+
+    $alembicAction = switch ($Action) {
+        "upgrade"   { "upgrade head" }
+        "downgrade" { "downgrade -1" }
+        "current"   { "current" }
+        "history"   { "history" }
+        default     { "upgrade head" }
+    }
+
+    foreach ($svc in $migrationServices) {
+        $containerName = $svc.Container
+        $serviceName = $svc.Service
+
+        if (-not (docker ps -q -f name=$containerName)) {
+            Write-Warning-Message "Container $containerName is not running -- skipping $serviceName migrations"
+            continue
+        }
+
+        Write-Host "  Running '$alembicAction' for $serviceName..." -ForegroundColor Gray
+        docker exec $containerName sh -c "alembic $alembicAction"
+
+        if ($LASTEXITCODE -eq 0) {
+            Write-Success "  $serviceName migrations OK"
+        } else {
+            Write-Error-Message "  $serviceName migrations FAILED"
+        }
+    }
 }
 
 function Initialize-Database {
@@ -505,9 +542,10 @@ function Run-Tests {
 
     # Service name mapping
     $serviceMap = @{
-        "gateway" = "gateway-service"
+        "gateway"   = "gateway-service"
         "ingestion" = "ingestion-service"
-        "books" = "books-service"
+        "books"     = "books-service"
+        "auth"      = "auth-service"
     }
 
     if ($Service -and $Service -ne "all") {
@@ -550,7 +588,7 @@ function Run-Tests {
         Write-Host "  All services" -ForegroundColor Gray
 
         # Run tests for all implemented services
-        $services = @("gateway", "ingestion", "books")
+        $services = @("gateway", "ingestion", "books", "auth")
         $totalPassed = 0
         $totalFailed = 0
 

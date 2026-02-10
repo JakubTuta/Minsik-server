@@ -3,19 +3,19 @@ from unittest.mock import AsyncMock, patch
 from sqlalchemy import select, func
 
 from app.models import Book, Author, Genre
-from app.workers.ingestion_worker import (
-    _process_single_book,
-    _create_new_book,
-    _update_existing_book,
-    _get_or_create_author,
-    _get_or_create_genre
+from app.services.book_service import (
+    process_single_book,
+    create_new_book,
+    update_existing_book,
+    get_or_create_author,
+    get_or_create_genre
 )
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_create_new_book(db_session, sample_book_data):
-    await _create_new_book(db_session, sample_book_data)
+    await create_new_book(db_session, sample_book_data)
 
     result = await db_session.execute(
         select(Book).where(Book.slug == "neuromancer", Book.language == "en")
@@ -59,7 +59,7 @@ async def test_update_existing_book(db_session):
         "open_library_id": "OL123W"
     }
 
-    await _update_existing_book(db_session, existing_book, new_book_data)
+    await update_existing_book(db_session, existing_book, new_book_data)
     await db_session.flush()
 
     assert len(existing_book.formats) == 2
@@ -80,15 +80,9 @@ async def test_get_or_create_author_new(db_session):
         "open_library_id": "OL456A"
     }
 
-    author_id = await _get_or_create_author(db_session, author_data)
+    author = await get_or_create_author(db_session, author_data)
 
-    assert author_id is not None
-
-    result = await db_session.execute(
-        select(Author).where(Author.author_id == author_id)
-    )
-    author = result.scalar_one()
-
+    assert author is not None
     assert author.name == "William Gibson"
     assert author.slug == "william-gibson"
 
@@ -110,9 +104,9 @@ async def test_get_or_create_author_existing(db_session):
         "bio": "Updated bio"
     }
 
-    author_id = await _get_or_create_author(db_session, author_data)
+    author = await get_or_create_author(db_session, author_data)
 
-    assert author_id == existing_author.author_id
+    assert author.author_id == existing_author.author_id
 
     result = await db_session.execute(select(Author))
     authors = result.scalars().all()
@@ -128,16 +122,10 @@ async def test_get_or_create_genre_new(db_session):
         "slug": "science-fiction"
     }
 
-    genre_id = await _get_or_create_genre(db_session, genre_data)
+    genre = await get_or_create_genre(db_session, genre_data)
 
-    assert genre_id is not None
-
-    result = await db_session.execute(
-        select(Genre).where(Genre.genre_id == genre_id)
-    )
-    genre = result.scalar_one()
-
-    assert genre.name == "Science Fiction"
+    assert genre is not None
+    assert genre.name == "science fiction"
     assert genre.slug == "science-fiction"
 
 
@@ -157,9 +145,9 @@ async def test_get_or_create_genre_existing(db_session):
         "slug": "science-fiction"
     }
 
-    genre_id = await _get_or_create_genre(db_session, genre_data)
+    genre = await get_or_create_genre(db_session, genre_data)
 
-    assert genre_id == existing_genre.genre_id
+    assert genre.genre_id == existing_genre.genre_id
 
     result = await db_session.execute(select(Genre))
     genres = result.scalars().all()
@@ -170,7 +158,7 @@ async def test_get_or_create_genre_existing(db_session):
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_process_single_book_new(db_session, sample_book_data):
-    await _process_single_book(db_session, sample_book_data)
+    await process_single_book(db_session, sample_book_data)
 
     result = await db_session.execute(
         select(Book).where(Book.slug == "neuromancer", Book.language == "en")
@@ -191,7 +179,7 @@ async def test_process_single_book_new(db_session, sample_book_data):
 @pytest.mark.asyncio
 @pytest.mark.integration
 async def test_process_single_book_duplicate(db_session, sample_book_data):
-    await _process_single_book(db_session, sample_book_data)
+    await process_single_book(db_session, sample_book_data)
 
     updated_data = sample_book_data.copy()
     updated_data["formats"] = ["audiobook"]
@@ -199,7 +187,7 @@ async def test_process_single_book_duplicate(db_session, sample_book_data):
         {"year": 1985, "cover_url": "http://example.com/new.jpg", "publisher": "New Publisher"}
     ]
 
-    await _process_single_book(db_session, updated_data)
+    await process_single_book(db_session, updated_data)
 
     result = await db_session.execute(select(Book))
     books = result.scalars().all()

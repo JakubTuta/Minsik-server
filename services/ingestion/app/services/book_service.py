@@ -157,14 +157,14 @@ async def update_existing_book(session: sqlalchemy.ext.asyncio.AsyncSession, boo
             book.title = new_title
             book.slug = app.utils.slugify(new_title)
 
-    existing_formats = book.formats or []
+    existing_formats = list(book.formats or [])
     for format_name in book_data.get("formats", []):
         format_normalized = format_name.lower() if isinstance(format_name, str) else format_name
         if format_normalized not in existing_formats:
             existing_formats.append(format_normalized)
     book.formats = existing_formats
 
-    existing_covers = book.cover_history or []
+    existing_covers = list(book.cover_history or [])
     for cover_data in book_data.get("cover_history", []):
         cover_entry = {
             "year": cover_data.get("year"),

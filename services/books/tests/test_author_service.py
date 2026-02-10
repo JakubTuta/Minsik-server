@@ -76,7 +76,22 @@ class TestAuthorService:
         mock_count_result = MagicMock()
         mock_count_result.scalar.return_value = 7
 
-        mock_session.execute.side_effect = [mock_result, mock_count_result]
+        mock_categories_result = MagicMock()
+        mock_categories_result.fetchall.return_value = [("Fantasy",), ("Fiction",)]
+
+        mock_aggregates_row = MagicMock()
+        mock_aggregates_row.avg_rating = 4.5
+        mock_aggregates_row.total_ratings = 500
+        mock_aggregates_row.total_views = 2000
+        mock_aggregates_result = MagicMock()
+        mock_aggregates_result.first.return_value = mock_aggregates_row
+
+        mock_session.execute.side_effect = [
+            mock_result,
+            mock_count_result,
+            mock_categories_result,
+            mock_aggregates_result,
+        ]
 
         with patch('app.cache.get_cached', return_value=None), \
              patch('app.cache.set_cached') as mock_set_cache, \
@@ -160,7 +175,9 @@ class TestAuthorService:
             assert total == 0
 
     def test_author_to_dict(self, mock_author):
-        result = author_service._author_to_dict(mock_author, 7)
+        book_categories = ["Fantasy", "Fiction"]
+        books_aggregates = {"avg_rating": 4.5, "total_ratings": 500, "total_views": 2000}
+        result = author_service._author_to_dict(mock_author, 7, book_categories, books_aggregates)
 
         assert result["author_id"] == 1
         assert result["name"] == "J.K. Rowling"
