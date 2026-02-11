@@ -92,6 +92,7 @@ services:
       - ingestion-service
       - books-service
       - auth-service
+      - user-data-service
     networks:
       - minsik-network
     restart: unless-stopped
@@ -214,6 +215,38 @@ services:
     ports:
       # EXPOSED for local access (gRPC debugging)
       - "${AUTH_GRPC_PORT}:50051"
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - minsik-network
+    restart: unless-stopped
+    # No resource limits in development
+
+  # ============================================================================
+  # User Data Service - Development Configuration
+  # ============================================================================
+  user-data-service:
+    build:
+      context: .
+      dockerfile: services/user_data/Dockerfile
+    container_name: minsik-user-data-service-dev
+    environment:
+      ENV: development
+      DEBUG: ${DEBUG}
+      LOG_LEVEL: ${LOG_LEVEL}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_POOL_SIZE: ${DB_POOL_SIZE}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW}
+      USER_DATA_SERVICE_HOST: ${USER_DATA_SERVICE_HOST}
+      USER_DATA_GRPC_PORT: ${USER_DATA_GRPC_PORT}
+    ports:
+      # EXPOSED for local access (gRPC debugging)
+      - "${USER_DATA_GRPC_PORT}:50053"
     depends_on:
       postgres:
         condition: service_healthy

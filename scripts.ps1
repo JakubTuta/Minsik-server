@@ -63,7 +63,7 @@ COMMANDS:
       -Environment <env>             Environment (dev/prod, default: dev)
 
     -Logs                          View service logs
-      -LogService <service>          Specific service (postgres/redis/gateway/ingestion/books)
+      -LogService <service>          Specific service (postgres/redis/gateway/ingestion/books/auth/user-data)
 
     -Clean                         Stop and remove all containers and volumes
 
@@ -484,8 +484,9 @@ function Run-Migration {
 
     # Services with Alembic migrations and their container names
     $migrationServices = @(
-        @{ Service = "ingestion"; Container = "minsik-ingestion-service-dev" },
-        @{ Service = "auth";      Container = "minsik-auth-service-dev" }
+        @{ Service = "ingestion";  Container = "minsik-ingestion-service-dev" },
+        @{ Service = "auth";       Container = "minsik-auth-service-dev" },
+        @{ Service = "user-data";  Container = "minsik-user-data-service-dev" }
     )
 
     $alembicAction = switch ($Action) {
@@ -546,6 +547,7 @@ function Run-Tests {
         "ingestion" = "ingestion-service"
         "books"     = "books-service"
         "auth"      = "auth-service"
+        "user-data" = "user-data-service"
     }
 
     if ($Service -and $Service -ne "all") {
@@ -588,7 +590,7 @@ function Run-Tests {
         Write-Host "  All services" -ForegroundColor Gray
 
         # Run tests for all implemented services
-        $services = @("gateway", "ingestion", "books", "auth")
+        $services = @("gateway", "ingestion", "books", "auth", "user-data")
         $totalPassed = 0
         $totalFailed = 0
 

@@ -1,0 +1,185 @@
+syntax = "proto3";
+package user_data.v1;
+
+service UserDataService {
+  rpc GetBookshelf(GetBookshelfRequest) returns (BookshelfResponse);
+  rpc UpsertBookshelf(UpsertBookshelfRequest) returns (BookshelfResponse);
+  rpc GetUserBookshelves(GetUserBookshelvesRequest) returns (BookshelvesListResponse);
+  rpc GetPublicBookshelves(GetPublicBookshelvesRequest) returns (BookshelvesListResponse);
+
+  rpc GetRating(GetRatingRequest) returns (RatingResponse);
+  rpc UpsertRating(UpsertRatingRequest) returns (RatingResponse);
+  rpc DeleteRating(DeleteRatingRequest) returns (EmptyResponse);
+  rpc GetUserRatings(GetUserRatingsRequest) returns (RatingsListResponse);
+
+  rpc ToggleFavourite(ToggleFavouriteRequest) returns (FavouriteResponse);
+  rpc GetUserFavourites(GetUserFavouritesRequest) returns (BookshelvesListResponse);
+
+  rpc GetBookComments(GetBookCommentsRequest) returns (CommentsListResponse);
+  rpc CreateComment(CreateCommentRequest) returns (CommentResponse);
+  rpc UpdateComment(UpdateCommentRequest) returns (CommentResponse);
+  rpc DeleteComment(DeleteCommentRequest) returns (EmptyResponse);
+  rpc GetUserComments(GetUserCommentsRequest) returns (CommentsListResponse);
+
+  rpc GetBookNotes(GetBookNotesRequest) returns (NotesListResponse);
+  rpc CreateNote(CreateNoteRequest) returns (NoteResponse);
+  rpc UpdateNote(UpdateNoteRequest) returns (NoteResponse);
+  rpc DeleteNote(DeleteNoteRequest) returns (EmptyResponse);
+  rpc GetUserNotes(GetUserNotesRequest) returns (NotesListResponse);
+}
+
+// Bookshelf
+message GetBookshelfRequest    { int64 user_id = 1; string book_slug = 2; }
+message UpsertBookshelfRequest { int64 user_id = 1; string book_slug = 2; string status = 3; }
+message GetUserBookshelvesRequest {
+  int64 user_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+  string status_filter = 4;
+  bool favourites_only = 5;
+  string sort_by = 6;
+  string order = 7;
+}
+message GetPublicBookshelvesRequest {
+  string username        = 1;
+  int32  limit           = 2;
+  int32  offset          = 3;
+  string status_filter   = 4;
+  bool   favourites_only = 5;
+  string sort_by         = 6;
+  string order           = 7;
+}
+message Bookshelf {
+  int64 bookshelf_id = 1;
+  int64 user_id = 2;
+  int64 book_id = 3;
+  string book_slug = 4;
+  string book_title = 5;
+  string book_cover_url = 6;
+  string status = 7;
+  bool is_favorite = 8;
+  string created_at = 9;
+  string updated_at = 10;
+}
+message BookshelfResponse       { Bookshelf bookshelf = 1; }
+message BookshelvesListResponse { repeated Bookshelf bookshelves = 1; int32 total_count = 2; }
+
+// Ratings
+message GetRatingRequest    { int64 user_id = 1; string book_slug = 2; }
+message UpsertRatingRequest {
+  int64 user_id = 1;
+  string book_slug = 2;
+  float overall_rating = 3;
+  string review_text = 4;
+  float pacing = 5;
+  bool has_pacing = 6;
+  float emotional_impact = 7;
+  bool has_emotional_impact = 8;
+  float intellectual_depth = 9;
+  bool has_intellectual_depth = 10;
+  float writing_quality = 11;
+  bool has_writing_quality = 12;
+  float rereadability = 13;
+  bool has_rereadability = 14;
+}
+message DeleteRatingRequest  { int64 user_id = 1; string book_slug = 2; }
+message GetUserRatingsRequest {
+  int64 user_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+  string sort_by = 4;
+  string order = 5;
+  float min_rating = 6;
+  float max_rating = 7;
+}
+message Rating {
+  int64 rating_id = 1;
+  int64 user_id = 2;
+  int64 book_id = 3;
+  string book_slug = 4;
+  string book_title = 5;
+  string book_cover_url = 6;
+  float overall_rating = 7;
+  string review_text = 8;
+  float pacing = 9;
+  bool has_pacing = 10;
+  float emotional_impact = 11;
+  bool has_emotional_impact = 12;
+  float intellectual_depth = 13;
+  bool has_intellectual_depth = 14;
+  float writing_quality = 15;
+  bool has_writing_quality = 16;
+  float rereadability = 17;
+  bool has_rereadability = 18;
+  string created_at = 19;
+  string updated_at = 20;
+}
+message RatingResponse      { Rating rating = 1; }
+message RatingsListResponse { repeated Rating ratings = 1; int32 total_count = 2; }
+
+// Favourites
+message ToggleFavouriteRequest   { int64 user_id = 1; string book_slug = 2; bool is_favorite = 3; }
+message FavouriteResponse        { bool is_favorite = 1; int64 book_id = 2; string book_slug = 3; }
+message GetUserFavouritesRequest { int64 user_id = 1; int32 limit = 2; int32 offset = 3; }
+
+// Comments
+message GetBookCommentsRequest {
+  string book_slug = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+  string order = 4;
+  bool include_spoilers = 5;
+}
+message CreateCommentRequest { int64 user_id = 1; string book_slug = 2; string body = 3; bool is_spoiler = 4; }
+message UpdateCommentRequest { int64 comment_id = 1; int64 user_id = 2; string body = 3; bool is_spoiler = 4; }
+message DeleteCommentRequest { int64 comment_id = 1; int64 user_id = 2; }
+message GetUserCommentsRequest {
+  int64 user_id = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+  string sort_by = 4;
+  string order = 5;
+  string book_slug = 6;
+}
+message Comment {
+  int64 comment_id = 1;
+  int64 user_id = 2;
+  int64 book_id = 3;
+  string book_slug = 4;
+  string body = 5;
+  bool is_spoiler = 6;
+  string created_at = 7;
+  string updated_at = 8;
+}
+message CommentResponse      { Comment comment = 1; }
+message CommentsListResponse { repeated Comment comments = 1; int32 total_count = 2; }
+
+// Notes
+message GetBookNotesRequest {
+  int64 user_id = 1;
+  string book_slug = 2;
+  int32 limit = 3;
+  int32 offset = 4;
+  string sort_by = 5;
+  string order = 6;
+}
+message CreateNoteRequest { int64 user_id = 1; string book_slug = 2; string note_text = 3; int32 page_number = 4; bool has_page_number = 5; bool is_spoiler = 6; }
+message UpdateNoteRequest { int64 note_id = 1; int64 user_id = 2; string note_text = 3; int32 page_number = 4; bool has_page_number = 5; bool is_spoiler = 6; }
+message DeleteNoteRequest { int64 note_id = 1; int64 user_id = 2; }
+message GetUserNotesRequest { int64 user_id = 1; int32 limit = 2; int32 offset = 3; }
+message Note {
+  int64 note_id = 1;
+  int64 user_id = 2;
+  int64 book_id = 3;
+  string book_slug = 4;
+  string note_text = 5;
+  int32 page_number = 6;
+  bool has_page_number = 7;
+  bool is_spoiler = 8;
+  string created_at = 9;
+  string updated_at = 10;
+}
+message NoteResponse      { Note note = 1; }
+message NotesListResponse { repeated Note notes = 1; int32 total_count = 2; }
+
+message EmptyResponse {}

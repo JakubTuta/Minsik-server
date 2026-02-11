@@ -20,6 +20,9 @@ class Settings(BaseSettings):
     auth_service_host: str = Field(default="auth-service")
     auth_grpc_port: int = Field(default=50051)
 
+    user_data_service_host: str = Field(default="user-data-service")
+    user_data_grpc_port: int = Field(default=50053)
+
     jwt_secret_key: str = Field(default="changeme")
     jwt_algorithm: str = Field(default="HS256")
     jwt_access_token_expire_minutes: int = Field(default=15)
@@ -54,6 +57,10 @@ class Settings(BaseSettings):
     @property
     def auth_service_url(self) -> str:
         return f"{self.auth_service_host}:{self.auth_grpc_port}"
+
+    @property
+    def user_data_service_url(self) -> str:
+        return f"{self.user_data_service_host}:{self.user_data_grpc_port}"
 
     @property
     def cors_origins_list(self) -> list[str]:

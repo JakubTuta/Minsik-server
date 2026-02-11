@@ -12,6 +12,7 @@ import app.routes.admin
 import app.routes.auth
 import app.routes.books
 import app.routes.health
+import app.routes.user_data
 import fastapi
 import uvicorn
 from slowapi import _rate_limit_exceeded_handler
@@ -22,6 +23,7 @@ health_router = app.routes.health.router
 admin_router = app.routes.admin.router
 auth_router = app.routes.auth.router
 books_router = app.routes.books.router
+user_data_router = app.routes.user_data.router
 grpc_clients_module = app.grpc_clients
 limiter = rate_limit_middleware.limiter
 
@@ -40,11 +42,13 @@ async def lifespan(app: fastapi.FastAPI):
     await grpc_clients_module.ingestion_client.connect()
     await grpc_clients_module.books_client.connect()
     await grpc_clients_module.auth_client.connect()
+    await grpc_clients_module.user_data_client.connect()
     logger.info("Gateway service started successfully")
 
     yield
 
     logger.info("Shutting down Gateway service...")
+    await grpc_clients_module.user_data_client.close()
     await grpc_clients_module.auth_client.close()
     await grpc_clients_module.books_client.close()
     await grpc_clients_module.ingestion_client.close()
@@ -107,6 +111,7 @@ app.include_router(health_router)
 app.include_router(admin_router)
 app.include_router(auth_router)
 app.include_router(books_router)
+app.include_router(user_data_router)
 
 
 def handle_shutdown(signum, frame):
