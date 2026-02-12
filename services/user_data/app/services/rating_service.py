@@ -46,16 +46,15 @@ async def _update_book_stats(
             sub_rating_stats = (
                 SELECT jsonb_object_agg(key, value)
                 FROM (VALUES
-                    ('pacing',            jsonb_build_object('avg', stats.avg_pacing::text,            'count', stats.pacing_count)),
-                    ('emotional_impact',  jsonb_build_object('avg', stats.avg_emotional_impact::text,  'count', stats.emotional_impact_count)),
-                    ('intellectual_depth',jsonb_build_object('avg', stats.avg_intellectual_depth::text,'count', stats.intellectual_depth_count)),
-                    ('writing_quality',   jsonb_build_object('avg', stats.avg_writing_quality::text,   'count', stats.writing_quality_count)),
-                    ('rereadability',     jsonb_build_object('avg', stats.avg_rereadability::text,     'count', stats.rereadability_count)),
-                    ('readability',       jsonb_build_object('avg', stats.avg_readability::text,       'count', stats.readability_count)),
-                    ('plot_complexity',   jsonb_build_object('avg', stats.avg_plot_complexity::text,   'count', stats.plot_complexity_count)),
-                    ('humor',             jsonb_build_object('avg', stats.avg_humor::text,             'count', stats.humor_count))
+                    ('pacing',            jsonb_build_object('avg', COALESCE(stats.avg_pacing, 0)::text,            'count', stats.pacing_count)),
+                    ('emotional_impact',  jsonb_build_object('avg', COALESCE(stats.avg_emotional_impact, 0)::text,  'count', stats.emotional_impact_count)),
+                    ('intellectual_depth',jsonb_build_object('avg', COALESCE(stats.avg_intellectual_depth, 0)::text,'count', stats.intellectual_depth_count)),
+                    ('writing_quality',   jsonb_build_object('avg', COALESCE(stats.avg_writing_quality, 0)::text,   'count', stats.writing_quality_count)),
+                    ('rereadability',     jsonb_build_object('avg', COALESCE(stats.avg_rereadability, 0)::text,     'count', stats.rereadability_count)),
+                    ('readability',       jsonb_build_object('avg', COALESCE(stats.avg_readability, 0)::text,       'count', stats.readability_count)),
+                    ('plot_complexity',   jsonb_build_object('avg', COALESCE(stats.avg_plot_complexity, 0)::text,   'count', stats.plot_complexity_count)),
+                    ('humor',             jsonb_build_object('avg', COALESCE(stats.avg_humor, 0)::text,             'count', stats.humor_count))
                 ) AS t(key, value)
-                WHERE (value->>'count')::int > 0
             )
         FROM stats
         WHERE books.books.book_id = :book_id

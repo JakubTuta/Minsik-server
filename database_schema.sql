@@ -52,7 +52,11 @@ CREATE TABLE books.books (
     -- Denormalized statistics
     rating_count INT NOT NULL DEFAULT 0,
     avg_rating DECIMAL(3,2),                 -- Average overall rating (0.00-5.00)
-    sub_rating_stats JSONB NOT NULL DEFAULT '{}',  -- Per-dimension {avg, count} map
+    -- Per-dimension aggregated stats. Keys (only present when count > 0):
+    --   "pacing", "emotional_impact", "intellectual_depth", "writing_quality",
+    --   "rereadability", "readability", "plot_complexity", "humor"
+    -- Each value: {"avg": "3.50", "count": 12}
+    sub_rating_stats JSONB NOT NULL DEFAULT '{}',
 
     view_count INT NOT NULL DEFAULT 0,       -- Two-tier: Redis -> PostgreSQL
     last_viewed_at TIMESTAMP,
