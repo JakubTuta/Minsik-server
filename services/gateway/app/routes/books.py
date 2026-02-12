@@ -5,6 +5,7 @@ import typing
 from fastapi import Query, Path
 import app.config
 import app.grpc_clients
+import app.middleware.auth
 import app.middleware.rate_limit as rate_limit_middleware
 import app.models.books_responses
 
@@ -98,8 +99,13 @@ async def search_books_and_authors(
     - Title, description, language, publication year
     - Authors and genres
     - Cover images and formats
-    - Ratings and view count
-    - External IDs (Open Library, Google Books)
+    - Overall rating, rating count, and per-dimension rating stats (`sub_rating_stats`)
+    - View count and external IDs (Open Library, Google Books)
+
+    **`sub_rating_stats` dimensions:** `pacing`, `emotional_impact`, `intellectual_depth`,
+    `writing_quality`, `rereadability`, `readability`, `plot_complexity`, `humor`.
+    Each entry has `avg` (string, e.g. `"3.50"`) and `count` (int). Only dimensions with at
+    least one rating appear in the map.
 
     **Example:** `/api/v1/books/the-lord-of-the-rings`
     """
@@ -135,6 +141,10 @@ async def get_book(
                 ],
                 "rating_count": book.rating_count,
                 "avg_rating": book.avg_rating,
+                "sub_rating_stats": {
+                    key: {"avg": stat.avg, "count": stat.count}
+                    for key, stat in book.sub_rating_stats.items()
+                },
                 "view_count": book.view_count,
                 "last_viewed_at": book.last_viewed_at,
                 "authors": [
@@ -366,6 +376,106 @@ async def get_series(
         raise fastapi.HTTPException(
             status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
             detail=f"Get series failed: {e.details()}"
+        )
+
+
+def _comment_with_rating_to_dict(c) -> typing.Dict[str, typing.Any]:
+    return {
+        "comment_id": c.comment_id,
+        "user_id": c.user_id,
+        "book_id": c.book_id,
+        "book_slug": c.book_slug,
+        "body": c.body,
+        "is_spoiler": c.is_spoiler,
+        "comment_created_at": c.comment_created_at,
+        "comment_updated_at": c.comment_updated_at,
+        "rating": {
+            "overall_rating": c.overall_rating,
+            "review_text": c.review_text or None,
+            "pacing": c.pacing if c.has_pacing else None,
+            "emotional_impact": c.emotional_impact if c.has_emotional_impact else None,
+            "intellectual_depth": c.intellectual_depth if c.has_intellectual_depth else None,
+            "writing_quality": c.writing_quality if c.has_writing_quality else None,
+            "rereadability": c.rereadability if c.has_rereadability else None,
+            "readability": c.readability if c.has_readability else None,
+            "plot_complexity": c.plot_complexity if c.has_plot_complexity else None,
+            "humor": c.humor if c.has_humor else None,
+        } if c.has_rating else None
+    }
+
+
+@router.get(
+    "/books/{slug}/comments",
+    summary="Get comments for a book",
+    description="""
+    Retrieve public comments for a book. No authentication required.
+
+    Each comment includes the commenter's associated rating (if any), nested under `rating`.
+
+    **Sort Options (sort_by):**
+    - `created_at` - Newest/oldest first (default)
+    - `overall_rating`, `pacing`, `emotional_impact`, `intellectual_depth`,
+      `writing_quality`, `rereadability`, `readability`, `plot_complexity`, `humor`
+
+    When authenticated, the requesting user's own comment is returned in `my_entry`
+    regardless of the current page, so the frontend can pin it at the top.
+
+    **Examples:**
+    - `/api/v1/books/the-hobbit/comments?sort_by=overall_rating&order=desc`
+    - `/api/v1/books/the-hobbit/comments?include_spoilers=true&limit=20`
+    """
+)
+@limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
+async def get_book_comments(
+    request: fastapi.Request,
+    slug: str = Path(..., description="Book slug"),
+    limit: int = Query(10, ge=1, le=100, description="Number of comments per page"),
+    offset: int = Query(0, ge=0, description="Pagination offset"),
+    order: str = Query("desc", regex="^(asc|desc)$", description="Sort order"),
+    include_spoilers: bool = Query(False, description="Include spoiler comments"),
+    sort_by: str = Query(
+        "created_at",
+        regex="^(created_at|overall_rating|pacing|emotional_impact|intellectual_depth|writing_quality|rereadability|readability|plot_complexity|humor)$",
+        description="Sort field"
+    ),
+    user: typing.Optional[typing.Dict[str, typing.Any]] = fastapi.Depends(
+        app.middleware.auth.get_current_user_optional
+    )
+):
+    requesting_user_id = user["user_id"] if user else 0
+    try:
+        response = await app.grpc_clients.user_data_client.get_book_comments(
+            book_slug=slug,
+            limit=limit,
+            offset=offset,
+            order=order,
+            include_spoilers=include_spoilers,
+            sort_by=sort_by,
+            requesting_user_id=requesting_user_id
+        )
+        my_entry = (
+            _comment_with_rating_to_dict(response.my_entry)
+            if response.HasField("my_entry")
+            else None
+        )
+        return {
+            "success": True,
+            "data": {
+                "items": [_comment_with_rating_to_dict(c) for c in response.comments],
+                "total_count": response.total_count,
+                "limit": limit,
+                "offset": offset,
+                "my_entry": my_entry
+            },
+            "error": None
+        }
+    except grpc.RpcError as e:
+        logger.error(f"gRPC error getting book comments: {e.code()} - {e.details()}")
+        if e.code() == grpc.StatusCode.NOT_FOUND:
+            raise fastapi.HTTPException(status_code=404, detail=f"Book not found: {slug}")
+        raise fastapi.HTTPException(
+            status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
+            detail=f"Get book comments failed: {e.details()}"
         )
 
 

@@ -55,6 +55,11 @@ class SearchResponse(pydantic.BaseModel):
     error: typing.Optional[app.models.responses.ErrorDetail] = None
 
 
+class SubRatingStatSchema(pydantic.BaseModel):
+    avg: typing.Optional[str] = None
+    count: int = 0
+
+
 class BookDetailData(pydantic.BaseModel):
     book_id: int
     title: str
@@ -67,6 +72,7 @@ class BookDetailData(pydantic.BaseModel):
     cover_history: typing.List[CoverHistorySchema]
     rating_count: int
     avg_rating: float
+    sub_rating_stats: typing.Dict[str, SubRatingStatSchema] = {}
     view_count: int
     last_viewed_at: typing.Optional[str] = None
     authors: typing.List[AuthorMinimalSchema]

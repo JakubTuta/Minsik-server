@@ -5,7 +5,10 @@ import app.models.base
 
 class Comment(app.models.base.Base):
     __tablename__ = "comments"
-    __table_args__ = {"schema": "user_data"}
+    __table_args__ = (
+        sqlalchemy.UniqueConstraint("user_id", "book_id", name="uq_comments_user_book"),
+        {"schema": "user_data"},
+    )
 
     comment_id: sqlalchemy.orm.Mapped[int] = sqlalchemy.orm.mapped_column(
         sqlalchemy.BigInteger, primary_key=True

@@ -82,6 +82,7 @@ def _book_to_dict(book: app.models.book.Book) -> typing.Dict[str, typing.Any]:
         "cover_history": book.cover_history or [],
         "rating_count": book.rating_count or 0,
         "avg_rating": str(book.avg_rating) if book.avg_rating else "0.00",
+        "sub_rating_stats": book.sub_rating_stats or {},
         "view_count": book.view_count or 0,
         "last_viewed_at": book.last_viewed_at.isoformat() if book.last_viewed_at else "",
         "authors": [

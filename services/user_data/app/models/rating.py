@@ -41,6 +41,15 @@ class Rating(app.models.base.Base):
     rereadability: sqlalchemy.orm.Mapped[typing.Optional[float]] = sqlalchemy.orm.mapped_column(
         sqlalchemy.Numeric(2, 1), nullable=True
     )
+    readability: sqlalchemy.orm.Mapped[typing.Optional[float]] = sqlalchemy.orm.mapped_column(
+        sqlalchemy.Numeric(2, 1), nullable=True
+    )
+    plot_complexity: sqlalchemy.orm.Mapped[typing.Optional[float]] = sqlalchemy.orm.mapped_column(
+        sqlalchemy.Numeric(2, 1), nullable=True
+    )
+    humor: sqlalchemy.orm.Mapped[typing.Optional[float]] = sqlalchemy.orm.mapped_column(
+        sqlalchemy.Numeric(2, 1), nullable=True
+    )
     created_at: sqlalchemy.orm.Mapped[sqlalchemy.DateTime] = sqlalchemy.orm.mapped_column(
         sqlalchemy.DateTime, nullable=False, server_default=sqlalchemy.func.now()
     )

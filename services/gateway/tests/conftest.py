@@ -27,3 +27,15 @@ def mock_auth_client(mocker):
     mock_client.update_profile = mocker.AsyncMock()
     mocker.patch.object(app.grpc_clients, "auth_client", mock_client)
     return mock_client
+
+
+@pytest.fixture
+def mock_books_client(mocker):
+    mock_client = mocker.MagicMock()
+    for method in [
+        "search_books_and_authors", "get_book", "get_author", "get_author_books",
+        "get_series", "get_series_books",
+    ]:
+        setattr(mock_client, method, mocker.AsyncMock())
+    mocker.patch.object(app.grpc_clients, "books_client", mock_client)
+    return mock_client

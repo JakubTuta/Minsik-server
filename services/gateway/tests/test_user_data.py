@@ -39,7 +39,6 @@ def mock_user_data_client(mocker):
         "toggle_favourite", "get_user_favourites",
         "upsert_rating", "delete_rating", "get_user_ratings",
         "get_book_comments", "create_comment", "update_comment", "delete_comment", "get_user_comments",
-        "get_book_notes", "create_note", "update_note", "delete_note", "get_user_notes",
     ]:
         setattr(mock_client, method, mocker.AsyncMock())
     mocker.patch.object(app.grpc_clients, "user_data_client", mock_client)
@@ -81,6 +80,12 @@ def _rating(mocker):
     r.has_writing_quality = False
     r.rereadability = 0.0
     r.has_rereadability = False
+    r.readability = 0.0
+    r.has_readability = False
+    r.plot_complexity = 0.0
+    r.has_plot_complexity = False
+    r.humor = 0.0
+    r.has_humor = False
     r.created_at = "2026-01-01T00:00:00"
     r.updated_at = "2026-01-01T00:00:00"
     return r
@@ -97,21 +102,6 @@ def _comment(mocker):
     c.created_at = "2026-01-01T00:00:00"
     c.updated_at = "2026-01-01T00:00:00"
     return c
-
-
-def _note(mocker):
-    n = mocker.MagicMock()
-    n.note_id = 1
-    n.user_id = 1
-    n.book_id = 100
-    n.book_slug = "the-hobbit"
-    n.note_text = "Remember this"
-    n.page_number = 42
-    n.has_page_number = True
-    n.is_spoiler = False
-    n.created_at = "2026-01-01T00:00:00"
-    n.updated_at = "2026-01-01T00:00:00"
-    return n
 
 
 class TestBookshelfEndpoints:
@@ -301,6 +291,7 @@ class TestCommentEndpoints:
         resp_obj = mocker.MagicMock()
         resp_obj.comments = [_comment(mocker)]
         resp_obj.total_count = 1
+        resp_obj.HasField = lambda f: False
         mock_user_data_client.get_book_comments.return_value = resp_obj
         resp = client.get("/api/v1/books/the-hobbit/comments")
         assert resp.status_code == 200
@@ -310,6 +301,7 @@ class TestCommentEndpoints:
         resp_obj = mocker.MagicMock()
         resp_obj.comments = []
         resp_obj.total_count = 0
+        resp_obj.HasField = lambda f: False
         mock_user_data_client.get_book_comments.return_value = resp_obj
         assert client.get("/api/v1/books/the-hobbit/comments").status_code == 200
 
@@ -317,6 +309,7 @@ class TestCommentEndpoints:
         resp_obj = mocker.MagicMock()
         resp_obj.comments = []
         resp_obj.total_count = 0
+        resp_obj.HasField = lambda f: False
         mock_user_data_client.get_book_comments.return_value = resp_obj
         client.get("/api/v1/books/the-hobbit/comments?include_spoilers=true")
         _, kwargs = mock_user_data_client.get_book_comments.call_args
@@ -394,100 +387,6 @@ class TestCommentEndpoints:
 
     def test_get_user_comments_requires_auth(self, client, mock_user_data_client):
         assert client.get("/api/v1/users/me/comments").status_code == 401
-
-
-class TestNoteEndpoints:
-    def test_get_book_notes_success(self, client, mock_user_data_client, mocker):
-        resp_obj = mocker.MagicMock()
-        resp_obj.notes = [_note(mocker)]
-        resp_obj.total_count = 1
-        mock_user_data_client.get_book_notes.return_value = resp_obj
-        resp = client.get("/api/v1/books/the-hobbit/notes", headers=USER_HEADERS)
-        assert resp.status_code == 200
-        assert resp.json()["data"]["total_count"] == 1
-
-    def test_get_book_notes_requires_auth(self, client, mock_user_data_client):
-        assert client.get("/api/v1/books/the-hobbit/notes").status_code == 401
-
-    def test_create_note_success(self, client, mock_user_data_client, mocker):
-        resp_obj = mocker.MagicMock()
-        resp_obj.note = _note(mocker)
-        mock_user_data_client.create_note.return_value = resp_obj
-        resp = client.post(
-            "/api/v1/books/the-hobbit/notes",
-            json={"note_text": "Remember this", "page_number": 42, "is_spoiler": False},
-            headers=USER_HEADERS
-        )
-        assert resp.status_code == 201
-        assert resp.json()["data"]["note"]["note_text"] == "Remember this"
-
-    def test_create_note_without_page_number(self, client, mock_user_data_client, mocker):
-        n = _note(mocker)
-        n.has_page_number = False
-        resp_obj = mocker.MagicMock()
-        resp_obj.note = n
-        mock_user_data_client.create_note.return_value = resp_obj
-        resp = client.post(
-            "/api/v1/books/the-hobbit/notes",
-            json={"note_text": "General note", "is_spoiler": False},
-            headers=USER_HEADERS
-        )
-        assert resp.status_code == 201
-
-    def test_create_note_requires_auth(self, client, mock_user_data_client):
-        assert client.post(
-            "/api/v1/books/the-hobbit/notes", json={"note_text": "Note"}
-        ).status_code == 401
-
-    def test_create_note_empty_text_rejected(self, client, mock_user_data_client):
-        assert client.post(
-            "/api/v1/books/the-hobbit/notes",
-            json={"note_text": ""},
-            headers=USER_HEADERS
-        ).status_code == 422
-
-    def test_update_note_success(self, client, mock_user_data_client, mocker):
-        resp_obj = mocker.MagicMock()
-        resp_obj.note = _note(mocker)
-        mock_user_data_client.update_note.return_value = resp_obj
-        assert client.put(
-            "/api/v1/books/the-hobbit/notes/1",
-            json={"note_text": "Updated", "is_spoiler": False},
-            headers=USER_HEADERS
-        ).status_code == 200
-
-    def test_update_note_not_found(self, client, mock_user_data_client):
-        mock_user_data_client.update_note.side_effect = MockRpcError(
-            grpc.StatusCode.NOT_FOUND, "not found"
-        )
-        assert client.put(
-            "/api/v1/books/the-hobbit/notes/999",
-            json={"note_text": "X", "is_spoiler": False},
-            headers=USER_HEADERS
-        ).status_code == 404
-
-    def test_delete_note_success(self, client, mock_user_data_client, mocker):
-        mock_user_data_client.delete_note.return_value = mocker.MagicMock()
-        assert client.delete("/api/v1/books/the-hobbit/notes/1", headers=USER_HEADERS).status_code == 204
-
-    def test_delete_note_requires_auth(self, client, mock_user_data_client):
-        assert client.delete("/api/v1/books/the-hobbit/notes/1").status_code == 401
-
-    def test_delete_note_not_found(self, client, mock_user_data_client):
-        mock_user_data_client.delete_note.side_effect = MockRpcError(
-            grpc.StatusCode.NOT_FOUND, "not found"
-        )
-        assert client.delete("/api/v1/books/the-hobbit/notes/999", headers=USER_HEADERS).status_code == 404
-
-    def test_get_user_notes_success(self, client, mock_user_data_client, mocker):
-        resp_obj = mocker.MagicMock()
-        resp_obj.notes = []
-        resp_obj.total_count = 0
-        mock_user_data_client.get_user_notes.return_value = resp_obj
-        assert client.get("/api/v1/users/me/notes", headers=USER_HEADERS).status_code == 200
-
-    def test_get_user_notes_requires_auth(self, client, mock_user_data_client):
-        assert client.get("/api/v1/users/me/notes").status_code == 401
 
 
 class TestPublicBookshelfEndpoints:

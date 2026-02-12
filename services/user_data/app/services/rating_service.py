@@ -16,18 +16,49 @@ async def _update_book_stats(
     book_id: int
 ) -> None:
     await session.execute(sqlalchemy.text("""
-        UPDATE books.books
-        SET avg_rating   = (
-            SELECT ROUND(AVG(overall_rating)::NUMERIC, 2)
-            FROM user_data.ratings
-            WHERE book_id = :book_id
-        ),
-        rating_count = (
-            SELECT COUNT(*)
+        WITH stats AS (
+            SELECT
+                ROUND(AVG(overall_rating)::NUMERIC, 2)    AS avg_overall,
+                COUNT(*)                                   AS total_count,
+                ROUND(AVG(pacing)::NUMERIC, 2)            AS avg_pacing,
+                COUNT(pacing)                              AS pacing_count,
+                ROUND(AVG(emotional_impact)::NUMERIC, 2)  AS avg_emotional_impact,
+                COUNT(emotional_impact)                    AS emotional_impact_count,
+                ROUND(AVG(intellectual_depth)::NUMERIC, 2) AS avg_intellectual_depth,
+                COUNT(intellectual_depth)                  AS intellectual_depth_count,
+                ROUND(AVG(writing_quality)::NUMERIC, 2)   AS avg_writing_quality,
+                COUNT(writing_quality)                     AS writing_quality_count,
+                ROUND(AVG(rereadability)::NUMERIC, 2)     AS avg_rereadability,
+                COUNT(rereadability)                       AS rereadability_count,
+                ROUND(AVG(readability)::NUMERIC, 2)       AS avg_readability,
+                COUNT(readability)                         AS readability_count,
+                ROUND(AVG(plot_complexity)::NUMERIC, 2)   AS avg_plot_complexity,
+                COUNT(plot_complexity)                     AS plot_complexity_count,
+                ROUND(AVG(humor)::NUMERIC, 2)             AS avg_humor,
+                COUNT(humor)                               AS humor_count
             FROM user_data.ratings
             WHERE book_id = :book_id
         )
-        WHERE book_id = :book_id
+        UPDATE books.books
+        SET
+            avg_rating       = stats.avg_overall,
+            rating_count     = stats.total_count,
+            sub_rating_stats = (
+                SELECT jsonb_object_agg(key, value)
+                FROM (VALUES
+                    ('pacing',            jsonb_build_object('avg', stats.avg_pacing::text,            'count', stats.pacing_count)),
+                    ('emotional_impact',  jsonb_build_object('avg', stats.avg_emotional_impact::text,  'count', stats.emotional_impact_count)),
+                    ('intellectual_depth',jsonb_build_object('avg', stats.avg_intellectual_depth::text,'count', stats.intellectual_depth_count)),
+                    ('writing_quality',   jsonb_build_object('avg', stats.avg_writing_quality::text,   'count', stats.writing_quality_count)),
+                    ('rereadability',     jsonb_build_object('avg', stats.avg_rereadability::text,     'count', stats.rereadability_count)),
+                    ('readability',       jsonb_build_object('avg', stats.avg_readability::text,       'count', stats.readability_count)),
+                    ('plot_complexity',   jsonb_build_object('avg', stats.avg_plot_complexity::text,   'count', stats.plot_complexity_count)),
+                    ('humor',             jsonb_build_object('avg', stats.avg_humor::text,             'count', stats.humor_count))
+                ) AS t(key, value)
+                WHERE (value->>'count')::int > 0
+            )
+        FROM stats
+        WHERE books.books.book_id = :book_id
     """), {"book_id": book_id})
 
 

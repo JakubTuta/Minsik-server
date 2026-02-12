@@ -123,7 +123,10 @@ class UserDataClient:
         emotional_impact: typing.Optional[float] = None,
         intellectual_depth: typing.Optional[float] = None,
         writing_quality: typing.Optional[float] = None,
-        rereadability: typing.Optional[float] = None
+        rereadability: typing.Optional[float] = None,
+        readability: typing.Optional[float] = None,
+        plot_complexity: typing.Optional[float] = None,
+        humor: typing.Optional[float] = None
     ) -> user_data_pb2.RatingResponse:
         request = user_data_pb2.UpsertRatingRequest(
             user_id=user_id,
@@ -139,7 +142,13 @@ class UserDataClient:
             writing_quality=writing_quality or 0.0,
             has_writing_quality=writing_quality is not None,
             rereadability=rereadability or 0.0,
-            has_rereadability=rereadability is not None
+            has_rereadability=rereadability is not None,
+            readability=readability or 0.0,
+            has_readability=readability is not None,
+            plot_complexity=plot_complexity or 0.0,
+            has_plot_complexity=plot_complexity is not None,
+            humor=humor or 0.0,
+            has_humor=humor is not None
         )
         try:
             return await self.stub.UpsertRating(request, timeout=app.config.settings.grpc_timeout)
@@ -206,27 +215,6 @@ class UserDataClient:
             logger.error(f"gRPC error in get_user_favourites: {e.code()} - {e.details()}")
             raise
 
-    async def get_book_comments(
-        self,
-        book_slug: str,
-        limit: int = 10,
-        offset: int = 0,
-        order: str = "desc",
-        include_spoilers: bool = False
-    ) -> user_data_pb2.CommentsListResponse:
-        request = user_data_pb2.GetBookCommentsRequest(
-            book_slug=book_slug,
-            limit=limit,
-            offset=offset,
-            order=order,
-            include_spoilers=include_spoilers
-        )
-        try:
-            return await self.stub.GetBookComments(request, timeout=app.config.settings.grpc_timeout)
-        except grpc.RpcError as e:
-            logger.error(f"gRPC error in get_book_comments: {e.code()} - {e.details()}")
-            raise
-
     async def create_comment(
         self, user_id: int, book_slug: str, body: str, is_spoiler: bool
     ) -> user_data_pb2.CommentResponse:
@@ -284,93 +272,29 @@ class UserDataClient:
             logger.error(f"gRPC error in get_user_comments: {e.code()} - {e.details()}")
             raise
 
-    async def get_book_notes(
+    async def get_book_comments(
         self,
-        user_id: int,
         book_slug: str,
         limit: int = 10,
         offset: int = 0,
-        sort_by: str = "page_number",
-        order: str = "asc"
-    ) -> user_data_pb2.NotesListResponse:
-        request = user_data_pb2.GetBookNotesRequest(
-            user_id=user_id,
+        order: str = "desc",
+        include_spoilers: bool = False,
+        sort_by: str = "created_at",
+        requesting_user_id: int = 0
+    ) -> user_data_pb2.BookCommentsResponse:
+        request = user_data_pb2.GetBookCommentsRequest(
             book_slug=book_slug,
             limit=limit,
             offset=offset,
+            order=order,
+            include_spoilers=include_spoilers,
             sort_by=sort_by,
-            order=order
+            requesting_user_id=requesting_user_id
         )
         try:
-            return await self.stub.GetBookNotes(request, timeout=app.config.settings.grpc_timeout)
+            return await self.stub.GetBookComments(request, timeout=app.config.settings.grpc_timeout)
         except grpc.RpcError as e:
-            logger.error(f"gRPC error in get_book_notes: {e.code()} - {e.details()}")
-            raise
-
-    async def create_note(
-        self,
-        user_id: int,
-        book_slug: str,
-        note_text: str,
-        page_number: typing.Optional[int],
-        is_spoiler: bool
-    ) -> user_data_pb2.NoteResponse:
-        request = user_data_pb2.CreateNoteRequest(
-            user_id=user_id,
-            book_slug=book_slug,
-            note_text=note_text,
-            page_number=page_number or 0,
-            has_page_number=page_number is not None,
-            is_spoiler=is_spoiler
-        )
-        try:
-            return await self.stub.CreateNote(request, timeout=app.config.settings.grpc_timeout)
-        except grpc.RpcError as e:
-            logger.error(f"gRPC error in create_note: {e.code()} - {e.details()}")
-            raise
-
-    async def update_note(
-        self,
-        note_id: int,
-        user_id: int,
-        note_text: str,
-        page_number: typing.Optional[int],
-        is_spoiler: bool
-    ) -> user_data_pb2.NoteResponse:
-        request = user_data_pb2.UpdateNoteRequest(
-            note_id=note_id,
-            user_id=user_id,
-            note_text=note_text,
-            page_number=page_number or 0,
-            has_page_number=page_number is not None,
-            is_spoiler=is_spoiler
-        )
-        try:
-            return await self.stub.UpdateNote(request, timeout=app.config.settings.grpc_timeout)
-        except grpc.RpcError as e:
-            logger.error(f"gRPC error in update_note: {e.code()} - {e.details()}")
-            raise
-
-    async def delete_note(
-        self, note_id: int, user_id: int
-    ) -> user_data_pb2.EmptyResponse:
-        request = user_data_pb2.DeleteNoteRequest(note_id=note_id, user_id=user_id)
-        try:
-            return await self.stub.DeleteNote(request, timeout=app.config.settings.grpc_timeout)
-        except grpc.RpcError as e:
-            logger.error(f"gRPC error in delete_note: {e.code()} - {e.details()}")
-            raise
-
-    async def get_user_notes(
-        self, user_id: int, limit: int = 10, offset: int = 0
-    ) -> user_data_pb2.NotesListResponse:
-        request = user_data_pb2.GetUserNotesRequest(
-            user_id=user_id, limit=limit, offset=offset
-        )
-        try:
-            return await self.stub.GetUserNotes(request, timeout=app.config.settings.grpc_timeout)
-        except grpc.RpcError as e:
-            logger.error(f"gRPC error in get_user_notes: {e.code()} - {e.details()}")
+            logger.error(f"gRPC error in get_book_comments: {e.code()} - {e.details()}")
             raise
 
 

@@ -31,6 +31,7 @@ class Book(Base):
 
     rating_count = Column(Integer, nullable=False, server_default=text("0"))
     avg_rating = Column(DECIMAL(3, 2))
+    sub_rating_stats = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
 
     view_count = Column(Integer, nullable=False, server_default=text("0"))
     last_viewed_at = Column(TIMESTAMP)

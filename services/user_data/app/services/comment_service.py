@@ -1,5 +1,6 @@
 import typing
 import sqlalchemy
+import sqlalchemy.exc
 import sqlalchemy.ext.asyncio
 import app.models.comment
 
@@ -17,16 +18,20 @@ async def create_comment(
     body: str,
     is_spoiler: bool
 ) -> app.models.comment.Comment:
-    row = app.models.comment.Comment(
-        user_id=user_id,
-        book_id=book_id,
-        body=body,
-        is_spoiler=is_spoiler
-    )
-    session.add(row)
-    await session.commit()
-    await session.refresh(row)
-    return row
+    try:
+        row = app.models.comment.Comment(
+            user_id=user_id,
+            book_id=book_id,
+            body=body,
+            is_spoiler=is_spoiler
+        )
+        session.add(row)
+        await session.commit()
+        await session.refresh(row)
+        return row
+    except sqlalchemy.exc.IntegrityError:
+        await session.rollback()
+        raise ValueError("already_exists")
 
 
 async def update_comment(

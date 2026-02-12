@@ -40,6 +40,11 @@ message GetBookRequest {
   string slug = 1;
 }
 
+message SubRatingStat {
+  string avg = 1;
+  int32 count = 2;
+}
+
 message BookDetail {
   int64 book_id = 1;
   string title = 2;
@@ -62,6 +67,7 @@ message BookDetail {
   string updated_at = 19;
   SeriesInfo series = 20;
   string series_position = 21;
+  map<string, SubRatingStat> sub_rating_stats = 22;
 }
 
 message CoverHistory {
@@ -177,3 +183,4 @@ message GetSeriesBooksRequest {
   int32 limit = 2;
   int32 offset = 3;
 }
+

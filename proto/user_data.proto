@@ -15,17 +15,11 @@ service UserDataService {
   rpc ToggleFavourite(ToggleFavouriteRequest) returns (FavouriteResponse);
   rpc GetUserFavourites(GetUserFavouritesRequest) returns (BookshelvesListResponse);
 
-  rpc GetBookComments(GetBookCommentsRequest) returns (CommentsListResponse);
   rpc CreateComment(CreateCommentRequest) returns (CommentResponse);
   rpc UpdateComment(UpdateCommentRequest) returns (CommentResponse);
   rpc DeleteComment(DeleteCommentRequest) returns (EmptyResponse);
   rpc GetUserComments(GetUserCommentsRequest) returns (CommentsListResponse);
-
-  rpc GetBookNotes(GetBookNotesRequest) returns (NotesListResponse);
-  rpc CreateNote(CreateNoteRequest) returns (NoteResponse);
-  rpc UpdateNote(UpdateNoteRequest) returns (NoteResponse);
-  rpc DeleteNote(DeleteNoteRequest) returns (EmptyResponse);
-  rpc GetUserNotes(GetUserNotesRequest) returns (NotesListResponse);
+  rpc GetBookComments(GetBookCommentsRequest) returns (BookCommentsResponse);
 }
 
 // Bookshelf
@@ -81,6 +75,12 @@ message UpsertRatingRequest {
   bool has_writing_quality = 12;
   float rereadability = 13;
   bool has_rereadability = 14;
+  float readability = 15;
+  bool has_readability = 16;
+  float plot_complexity = 17;
+  bool has_plot_complexity = 18;
+  float humor = 19;
+  bool has_humor = 20;
 }
 message DeleteRatingRequest  { int64 user_id = 1; string book_slug = 2; }
 message GetUserRatingsRequest {
@@ -111,6 +111,12 @@ message Rating {
   bool has_writing_quality = 16;
   float rereadability = 17;
   bool has_rereadability = 18;
+  float readability = 21;
+  bool has_readability = 22;
+  float plot_complexity = 23;
+  bool has_plot_complexity = 24;
+  float humor = 25;
+  bool has_humor = 26;
   string created_at = 19;
   string updated_at = 20;
 }
@@ -123,13 +129,6 @@ message FavouriteResponse        { bool is_favorite = 1; int64 book_id = 2; stri
 message GetUserFavouritesRequest { int64 user_id = 1; int32 limit = 2; int32 offset = 3; }
 
 // Comments
-message GetBookCommentsRequest {
-  string book_slug = 1;
-  int32 limit = 2;
-  int32 offset = 3;
-  string order = 4;
-  bool include_spoilers = 5;
-}
 message CreateCommentRequest { int64 user_id = 1; string book_slug = 2; string body = 3; bool is_spoiler = 4; }
 message UpdateCommentRequest { int64 comment_id = 1; int64 user_id = 2; string body = 3; bool is_spoiler = 4; }
 message DeleteCommentRequest { int64 comment_id = 1; int64 user_id = 2; }
@@ -154,32 +153,50 @@ message Comment {
 message CommentResponse      { Comment comment = 1; }
 message CommentsListResponse { repeated Comment comments = 1; int32 total_count = 2; }
 
-// Notes
-message GetBookNotesRequest {
-  int64 user_id = 1;
-  string book_slug = 2;
-  int32 limit = 3;
-  int32 offset = 4;
-  string sort_by = 5;
-  string order = 6;
-}
-message CreateNoteRequest { int64 user_id = 1; string book_slug = 2; string note_text = 3; int32 page_number = 4; bool has_page_number = 5; bool is_spoiler = 6; }
-message UpdateNoteRequest { int64 note_id = 1; int64 user_id = 2; string note_text = 3; int32 page_number = 4; bool has_page_number = 5; bool is_spoiler = 6; }
-message DeleteNoteRequest { int64 note_id = 1; int64 user_id = 2; }
-message GetUserNotesRequest { int64 user_id = 1; int32 limit = 2; int32 offset = 3; }
-message Note {
-  int64 note_id = 1;
-  int64 user_id = 2;
-  int64 book_id = 3;
-  string book_slug = 4;
-  string note_text = 5;
-  int32 page_number = 6;
-  bool has_page_number = 7;
-  bool is_spoiler = 8;
-  string created_at = 9;
-  string updated_at = 10;
-}
-message NoteResponse      { Note note = 1; }
-message NotesListResponse { repeated Note notes = 1; int32 total_count = 2; }
-
 message EmptyResponse {}
+
+message GetBookCommentsRequest {
+  string book_slug          = 1;
+  int32  limit              = 2;
+  int32  offset             = 3;
+  string order              = 4;
+  bool   include_spoilers   = 5;
+  string sort_by            = 6;
+  int64  requesting_user_id = 7;
+}
+
+message BookCommentWithRating {
+  int64  comment_id             = 1;
+  int64  user_id                = 2;
+  int64  book_id                = 3;
+  string book_slug              = 4;
+  string body                   = 5;
+  bool   is_spoiler             = 6;
+  string comment_created_at     = 7;
+  string comment_updated_at     = 8;
+  bool   has_rating             = 9;
+  float  overall_rating         = 10;
+  string review_text            = 11;
+  float  pacing                 = 12;
+  bool   has_pacing             = 13;
+  float  emotional_impact       = 14;
+  bool   has_emotional_impact   = 15;
+  float  intellectual_depth     = 16;
+  bool   has_intellectual_depth = 17;
+  float  writing_quality        = 18;
+  bool   has_writing_quality    = 19;
+  float  rereadability          = 20;
+  bool   has_rereadability      = 21;
+  float  readability            = 22;
+  bool   has_readability        = 23;
+  float  plot_complexity        = 24;
+  bool   has_plot_complexity    = 25;
+  float  humor                  = 26;
+  bool   has_humor              = 27;
+}
+
+message BookCommentsResponse {
+  repeated BookCommentWithRating comments    = 1;
+  int32                          total_count = 2;
+  BookCommentWithRating          my_entry    = 3;
+}

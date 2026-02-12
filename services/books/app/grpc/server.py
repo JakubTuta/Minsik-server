@@ -102,6 +102,14 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                         total_books=book["series"].get("total_books", 0)
                     )
 
+                sub_rating_stats = {
+                    key: app.proto.books_pb2.SubRatingStat(
+                        avg=str(val.get("avg")) if val.get("avg") is not None else "",
+                        count=val.get("count", 0)
+                    )
+                    for key, val in book.get("sub_rating_stats", {}).items()
+                }
+
                 book_detail = app.proto.books_pb2.BookDetail(
                     book_id=book["book_id"],
                     title=book["title"],
@@ -123,7 +131,8 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                     created_at=book["created_at"],
                     updated_at=book["updated_at"],
                     series=series_info,
-                    series_position=book.get("series_position", "")
+                    series_position=book.get("series_position", ""),
+                    sub_rating_stats=sub_rating_stats
                 )
 
                 return app.proto.books_pb2.BookDetailResponse(book=book_detail)

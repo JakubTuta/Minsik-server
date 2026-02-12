@@ -1,5 +1,7 @@
 import typing
 import logging
+import time
+import asyncio
 import grpc
 import sqlalchemy
 import app.database
@@ -8,12 +10,56 @@ import app.proto.user_data_pb2_grpc
 import app.services.bookshelf_service
 import app.services.rating_service
 import app.services.comment_service
-import app.services.note_service
 
 logger = logging.getLogger(__name__)
 
 _NOT_FOUND_ERRORS = {"not_found", "book_not_found", "user_not_found"}
 _PERMISSION_ERRORS = {"not_owner"}
+_ALREADY_EXISTS_ERRORS = {"already_exists"}
+
+_VALID_SORT_COLS: typing.Dict[str, str] = {
+    "created_at": "c.created_at",
+    "overall_rating": "r.overall_rating",
+    "pacing": "r.pacing",
+    "emotional_impact": "r.emotional_impact",
+    "intellectual_depth": "r.intellectual_depth",
+    "writing_quality": "r.writing_quality",
+    "rereadability": "r.rereadability",
+    "readability": "r.readability",
+    "plot_complexity": "r.plot_complexity",
+    "humor": "r.humor",
+}
+
+
+class _TtlCache:
+    def __init__(self, ttl_seconds: int = 120) -> None:
+        self._ttl = ttl_seconds
+        self._store: typing.Dict[str, typing.Tuple[float, typing.Any]] = {}
+        self._lock = asyncio.Lock()
+
+    async def get(self, key: str) -> typing.Optional[typing.Any]:
+        async with self._lock:
+            entry = self._store.get(key)
+            if entry is None:
+                return None
+            ts, value = entry
+            if time.monotonic() - ts > self._ttl:
+                del self._store[key]
+                return None
+            return value
+
+    async def set(self, key: str, value: typing.Any) -> None:
+        async with self._lock:
+            self._store[key] = (time.monotonic(), value)
+
+    async def invalidate_by_book(self, book_id: int) -> None:
+        prefix = f"{book_id}:"
+        async with self._lock:
+            for k in [k for k in self._store if k.startswith(prefix)]:
+                del self._store[k]
+
+
+_book_comments_cache = _TtlCache(ttl_seconds=120)
 
 
 async def _resolve_user(
@@ -87,6 +133,12 @@ def _rating_to_proto(
         has_writing_quality=rating.writing_quality is not None,
         rereadability=float(rating.rereadability) if rating.rereadability is not None else 0.0,
         has_rereadability=rating.rereadability is not None,
+        readability=float(rating.readability) if rating.readability is not None else 0.0,
+        has_readability=rating.readability is not None,
+        plot_complexity=float(rating.plot_complexity) if rating.plot_complexity is not None else 0.0,
+        has_plot_complexity=rating.plot_complexity is not None,
+        humor=float(rating.humor) if rating.humor is not None else 0.0,
+        has_humor=rating.humor is not None,
         created_at=rating.created_at.isoformat() if rating.created_at else "",
         updated_at=rating.updated_at.isoformat() if rating.updated_at else ""
     )
@@ -108,21 +160,39 @@ def _comment_to_proto(
     )
 
 
-def _note_to_proto(
-    note,
-    book_slug: str = ""
-) -> app.proto.user_data_pb2.Note:
-    return app.proto.user_data_pb2.Note(
-        note_id=note.note_id,
-        user_id=note.user_id,
-        book_id=note.book_id,
+def _row_to_comment_with_rating(
+    row,
+    book_slug: str
+) -> app.proto.user_data_pb2.BookCommentWithRating:
+    has_rating = row.overall_rating is not None
+    return app.proto.user_data_pb2.BookCommentWithRating(
+        comment_id=row.comment_id,
+        user_id=row.user_id,
+        book_id=row.book_id,
         book_slug=book_slug,
-        note_text=note.note_text,
-        page_number=note.page_number or 0,
-        has_page_number=note.page_number is not None,
-        is_spoiler=note.is_spoiler,
-        created_at=note.created_at.isoformat() if note.created_at else "",
-        updated_at=note.updated_at.isoformat() if note.updated_at else ""
+        body=row.body,
+        is_spoiler=row.is_spoiler,
+        comment_created_at=row.created_at.isoformat() if row.created_at else "",
+        comment_updated_at=row.updated_at.isoformat() if row.updated_at else "",
+        has_rating=has_rating,
+        overall_rating=float(row.overall_rating) if has_rating else 0.0,
+        review_text=row.review_text or "" if has_rating else "",
+        pacing=float(row.pacing) if row.pacing is not None else 0.0,
+        has_pacing=row.pacing is not None,
+        emotional_impact=float(row.emotional_impact) if row.emotional_impact is not None else 0.0,
+        has_emotional_impact=row.emotional_impact is not None,
+        intellectual_depth=float(row.intellectual_depth) if row.intellectual_depth is not None else 0.0,
+        has_intellectual_depth=row.intellectual_depth is not None,
+        writing_quality=float(row.writing_quality) if row.writing_quality is not None else 0.0,
+        has_writing_quality=row.writing_quality is not None,
+        rereadability=float(row.rereadability) if row.rereadability is not None else 0.0,
+        has_rereadability=row.rereadability is not None,
+        readability=float(row.readability) if row.readability is not None else 0.0,
+        has_readability=row.readability is not None,
+        plot_complexity=float(row.plot_complexity) if row.plot_complexity is not None else 0.0,
+        has_plot_complexity=row.plot_complexity is not None,
+        humor=float(row.humor) if row.humor is not None else 0.0,
+        has_humor=row.humor is not None,
     )
 
 
@@ -132,6 +202,8 @@ async def _handle_error(error: Exception, context: grpc.aio.ServicerContext) -> 
         await context.abort(grpc.StatusCode.NOT_FOUND, f"Resource not found: {error_key}")
     elif error_key in _PERMISSION_ERRORS:
         await context.abort(grpc.StatusCode.PERMISSION_DENIED, f"Permission denied: {error_key}")
+    elif error_key in _ALREADY_EXISTS_ERRORS:
+        await context.abort(grpc.StatusCode.ALREADY_EXISTS, f"Resource already exists: {error_key}")
     else:
         await context.abort(grpc.StatusCode.INVALID_ARGUMENT, f"Invalid argument: {error_key}")
 
@@ -307,6 +379,12 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                     sub_ratings["writing_quality"] = request.writing_quality
                 if request.has_rereadability:
                     sub_ratings["rereadability"] = request.rereadability
+                if request.has_readability:
+                    sub_ratings["readability"] = request.readability
+                if request.has_plot_complexity:
+                    sub_ratings["plot_complexity"] = request.plot_complexity
+                if request.has_humor:
+                    sub_ratings["humor"] = request.humor
 
                 rating = await app.services.rating_service.upsert_rating(
                     session,
@@ -453,35 +531,6 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
             logger.error(f"Error in GetUserFavourites: {e}")
             await context.abort(grpc.StatusCode.INTERNAL, f"Internal error: {e}")
 
-    async def GetBookComments(
-        self,
-        request: app.proto.user_data_pb2.GetBookCommentsRequest,
-        context: grpc.aio.ServicerContext
-    ) -> app.proto.user_data_pb2.CommentsListResponse:
-        try:
-            async with app.database.async_session_maker() as session:
-                book_id, _, _ = await _resolve_book(session, request.book_slug)
-                rows, total_count = await app.services.comment_service.get_book_comments(
-                    session,
-                    book_id,
-                    request.limit or 10,
-                    request.offset or 0,
-                    request.order or "desc",
-                    request.include_spoilers
-                )
-                protos = [_comment_to_proto(r, request.book_slug) for r in rows]
-                return app.proto.user_data_pb2.CommentsListResponse(
-                    comments=protos,
-                    total_count=total_count
-                )
-        except ValueError as e:
-            await _handle_error(e, context)
-        except grpc.aio.AbortError:
-            raise
-        except Exception as e:
-            logger.error(f"Error in GetBookComments: {e}")
-            await context.abort(grpc.StatusCode.INTERNAL, f"Internal error: {e}")
-
     async def CreateComment(
         self,
         request: app.proto.user_data_pb2.CreateCommentRequest,
@@ -493,6 +542,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 comment = await app.services.comment_service.create_comment(
                     session, request.user_id, book_id, request.body, request.is_spoiler
                 )
+                await _book_comments_cache.invalidate_by_book(book_id)
                 return app.proto.user_data_pb2.CommentResponse(
                     comment=_comment_to_proto(comment, request.book_slug)
                 )
@@ -515,6 +565,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                     session, request.comment_id, request.user_id, request.body, request.is_spoiler
                 )
                 slug_map = await _build_book_slug_map(session, [comment.book_id])
+                await _book_comments_cache.invalidate_by_book(comment.book_id)
                 return app.proto.user_data_pb2.CommentResponse(
                     comment=_comment_to_proto(comment, slug_map.get(comment.book_id, ""))
                 )
@@ -533,9 +584,18 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
     ) -> app.proto.user_data_pb2.EmptyResponse:
         try:
             async with app.database.async_session_maker() as session:
+                book_id_result = await session.execute(
+                    sqlalchemy.text(
+                        "SELECT book_id FROM user_data.comments WHERE comment_id = :id"
+                    ),
+                    {"id": request.comment_id}
+                )
+                book_id_row = book_id_result.fetchone()
                 await app.services.comment_service.delete_comment(
                     session, request.comment_id, request.user_id
                 )
+                if book_id_row:
+                    await _book_comments_cache.invalidate_by_book(book_id_row.book_id)
                 return app.proto.user_data_pb2.EmptyResponse()
         except ValueError as e:
             await _handle_error(e, context)
@@ -586,126 +646,105 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
             logger.error(f"Error in GetUserComments: {e}")
             await context.abort(grpc.StatusCode.INTERNAL, f"Internal error: {e}")
 
-    async def GetBookNotes(
+    async def GetBookComments(
         self,
-        request: app.proto.user_data_pb2.GetBookNotesRequest,
+        request: app.proto.user_data_pb2.GetBookCommentsRequest,
         context: grpc.aio.ServicerContext
-    ) -> app.proto.user_data_pb2.NotesListResponse:
+    ) -> app.proto.user_data_pb2.BookCommentsResponse:
         try:
+            limit = request.limit or 10
+            offset = request.offset or 0
+            sort_by = request.sort_by or "created_at"
+            order_dir = "ASC" if (request.order or "desc") == "asc" else "DESC"
+            include_spoilers = request.include_spoilers
+            sort_col = _VALID_SORT_COLS.get(sort_by, "c.created_at")
+
             async with app.database.async_session_maker() as session:
-                book_id, _, _ = await _resolve_book(session, request.book_slug)
-                rows, total_count = await app.services.note_service.get_book_notes(
-                    session,
-                    request.user_id,
-                    book_id,
-                    request.limit or 10,
-                    request.offset or 0,
-                    request.sort_by or "page_number",
-                    request.order or "asc"
+                book_result = await session.execute(
+                    sqlalchemy.text("SELECT book_id FROM books.books WHERE slug = :slug"),
+                    {"slug": request.book_slug}
                 )
-                protos = [_note_to_proto(r, request.book_slug) for r in rows]
-                return app.proto.user_data_pb2.NotesListResponse(
-                    notes=protos,
-                    total_count=total_count
-                )
-        except ValueError as e:
-            await _handle_error(e, context)
+                book_row = book_result.fetchone()
+                if book_row is None:
+                    await context.abort(grpc.StatusCode.NOT_FOUND, f"Book not found: {request.book_slug}")
+                    return
+                book_id = book_row.book_id
+
+                cache_key = f"{book_id}:{sort_by}:{order_dir}:{include_spoilers}:{limit}:{offset}"
+                cached = await _book_comments_cache.get(cache_key)
+
+                if cached is None:
+                    where = "c.book_id = :book_id AND c.is_deleted = FALSE"
+                    params: typing.Dict[str, typing.Any] = {
+                        "book_id": book_id, "limit": limit, "offset": offset
+                    }
+                    if not include_spoilers:
+                        where += " AND c.is_spoiler = FALSE"
+
+                    count_result = await session.execute(
+                        sqlalchemy.text(
+                            f"SELECT COUNT(*) FROM user_data.comments c WHERE {where}"
+                        ),
+                        params
+                    )
+                    total_count = count_result.scalar_one()
+
+                    rows_result = await session.execute(
+                        sqlalchemy.text(f"""
+                            SELECT c.comment_id, c.user_id, c.book_id, c.body, c.is_spoiler,
+                                   c.created_at, c.updated_at,
+                                   r.overall_rating, r.review_text, r.pacing, r.emotional_impact,
+                                   r.intellectual_depth, r.writing_quality, r.rereadability,
+                                   r.readability, r.plot_complexity, r.humor
+                            FROM user_data.comments c
+                            LEFT JOIN user_data.ratings r
+                                   ON r.user_id = c.user_id AND r.book_id = c.book_id
+                            WHERE {where}
+                            ORDER BY {sort_col} {order_dir} NULLS LAST, c.created_at DESC
+                            LIMIT :limit OFFSET :offset
+                        """),
+                        params
+                    )
+                    rows = rows_result.fetchall()
+                    cached = (total_count, rows)
+                    await _book_comments_cache.set(cache_key, cached)
+
+                total_count, rows = cached
+                comments = [_row_to_comment_with_rating(row, request.book_slug) for row in rows]
+
+                my_entry = None
+                if request.requesting_user_id:
+                    my_row_result = await session.execute(
+                        sqlalchemy.text("""
+                            SELECT c.comment_id, c.user_id, c.book_id, c.body, c.is_spoiler,
+                                   c.created_at, c.updated_at,
+                                   r.overall_rating, r.review_text, r.pacing, r.emotional_impact,
+                                   r.intellectual_depth, r.writing_quality, r.rereadability,
+                                   r.readability, r.plot_complexity, r.humor
+                            FROM user_data.comments c
+                            LEFT JOIN user_data.ratings r
+                                   ON r.user_id = c.user_id AND r.book_id = c.book_id
+                            WHERE c.user_id = :user_id AND c.book_id = :book_id
+                              AND c.is_deleted = FALSE
+                        """),
+                        {"user_id": request.requesting_user_id, "book_id": book_id}
+                    )
+                    my_row = my_row_result.fetchone()
+                    if my_row:
+                        my_entry = _row_to_comment_with_rating(my_row, request.book_slug)
+
+                kwargs: typing.Dict[str, typing.Any] = {
+                    "comments": comments,
+                    "total_count": total_count
+                }
+                if my_entry is not None:
+                    kwargs["my_entry"] = my_entry
+                return app.proto.user_data_pb2.BookCommentsResponse(**kwargs)
         except grpc.aio.AbortError:
             raise
         except Exception as e:
-            logger.error(f"Error in GetBookNotes: {e}")
-            await context.abort(grpc.StatusCode.INTERNAL, f"Internal error: {e}")
-
-    async def CreateNote(
-        self,
-        request: app.proto.user_data_pb2.CreateNoteRequest,
-        context: grpc.aio.ServicerContext
-    ) -> app.proto.user_data_pb2.NoteResponse:
-        try:
-            async with app.database.async_session_maker() as session:
-                book_id, _, _ = await _resolve_book(session, request.book_slug)
-                page_number = request.page_number if request.has_page_number else None
-                note = await app.services.note_service.create_note(
-                    session, request.user_id, book_id, request.note_text, page_number, request.is_spoiler
-                )
-                return app.proto.user_data_pb2.NoteResponse(
-                    note=_note_to_proto(note, request.book_slug)
-                )
-        except ValueError as e:
-            await _handle_error(e, context)
-        except grpc.aio.AbortError:
-            raise
-        except Exception as e:
-            logger.error(f"Error in CreateNote: {e}")
-            await context.abort(grpc.StatusCode.INTERNAL, f"Internal error: {e}")
-
-    async def UpdateNote(
-        self,
-        request: app.proto.user_data_pb2.UpdateNoteRequest,
-        context: grpc.aio.ServicerContext
-    ) -> app.proto.user_data_pb2.NoteResponse:
-        try:
-            async with app.database.async_session_maker() as session:
-                page_number = request.page_number if request.has_page_number else None
-                note = await app.services.note_service.update_note(
-                    session, request.note_id, request.user_id, request.note_text, page_number, request.is_spoiler
-                )
-                slug_map = await _build_book_slug_map(session, [note.book_id])
-                return app.proto.user_data_pb2.NoteResponse(
-                    note=_note_to_proto(note, slug_map.get(note.book_id, ""))
-                )
-        except ValueError as e:
-            await _handle_error(e, context)
-        except grpc.aio.AbortError:
-            raise
-        except Exception as e:
-            logger.error(f"Error in UpdateNote: {e}")
-            await context.abort(grpc.StatusCode.INTERNAL, f"Internal error: {e}")
-
-    async def DeleteNote(
-        self,
-        request: app.proto.user_data_pb2.DeleteNoteRequest,
-        context: grpc.aio.ServicerContext
-    ) -> app.proto.user_data_pb2.EmptyResponse:
-        try:
-            async with app.database.async_session_maker() as session:
-                await app.services.note_service.delete_note(
-                    session, request.note_id, request.user_id
-                )
-                return app.proto.user_data_pb2.EmptyResponse()
-        except ValueError as e:
-            await _handle_error(e, context)
-        except grpc.aio.AbortError:
-            raise
-        except Exception as e:
-            logger.error(f"Error in DeleteNote: {e}")
-            await context.abort(grpc.StatusCode.INTERNAL, f"Internal error: {e}")
-
-    async def GetUserNotes(
-        self,
-        request: app.proto.user_data_pb2.GetUserNotesRequest,
-        context: grpc.aio.ServicerContext
-    ) -> app.proto.user_data_pb2.NotesListResponse:
-        try:
-            async with app.database.async_session_maker() as session:
-                rows, total_count = await app.services.note_service.get_user_notes(
-                    session,
-                    request.user_id,
-                    request.limit or 10,
-                    request.offset or 0
-                )
-
-                slug_map = await _build_book_slug_map(session, [r.book_id for r in rows])
-                protos = [_note_to_proto(r, slug_map.get(r.book_id, "")) for r in rows]
-                return app.proto.user_data_pb2.NotesListResponse(
-                    notes=protos,
-                    total_count=total_count
-                )
-        except grpc.aio.AbortError:
-            raise
-        except Exception as e:
-            logger.error(f"Error in GetUserNotes: {e}")
-            await context.abort(grpc.StatusCode.INTERNAL, f"Internal error: {e}")
+            logger.error(f"Error in GetBookComments: {e}")
+            await context.abort(grpc.StatusCode.INTERNAL, f"Get book comments failed: {e}")
 
 
 async def _build_book_slug_map(
