@@ -39,6 +39,22 @@ async def upsert_bookshelf(
     return result.scalar_one()
 
 
+async def delete_bookshelf(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    user_id: int,
+    book_id: int
+) -> None:
+    stmt = sqlalchemy.delete(app.models.bookshelf.Bookshelf).where(
+        app.models.bookshelf.Bookshelf.user_id == user_id,
+        app.models.bookshelf.Bookshelf.book_id == book_id
+    ).returning(app.models.bookshelf.Bookshelf.bookshelf_id)
+
+    result = await session.execute(stmt)
+    if result.scalar_one_or_none() is None:
+        raise ValueError("not_found")
+    await session.commit()
+
+
 async def get_bookshelf(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     user_id: int,

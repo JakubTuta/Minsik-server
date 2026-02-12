@@ -35,7 +35,7 @@ USER_HEADERS = {"Authorization": f"Bearer {make_token()}"}
 def mock_user_data_client(mocker):
     mock_client = mocker.MagicMock()
     for method in [
-        "upsert_bookshelf", "get_user_bookshelves", "get_public_bookshelves",
+        "upsert_bookshelf", "delete_bookshelf", "get_user_bookshelves", "get_public_bookshelves",
         "toggle_favourite", "get_user_favourites",
         "upsert_rating", "delete_rating", "get_user_ratings",
         "get_book_comments", "create_comment", "update_comment", "delete_comment", "get_user_comments",
@@ -168,6 +168,23 @@ class TestBookshelfEndpoints:
             grpc.StatusCode.INTERNAL, "error"
         )
         assert client.get("/api/v1/users/me/bookshelves", headers=USER_HEADERS).status_code == 500
+
+    def test_delete_bookshelf_success(self, client, mock_user_data_client, mocker):
+        mock_user_data_client.delete_bookshelf.return_value = mocker.MagicMock()
+        assert client.delete(
+            "/api/v1/users/me/bookshelves/the-hobbit", headers=USER_HEADERS
+        ).status_code == 204
+
+    def test_delete_bookshelf_requires_auth(self, client, mock_user_data_client):
+        assert client.delete("/api/v1/users/me/bookshelves/the-hobbit").status_code == 401
+
+    def test_delete_bookshelf_not_found(self, client, mock_user_data_client):
+        mock_user_data_client.delete_bookshelf.side_effect = MockRpcError(
+            grpc.StatusCode.NOT_FOUND, "not found"
+        )
+        assert client.delete(
+            "/api/v1/users/me/bookshelves/unknown", headers=USER_HEADERS
+        ).status_code == 404
 
 
 class TestFavouriteEndpoints:

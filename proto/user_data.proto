@@ -4,6 +4,7 @@ package user_data.v1;
 service UserDataService {
   rpc GetBookshelf(GetBookshelfRequest) returns (BookshelfResponse);
   rpc UpsertBookshelf(UpsertBookshelfRequest) returns (BookshelfResponse);
+  rpc DeleteBookshelf(DeleteBookshelfRequest) returns (EmptyResponse);
   rpc GetUserBookshelves(GetUserBookshelvesRequest) returns (BookshelvesListResponse);
   rpc GetPublicBookshelves(GetPublicBookshelvesRequest) returns (BookshelvesListResponse);
 
@@ -25,6 +26,7 @@ service UserDataService {
 // Bookshelf
 message GetBookshelfRequest    { int64 user_id = 1; string book_slug = 2; }
 message UpsertBookshelfRequest { int64 user_id = 1; string book_slug = 2; string status = 3; }
+message DeleteBookshelfRequest { int64 user_id = 1; string book_slug = 2; }
 message GetUserBookshelvesRequest {
   int64 user_id = 1;
   int32 limit = 2;

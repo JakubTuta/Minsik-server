@@ -56,8 +56,8 @@ class SearchResponse(pydantic.BaseModel):
 
 
 class SubRatingStatSchema(pydantic.BaseModel):
-    avg: typing.Optional[str] = None
-    count: int = 0
+    avg: typing.Optional[str] = pydantic.Field(default=None, description="Average score as string (e.g. '3.50'), '0' when no ratings")
+    count: int = pydantic.Field(default=0, description="Number of ratings for this dimension")
 
 
 class BookDetailData(pydantic.BaseModel):

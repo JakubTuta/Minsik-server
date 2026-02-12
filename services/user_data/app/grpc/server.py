@@ -254,6 +254,26 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
             logger.error(f"Error in UpsertBookshelf: {e}")
             await context.abort(grpc.StatusCode.INTERNAL, f"Internal error: {e}")
 
+    async def DeleteBookshelf(
+        self,
+        request: app.proto.user_data_pb2.DeleteBookshelfRequest,
+        context: grpc.aio.ServicerContext
+    ) -> app.proto.user_data_pb2.EmptyResponse:
+        try:
+            async with app.database.async_session_maker() as session:
+                book_id, _, _ = await _resolve_book(session, request.book_slug)
+                await app.services.bookshelf_service.delete_bookshelf(
+                    session, request.user_id, book_id
+                )
+                return app.proto.user_data_pb2.EmptyResponse()
+        except ValueError as e:
+            await _handle_error(e, context)
+        except grpc.aio.AbortError:
+            raise
+        except Exception as e:
+            logger.error(f"Error in DeleteBookshelf: {e}")
+            await context.abort(grpc.StatusCode.INTERNAL, f"Internal error: {e}")
+
     async def GetUserBookshelves(
         self,
         request: app.proto.user_data_pb2.GetUserBookshelvesRequest,

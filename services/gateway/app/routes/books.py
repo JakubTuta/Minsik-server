@@ -102,10 +102,20 @@ async def search_books_and_authors(
     - Overall rating, rating count, and per-dimension rating stats (`sub_rating_stats`)
     - View count and external IDs (Open Library, Google Books)
 
-    **`sub_rating_stats` dimensions:** `pacing`, `emotional_impact`, `intellectual_depth`,
-    `writing_quality`, `rereadability`, `readability`, `plot_complexity`, `humor`.
-    Each entry has `avg` (string, e.g. `"3.50"`) and `count` (int). Only dimensions with at
-    least one rating appear in the map.
+    **`sub_rating_stats`** - All 8 keys are always present (default `avg: "0"`, `count: 0`).
+    Each value: `{"avg": "3.50", "count": 12}`.
+
+    Quality dimensions (1 = poor, 5 = excellent):
+    - `emotional_impact` - 1: leaves no impression / 5: deeply moving
+    - `intellectual_depth` - 1: shallow, surface-level / 5: profound, thought-provoking
+    - `writing_quality` - 1: poorly written / 5: masterfully crafted prose
+    - `rereadability` - 1: no desire to revisit / 5: would gladly reread
+
+    Spectrum dimensions (1 and 5 are opposite ends, neither is inherently better):
+    - `pacing` - 1: slow, deliberate / 5: fast, action-packed
+    - `readability` - 1: dense, challenging / 5: light, easy read
+    - `plot_complexity` - 1: simple, straightforward / 5: complex, multi-layered
+    - `humor` - 1: serious, no humor / 5: very funny, comedic
 
     **Example:** `/api/v1/books/the-lord-of-the-rings`
     """
@@ -414,8 +424,12 @@ def _comment_with_rating_to_dict(c) -> typing.Dict[str, typing.Any]:
 
     **Sort Options (sort_by):**
     - `created_at` - Newest/oldest first (default)
-    - `overall_rating`, `pacing`, `emotional_impact`, `intellectual_depth`,
-      `writing_quality`, `rereadability`, `readability`, `plot_complexity`, `humor`
+    - `overall_rating` - By commenter's overall rating
+    - Quality dimensions (1 = poor, 5 = excellent):
+      `emotional_impact`, `intellectual_depth`, `writing_quality`, `rereadability`
+    - Spectrum dimensions (opposite ends, neither better):
+      `pacing` (slow-fast), `readability` (dense-light), `plot_complexity` (simple-complex),
+      `humor` (serious-funny)
 
     When authenticated, the requesting user's own comment is returned in `my_entry`
     regardless of the current page, so the frontend can pin it at the top.

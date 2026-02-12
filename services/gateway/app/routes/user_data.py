@@ -127,6 +127,42 @@ async def upsert_bookshelf(
         return app.utils.responses.error_response("INTERNAL_ERROR", "An unexpected error occurred", status_code=500)
 
 
+@router.delete(
+    "/users/me/bookshelves/{book_slug}",
+    status_code=204,
+    summary="Remove a book from your bookshelf",
+    description="""
+    Permanently remove a book from the authenticated user's bookshelf.
+    This also removes the favourite flag if set.
+
+    Requires a valid access token in the `Authorization: Bearer <token>` header.
+    """,
+    responses={
+        204: {"description": "Bookshelf entry removed"},
+        401: {"description": "Not authenticated"},
+        404: {"description": "Book or bookshelf entry not found"}
+    }
+)
+@limiter.limit(app.middleware.rate_limit.get_default_limit())
+async def delete_bookshelf(
+    request: fastapi.Request,
+    book_slug: str,
+    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(app.middleware.auth.require_user)
+):
+    try:
+        await app.grpc_clients.user_data_client.delete_bookshelf(
+            user_id=current_user["user_id"],
+            book_slug=book_slug
+        )
+        return fastapi.Response(status_code=204)
+    except grpc.RpcError as e:
+        logger.error(f"gRPC error in delete_bookshelf: {e.code()} - {e.details()}")
+        return _grpc_error_response(e)
+    except Exception as e:
+        logger.error(f"Unexpected error in delete_bookshelf: {e}")
+        return app.utils.responses.error_response("INTERNAL_ERROR", "An unexpected error occurred", status_code=500)
+
+
 @router.get(
     "/users/me/bookshelves",
     summary="Get your bookshelf",

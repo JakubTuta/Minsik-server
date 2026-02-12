@@ -53,6 +53,16 @@ class UserDataClient:
             logger.error(f"gRPC error in upsert_bookshelf: {e.code()} - {e.details()}")
             raise
 
+    async def delete_bookshelf(
+        self, user_id: int, book_slug: str
+    ) -> user_data_pb2.EmptyResponse:
+        request = user_data_pb2.DeleteBookshelfRequest(user_id=user_id, book_slug=book_slug)
+        try:
+            return await self.stub.DeleteBookshelf(request, timeout=app.config.settings.grpc_timeout)
+        except grpc.RpcError as e:
+            logger.error(f"gRPC error in delete_bookshelf: {e.code()} - {e.details()}")
+            raise
+
     async def get_user_bookshelves(
         self,
         user_id: int,
