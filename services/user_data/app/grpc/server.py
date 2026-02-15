@@ -221,6 +221,8 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 bookshelf = await app.services.bookshelf_service.get_bookshelf(
                     session, request.user_id, book_id
                 )
+                if bookshelf is None:
+                    raise ValueError("not_found")
                 return app.proto.user_data_pb2.BookshelfResponse(
                     bookshelf=_bookshelf_to_proto(bookshelf, request.book_slug, book_title, book_cover_url)
                 )
@@ -368,6 +370,8 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 rating = await app.services.rating_service.get_rating(
                     session, request.user_id, book_id
                 )
+                if rating is None:
+                    raise ValueError("not_found")
                 return app.proto.user_data_pb2.RatingResponse(
                     rating=_rating_to_proto(rating, request.book_slug, book_title, book_cover_url)
                 )
@@ -664,6 +668,48 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
             raise
         except Exception as e:
             logger.error(f"Error in GetUserComments: {e}")
+            await context.abort(grpc.StatusCode.INTERNAL, f"Internal error: {e}")
+
+    async def GetUserBookInfo(
+        self,
+        request: app.proto.user_data_pb2.GetUserBookInfoRequest,
+        context: grpc.aio.ServicerContext
+    ) -> app.proto.user_data_pb2.UserBookInfoResponse:
+        try:
+            async with app.database.async_session_maker() as session:
+                book_id, book_title, book_cover_url = await _resolve_book(
+                    session, request.book_slug
+                )
+
+                bookshelf = await app.services.bookshelf_service.get_bookshelf(
+                    session, request.user_id, book_id
+                )
+                rating = await app.services.rating_service.get_rating(
+                    session, request.user_id, book_id
+                )
+                comment = await app.services.comment_service.get_comment_for_book(
+                    session, request.user_id, book_id
+                )
+
+                kwargs: typing.Dict[str, typing.Any] = {}
+                if bookshelf is not None:
+                    kwargs["bookshelf"] = _bookshelf_to_proto(
+                        bookshelf, request.book_slug, book_title, book_cover_url
+                    )
+                if rating is not None:
+                    kwargs["rating"] = _rating_to_proto(
+                        rating, request.book_slug, book_title, book_cover_url
+                    )
+                if comment is not None:
+                    kwargs["comment"] = _comment_to_proto(comment, request.book_slug)
+
+                return app.proto.user_data_pb2.UserBookInfoResponse(**kwargs)
+        except ValueError as e:
+            await _handle_error(e, context)
+        except grpc.aio.AbortError:
+            raise
+        except Exception as e:
+            logger.error(f"Error in GetUserBookInfo: {e}")
             await context.abort(grpc.StatusCode.INTERNAL, f"Internal error: {e}")
 
     async def GetBookComments(

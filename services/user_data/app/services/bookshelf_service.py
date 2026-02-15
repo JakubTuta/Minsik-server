@@ -59,16 +59,13 @@ async def get_bookshelf(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     user_id: int,
     book_id: int
-) -> app.models.bookshelf.Bookshelf:
+) -> typing.Optional[app.models.bookshelf.Bookshelf]:
     stmt = sqlalchemy.select(app.models.bookshelf.Bookshelf).where(
         app.models.bookshelf.Bookshelf.user_id == user_id,
         app.models.bookshelf.Bookshelf.book_id == book_id
     )
     result = await session.execute(stmt)
-    row = result.scalar_one_or_none()
-    if row is None:
-        raise ValueError("not_found")
-    return row
+    return result.scalar_one_or_none()
 
 
 async def get_user_bookshelves(

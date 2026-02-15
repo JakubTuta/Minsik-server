@@ -129,6 +129,18 @@ class CommentListResponse(pydantic.BaseModel):
     error: typing.Optional[app.models.responses.ErrorDetail] = None
 
 
+class UserBookInfoData(pydantic.BaseModel):
+    bookshelf: typing.Optional[BookshelfSchema] = None
+    rating: typing.Optional[RatingSchema] = None
+    comment: typing.Optional[CommentSchema] = None
+
+
+class UserBookInfoResponse(pydantic.BaseModel):
+    success: bool = True
+    data: UserBookInfoData
+    error: typing.Optional[app.models.responses.ErrorDetail] = None
+
+
 class UpsertBookshelfRequest(pydantic.BaseModel):
     status: typing.Literal["want_to_read", "reading", "read", "abandoned"]
 

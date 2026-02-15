@@ -41,6 +41,16 @@ class UserDataClient:
             logger.error(f"gRPC error in get_bookshelf: {e.code()} - {e.details()}")
             raise
 
+    async def get_user_book_info(
+        self, user_id: int, book_slug: str
+    ) -> user_data_pb2.UserBookInfoResponse:
+        request = user_data_pb2.GetUserBookInfoRequest(user_id=user_id, book_slug=book_slug)
+        try:
+            return await self.stub.GetUserBookInfo(request, timeout=app.config.settings.grpc_timeout)
+        except grpc.RpcError as e:
+            logger.error(f"gRPC error in get_user_book_info: {e.code()} - {e.details()}")
+            raise
+
     async def upsert_bookshelf(
         self, user_id: int, book_slug: str, status: str
     ) -> user_data_pb2.BookshelfResponse:

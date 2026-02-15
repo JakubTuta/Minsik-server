@@ -21,6 +21,7 @@ service UserDataService {
   rpc DeleteComment(DeleteCommentRequest) returns (EmptyResponse);
   rpc GetUserComments(GetUserCommentsRequest) returns (CommentsListResponse);
   rpc GetBookComments(GetBookCommentsRequest) returns (BookCommentsResponse);
+  rpc GetUserBookInfo(GetUserBookInfoRequest) returns (UserBookInfoResponse);
 }
 
 // Bookshelf
@@ -201,4 +202,12 @@ message BookCommentsResponse {
   repeated BookCommentWithRating comments    = 1;
   int32                          total_count = 2;
   BookCommentWithRating          my_entry    = 3;
+}
+
+// User Book Info (consolidated)
+message GetUserBookInfoRequest { int64 user_id = 1; string book_slug = 2; }
+message UserBookInfoResponse {
+  Bookshelf bookshelf = 1;
+  Rating    rating    = 2;
+  Comment   comment   = 3;
 }

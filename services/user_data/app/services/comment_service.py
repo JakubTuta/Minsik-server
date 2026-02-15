@@ -112,6 +112,20 @@ async def get_book_comments(
     return result.scalars().all(), total_count
 
 
+async def get_comment_for_book(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    user_id: int,
+    book_id: int
+) -> typing.Optional[app.models.comment.Comment]:
+    stmt = sqlalchemy.select(app.models.comment.Comment).where(
+        app.models.comment.Comment.user_id == user_id,
+        app.models.comment.Comment.book_id == book_id,
+        app.models.comment.Comment.is_deleted == False
+    )
+    result = await session.execute(stmt)
+    return result.scalar_one_or_none()
+
+
 async def get_user_comments(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     user_id: int,

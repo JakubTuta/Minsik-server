@@ -35,6 +35,7 @@ USER_HEADERS = {"Authorization": f"Bearer {make_token()}"}
 def mock_user_data_client(mocker):
     mock_client = mocker.MagicMock()
     for method in [
+        "get_user_book_info",
         "upsert_bookshelf", "delete_bookshelf", "get_user_bookshelves", "get_public_bookshelves",
         "toggle_favourite", "get_user_favourites",
         "upsert_rating", "delete_rating", "get_user_ratings",
@@ -102,6 +103,58 @@ def _comment(mocker):
     c.created_at = "2026-01-01T00:00:00"
     c.updated_at = "2026-01-01T00:00:00"
     return c
+
+
+class TestUserBookInfoEndpoint:
+    def test_all_data_present(self, client, mock_user_data_client, mocker):
+        resp_obj = mocker.MagicMock()
+        resp_obj.HasField = lambda f: True
+        resp_obj.bookshelf = _bookshelf(mocker)
+        resp_obj.rating = _rating(mocker)
+        resp_obj.comment = _comment(mocker)
+        mock_user_data_client.get_user_book_info.return_value = resp_obj
+        resp = client.get("/api/v1/users/me/books/the-hobbit", headers=USER_HEADERS)
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["bookshelf"] is not None
+        assert data["bookshelf"]["status"] == "reading"
+        assert data["rating"] is not None
+        assert data["rating"]["overall_rating"] == 4.5
+        assert data["comment"] is not None
+        assert data["comment"]["body"] == "Loved it!"
+
+    def test_all_data_absent(self, client, mock_user_data_client, mocker):
+        resp_obj = mocker.MagicMock()
+        resp_obj.HasField = lambda f: False
+        mock_user_data_client.get_user_book_info.return_value = resp_obj
+        resp = client.get("/api/v1/users/me/books/the-hobbit", headers=USER_HEADERS)
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["bookshelf"] is None
+        assert data["rating"] is None
+        assert data["comment"] is None
+
+    def test_partial_data(self, client, mock_user_data_client, mocker):
+        resp_obj = mocker.MagicMock()
+        resp_obj.HasField = lambda f: f == "bookshelf"
+        resp_obj.bookshelf = _bookshelf(mocker)
+        mock_user_data_client.get_user_book_info.return_value = resp_obj
+        resp = client.get("/api/v1/users/me/books/the-hobbit", headers=USER_HEADERS)
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["bookshelf"] is not None
+        assert data["rating"] is None
+        assert data["comment"] is None
+
+    def test_requires_auth(self, client, mock_user_data_client):
+        assert client.get("/api/v1/users/me/books/the-hobbit").status_code == 401
+
+    def test_book_not_found(self, client, mock_user_data_client):
+        mock_user_data_client.get_user_book_info.side_effect = MockRpcError(
+            grpc.StatusCode.NOT_FOUND, "book not found"
+        )
+        resp = client.get("/api/v1/users/me/books/nonexistent", headers=USER_HEADERS)
+        assert resp.status_code == 404
 
 
 class TestBookshelfEndpoints:

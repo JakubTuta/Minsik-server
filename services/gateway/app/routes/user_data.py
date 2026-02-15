@@ -81,6 +81,55 @@ def _comment_proto_to_dict(c) -> typing.Dict[str, typing.Any]:
 
 
 # ============================================================
+# User Book Info (consolidated)
+# ============================================================
+
+@router.get(
+    "/users/me/books/{book_slug}",
+    response_model=app.models.user_data_responses.UserBookInfoResponse,
+    summary="Get all your data for a specific book",
+    description="""
+    Retrieve the authenticated user's bookshelf entry, rating, and comment
+    for a given book in a single call. Each field is `null` if the user has
+    no corresponding data for the book.
+
+    Requires a valid access token in the `Authorization: Bearer <token>` header.
+    """,
+    responses={
+        200: {"description": "User book info retrieved"},
+        401: {"description": "Not authenticated"},
+        404: {"description": "Book not found"}
+    }
+)
+@limiter.limit(app.middleware.rate_limit.get_default_limit())
+async def get_user_book_info(
+    request: fastapi.Request,
+    book_slug: str,
+    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(app.middleware.auth.require_user)
+):
+    try:
+        response = await app.grpc_clients.user_data_client.get_user_book_info(
+            user_id=current_user["user_id"],
+            book_slug=book_slug
+        )
+        data: typing.Dict[str, typing.Any] = {
+            "bookshelf": _bookshelf_proto_to_dict(response.bookshelf)
+            if response.HasField("bookshelf") else None,
+            "rating": _rating_proto_to_dict(response.rating)
+            if response.HasField("rating") else None,
+            "comment": _comment_proto_to_dict(response.comment)
+            if response.HasField("comment") else None,
+        }
+        return app.utils.responses.success_response(data)
+    except grpc.RpcError as e:
+        logger.error(f"gRPC error in get_user_book_info: {e.code()} - {e.details()}")
+        return _grpc_error_response(e)
+    except Exception as e:
+        logger.error(f"Unexpected error in get_user_book_info: {e}")
+        return app.utils.responses.error_response("INTERNAL_ERROR", "An unexpected error occurred", status_code=500)
+
+
+# ============================================================
 # Bookshelf
 # ============================================================
 

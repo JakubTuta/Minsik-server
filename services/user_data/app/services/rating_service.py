@@ -120,16 +120,13 @@ async def get_rating(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     user_id: int,
     book_id: int
-) -> app.models.rating.Rating:
+) -> typing.Optional[app.models.rating.Rating]:
     stmt = sqlalchemy.select(app.models.rating.Rating).where(
         app.models.rating.Rating.user_id == user_id,
         app.models.rating.Rating.book_id == book_id
     )
     result = await session.execute(stmt)
-    row = result.scalar_one_or_none()
-    if row is None:
-        raise ValueError("not_found")
-    return row
+    return result.scalar_one_or_none()
 
 
 async def get_user_ratings(
