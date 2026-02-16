@@ -6,6 +6,7 @@ import grpc
 from grpc_reflection.v1alpha import reflection
 import app.config
 import app.database
+import app.cache
 import app.grpc.server
 import app.proto.user_data_pb2
 import app.proto.user_data_pb2_grpc
@@ -27,6 +28,9 @@ async def start_server() -> None:
 
     logger.info("Initializing database connection")
     await app.database.init_db()
+
+    logger.info("Initializing Redis connection")
+    await app.cache.init_redis()
 
     grpc_server = grpc.aio.server()
 
@@ -59,6 +63,9 @@ async def shutdown() -> None:
     if grpc_server:
         logger.info("Stopping gRPC server")
         await grpc_server.stop(grace=5)
+
+    logger.info("Closing Redis connection")
+    await app.cache.close_redis()
 
     logger.info("Closing database connection")
     await app.database.close_db()

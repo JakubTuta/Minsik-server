@@ -249,6 +249,11 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       DB_POOL_SIZE: ${DB_POOL_SIZE}
       DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_DB: ${REDIS_DB}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_MAX_CONNECTIONS: ${REDIS_MAX_CONNECTIONS}
       USER_DATA_SERVICE_HOST: ${USER_DATA_SERVICE_HOST}
       USER_DATA_GRPC_PORT: ${USER_DATA_GRPC_PORT}
     ports:
@@ -256,6 +261,8 @@ services:
       - "${USER_DATA_GRPC_PORT}:50053"
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     networks:
       - minsik-network

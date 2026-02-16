@@ -96,6 +96,7 @@ def _comment(mocker):
     c = mocker.MagicMock()
     c.comment_id = 1
     c.user_id = 1
+    c.username = "testuser"
     c.book_id = 100
     c.book_slug = "the-hobbit"
     c.body = "Loved it!"
@@ -122,6 +123,7 @@ class TestUserBookInfoEndpoint:
         assert data["rating"]["overall_rating"] == 4.5
         assert data["comment"] is not None
         assert data["comment"]["body"] == "Loved it!"
+        assert data["comment"]["username"] == "testuser"
 
     def test_all_data_absent(self, client, mock_user_data_client, mocker):
         resp_obj = mocker.MagicMock()
@@ -396,6 +398,7 @@ class TestCommentEndpoints:
         )
         assert resp.status_code == 201
         assert resp.json()["data"]["comment"]["body"] == "Loved it!"
+        assert resp.json()["data"]["comment"]["username"] == "testuser"
 
     def test_create_comment_requires_auth(self, client, mock_user_data_client):
         assert client.post(

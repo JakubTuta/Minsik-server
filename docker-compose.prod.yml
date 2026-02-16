@@ -315,11 +315,18 @@ services:
       DB_PASSWORD: ${DB_PASSWORD}
       DB_POOL_SIZE: 3
       DB_MAX_OVERFLOW: 5
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_DB: ${REDIS_DB}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_MAX_CONNECTIONS: 5
       USER_DATA_SERVICE_HOST: 0.0.0.0
       USER_DATA_GRPC_PORT: 50053
     # NO EXPOSED PORTS - internal network only (security)
     depends_on:
       postgres:
+        condition: service_healthy
+      redis:
         condition: service_healthy
     deploy:
       resources:

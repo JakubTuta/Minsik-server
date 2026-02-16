@@ -40,6 +40,7 @@ class RatingSchema(pydantic.BaseModel):
 class CommentSchema(pydantic.BaseModel):
     comment_id: int
     user_id: int
+    username: str
     book_id: int
     book_slug: str
     body: str

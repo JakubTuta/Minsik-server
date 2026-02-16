@@ -5,6 +5,7 @@ import asyncio
 import grpc
 import sqlalchemy
 import app.database
+import app.cache
 import app.proto.user_data_pb2
 import app.proto.user_data_pb2_grpc
 import app.services.bookshelf_service
@@ -88,6 +89,14 @@ async def _resolve_book(
     return row.book_id, row.title or "", row.primary_cover_url or ""
 
 
+async def _resolve_username(session, user_id: int) -> str:
+    result = await session.execute(sqlalchemy.text(
+        "SELECT username FROM auth.users WHERE user_id = :user_id"
+    ), {"user_id": user_id})
+    row = result.fetchone()
+    return row.username if row else ""
+
+
 def _bookshelf_to_proto(
     bookshelf,
     book_slug: str = "",
@@ -146,7 +155,8 @@ def _rating_to_proto(
 
 def _comment_to_proto(
     comment,
-    book_slug: str = ""
+    book_slug: str = "",
+    username: str = ""
 ) -> app.proto.user_data_pb2.Comment:
     return app.proto.user_data_pb2.Comment(
         comment_id=comment.comment_id,
@@ -156,7 +166,8 @@ def _comment_to_proto(
         body=comment.body,
         is_spoiler=comment.is_spoiler,
         created_at=comment.created_at.isoformat() if comment.created_at else "",
-        updated_at=comment.updated_at.isoformat() if comment.updated_at else ""
+        updated_at=comment.updated_at.isoformat() if comment.updated_at else "",
+        username=username
     )
 
 
@@ -193,6 +204,7 @@ def _row_to_comment_with_rating(
         has_plot_complexity=row.plot_complexity is not None,
         humor=float(row.humor) if row.humor is not None else 0.0,
         has_humor=row.humor is not None,
+        username=row.username if hasattr(row, "username") else "",
     )
 
 
@@ -418,6 +430,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                     sub_ratings,
                     request.review_text or None
                 )
+                await app.cache.delete_book_cache(request.book_slug)
                 return app.proto.user_data_pb2.RatingResponse(
                     rating=_rating_to_proto(rating, request.book_slug, book_title, book_cover_url)
                 )
@@ -440,6 +453,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 await app.services.rating_service.delete_rating(
                     session, request.user_id, book_id
                 )
+                await app.cache.delete_book_cache(request.book_slug)
                 return app.proto.user_data_pb2.EmptyResponse()
         except ValueError as e:
             await _handle_error(e, context)
@@ -567,8 +581,9 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                     session, request.user_id, book_id, request.body, request.is_spoiler
                 )
                 await _book_comments_cache.invalidate_by_book(book_id)
+                username = await _resolve_username(session, request.user_id)
                 return app.proto.user_data_pb2.CommentResponse(
-                    comment=_comment_to_proto(comment, request.book_slug)
+                    comment=_comment_to_proto(comment, request.book_slug, username)
                 )
         except ValueError as e:
             await _handle_error(e, context)
@@ -590,8 +605,9 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 )
                 slug_map = await _build_book_slug_map(session, [comment.book_id])
                 await _book_comments_cache.invalidate_by_book(comment.book_id)
+                username = await _resolve_username(session, request.user_id)
                 return app.proto.user_data_pb2.CommentResponse(
-                    comment=_comment_to_proto(comment, slug_map.get(comment.book_id, ""))
+                    comment=_comment_to_proto(comment, slug_map.get(comment.book_id, ""), username)
                 )
         except ValueError as e:
             await _handle_error(e, context)
@@ -657,7 +673,8 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 else:
                     slug_map = await _build_book_slug_map(session, [r.book_id for r in rows])
 
-                protos = [_comment_to_proto(r, slug_map.get(r.book_id, "")) for r in rows]
+                username = await _resolve_username(session, request.user_id) if rows else ""
+                protos = [_comment_to_proto(r, slug_map.get(r.book_id, ""), username) for r in rows]
                 return app.proto.user_data_pb2.CommentsListResponse(
                     comments=protos,
                     total_count=total_count
@@ -701,7 +718,8 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                         rating, request.book_slug, book_title, book_cover_url
                     )
                 if comment is not None:
-                    kwargs["comment"] = _comment_to_proto(comment, request.book_slug)
+                    username = await _resolve_username(session, request.user_id)
+                    kwargs["comment"] = _comment_to_proto(comment, request.book_slug, username)
 
                 return app.proto.user_data_pb2.UserBookInfoResponse(**kwargs)
         except ValueError as e:
@@ -761,10 +779,12 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                                    c.created_at, c.updated_at,
                                    r.overall_rating, r.review_text, r.pacing, r.emotional_impact,
                                    r.intellectual_depth, r.writing_quality, r.rereadability,
-                                   r.readability, r.plot_complexity, r.humor
+                                   r.readability, r.plot_complexity, r.humor,
+                                   a.username
                             FROM user_data.comments c
                             LEFT JOIN user_data.ratings r
                                    ON r.user_id = c.user_id AND r.book_id = c.book_id
+                            LEFT JOIN auth.users a ON a.user_id = c.user_id
                             WHERE {where}
                             ORDER BY {sort_col} {order_dir} NULLS LAST, c.created_at DESC
                             LIMIT :limit OFFSET :offset
@@ -786,10 +806,12 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                                    c.created_at, c.updated_at,
                                    r.overall_rating, r.review_text, r.pacing, r.emotional_impact,
                                    r.intellectual_depth, r.writing_quality, r.rereadability,
-                                   r.readability, r.plot_complexity, r.humor
+                                   r.readability, r.plot_complexity, r.humor,
+                                   a.username
                             FROM user_data.comments c
                             LEFT JOIN user_data.ratings r
                                    ON r.user_id = c.user_id AND r.book_id = c.book_id
+                            LEFT JOIN auth.users a ON a.user_id = c.user_id
                             WHERE c.user_id = :user_id AND c.book_id = :book_id
                               AND c.is_deleted = FALSE
                         """),

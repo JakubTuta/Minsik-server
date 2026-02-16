@@ -152,6 +152,7 @@ message Comment {
   bool is_spoiler = 6;
   string created_at = 7;
   string updated_at = 8;
+  string username = 9;
 }
 message CommentResponse      { Comment comment = 1; }
 message CommentsListResponse { repeated Comment comments = 1; int32 total_count = 2; }
@@ -196,6 +197,7 @@ message BookCommentWithRating {
   bool   has_plot_complexity    = 25;
   float  humor                  = 26;
   bool   has_humor              = 27;
+  string username               = 28;
 }
 
 message BookCommentsResponse {

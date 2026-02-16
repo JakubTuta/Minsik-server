@@ -71,6 +71,7 @@ def _comment_proto_to_dict(c) -> typing.Dict[str, typing.Any]:
     return {
         "comment_id": c.comment_id,
         "user_id": c.user_id,
+        "username": c.username,
         "book_id": c.book_id,
         "book_slug": c.book_slug,
         "body": c.body,
@@ -135,6 +136,7 @@ async def get_user_book_info(
 
 @router.put(
     "/users/me/bookshelves/{book_slug}",
+    response_model=app.models.user_data_responses.BookshelfResponse,
     summary="Add or update a book on your bookshelf",
     description="""
     Set the reading status for a book on the authenticated user's bookshelf.
@@ -214,6 +216,7 @@ async def delete_bookshelf(
 
 @router.get(
     "/users/me/bookshelves",
+    response_model=app.models.user_data_responses.BookshelfListResponse,
     summary="Get your bookshelf",
     description="""
     Retrieve the authenticated user's bookshelf entries with optional filtering and sorting.
@@ -264,6 +267,7 @@ async def get_user_bookshelves(
 
 @router.get(
     "/users/{username}/bookshelves",
+    response_model=app.models.user_data_responses.BookshelfListResponse,
     summary="Get a user's public bookshelf",
     description="""
     Retrieve any user's bookshelf by their username.
@@ -318,6 +322,7 @@ async def get_public_bookshelves(
 
 @router.post(
     "/books/{book_slug}/favourite",
+    response_model=app.models.user_data_responses.FavouriteResponse,
     summary="Add a book to favourites",
     description="""
     Mark a book as a favourite. Creates a bookshelf entry with `want_to_read` status if one doesn't exist.
@@ -355,6 +360,7 @@ async def add_favourite(
 
 @router.delete(
     "/books/{book_slug}/favourite",
+    response_model=app.models.user_data_responses.FavouriteResponse,
     summary="Remove a book from favourites",
     description="""
     Unmark a book as a favourite. The bookshelf entry status is preserved.
@@ -392,6 +398,7 @@ async def remove_favourite(
 
 @router.get(
     "/users/me/favourites",
+    response_model=app.models.user_data_responses.BookshelfListResponse,
     summary="Get your favourite books",
     description="""
     Retrieve all books the authenticated user has marked as favourites.
@@ -434,6 +441,8 @@ async def get_user_favourites(
 
 @router.post(
     "/books/{book_slug}/rate",
+    response_model=app.models.user_data_responses.RatingResponse,
+    status_code=201,
     summary="Rate a book",
     description="""
     Submit or update a rating for a book. Only `overall_rating` is required (1.0–5.0).
@@ -530,6 +539,7 @@ async def delete_rating(
 
 @router.get(
     "/users/me/ratings",
+    response_model=app.models.user_data_responses.RatingListResponse,
     summary="Get your ratings",
     description="""
     Retrieve all books the authenticated user has rated.
@@ -584,6 +594,8 @@ async def get_user_ratings(
 
 @router.post(
     "/books/{book_slug}/comments",
+    response_model=app.models.user_data_responses.CommentResponse,
+    status_code=201,
     summary="Post a comment on a book",
     description="""
     Create a comment on a book (1–5000 characters). Only one comment per user per book is allowed.
@@ -591,10 +603,12 @@ async def get_user_ratings(
 
     Mark `is_spoiler: true` to hide the comment behind a spoiler warning.
 
+    The response includes a `username` field with the commenter's display name.
+
     Requires a valid access token in the `Authorization: Bearer <token>` header.
     """,
     responses={
-        201: {"description": "Comment created"},
+        201: {"description": "Comment created. Response includes comment_id, user_id, username, body, is_spoiler, created_at, updated_at"},
         401: {"description": "Not authenticated"},
         404: {"description": "Book not found"},
         409: {"description": "Comment already exists for this book"}
@@ -628,6 +642,7 @@ async def create_comment(
 
 @router.put(
     "/books/{book_slug}/comments/{comment_id}",
+    response_model=app.models.user_data_responses.CommentResponse,
     summary="Update a comment",
     description="""
     Edit the body or spoiler flag of an existing comment. Only the comment's author can update it.
@@ -707,6 +722,7 @@ async def delete_comment(
 
 @router.get(
     "/users/me/comments",
+    response_model=app.models.user_data_responses.CommentListResponse,
     summary="Get your comments",
     description="""
     Retrieve all comments posted by the authenticated user.

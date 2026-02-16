@@ -188,3 +188,43 @@ class SeriesBooksResponse(pydantic.BaseModel):
     success: bool = True
     data: SeriesBooksData
     error: typing.Optional[app.models.responses.ErrorDetail] = None
+
+
+class RatingDataSchema(pydantic.BaseModel):
+    overall_rating: float
+    review_text: typing.Optional[str] = None
+    pacing: typing.Optional[float] = None
+    emotional_impact: typing.Optional[float] = None
+    intellectual_depth: typing.Optional[float] = None
+    writing_quality: typing.Optional[float] = None
+    rereadability: typing.Optional[float] = None
+    readability: typing.Optional[float] = None
+    plot_complexity: typing.Optional[float] = None
+    humor: typing.Optional[float] = None
+
+
+class BookCommentWithRatingSchema(pydantic.BaseModel):
+    comment_id: int
+    user_id: int
+    username: str
+    book_id: int
+    book_slug: str
+    body: str
+    is_spoiler: bool
+    comment_created_at: str
+    comment_updated_at: str
+    rating: typing.Optional[RatingDataSchema] = None
+
+
+class BookCommentsListData(pydantic.BaseModel):
+    items: typing.List[BookCommentWithRatingSchema]
+    total_count: int
+    limit: int
+    offset: int
+    my_entry: typing.Optional[BookCommentWithRatingSchema] = None
+
+
+class BookCommentsResponse(pydantic.BaseModel):
+    success: bool = True
+    data: BookCommentsListData
+    error: typing.Optional[app.models.responses.ErrorDetail] = None

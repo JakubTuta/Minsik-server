@@ -393,6 +393,7 @@ def _comment_with_rating_to_dict(c) -> typing.Dict[str, typing.Any]:
     return {
         "comment_id": c.comment_id,
         "user_id": c.user_id,
+        "username": c.username,
         "book_id": c.book_id,
         "book_slug": c.book_slug,
         "body": c.body,
@@ -416,11 +417,14 @@ def _comment_with_rating_to_dict(c) -> typing.Dict[str, typing.Any]:
 
 @router.get(
     "/books/{slug}/comments",
+    response_model=app.models.books_responses.BookCommentsResponse,
     summary="Get comments for a book",
     description="""
     Retrieve public comments for a book. No authentication required.
 
-    Each comment includes the commenter's associated rating (if any), nested under `rating`.
+    Each item includes `comment_id`, `user_id`, `username`, `body`, `is_spoiler`,
+    `comment_created_at`, `comment_updated_at`, and an optional `rating` object.
+    The `rating` field is `null` when the commenter has not rated the book.
 
     **Sort Options (sort_by):**
     - `created_at` - Newest/oldest first (default)
