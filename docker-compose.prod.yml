@@ -109,10 +109,17 @@ services:
       INGESTION_GRPC_PORT: ${INGESTION_GRPC_PORT}
       BOOKS_SERVICE_HOST: ${BOOKS_SERVICE_HOST}
       BOOKS_GRPC_PORT: ${BOOKS_GRPC_PORT}
+      AUTH_SERVICE_HOST: ${AUTH_SERVICE_HOST}
+      AUTH_GRPC_PORT: ${AUTH_GRPC_PORT}
+      USER_DATA_SERVICE_HOST: ${USER_DATA_SERVICE_HOST}
+      USER_DATA_GRPC_PORT: ${USER_DATA_GRPC_PORT}
       GRPC_POOL_SIZE: ${GRPC_POOL_SIZE}
       GRPC_KEEPALIVE_TIME_MS: ${GRPC_KEEPALIVE_TIME_MS}
       GRPC_KEEPALIVE_TIMEOUT_MS: ${GRPC_KEEPALIVE_TIMEOUT_MS}
       GRPC_TIMEOUT: ${GRPC_TIMEOUT}
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      JWT_ALGORITHM: ${JWT_ALGORITHM}
+      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRE_MINUTES}
       CORS_ORIGINS: "https://minsik.app,https://www.minsik.app"
       CORS_ALLOW_CREDENTIALS: "true"
       CORS_ALLOW_METHODS: "GET,POST,PUT,DELETE,PATCH"
@@ -123,6 +130,8 @@ services:
     depends_on:
       - ingestion-service
       - books-service
+      - auth-service
+      - user-data-service
     deploy:
       resources:
         limits:
@@ -227,6 +236,90 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+    networks:
+      - minsik-internal
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # ============================================================================
+  # Auth Service - Production Configuration
+  # ============================================================================
+  auth-service:
+    image: europe-central2-docker.pkg.dev/minsik-486117/server/auth-service:latest
+    container_name: minsik-auth-service
+    environment:
+      ENV: production
+      DEBUG: false
+      LOG_LEVEL: ERROR
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_POOL_SIZE: 3
+      DB_MAX_OVERFLOW: 5
+      AUTH_SERVICE_HOST: 0.0.0.0
+      AUTH_GRPC_PORT: 50051
+      JWT_SECRET_KEY: ${JWT_SECRET_KEY}
+      JWT_ALGORITHM: ${JWT_ALGORITHM}
+      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRE_MINUTES}
+      JWT_REFRESH_TOKEN_EXPIRE_DAYS: ${JWT_REFRESH_TOKEN_EXPIRE_DAYS}
+    # NO EXPOSED PORTS - internal network only (security)
+    depends_on:
+      postgres:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 512M
+        reservations:
+          cpus: "0.25"
+          memory: 256M
+    networks:
+      - minsik-internal
+    restart: always
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # ============================================================================
+  # User Data Service - Production Configuration
+  # ============================================================================
+  user-data-service:
+    image: europe-central2-docker.pkg.dev/minsik-486117/server/user-data-service:latest
+    container_name: minsik-user-data-service
+    environment:
+      ENV: production
+      DEBUG: false
+      LOG_LEVEL: ERROR
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_POOL_SIZE: 3
+      DB_MAX_OVERFLOW: 5
+      USER_DATA_SERVICE_HOST: 0.0.0.0
+      USER_DATA_GRPC_PORT: 50053
+    # NO EXPOSED PORTS - internal network only (security)
+    depends_on:
+      postgres:
         condition: service_healthy
     deploy:
       resources:
