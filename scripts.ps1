@@ -28,6 +28,20 @@ param(
     [switch]$Init
 )
 
+# Ensure we use the venv Python if available
+if (Test-Path "venv/Scripts/python.exe") {
+    $venvPythonPath = (Resolve-Path "venv/Scripts/python.exe").Path
+    $env:PYTHON = $venvPythonPath
+    $env:CLOUDSDK_PYTHON = $venvPythonPath
+    # Add venv Scripts to PATH for gcloud and other tools
+    $venvScriptsPath = (Resolve-Path "venv/Scripts").Path
+    if ($env:PATH -notlike "*$venvScriptsPath*") {
+        $env:PATH = $venvScriptsPath + ";" + $env:PATH
+    }
+    # Remove any Microsoft Store Python redirects from PATH
+    $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notmatch 'WindowsApps' }) -join ';'
+}
+
 # Colors for output
 $ColorSuccess = "Green"
 $ColorError = "Red"
@@ -205,7 +219,7 @@ function Compile-Proto {
             $protoBaseName = [System.IO.Path]::GetFileNameWithoutExtension($protoFile)
 
             # Compile proto file to current directory first
-            python -m grpc_tools.protoc `
+            & "$env:PYTHON" -m grpc_tools.protoc `
                 -I./proto `
                 --python_out=. `
                 --grpc_python_out=. `
@@ -316,7 +330,7 @@ if __name__ == '__main__':
     }
 
     # Run the Python script
-    python scripts/create_admin.py --email $Email --password $Password
+    & "$env:PYTHON" scripts/create_admin.py --email $Email --password $Password
 
     if ($LASTEXITCODE -eq 0) {
         Write-Success "Admin user created successfully!"
@@ -350,6 +364,11 @@ function Build-And-Push-Images {
     # Service definitions: name, dockerfile path, image name
     $services = @(
         @{
+            Name = "Auth Service"
+            Dockerfile = "services/auth/Dockerfile"
+            ImageName = "auth-service"
+        },
+        @{
             Name = "Gateway Service"
             Dockerfile = "services/gateway/Dockerfile"
             ImageName = "gateway-service"
@@ -365,6 +384,11 @@ function Build-And-Push-Images {
             ImageName = "books-service"
         },
         @{
+            Name = "User Data Service"
+            Dockerfile = "services/user_data/Dockerfile"
+            ImageName = "user-data-service"
+        },
+        @{
             Name = "RQ Worker"
             Dockerfile = "services/ingestion/Dockerfile"
             ImageName = "rq-worker"
@@ -375,7 +399,7 @@ function Build-And-Push-Images {
 
     # Configure Docker to use gcloud credentials
     Write-Host "  Configuring Docker authentication..." -ForegroundColor Gray
-    gcloud auth configure-docker europe-central2-docker.pkg.dev --quiet
+    & gcloud auth configure-docker europe-central2-docker.pkg.dev --quiet
 
     if ($LASTEXITCODE -ne 0) {
         Write-Error-Message "Failed to configure Docker authentication. Make sure you're logged in with 'gcloud auth login'"
@@ -384,11 +408,23 @@ function Build-And-Push-Images {
 
     foreach ($service in $services) {
         $imageName = "$GAR_REGISTRY/$($service.ImageName)"
-        $imageTag = "$imageName:latest"
+        $imageTag = $imageName + ":latest"
+        $dockerfilePath = $service.Dockerfile
 
         Write-Host "  Building $($service.Name)..." -ForegroundColor Gray
 
-        docker build -t $imageTag -f $service.Dockerfile .
+        # Verify Dockerfile exists
+        if (-not (Test-Path $dockerfilePath)) {
+            Write-Error-Message "Dockerfile not found at $dockerfilePath"
+            return $false
+        }
+
+        # Convert to absolute path for docker build
+        $absoluteDockerfilePath = (Resolve-Path $dockerfilePath).Path
+
+        # Use docker build with absolute path (using argument array for proper argument passing)
+        Write-Host "    Running: docker build -t $imageTag -f ... ." -ForegroundColor Gray
+        & docker build -t $imageTag -f $absoluteDockerfilePath .
 
         if ($LASTEXITCODE -ne 0) {
             Write-Error-Message "Failed to build $($service.Name)"
@@ -396,7 +432,7 @@ function Build-And-Push-Images {
         }
 
         Write-Host "  Pushing $($service.Name) to GAR..." -ForegroundColor Gray
-        docker push $imageTag
+        & docker push $imageTag
 
         if ($LASTEXITCODE -ne 0) {
             Write-Error-Message "Failed to push $($service.Name)"
@@ -425,7 +461,7 @@ function Deploy-Services {
 
     if ($Environment -eq "dev") {
         Write-Host "  Using docker-compose.yml (development)" -ForegroundColor Gray
-        docker-compose up -d --build
+        & docker-compose up -d --build
     } elseif ($Environment -eq "prod") {
         Write-Host "  Using docker-compose.prod.yml (production)" -ForegroundColor Gray
 
@@ -437,10 +473,9 @@ function Deploy-Services {
             return
         }
 
-        # Pull images from GAR and deploy
-        Write-Host "`n  Pulling images from GAR and deploying..." -ForegroundColor Gray
-        docker-compose -f docker-compose.prod.yml pull
-        docker-compose -f docker-compose.prod.yml up -d
+        # Pull images from GAR (without starting containers)
+        Write-Host "`n  Pulling images from GAR..." -ForegroundColor Gray
+        & docker-compose -f docker-compose.prod.yml pull
     } else {
         Write-Error-Message "Invalid environment: $Environment (use 'dev' or 'prod')"
         return
@@ -448,11 +483,12 @@ function Deploy-Services {
 
     if ($LASTEXITCODE -eq 0) {
         Write-Success "Deployment complete!"
-        Write-Host "`nService Status:" -ForegroundColor $ColorInfo
         if ($Environment -eq "dev") {
-            docker-compose ps
+            Write-Host "`nService Status:" -ForegroundColor $ColorInfo
+            & docker-compose ps
         } else {
-            docker-compose -f docker-compose.prod.yml ps
+            Write-Host "`nImages ready. To start containers, run:" -ForegroundColor $ColorInfo
+            Write-Host "  docker-compose -f docker-compose.prod.yml up -d" -ForegroundColor Gray
         }
     } else {
         Write-Error-Message "Deployment failed"
@@ -468,10 +504,10 @@ function Show-Logs {
 
     if ($Service) {
         Write-Host "  Service: $Service" -ForegroundColor Gray
-        docker-compose logs -f $Service
+        & docker-compose logs -f $Service
     } else {
         Write-Host "  All services (Ctrl+C to exit)" -ForegroundColor Gray
-        docker-compose logs -f
+        & docker-compose logs -f
     }
 }
 
@@ -501,13 +537,14 @@ function Run-Migration {
         $containerName = $svc.Container
         $serviceName = $svc.Service
 
-        if (-not (docker ps -q -f name=$containerName)) {
+        $containerCheck = & docker ps -q -f name=$containerName
+        if (-not $containerCheck) {
             Write-Warning-Message "Container $containerName is not running -- skipping $serviceName migrations"
             continue
         }
 
         Write-Host "  Running '$alembicAction' for $serviceName..." -ForegroundColor Gray
-        docker exec $containerName sh -c "alembic $alembicAction"
+        & docker exec $containerName sh -c "alembic $alembicAction"
 
         if ($LASTEXITCODE -eq 0) {
             Write-Success "  $serviceName migrations OK"
@@ -523,7 +560,7 @@ function Initialize-Database {
     Write-Host "  Running init-db.sql script..." -ForegroundColor Gray
 
     # Run the init script through docker
-    docker exec minsik-postgres-dev psql -U postgres -d minsik_db -f /docker-entrypoint-initdb.d/init-db.sql
+    & docker exec minsik-postgres-dev psql -U postgres -d minsik_db -f /docker-entrypoint-initdb.d/init-db.sql
 
     if ($LASTEXITCODE -eq 0) {
         Write-Success "Database initialized!"
@@ -553,9 +590,10 @@ function Run-Tests {
     if ($Service -and $Service -ne "all") {
         $containerName = "minsik-$($serviceMap[$Service])-dev"
 
-        if (-not (docker ps -q -f name=$containerName)) {
+        $containerCheck = & docker ps -q -f name=$containerName
+        if (-not $containerCheck) {
             Write-Warning-Message "Service container not running. Starting services..."
-            docker-compose up -d $($serviceMap[$Service])
+            & docker-compose up -d $($serviceMap[$Service])
             Start-Sleep -Seconds 5
         }
 
@@ -578,7 +616,7 @@ function Run-Tests {
 
         Write-Host "  Running: $pytestCmd" -ForegroundColor Gray
 
-        docker exec $containerName sh -c "$pytestCmd"
+        & docker exec $containerName sh -c "$pytestCmd"
 
         if ($LASTEXITCODE -eq 0) {
             Write-Success "Tests passed!"
@@ -599,12 +637,13 @@ function Run-Tests {
 
             $containerName = "minsik-$($serviceMap[$svc])-dev"
 
-            if (-not (docker ps -q -f name=$containerName)) {
+            $containerCheck = & docker ps -q -f name=$containerName
+            if (-not $containerCheck) {
                 Write-Warning-Message "Service container not running. Skipping $svc..."
                 continue
             }
 
-            docker exec $containerName pytest tests/ -v
+            & docker exec $containerName pytest tests/ -v
 
             if ($LASTEXITCODE -eq 0) {
                 $totalPassed++
@@ -631,10 +670,10 @@ function Clean-All {
     }
 
     Write-Step "Stopping services..."
-    docker-compose down -v
+    & docker-compose down -v
 
     Write-Step "Removing volumes..."
-    docker volume prune -f
+    & docker volume prune -f
 
     Write-Success "Cleanup complete!"
 }
