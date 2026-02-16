@@ -31,3 +31,9 @@ class UserStats(app.models.base.Base):
     comments_count: sqlalchemy.orm.Mapped[int] = sqlalchemy.orm.mapped_column(
         sqlalchemy.Integer, nullable=False, server_default="0"
     )
+    created_at: sqlalchemy.orm.Mapped[sqlalchemy.DateTime] = sqlalchemy.orm.mapped_column(
+        sqlalchemy.DateTime, nullable=False, server_default=sqlalchemy.func.now()
+    )
+    updated_at: sqlalchemy.orm.Mapped[sqlalchemy.DateTime] = sqlalchemy.orm.mapped_column(
+        sqlalchemy.DateTime, nullable=False, server_default=sqlalchemy.func.now()
+    )

@@ -54,20 +54,6 @@ def mock_comment():
     return row
 
 
-@pytest.fixture
-def mock_note():
-    row = MagicMock()
-    row.note_id = 1
-    row.user_id = 10
-    row.book_id = 100
-    row.note_text = "Remember this passage"
-    row.page_number = 42
-    row.is_spoiler = False
-    row.created_at = datetime.datetime(2026, 1, 1, 12, 0, 0)
-    row.updated_at = datetime.datetime(2026, 1, 1, 12, 0, 0)
-    return row
-
-
 def make_scalar_result(value):
     result = MagicMock()
     result.scalar_one_or_none.return_value = value
