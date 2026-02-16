@@ -3,6 +3,7 @@ import sqlalchemy
 import sqlalchemy.exc
 import sqlalchemy.ext.asyncio
 import app.models.comment
+import app.services.stats_service
 
 
 _COMMENT_SORT_COLUMNS: typing.Dict[str, typing.Any] = {
@@ -26,6 +27,8 @@ async def create_comment(
             is_spoiler=is_spoiler
         )
         session.add(row)
+        await session.flush()
+        await app.services.stats_service.recalculate_comment_stats(session, user_id)
         await session.commit()
         await session.refresh(row)
         return row
@@ -43,8 +46,7 @@ async def update_comment(
 ) -> app.models.comment.Comment:
     stmt = sqlalchemy.select(app.models.comment.Comment).where(
         app.models.comment.Comment.comment_id == comment_id,
-        app.models.comment.Comment.user_id == user_id,
-        app.models.comment.Comment.is_deleted == False
+        app.models.comment.Comment.user_id == user_id
     )
     result = await session.execute(stmt)
     row = result.scalar_one_or_none()
@@ -63,17 +65,16 @@ async def delete_comment(
     comment_id: int,
     user_id: int
 ) -> None:
-    stmt = sqlalchemy.select(app.models.comment.Comment).where(
+    stmt = sqlalchemy.delete(app.models.comment.Comment).where(
         app.models.comment.Comment.comment_id == comment_id,
-        app.models.comment.Comment.user_id == user_id,
-        app.models.comment.Comment.is_deleted == False
-    )
+        app.models.comment.Comment.user_id == user_id
+    ).returning(app.models.comment.Comment.comment_id)
+
     result = await session.execute(stmt)
-    row = result.scalar_one_or_none()
-    if row is None:
+    if result.scalar_one_or_none() is None:
         raise ValueError("not_found")
 
-    row.is_deleted = True
+    await app.services.stats_service.recalculate_comment_stats(session, user_id)
     await session.commit()
 
 
@@ -86,8 +87,7 @@ async def get_book_comments(
     include_spoilers: bool
 ) -> typing.Tuple[typing.List[app.models.comment.Comment], int]:
     base_conditions = [
-        app.models.comment.Comment.book_id == book_id,
-        app.models.comment.Comment.is_deleted == False
+        app.models.comment.Comment.book_id == book_id
     ]
     if not include_spoilers:
         base_conditions.append(app.models.comment.Comment.is_spoiler == False)
@@ -119,8 +119,7 @@ async def get_comment_for_book(
 ) -> typing.Optional[app.models.comment.Comment]:
     stmt = sqlalchemy.select(app.models.comment.Comment).where(
         app.models.comment.Comment.user_id == user_id,
-        app.models.comment.Comment.book_id == book_id,
-        app.models.comment.Comment.is_deleted == False
+        app.models.comment.Comment.book_id == book_id
     )
     result = await session.execute(stmt)
     return result.scalar_one_or_none()
@@ -139,8 +138,7 @@ async def get_user_comments(
     order_expr = sort_col.desc() if order == "desc" else sort_col.asc()
 
     base_conditions = [
-        app.models.comment.Comment.user_id == user_id,
-        app.models.comment.Comment.is_deleted == False
+        app.models.comment.Comment.user_id == user_id
     ]
     if book_id is not None:
         base_conditions.append(app.models.comment.Comment.book_id == book_id)
@@ -157,3 +155,21 @@ async def get_user_comments(
 
     result = await session.execute(stmt)
     return result.scalars().all(), total_count
+
+
+async def delete_user_comments(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    user_id: int
+) -> typing.List[int]:
+    book_ids_result = await session.execute(
+        sqlalchemy.text("SELECT DISTINCT book_id FROM user_data.comments WHERE user_id = :user_id"),
+        {"user_id": user_id}
+    )
+    affected_book_ids = [row.book_id for row in book_ids_result.fetchall()]
+
+    await session.execute(
+        sqlalchemy.delete(app.models.comment.Comment).where(
+            app.models.comment.Comment.user_id == user_id
+        )
+    )
+    return affected_book_ids

@@ -214,3 +214,17 @@ async def update_profile(
     await session.commit()
     await session.refresh(user)
     return user
+
+
+async def delete_account(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    user_id: int
+) -> None:
+    result = await session.execute(
+        select(app.models.user.User).filter(app.models.user.User.user_id == user_id)
+    )
+    user = result.scalar_one_or_none()
+    if not user:
+        raise ValueError("user_not_found")
+    await session.delete(user)
+    await session.commit()

@@ -203,3 +203,20 @@ class AuthServicer(app.proto.auth_pb2_grpc.AuthServiceServicer):
         except Exception as e:
             logger.error(f"Error in UpdateProfile: {str(e)}")
             await context.abort(grpc.StatusCode.INTERNAL, f"Update profile failed: {str(e)}")
+
+    async def DeleteAccount(
+        self,
+        request: app.proto.auth_pb2.DeleteAccountRequest,
+        context: grpc.aio.ServicerContext
+    ) -> app.proto.auth_pb2.EmptyResponse:
+        try:
+            async with app.database.async_session_maker() as session:
+                await app.services.auth_service.delete_account(session, request.user_id)
+                return app.proto.auth_pb2.EmptyResponse()
+        except ValueError as e:
+            await context.abort(grpc.StatusCode.NOT_FOUND, f"User not found: {str(e)}")
+        except grpc.aio.AbortError:
+            raise
+        except Exception as e:
+            logger.error(f"Error in DeleteAccount: {str(e)}")
+            await context.abort(grpc.StatusCode.INTERNAL, f"Delete account failed: {str(e)}")

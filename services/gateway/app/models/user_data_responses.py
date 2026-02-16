@@ -14,6 +14,10 @@ class BookshelfSchema(pydantic.BaseModel):
     is_favorite: bool
     created_at: str
     updated_at: str
+    book_author_names: typing.List[str] = []
+    book_author_slugs: typing.List[str] = []
+    book_series_name: typing.Optional[str] = None
+    book_series_slug: typing.Optional[str] = None
 
 
 class RatingSchema(pydantic.BaseModel):
@@ -35,6 +39,10 @@ class RatingSchema(pydantic.BaseModel):
     humor: typing.Optional[float] = None
     created_at: str
     updated_at: str
+    book_author_names: typing.List[str] = []
+    book_author_slugs: typing.List[str] = []
+    book_series_name: typing.Optional[str] = None
+    book_series_slug: typing.Optional[str] = None
 
 
 class CommentSchema(pydantic.BaseModel):
@@ -43,10 +51,16 @@ class CommentSchema(pydantic.BaseModel):
     username: str
     book_id: int
     book_slug: str
+    book_title: str = ""
     body: str
     is_spoiler: bool
     created_at: str
     updated_at: str
+    book_cover_url: str = ""
+    book_author_names: typing.List[str] = []
+    book_author_slugs: typing.List[str] = []
+    book_series_name: typing.Optional[str] = None
+    book_series_slug: typing.Optional[str] = None
 
 
 class FavouriteResponseData(pydantic.BaseModel):
@@ -139,6 +153,26 @@ class UserBookInfoData(pydantic.BaseModel):
 class UserBookInfoResponse(pydantic.BaseModel):
     success: bool = True
     data: UserBookInfoData
+    error: typing.Optional[app.models.responses.ErrorDetail] = None
+
+
+class ProfileStatsSchema(pydantic.BaseModel):
+    want_to_read_count: int = 0
+    reading_count: int = 0
+    read_count: int = 0
+    abandoned_count: int = 0
+    favourites_count: int = 0
+    ratings_count: int = 0
+    comments_count: int = 0
+
+
+class ProfileStatsData(pydantic.BaseModel):
+    stats: ProfileStatsSchema
+
+
+class ProfileStatsResponse(pydantic.BaseModel):
+    success: bool = True
+    data: ProfileStatsData
     error: typing.Optional[app.models.responses.ErrorDetail] = None
 
 

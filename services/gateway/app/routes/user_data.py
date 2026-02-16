@@ -40,7 +40,11 @@ def _bookshelf_proto_to_dict(b) -> typing.Dict[str, typing.Any]:
         "status": b.status,
         "is_favorite": b.is_favorite,
         "created_at": b.created_at,
-        "updated_at": b.updated_at
+        "updated_at": b.updated_at,
+        "book_author_names": list(b.book_author_names),
+        "book_author_slugs": list(b.book_author_slugs),
+        "book_series_name": b.book_series_name or None,
+        "book_series_slug": b.book_series_slug or None
     }
 
 
@@ -63,7 +67,11 @@ def _rating_proto_to_dict(r) -> typing.Dict[str, typing.Any]:
         "plot_complexity": r.plot_complexity if r.has_plot_complexity else None,
         "humor": r.humor if r.has_humor else None,
         "created_at": r.created_at,
-        "updated_at": r.updated_at
+        "updated_at": r.updated_at,
+        "book_author_names": list(r.book_author_names),
+        "book_author_slugs": list(r.book_author_slugs),
+        "book_series_name": r.book_series_name or None,
+        "book_series_slug": r.book_series_slug or None
     }
 
 
@@ -74,10 +82,16 @@ def _comment_proto_to_dict(c) -> typing.Dict[str, typing.Any]:
         "username": c.username,
         "book_id": c.book_id,
         "book_slug": c.book_slug,
+        "book_title": c.book_title or None,
         "body": c.body,
         "is_spoiler": c.is_spoiler,
         "created_at": c.created_at,
-        "updated_at": c.updated_at
+        "updated_at": c.updated_at,
+        "book_cover_url": c.book_cover_url or None,
+        "book_author_names": list(c.book_author_names),
+        "book_author_slugs": list(c.book_author_slugs),
+        "book_series_name": c.book_series_name or None,
+        "book_series_slug": c.book_series_slug or None
     }
 
 
@@ -313,6 +327,50 @@ async def get_public_bookshelves(
         return _grpc_error_response(e)
     except Exception as e:
         logger.error(f"Unexpected error in get_public_bookshelves: {e}")
+        return app.utils.responses.error_response("INTERNAL_ERROR", "An unexpected error occurred", status_code=500)
+
+
+@router.get(
+    "/users/{username}/stats",
+    response_model=app.models.user_data_responses.ProfileStatsResponse,
+    summary="Get a user's profile statistics",
+    description="""
+    Returns public statistics for any user account: number of books in each
+    bookshelf status, favourite books count, ratings count, and comments count.
+
+    This endpoint does not require authentication.
+    """,
+    responses={
+        200: {"description": "Profile stats returned"},
+        404: {"description": "User not found"}
+    }
+)
+@limiter.limit(app.middleware.rate_limit.get_default_limit())
+async def get_public_profile_stats(
+    request: fastapi.Request,
+    username: str,
+):
+    try:
+        response = await app.grpc_clients.user_data_client.get_public_profile_stats(
+            username=username
+        )
+        s = response.stats
+        return app.utils.responses.success_response({
+            "stats": {
+                "want_to_read_count": s.want_to_read_count,
+                "reading_count": s.reading_count,
+                "read_count": s.read_count,
+                "abandoned_count": s.abandoned_count,
+                "favourites_count": s.favourites_count,
+                "ratings_count": s.ratings_count,
+                "comments_count": s.comments_count
+            }
+        })
+    except grpc.RpcError as e:
+        logger.error(f"gRPC error in get_public_profile_stats: {e.code()} - {e.details()}")
+        return _grpc_error_response(e)
+    except Exception as e:
+        logger.error(f"Unexpected error in get_public_profile_stats: {e}")
         return app.utils.responses.error_response("INTERNAL_ERROR", "An unexpected error occurred", status_code=500)
 
 
@@ -687,8 +745,7 @@ async def update_comment(
     status_code=204,
     summary="Delete a comment",
     description="""
-    Soft-delete a comment (the record is retained in the database but hidden from all responses).
-    Only the comment's author can delete it.
+    Permanently delete a comment. Only the comment's author can delete it.
 
     Requires a valid access token in the `Authorization: Bearer <token>` header.
     """,

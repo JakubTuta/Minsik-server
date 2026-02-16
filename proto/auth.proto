@@ -9,6 +9,7 @@ service AuthService {
   rpc ValidateToken(ValidateTokenRequest) returns (ValidateTokenResponse);
   rpc GetCurrentUser(GetCurrentUserRequest) returns (UserResponse);
   rpc UpdateProfile(UpdateProfileRequest) returns (UserResponse);
+  rpc DeleteAccount(DeleteAccountRequest) returns (EmptyResponse);
 }
 
 message RegisterRequest {
@@ -49,6 +50,10 @@ message UpdateProfileRequest {
   string display_name = 2;
   string bio = 3;
   string avatar_url = 4;
+}
+
+message DeleteAccountRequest {
+  int64 user_id = 1;
 }
 
 message User {

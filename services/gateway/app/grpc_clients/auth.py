@@ -143,5 +143,17 @@ class AuthClient:
             logger.error(f"gRPC error updating profile: {e.code()} - {e.details()}")
             raise
 
+    async def delete_account(self, user_id: int) -> auth_pb2.EmptyResponse:
+        request = auth_pb2.DeleteAccountRequest(user_id=user_id)
+
+        try:
+            return await self.stub.DeleteAccount(
+                request,
+                timeout=app.config.settings.grpc_timeout
+            )
+        except grpc.RpcError as e:
+            logger.error(f"gRPC error deleting account: {e.code()} - {e.details()}")
+            raise
+
 
 auth_client = AuthClient()

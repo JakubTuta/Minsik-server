@@ -10,7 +10,7 @@ from app.models.base import Base
 import app.models.bookshelf
 import app.models.rating
 import app.models.comment
-import app.models.note
+import app.models.user_stats
 
 config = context.config
 

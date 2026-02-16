@@ -568,3 +568,53 @@ async def update_profile(
             message="An unexpected error occurred",
             status_code=500
         )
+
+
+@router.delete(
+    "/users/me",
+    status_code=204,
+    summary="Delete account",
+    description="""
+    Permanently delete the authenticated user's account and all associated data.
+
+    This action is irreversible — all bookshelves, ratings, comments, and statistics
+    will be permanently removed.
+
+    Requires a valid access token in the `Authorization: Bearer <token>` header.
+    """,
+    responses={
+        204: {"description": "Account deleted successfully"},
+        401: {"description": "Not authenticated"},
+    }
+)
+@limiter.limit(app.middleware.rate_limit.get_default_limit())
+async def delete_account(
+    request: fastapi.Request,
+    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(app.middleware.auth.require_user)
+):
+    try:
+        user_id = current_user["user_id"]
+        await app.grpc_clients.user_data_client.delete_user_data(user_id=user_id)
+        await app.grpc_clients.auth_client.delete_account(user_id=user_id)
+        return fastapi.Response(status_code=204)
+    except grpc.RpcError as e:
+        logger.error(f"gRPC error in delete_account: {e.code()} - {e.details()}")
+        if e.code() == grpc.StatusCode.NOT_FOUND:
+            return app.utils.responses.error_response(
+                code="NOT_FOUND",
+                message="User not found",
+                status_code=404
+            )
+        return app.utils.responses.error_response(
+            code="INTERNAL_ERROR",
+            message="Account deletion failed",
+            details={"grpc_code": e.code().name},
+            status_code=500
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error in delete_account: {e}")
+        return app.utils.responses.error_response(
+            code="INTERNAL_ERROR",
+            message="An unexpected error occurred",
+            status_code=500
+        )

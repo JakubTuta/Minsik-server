@@ -3,6 +3,7 @@ import sqlalchemy
 import sqlalchemy.ext.asyncio
 import sqlalchemy.dialects.postgresql
 import app.models.bookshelf
+import app.services.stats_service
 
 
 _BOOKSHELF_SORT_COLUMNS: typing.Dict[str, typing.Any] = {
@@ -35,6 +36,7 @@ async def upsert_bookshelf(
     ).returning(app.models.bookshelf.Bookshelf)
 
     result = await session.execute(stmt)
+    await app.services.stats_service.recalculate_bookshelf_stats(session, user_id)
     await session.commit()
     return result.scalar_one()
 
@@ -52,6 +54,7 @@ async def delete_bookshelf(
     result = await session.execute(stmt)
     if result.scalar_one_or_none() is None:
         raise ValueError("not_found")
+    await app.services.stats_service.recalculate_bookshelf_stats(session, user_id)
     await session.commit()
 
 
@@ -121,5 +124,17 @@ async def toggle_favourite(
     ).returning(app.models.bookshelf.Bookshelf)
 
     result = await session.execute(stmt)
+    await app.services.stats_service.recalculate_bookshelf_stats(session, user_id)
     await session.commit()
     return result.scalar_one()
+
+
+async def delete_user_bookshelves(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    user_id: int
+) -> None:
+    await session.execute(
+        sqlalchemy.delete(app.models.bookshelf.Bookshelf).where(
+            app.models.bookshelf.Bookshelf.user_id == user_id
+        )
+    )

@@ -3,6 +3,7 @@ import sqlalchemy
 import sqlalchemy.ext.asyncio
 import sqlalchemy.dialects.postgresql
 import app.models.rating
+import app.services.stats_service
 
 
 _RATING_SORT_COLUMNS: typing.Dict[str, typing.Any] = {
@@ -94,6 +95,7 @@ async def upsert_rating(
     result = await session.execute(stmt)
     row = result.scalar_one()
     await _update_book_stats(session, book_id)
+    await app.services.stats_service.recalculate_rating_stats(session, user_id)
     await session.commit()
     return row
 
@@ -113,6 +115,7 @@ async def delete_rating(
         raise ValueError("not_found")
 
     await _update_book_stats(session, book_id)
+    await app.services.stats_service.recalculate_rating_stats(session, user_id)
     await session.commit()
 
 
@@ -160,3 +163,23 @@ async def get_user_ratings(
 
     result = await session.execute(stmt)
     return result.scalars().all(), total_count
+
+
+async def delete_user_ratings(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    user_id: int
+) -> None:
+    book_ids_result = await session.execute(
+        sqlalchemy.text("SELECT DISTINCT book_id FROM user_data.ratings WHERE user_id = :user_id"),
+        {"user_id": user_id}
+    )
+    affected_book_ids = [row.book_id for row in book_ids_result.fetchall()]
+
+    await session.execute(
+        sqlalchemy.delete(app.models.rating.Rating).where(
+            app.models.rating.Rating.user_id == user_id
+        )
+    )
+
+    for book_id in affected_book_ids:
+        await _update_book_stats(session, book_id)

@@ -22,6 +22,8 @@ service UserDataService {
   rpc GetUserComments(GetUserCommentsRequest) returns (CommentsListResponse);
   rpc GetBookComments(GetBookCommentsRequest) returns (BookCommentsResponse);
   rpc GetUserBookInfo(GetUserBookInfoRequest) returns (UserBookInfoResponse);
+  rpc GetPublicProfileStats(GetPublicProfileStatsRequest) returns (ProfileStatsResponse);
+  rpc DeleteUserData(DeleteUserDataRequest) returns (EmptyResponse);
 }
 
 // Bookshelf
@@ -57,6 +59,10 @@ message Bookshelf {
   bool is_favorite = 8;
   string created_at = 9;
   string updated_at = 10;
+  repeated string book_author_names = 11;
+  repeated string book_author_slugs = 12;
+  string book_series_name = 13;
+  string book_series_slug = 14;
 }
 message BookshelfResponse       { Bookshelf bookshelf = 1; }
 message BookshelvesListResponse { repeated Bookshelf bookshelves = 1; int32 total_count = 2; }
@@ -122,6 +128,10 @@ message Rating {
   bool has_humor = 26;
   string created_at = 19;
   string updated_at = 20;
+  repeated string book_author_names = 27;
+  repeated string book_author_slugs = 28;
+  string book_series_name = 29;
+  string book_series_slug = 30;
 }
 message RatingResponse      { Rating rating = 1; }
 message RatingsListResponse { repeated Rating ratings = 1; int32 total_count = 2; }
@@ -153,6 +163,12 @@ message Comment {
   string created_at = 7;
   string updated_at = 8;
   string username = 9;
+  repeated string book_author_names = 10;
+  repeated string book_author_slugs = 11;
+  string book_series_name = 12;
+  string book_series_slug = 13;
+  string book_cover_url = 14;
+  string book_title = 15;
 }
 message CommentResponse      { Comment comment = 1; }
 message CommentsListResponse { repeated Comment comments = 1; int32 total_count = 2; }
@@ -213,3 +229,19 @@ message UserBookInfoResponse {
   Rating    rating    = 2;
   Comment   comment   = 3;
 }
+
+// Profile stats (public)
+message GetPublicProfileStatsRequest { string username = 1; }
+message ProfileStats {
+  int32 want_to_read_count = 1;
+  int32 reading_count      = 2;
+  int32 read_count         = 3;
+  int32 abandoned_count    = 4;
+  int32 favourites_count   = 5;
+  int32 ratings_count      = 6;
+  int32 comments_count     = 7;
+}
+message ProfileStatsResponse { ProfileStats stats = 1; }
+
+// Account deletion
+message DeleteUserDataRequest { int64 user_id = 1; }

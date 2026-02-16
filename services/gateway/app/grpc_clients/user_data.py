@@ -317,5 +317,25 @@ class UserDataClient:
             logger.error(f"gRPC error in get_book_comments: {e.code()} - {e.details()}")
             raise
 
+    async def get_public_profile_stats(
+        self, username: str
+    ) -> user_data_pb2.ProfileStatsResponse:
+        request = user_data_pb2.GetPublicProfileStatsRequest(username=username)
+        try:
+            return await self.stub.GetPublicProfileStats(request, timeout=app.config.settings.grpc_timeout)
+        except grpc.RpcError as e:
+            logger.error(f"gRPC error in get_public_profile_stats: {e.code()} - {e.details()}")
+            raise
+
+    async def delete_user_data(
+        self, user_id: int
+    ) -> user_data_pb2.EmptyResponse:
+        request = user_data_pb2.DeleteUserDataRequest(user_id=user_id)
+        try:
+            return await self.stub.DeleteUserData(request, timeout=app.config.settings.grpc_timeout)
+        except grpc.RpcError as e:
+            logger.error(f"gRPC error in delete_user_data: {e.code()} - {e.details()}")
+            raise
+
 
 user_data_client = UserDataClient()
