@@ -26,7 +26,7 @@ class AuthClient:
             options=[
                 ("grpc.keepalive_time_ms", app.config.settings.grpc_keepalive_time_ms),
                 ("grpc.keepalive_timeout_ms", app.config.settings.grpc_keepalive_timeout_ms),
-                ("grpc.keepalive_permit_without_calls", 1),
+                ("grpc.keepalive_permit_without_calls", 0),
                 ("grpc.http2.max_pings_without_data", 0),
             ]
         )
