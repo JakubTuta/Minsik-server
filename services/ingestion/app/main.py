@@ -22,7 +22,30 @@ logger = logging.getLogger(__name__)
 shutdown_event = asyncio.Event()
 
 
+async def run_migrations():
+    from alembic import command
+    from alembic.config import Config
+    import os
+
+    alembic_ini = os.path.join(os.path.dirname(__file__), '..', 'alembic.ini')
+    alembic_cfg = Config(alembic_ini)
+    alembic_cfg.set_main_option("sqlalchemy.url", app.config.settings.database_url)
+
+    try:
+        await asyncio.get_event_loop().run_in_executor(
+            None,
+            lambda: command.upgrade(alembic_cfg, "head")
+        )
+        logger.info("Database migrations completed successfully")
+    except Exception as e:
+        logger.error(f"Error running migrations: {str(e)}")
+        raise
+
+
 async def init_db():
+    logger.info("Running database migrations")
+    await run_migrations()
+
     async with app.models.engine.begin() as conn:
         await conn.run_sync(app.models.Base.metadata.create_all)
 
