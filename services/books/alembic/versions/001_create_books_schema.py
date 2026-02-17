@@ -104,28 +104,28 @@ def upgrade() -> None:
         )
     """)
 
-    op.execute("CREATE UNIQUE INDEX idx_books_language_slug ON books.books(language, slug)")
-    op.execute("CREATE INDEX idx_books_language ON books.books(language)")
-    op.execute("CREATE INDEX idx_books_ts_vector ON books.books USING GIN(ts_vector)")
-    op.execute("CREATE INDEX idx_books_rating_count ON books.books(rating_count DESC)")
-    op.execute("CREATE INDEX idx_books_view_count ON books.books(view_count DESC)")
+    op.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_books_language_slug ON books.books(language, slug)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_books_language ON books.books(language)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_books_ts_vector ON books.books USING GIN(ts_vector)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_books_rating_count ON books.books(rating_count DESC)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_books_view_count ON books.books(view_count DESC)")
 
-    op.execute("CREATE UNIQUE INDEX idx_authors_slug ON books.authors(slug)")
-    op.execute("CREATE INDEX idx_authors_name ON books.authors(name)")
-    op.execute("CREATE INDEX idx_authors_ts_vector ON books.authors USING GIN(ts_vector)")
-    op.execute("CREATE INDEX idx_authors_view_count ON books.authors(view_count DESC)")
+    op.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_authors_slug ON books.authors(slug)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_authors_name ON books.authors(name)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_authors_ts_vector ON books.authors USING GIN(ts_vector)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_authors_view_count ON books.authors(view_count DESC)")
 
-    op.execute("CREATE UNIQUE INDEX idx_series_slug ON books.series(slug)")
-    op.execute("CREATE INDEX idx_series_ts_vector ON books.series USING GIN(ts_vector)")
-    op.execute("CREATE INDEX idx_series_view_count ON books.series(view_count DESC)")
+    op.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_series_slug ON books.series(slug)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_series_ts_vector ON books.series USING GIN(ts_vector)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_series_view_count ON books.series(view_count DESC)")
 
-    op.execute("CREATE INDEX idx_book_authors_book_id ON books.book_authors(book_id)")
-    op.execute("CREATE INDEX idx_book_authors_author_id ON books.book_authors(author_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_book_authors_book_id ON books.book_authors(book_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_book_authors_author_id ON books.book_authors(author_id)")
 
-    op.execute("CREATE UNIQUE INDEX idx_genres_slug ON books.genres(slug)")
+    op.execute("CREATE UNIQUE INDEX IF NOT EXISTS idx_genres_slug ON books.genres(slug)")
 
-    op.execute("CREATE INDEX idx_book_genres_book_id ON books.book_genres(book_id)")
-    op.execute("CREATE INDEX idx_book_genres_genre_id ON books.book_genres(genre_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_book_genres_book_id ON books.book_genres(book_id)")
+    op.execute("CREATE INDEX IF NOT EXISTS idx_book_genres_genre_id ON books.book_genres(genre_id)")
 
     op.execute("""
         CREATE OR REPLACE FUNCTION books.update_books_ts_vector()

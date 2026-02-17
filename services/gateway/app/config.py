@@ -30,6 +30,7 @@ class Settings(BaseSettings):
     grpc_keepalive_time_ms: int = Field(default=300000)
     grpc_keepalive_timeout_ms: int = Field(default=10000)
     grpc_timeout: float = Field(default=10.0)
+    grpc_admin_timeout: float = Field(default=60.0)
 
     cors_origins: str = Field(default="*")
     cors_allow_credentials: bool = Field(default=True)

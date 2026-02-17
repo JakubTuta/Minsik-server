@@ -63,7 +63,7 @@ class IngestionClient:
         try:
             response = await self.stub.SearchBook(
                 request,
-                timeout=app.config.settings.grpc_timeout
+                timeout=app.config.settings.grpc_admin_timeout
             )
             return response
         except grpc.RpcError as e:
@@ -76,7 +76,7 @@ class IngestionClient:
         try:
             response = await self.stub.GetDataCoverage(
                 request,
-                timeout=app.config.settings.grpc_timeout
+                timeout=app.config.settings.grpc_admin_timeout
             )
             return response
         except grpc.RpcError as e:
