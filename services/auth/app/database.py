@@ -13,6 +13,11 @@ async_session_maker: sqlalchemy.orm.sessionmaker = None
 async def run_migrations() -> None:
     import os
 
+    # Skip migrations in production - they should be run manually
+    if app.config.settings.env.lower() == "production":
+        logger.info("Production environment: skipping auto-migrations")
+        return
+
     alembic_ini = os.path.join(os.path.dirname(__file__), '..', 'alembic.ini')
 
     # Skip migrations if alembic.ini doesn't exist
@@ -35,8 +40,7 @@ async def run_migrations() -> None:
     except ImportError:
         logger.debug("Alembic not available, skipping migrations")
     except Exception as e:
-        logger.error(f"Error running migrations: {str(e)}")
-        raise
+        logger.warning(f"Migration error (service will continue): {str(e)}")
 
 
 async def init_db() -> None:

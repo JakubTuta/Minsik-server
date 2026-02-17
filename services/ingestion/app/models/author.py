@@ -20,6 +20,8 @@ class Author(Base):
     bio = Column(Text)
     birth_date = Column(Date)
     death_date = Column(Date)
+    birth_place = Column(String(500))
+    nationality = Column(String(200))
     photo_url = Column(String(1000))
 
     ts_vector = Column(TSVECTOR)

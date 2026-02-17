@@ -25,6 +25,11 @@ shutdown_event = asyncio.Event()
 async def run_migrations():
     import os
 
+    # Skip migrations in production - they should be run manually
+    if app.config.settings.env.lower() == "production":
+        logger.info("Production environment: skipping auto-migrations")
+        return
+
     alembic_ini = os.path.join(os.path.dirname(__file__), '..', 'alembic.ini')
 
     # Skip migrations if alembic.ini doesn't exist
@@ -47,16 +52,18 @@ async def run_migrations():
     except ImportError:
         logger.debug("Alembic not available, skipping migrations")
     except Exception as e:
-        logger.error(f"Error running migrations: {str(e)}")
-        raise
+        logger.warning(f"Migration error (service will continue): {str(e)}")
 
 
 async def init_db():
     logger.info("Running database migrations")
     await run_migrations()
 
-    async with app.models.engine.begin() as conn:
-        await conn.run_sync(app.models.Base.metadata.create_all)
+    try:
+        async with app.models.engine.begin() as conn:
+            await conn.run_sync(app.models.Base.metadata.create_all)
+    except Exception as e:
+        logger.warning(f"Schema creation error (service will continue): {str(e)}")
 
 
 async def shutdown(signal_received=None):

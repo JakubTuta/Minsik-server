@@ -7,6 +7,12 @@ from alembic import context
 
 from app.config import settings
 from app.models.base import Base
+import app.models.author
+import app.models.book
+import app.models.book_author
+import app.models.book_genre
+import app.models.genre
+import app.models.series
 
 config = context.config
 
@@ -25,7 +31,7 @@ def run_migrations_offline() -> None:
         target_metadata=target_metadata,
         literal_binds=True,
         dialect_opts={"paramstyle": "named"},
-        version_table="alembic_version_ingestion"
+        version_table="alembic_version_books"
     )
 
     with context.begin_transaction():
@@ -36,7 +42,7 @@ def do_run_migrations(connection: Connection) -> None:
     context.configure(
         connection=connection,
         target_metadata=target_metadata,
-        version_table="alembic_version_ingestion"
+        version_table="alembic_version_books"
     )
 
     with context.begin_transaction():
