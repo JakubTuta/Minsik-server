@@ -4,15 +4,18 @@ import uuid
 import asyncio
 import json
 import concurrent.futures
-import datetime
+import httpx
 import redis
-import rq
+import sqlalchemy
+import sqlalchemy.ext.asyncio
 
 import app.config
-import app.workers
+import app.models
 import app.fetchers.open_library
 import app.fetchers.google_books
 import app.services.book_service
+import app.workers.ingestion_worker
+import app.workers.dump_importer
 import app.proto.ingestion_pb2 as ingestion_pb2
 import app.proto.ingestion_pb2_grpc as ingestion_pb2_grpc
 
@@ -26,7 +29,8 @@ redis_client = redis.Redis(
     decode_responses=True
 )
 
-task_queue = rq.Queue('ingestion', connection=redis_client)
+_COVERAGE_CACHE_KEY = "coverage_stats"
+_COVERAGE_CACHE_TTL = 3600
 
 
 class IngestionService(ingestion_pb2_grpc.IngestionServiceServicer):
@@ -48,40 +52,18 @@ class IngestionService(ingestion_pb2_grpc.IngestionServiceServicer):
 
             job_id = str(uuid.uuid4())
 
-            loop = asyncio.get_event_loop()
-            await loop.run_in_executor(
-                None,
-                lambda: task_queue.enqueue(
-                    'app.workers.ingestion_worker.run_ingestion_job_sync',
-                    job_id,
-                    total_books,
-                    source,
-                    language,
-                    job_id=job_id,
-                    job_timeout='1h'
-                )
-            )
+            logger.info(f"Starting synchronous ingestion job {job_id}: {total_books} books from {source} ({language})")
 
-            job_data = {
-                "job_id": job_id,
-                "status": "pending",
-                "processed": 0,
-                "total": total_books,
-                "successful": 0,
-                "failed": 0,
-                "error": None,
-                "started_at": int(datetime.datetime.now().timestamp()),
-                "completed_at": None
-            }
-            redis_client.setex(f"ingestion_job:{job_id}", 3600, json.dumps(job_data))
-
-            logger.info(f"Triggered ingestion job {job_id}: {total_books} books from {source} ({language})")
+            result = await app.workers.ingestion_worker.process_ingestion_job(job_id, total_books, source, language)
 
             return ingestion_pb2.TriggerIngestionResponse(
                 job_id=job_id,
-                status="pending",
+                status="failed" if result["error"] else "completed",
                 total_books=total_books,
-                message=f"Ingestion job started: {total_books} books from {source}"
+                processed=result["processed"],
+                successful=result["successful"],
+                failed=result["failed"],
+                error_message=result["error"] or ""
             )
 
         except Exception as e:
@@ -89,76 +71,6 @@ class IngestionService(ingestion_pb2_grpc.IngestionServiceServicer):
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(str(e))
             return ingestion_pb2.TriggerIngestionResponse()
-
-    async def GetIngestionStatus(self, request, context):
-        try:
-            job_id = request.job_id
-
-            if not job_id:
-                context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
-                context.set_details("job_id is required")
-                return ingestion_pb2.GetIngestionStatusResponse()
-
-            job_data_str = redis_client.get(f"ingestion_job:{job_id}")
-
-            if not job_data_str:
-                context.set_code(grpc.StatusCode.NOT_FOUND)
-                context.set_details(f"Job {job_id} not found")
-                return ingestion_pb2.GetIngestionStatusResponse()
-
-            job_data = json.loads(job_data_str)
-
-            return ingestion_pb2.GetIngestionStatusResponse(
-                job_id=job_id,
-                status=job_data.get("status", "unknown"),
-                processed=job_data.get("processed", 0),
-                total=job_data.get("total", 0),
-                successful=job_data.get("successful", 0),
-                failed=job_data.get("failed", 0),
-                error=job_data.get("error") or "",
-                started_at=job_data.get("started_at", 0),
-                completed_at=job_data.get("completed_at", 0)
-            )
-
-        except Exception as e:
-            logger.error(f"Error getting ingestion status: {str(e)}")
-            context.set_code(grpc.StatusCode.INTERNAL)
-            context.set_details(str(e))
-            return ingestion_pb2.GetIngestionStatusResponse()
-
-    async def CancelIngestion(self, request, context):
-        try:
-            job_id = request.job_id
-
-            if not job_id:
-                context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
-                context.set_details("job_id is required")
-                return ingestion_pb2.CancelIngestionResponse()
-
-            job_data_str = redis_client.get(f"ingestion_job:{job_id}")
-
-            if not job_data_str:
-                context.set_code(grpc.StatusCode.NOT_FOUND)
-                context.set_details(f"Job {job_id} not found")
-                return ingestion_pb2.CancelIngestionResponse()
-
-            job_data = json.loads(job_data_str)
-            job_data["status"] = "cancelled"
-            job_data["completed_at"] = int(datetime.datetime.now().timestamp())
-            redis_client.setex(f"ingestion_job:{job_id}", 3600, json.dumps(job_data))
-
-            logger.info(f"Cancelled ingestion job {job_id}")
-
-            return ingestion_pb2.CancelIngestionResponse(
-                success=True,
-                message=f"Job {job_id} cancelled successfully"
-            )
-
-        except Exception as e:
-            logger.error(f"Error cancelling ingestion: {str(e)}")
-            context.set_code(grpc.StatusCode.INTERNAL)
-            context.set_details(str(e))
-            return ingestion_pb2.CancelIngestionResponse(success=False, message=str(e))
 
     async def SearchBook(self, request, context):
         try:
@@ -256,6 +168,107 @@ class IngestionService(ingestion_pb2_grpc.IngestionServiceServicer):
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(str(e))
             return ingestion_pb2.SearchBookResponse()
+
+    async def GetDataCoverage(self, request, context):
+        try:
+            cached = redis_client.get(_COVERAGE_CACHE_KEY)
+            if cached:
+                data = json.loads(cached)
+                return ingestion_pb2.GetDataCoverageResponse(
+                    db_books_count=data["db_books_count"],
+                    db_authors_count=data["db_authors_count"],
+                    db_series_count=data["db_series_count"],
+                    ol_english_total=data["ol_english_total"],
+                    coverage_percent=data["coverage_percent"],
+                    cached=True
+                )
+
+            async with app.models.AsyncSessionLocal() as session:
+                books_result = await session.execute(
+                    sqlalchemy.text("SELECT COUNT(*) FROM books.books WHERE language = 'en'")
+                )
+                db_books_count = books_result.scalar_one()
+
+                authors_result = await session.execute(
+                    sqlalchemy.text("SELECT COUNT(*) FROM books.authors")
+                )
+                db_authors_count = authors_result.scalar_one()
+
+                series_result = await session.execute(
+                    sqlalchemy.text("SELECT COUNT(*) FROM books.series")
+                )
+                db_series_count = series_result.scalar_one()
+
+            ol_english_total = await _fetch_ol_english_total()
+
+            coverage_percent = 0.0
+            if ol_english_total > 0:
+                coverage_percent = (db_books_count / ol_english_total) * 100
+
+            cache_data = {
+                "db_books_count": db_books_count,
+                "db_authors_count": db_authors_count,
+                "db_series_count": db_series_count,
+                "ol_english_total": ol_english_total,
+                "coverage_percent": coverage_percent
+            }
+            redis_client.setex(_COVERAGE_CACHE_KEY, _COVERAGE_CACHE_TTL, json.dumps(cache_data))
+
+            logger.info(f"Data coverage: {db_books_count} books, {ol_english_total} OL total, {coverage_percent:.4f}%")
+
+            return ingestion_pb2.GetDataCoverageResponse(
+                db_books_count=db_books_count,
+                db_authors_count=db_authors_count,
+                db_series_count=db_series_count,
+                ol_english_total=ol_english_total,
+                coverage_percent=coverage_percent,
+                cached=False
+            )
+
+        except Exception as e:
+            logger.error(f"Error getting data coverage: {str(e)}")
+            context.set_code(grpc.StatusCode.INTERNAL)
+            context.set_details(str(e))
+            return ingestion_pb2.GetDataCoverageResponse()
+
+    async def ImportDump(self, request, context):
+        try:
+            is_running = redis_client.exists("dump_import_running")
+            if is_running:
+                return ingestion_pb2.ImportDumpResponse(
+                    status="already_running",
+                    message="Dump import is already in progress"
+                )
+
+            job_id = str(uuid.uuid4())
+            asyncio.create_task(app.workers.dump_importer.run_import_dump(job_id, redis_client))
+
+            return ingestion_pb2.ImportDumpResponse(
+                status="started",
+                message=f"Dump import started (job_id: {job_id}). Check service logs for progress."
+            )
+
+        except Exception as e:
+            logger.error(f"Error starting dump import: {str(e)}")
+            context.set_code(grpc.StatusCode.INTERNAL)
+            context.set_details(str(e))
+            return ingestion_pb2.ImportDumpResponse()
+
+
+async def _fetch_ol_english_total() -> int:
+    try:
+        async with httpx.AsyncClient(timeout=15.0) as client:
+            response = await client.get(
+                f"{app.config.settings.open_library_api_url}/search.json",
+                params={"language": "eng", "limit": 0},
+                headers={"User-Agent": "Minsik/1.0 (contact@minsik.app)"}
+            )
+            response.raise_for_status()
+            data = response.json()
+            return data.get("numFound", 0)
+    except Exception as e:
+        logger.error(f"Failed to fetch OL English total: {str(e)}")
+        return 0
 
 
 async def serve():

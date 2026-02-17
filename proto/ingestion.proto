@@ -4,9 +4,9 @@ package ingestion.v1;
 
 service IngestionService {
   rpc TriggerIngestion(TriggerIngestionRequest) returns (TriggerIngestionResponse);
-  rpc GetIngestionStatus(GetIngestionStatusRequest) returns (GetIngestionStatusResponse);
-  rpc CancelIngestion(CancelIngestionRequest) returns (CancelIngestionResponse);
   rpc SearchBook(SearchBookRequest) returns (SearchBookResponse);
+  rpc GetDataCoverage(GetDataCoverageRequest) returns (GetDataCoverageResponse);
+  rpc ImportDump(ImportDumpRequest) returns (ImportDumpResponse);
 }
 
 message TriggerIngestionRequest {
@@ -19,32 +19,10 @@ message TriggerIngestionResponse {
   string job_id = 1;
   string status = 2;
   int32 total_books = 3;
-  string message = 4;
-}
-
-message GetIngestionStatusRequest {
-  string job_id = 1;
-}
-
-message GetIngestionStatusResponse {
-  string job_id = 1;
-  string status = 2;
-  int32 processed = 3;
-  int32 total = 4;
+  int32 processed = 4;
   int32 successful = 5;
   int32 failed = 6;
-  string error = 7;
-  int64 started_at = 8;
-  int64 completed_at = 9;
-}
-
-message CancelIngestionRequest {
-  string job_id = 1;
-}
-
-message CancelIngestionResponse {
-  bool success = 1;
-  string message = 2;
+  string error_message = 7;
 }
 
 message SearchBookRequest {
@@ -73,4 +51,22 @@ message BookResult {
 message SearchBookResponse {
   int32 total_results = 1;
   repeated BookResult books = 2;
+}
+
+message GetDataCoverageRequest {}
+
+message GetDataCoverageResponse {
+  int64 db_books_count = 1;
+  int64 db_authors_count = 2;
+  int64 db_series_count = 3;
+  int64 ol_english_total = 4;
+  float coverage_percent = 5;
+  bool cached = 6;
+}
+
+message ImportDumpRequest {}
+
+message ImportDumpResponse {
+  string status = 1;
+  string message = 2;
 }

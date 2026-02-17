@@ -36,6 +36,21 @@ class Settings(BaseSettings):
     ingestion_max_retries: int = Field(default=3)
     ingestion_retry_delay: int = Field(default=5)
 
+    continuous_fetch_enabled: bool = Field(default=True)
+    continuous_ol_interval_hours: int = Field(default=1)
+    continuous_ol_books_per_run: int = Field(default=100)
+    continuous_gb_interval_hours: int = Field(default=6)
+    continuous_gb_books_per_run: int = Field(default=40)
+
+    description_enrich_enabled: bool = Field(default=True)
+    description_enrich_interval_hours: int = Field(default=2)
+    description_enrich_batch_size: int = Field(default=5)
+    description_min_length: int = Field(default=100)
+
+    ol_dump_base_url: str = Field(default="https://openlibrary.org/data")
+    dump_batch_size: int = Field(default=500)
+    dump_tmp_dir: str = Field(default="/tmp")
+
     class Config:
         env_file = ".env"
         case_sensitive = False

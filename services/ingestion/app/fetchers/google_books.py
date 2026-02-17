@@ -27,9 +27,10 @@ class GoogleBooksFetcher(BaseFetcher):
             "technology"
         ]
 
-    async def fetch_books(self, count: int, language: str = "en") -> list[typing.Dict[str, typing.Any]]:
+    async def fetch_books(self, count: int, language: str = "en", offset: int = 0) -> list[typing.Dict[str, typing.Any]]:
         books = []
         per_query = max(count // len(self.search_queries), 10)
+        query_offset = offset // len(self.search_queries)
 
         for query in self.search_queries:
             if len(books) >= count:
@@ -40,6 +41,7 @@ class GoogleBooksFetcher(BaseFetcher):
                 "q": query,
                 "langRestrict": language,
                 "maxResults": min(per_query, 40),
+                "startIndex": query_offset,
                 "orderBy": "relevance"
             }
 

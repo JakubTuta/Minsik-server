@@ -1,4 +1,5 @@
 import pydantic
+import typing
 
 
 class TriggerIngestionRequest(pydantic.BaseModel):
@@ -17,61 +18,47 @@ class TriggerIngestionRequest(pydantic.BaseModel):
     )
 
 
-class IngestionStatusResponse(pydantic.BaseModel):
-    job_id: str
-    status: str
-    processed: int
-    total: int
-    successful: int
-    failed: int
-    error: str
-    started_at: int
-    completed_at: int
-
-    model_config = pydantic.ConfigDict(
-        json_schema_extra={
-            "example": {
-                "job_id": "550e8400-e29b-41d4-a716-446655440000",
-                "status": "running",
-                "processed": 50,
-                "total": 100,
-                "successful": 48,
-                "failed": 2,
-                "error": "",
-                "started_at": 1704067200,
-                "completed_at": 0
-            }
-        }
-    )
-
-
 class TriggerIngestionResponse(pydantic.BaseModel):
     job_id: str
     status: str
     total_books: int
-    message: str
+    processed: int
+    successful: int
+    failed: int
+    error_message: typing.Optional[str]
 
     model_config = pydantic.ConfigDict(
         json_schema_extra={
             "example": {
                 "job_id": "550e8400-e29b-41d4-a716-446655440000",
-                "status": "pending",
+                "status": "completed",
                 "total_books": 100,
-                "message": "Ingestion job started: 100 books from both"
+                "processed": 98,
+                "successful": 95,
+                "failed": 3,
+                "error_message": None
             }
         }
     )
 
 
-class CancelIngestionResponse(pydantic.BaseModel):
-    success: bool
-    message: str
+class DataCoverageResponse(pydantic.BaseModel):
+    db_books_count: int
+    db_authors_count: int
+    db_series_count: int
+    ol_english_total: int
+    coverage_percent: float
+    cached: bool
 
     model_config = pydantic.ConfigDict(
         json_schema_extra={
             "example": {
-                "success": True,
-                "message": "Job 550e8400-e29b-41d4-a716-446655440000 cancelled successfully"
+                "db_books_count": 12453,
+                "db_authors_count": 8721,
+                "db_series_count": 342,
+                "ol_english_total": 10000000,
+                "coverage_percent": 0.12,
+                "cached": False
             }
         }
     )
@@ -156,6 +143,20 @@ class SearchBookResponse(pydantic.BaseModel):
                         "source": "open_library"
                     }
                 ]
+            }
+        }
+    )
+
+
+class ImportDumpResponse(pydantic.BaseModel):
+    status: str
+    message: str
+
+    model_config = pydantic.ConfigDict(
+        json_schema_extra={
+            "example": {
+                "status": "started",
+                "message": "Dump import started (job_id: abc123...). Check service logs for progress."
             }
         }
     )

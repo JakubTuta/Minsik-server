@@ -263,3 +263,11 @@ async def get_or_create_series(session: sqlalchemy.ext.asyncio.AsyncSession, ser
     await session.flush()
 
     return new_series
+
+
+async def get_author_by_ol_id(session: sqlalchemy.ext.asyncio.AsyncSession, ol_id: str) -> typing.Optional[app.models.author.Author]:
+    query = sqlalchemy.select(app.models.author.Author).where(
+        app.models.author.Author.open_library_id == ol_id
+    )
+    result = await session.execute(query)
+    return result.scalar_one_or_none()

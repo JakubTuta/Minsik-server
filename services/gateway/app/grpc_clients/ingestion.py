@@ -46,39 +46,10 @@ class IngestionClient:
         )
 
         try:
-            response = await self.stub.TriggerIngestion(
-                request,
-                timeout=app.config.settings.grpc_timeout
-            )
+            response = await self.stub.TriggerIngestion(request, timeout=None)
             return response
         except grpc.RpcError as e:
             logger.error(f"gRPC error triggering ingestion: {e.code()} - {e.details()}")
-            raise
-
-    async def get_ingestion_status(self, job_id: str) -> ingestion_pb2.GetIngestionStatusResponse:
-        request = ingestion_pb2.GetIngestionStatusRequest(job_id=job_id)
-
-        try:
-            response = await self.stub.GetIngestionStatus(
-                request,
-                timeout=app.config.settings.grpc_timeout
-            )
-            return response
-        except grpc.RpcError as e:
-            logger.error(f"gRPC error getting ingestion status: {e.code()} - {e.details()}")
-            raise
-
-    async def cancel_ingestion(self, job_id: str) -> ingestion_pb2.CancelIngestionResponse:
-        request = ingestion_pb2.CancelIngestionRequest(job_id=job_id)
-
-        try:
-            response = await self.stub.CancelIngestion(
-                request,
-                timeout=app.config.settings.grpc_timeout
-            )
-            return response
-        except grpc.RpcError as e:
-            logger.error(f"gRPC error cancelling ingestion: {e.code()} - {e.details()}")
             raise
 
     async def search_book(self, title: str, author: str = "", source: str = "both", limit: int = 10) -> ingestion_pb2.SearchBookResponse:
@@ -97,6 +68,32 @@ class IngestionClient:
             return response
         except grpc.RpcError as e:
             logger.error(f"gRPC error searching for book: {e.code()} - {e.details()}")
+            raise
+
+    async def get_data_coverage(self) -> ingestion_pb2.GetDataCoverageResponse:
+        request = ingestion_pb2.GetDataCoverageRequest()
+
+        try:
+            response = await self.stub.GetDataCoverage(
+                request,
+                timeout=app.config.settings.grpc_timeout
+            )
+            return response
+        except grpc.RpcError as e:
+            logger.error(f"gRPC error getting data coverage: {e.code()} - {e.details()}")
+            raise
+
+    async def import_dump(self) -> ingestion_pb2.ImportDumpResponse:
+        request = ingestion_pb2.ImportDumpRequest()
+
+        try:
+            response = await self.stub.ImportDump(
+                request,
+                timeout=app.config.settings.grpc_timeout
+            )
+            return response
+        except grpc.RpcError as e:
+            logger.error(f"gRPC error starting dump import: {e.code()} - {e.details()}")
             raise
 
 

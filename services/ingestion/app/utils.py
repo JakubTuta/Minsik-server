@@ -2,6 +2,7 @@ import re
 import unicodedata
 import datetime
 import typing
+import html as html_module
 from dateutil import parser as date_parser
 
 
@@ -52,6 +53,28 @@ def clean_description(description: typing.Optional[str]) -> typing.Optional[str]
     if not description:
         return None
 
+    description = html_module.unescape(description)
+
+    description = re.sub(r'<[^>]+>', '', description)
+
+    description = re.sub(r'\[http[s]?://[^\]]+\]', '', description)
+
+    description = re.sub(r'https?://[^\s]+', '', description)
+
+    description = re.sub(r'\(https?://[^\)]+\)', '', description)
+
+    description = re.sub(r'\[\d+\]\s*', '', description)
+
+    description = re.sub(r'\*\*([^*]+)\*\*', r'\1', description)
+
+    description = re.sub(r'__([^_]+)__', r'\1', description)
+
+    description = re.sub(r'\*([^*]+)\*', r'\1', description)
+
+    description = re.sub(r'_([^_]+)_', r'\1', description)
+
+    description = re.sub(r'^#+\s+', '', description, flags=re.MULTILINE)
+
     separators = [
         r"-{5,}",
         r"={5,}",
@@ -71,13 +94,20 @@ def clean_description(description: typing.Optional[str]) -> typing.Optional[str]
         r"\n\*\*About the Author:\*\*.*$",
         r"\n\*\*Source:\*\*.*$",
         r"\n--+\s*\n.*$",
-        r"\[1\]:\s*https?://.*$"
+        r"\[1\]:\s*https?://.*$",
+        r"^From Wikipedia.*$",
+        r"^See also:.*$",
+        r"^References:.*$",
+        r"\n\nCopyright.*$"
     ]
 
     for pattern in metadata_patterns:
-        description = re.sub(pattern, "", description, flags=re.DOTALL | re.MULTILINE)
+        description = re.sub(pattern, "", description, flags=re.DOTALL | re.MULTILINE | re.IGNORECASE)
 
     description = re.sub(r'\n{3,}', '\n\n', description)
+
+    description = re.sub(r'[ \t]{2,}', ' ', description)
+
     description = description.strip()
 
     return description if description else None

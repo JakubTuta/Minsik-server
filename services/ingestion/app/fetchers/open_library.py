@@ -27,16 +27,17 @@ class OpenLibraryFetcher(BaseFetcher):
             "psychology"
         ]
 
-    async def fetch_books(self, count: int, language: str = "en") -> list[typing.Dict[str, typing.Any]]:
+    async def fetch_books(self, count: int, language: str = "en", offset: int = 0) -> list[typing.Dict[str, typing.Any]]:
         books = []
         per_subject = max(count // len(self.subjects), 10)
+        subject_offset = offset // len(self.subjects)
 
         for subject in self.subjects:
             if len(books) >= count:
                 break
 
             url = f"{self.api_url}/subjects/{subject}.json"
-            params = {"limit": per_subject, "offset": 0}
+            params = {"limit": per_subject, "offset": subject_offset}
 
             data = await self._fetch_with_retry(url, params)
             if not data or "works" not in data:
