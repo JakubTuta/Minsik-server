@@ -3,9 +3,8 @@
 # ============================================================================
 # PowerShell script for common development tasks:
 # - Compile Protocol Buffer files
-# - Create admin/user accounts
+# - Create admin accounts
 # - Deploy services (dev/prod)
-# - Database migrations
 # - Run tests
 # ============================================================================
 
@@ -15,17 +14,13 @@ param(
     [switch]$CreateAdmin,
     [string]$Email,
     [string]$Password,
-    [switch]$CreateUser,
     [switch]$Deploy,
     [string]$Environment = "dev",
-    [switch]$Migrate,
-    [string]$MigrateAction = "upgrade",
     [switch]$Test,
     [string]$TestService,
     [switch]$Logs,
     [string]$LogService,
-    [switch]$Clean,
-    [switch]$Init
+    [switch]$Clean
 )
 
 # Ensure we use the venv Python if available
@@ -33,12 +28,10 @@ if (Test-Path "venv/Scripts/python.exe") {
     $venvPythonPath = (Resolve-Path "venv/Scripts/python.exe").Path
     $env:PYTHON = $venvPythonPath
     $env:CLOUDSDK_PYTHON = $venvPythonPath
-    # Add venv Scripts to PATH for gcloud and other tools
     $venvScriptsPath = (Resolve-Path "venv/Scripts").Path
     if ($env:PATH -notlike "*$venvScriptsPath*") {
         $env:PATH = $venvScriptsPath + ";" + $env:PATH
     }
-    # Remove any Microsoft Store Python redirects from PATH
     $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notmatch 'WindowsApps' }) -join ';'
 }
 
@@ -54,7 +47,7 @@ $ColorWarning = "Yellow"
 
 function Show-Help {
     Write-Host @"
-Minsik Development Scripts                              
+Minsik Development Scripts
 
 Usage: .\scripts.ps1 -<Command> [options]
 
@@ -68,68 +61,30 @@ COMMANDS:
       -Email <email>                 Admin email address
       -Password <password>           Admin password
 
-    -CreateUser                    Create a regular user
-      -Email <email>                 User email address
-      -Password <password>           User password
-
   Deployment:
-    -Deploy                        Deploy services
-      -Environment <env>             Environment (dev/prod, default: dev)
+    -Deploy                        Start dev environment (docker-compose up)
+      -Environment prod              Build and push images to GAR (production)
 
     -Logs                          View service logs
-      -LogService <service>          Specific service (postgres/redis/gateway/ingestion/books/auth/user-data)
+      -LogService <service>          Specific service name
 
     -Clean                         Stop and remove all containers and volumes
 
-  Database:
-    -Migrate                       Run database migrations
-      -MigrateAction <action>        Action (upgrade/downgrade/current, default: upgrade)
-
-    -Init                          Initialize database schemas
-
   Testing:
     -Test                          Run tests
-      -TestService <service>         Test specific service (gateway/ingestion/books/all)
+      -TestService <service>         Specific service (gateway/ingestion/books/auth/user-data)
 
   Help:
     -Help                          Show this help message
 
 EXAMPLES:
 
-  # Compile Protocol Buffers
   .\scripts.ps1 -CompileProto
-
-  # Create admin user
   .\scripts.ps1 -CreateAdmin -Email admin@minsik.com -Password securepass123
-
-  # Create regular user
-  .\scripts.ps1 -CreateUser -Email user@minsik.com -Password userpass123
-
-  # Deploy to development
   .\scripts.ps1 -Deploy
-
-  # Deploy to production
   .\scripts.ps1 -Deploy -Environment prod
-
-  # View all logs
-  .\scripts.ps1 -Logs
-
-  # View specific service logs
-  .\scripts.ps1 -Logs -LogService postgres
-
-  # Run database migrations
-  .\scripts.ps1 -Migrate
-
-  # Initialize database schemas
-  .\scripts.ps1 -Init
-
-  # Run all tests
-  .\scripts.ps1 -Test
-
-  # Test specific service
+  .\scripts.ps1 -Logs -LogService books-service
   .\scripts.ps1 -Test -TestService books
-
-  # Clean everything (WARNING: Deletes data!)
   .\scripts.ps1 -Clean
 
 "@ -ForegroundColor $ColorInfo
@@ -162,14 +117,11 @@ function Write-Warning-Message {
 function Compile-Proto {
     Write-Step "Compiling Protocol Buffer files..."
 
-    # Check if proto directory exists
     if (-not (Test-Path "proto")) {
         Write-Error-Message "proto/ directory not found"
         return
     }
 
-    # Static proto file definitions
-    # Format: @{Source = "proto file path"; Destinations = @("output directory 1", "output directory 2")}
     $protoDefinitions = @(
         @{
             Source = "proto/ingestion.proto"
@@ -204,21 +156,17 @@ function Compile-Proto {
         Write-Host "  Compiling $protoName..." -ForegroundColor Gray
 
         foreach ($destination in $protoDef.Destinations) {
-            # Create destination directory if it doesn't exist
             if (-not (Test-Path $destination)) {
                 New-Item -ItemType Directory -Force -Path $destination | Out-Null
             }
 
-            # Create __init__.py to make it a proper Python package
             $initFile = Join-Path $destination "__init__.py"
             if (-not (Test-Path $initFile)) {
                 New-Item -ItemType File -Path $initFile -Force | Out-Null
             }
 
-            # Get base name without extension for the proto file
             $protoBaseName = [System.IO.Path]::GetFileNameWithoutExtension($protoFile)
 
-            # Compile proto file to current directory first
             & "$env:PYTHON" -m grpc_tools.protoc `
                 -I./proto `
                 --python_out=. `
@@ -232,12 +180,10 @@ function Compile-Proto {
                 break
             }
 
-            # Move generated files to destination
             Move-Item -Path "${protoBaseName}_pb2.py" -Destination $destination -Force
             Move-Item -Path "${protoBaseName}_pb2_grpc.py" -Destination $destination -Force
             Move-Item -Path "${protoBaseName}_pb2.pyi" -Destination $destination -Force
 
-            # Fix imports in the grpc file to use relative imports
             $grpcFile = Join-Path $destination "${protoBaseName}_pb2_grpc.py"
             $content = Get-Content $grpcFile -Raw
             $content = $content -replace "^import ${protoBaseName}_pb2", "from . import ${protoBaseName}_pb2"
@@ -273,197 +219,59 @@ function Create-Admin-User {
 
     Write-Step "Creating admin user: $Email"
 
-    # Check if create_admin.py exists
     if (-not (Test-Path "scripts/create_admin.py")) {
-        Write-Warning-Message "scripts/create_admin.py not found, creating it..."
-
-        # Create the Python script
-        New-Item -ItemType Directory -Force -Path "scripts" | Out-Null
-
-        $createAdminScript = @"
-import asyncio
-import argparse
-import os
-import sys
-import bcrypt
-from sqlalchemy import text
-from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
-from sqlalchemy.orm import sessionmaker
-from dotenv import load_dotenv
-
-load_dotenv()
-
-async def create_admin(email: str, password: str) -> None:
-    """Create an admin user in the database."""
-    db_user = os.getenv("DB_USER", "postgres")
-    db_password = os.getenv("DB_PASSWORD", "postgres")
-    db_host = os.getenv("DB_HOST", "postgres")
-    db_port = os.getenv("DB_PORT", "5432")
-    db_name = os.getenv("DB_NAME", "minsik_db")
-
-    db_url = f"postgresql+asyncpg://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
-
-    try:
-        engine = create_async_engine(db_url, echo=False)
-        async_session = sessionmaker(
-            engine,
-            class_=AsyncSession,
-            expire_on_commit=False
-        )
-
-        async with async_session() as session:
-            password_bytes = password[:72].encode("utf-8")
-            password_hash = bcrypt.hashpw(
-                password_bytes, bcrypt.gensalt(rounds=12)
-            ).decode("utf-8")
-
-            username = email.split("@")[0].lower()
-
-            await session.execute(
-                text("""
-                    INSERT INTO auth.users (email, username, password_hash, role, is_active)
-                    VALUES (:email, :username, :password_hash, 'admin', true)
-                    ON CONFLICT (email) DO UPDATE SET
-                        password_hash = :password_hash,
-                        role = 'admin'
-                """),
-                {"email": email, "username": username, "password_hash": password_hash}
-            )
-            await session.commit()
-
-        await engine.dispose()
-        print(f"✓ Admin user created: {email}")
-
-    except Exception as e:
-        print(f"✗ Error: {str(e)}", file=sys.stderr)
-        sys.exit(1)
-
-if __name__ == "__main__":
-    parser = argparse.ArgumentParser(
-        description="Create an admin user in the Minsik database"
-    )
-    parser.add_argument("--email", required=True, help="Admin email address")
-    parser.add_argument("--password", required=True, help="Admin password")
-    args = parser.parse_args()
-
-    asyncio.run(create_admin(args.email, args.password))
-"@
-        Set-Content -Path "scripts/create_admin.py" -Value $createAdminScript
-    }
-
-    # Check if auth service container is running
-    $authContainer = & docker ps -q -f name=minsik-auth-service-dev
-    if ($authContainer) {
-        Write-Host "  Using auth service container" -ForegroundColor Gray
-
-        # Copy script into container and run it
-        & docker cp scripts/create_admin.py ${authContainer}:/tmp/create_admin.py 2>$null
-        & docker exec $authContainer python /tmp/create_admin.py --email $Email --password $Password
-
-        if ($LASTEXITCODE -eq 0) {
-            Write-Success "Admin user created successfully!"
-        } else {
-            Write-Error-Message "Failed to create admin user"
-        }
+        Write-Error-Message "scripts/create_admin.py not found"
         return
     }
 
-    # Fallback: Run the Python script locally (only works if database is accessible)
-    Write-Warning-Message "Auth service container not running. Attempting to run script locally..."
-    & "$env:PYTHON" scripts/create_admin.py --email $Email --password $Password
+    $authContainer = & docker ps -q -f name=minsik-auth-service-dev
+    if (-not $authContainer) {
+        Write-Error-Message "Auth service container (minsik-auth-service-dev) is not running"
+        return
+    }
+
+    & docker cp scripts/create_admin.py ${authContainer}:/tmp/create_admin.py 2>$null
+    & docker exec $authContainer python /tmp/create_admin.py --email $Email --password $Password
 
     if ($LASTEXITCODE -eq 0) {
         Write-Success "Admin user created successfully!"
     } else {
-        Write-Error-Message "Failed to create admin user (containers may be required)"
+        Write-Error-Message "Failed to create admin user"
     }
-}
-
-function Create-Regular-User {
-    param(
-        [string]$Email,
-        [string]$Password
-    )
-
-    if (-not $Email -or -not $Password) {
-        Write-Error-Message "Email and Password are required"
-        Write-Host "Usage: .\scripts.ps1 -CreateUser -Email user@minsik.com -Password password" -ForegroundColor $ColorWarning
-        return
-    }
-
-    Write-Step "Creating regular user: $Email"
-
-    # Similar to create admin but with role='user'
-    Write-Warning-Message "User creation not implemented yet (Sprint 2 feature)"
-    Write-Host "  For now, users will be created via registration API in Sprint 2" -ForegroundColor Gray
 }
 
 function Build-And-Push-Images {
     $GAR_REGISTRY = "europe-central2-docker.pkg.dev/minsik-486117/server"
 
-    # Service definitions: name, dockerfile path, image name
     $services = @(
-        @{
-            Name = "Auth Service"
-            Dockerfile = "services/auth/Dockerfile"
-            ImageName = "auth-service"
-        },
-        @{
-            Name = "Gateway Service"
-            Dockerfile = "services/gateway/Dockerfile"
-            ImageName = "gateway-service"
-        },
-        @{
-            Name = "Ingestion Service"
-            Dockerfile = "services/ingestion/Dockerfile"
-            ImageName = "ingestion-service"
-        },
-        @{
-            Name = "Books Service"
-            Dockerfile = "services/books/Dockerfile"
-            ImageName = "books-service"
-        },
-        @{
-            Name = "User Data Service"
-            Dockerfile = "services/user_data/Dockerfile"
-            ImageName = "user-data-service"
-        },
-        @{
-            Name = "RQ Worker"
-            Dockerfile = "services/ingestion/Dockerfile"
-            ImageName = "rq-worker"
-        }
+        @{ Name = "Auth Service";      Dockerfile = "services/auth/Dockerfile";       ImageName = "auth-service" },
+        @{ Name = "Gateway Service";   Dockerfile = "services/gateway/Dockerfile";    ImageName = "gateway-service" },
+        @{ Name = "Ingestion Service"; Dockerfile = "services/ingestion/Dockerfile";  ImageName = "ingestion-service" },
+        @{ Name = "Books Service";     Dockerfile = "services/books/Dockerfile";      ImageName = "books-service" },
+        @{ Name = "User Data Service"; Dockerfile = "services/user_data/Dockerfile";  ImageName = "user-data-service" }
     )
 
     Write-Step "Building and pushing images to Google Artifact Registry..."
 
-    # Configure Docker to use gcloud credentials
     Write-Host "  Configuring Docker authentication..." -ForegroundColor Gray
     & gcloud auth configure-docker europe-central2-docker.pkg.dev --quiet
 
     if ($LASTEXITCODE -ne 0) {
-        Write-Error-Message "Failed to configure Docker authentication. Make sure you're logged in with 'gcloud auth login'"
+        Write-Error-Message "Failed to configure Docker authentication. Run 'gcloud auth login' first."
         return $false
     }
 
     foreach ($service in $services) {
-        $imageName = "$GAR_REGISTRY/$($service.ImageName)"
-        $imageTag = $imageName + ":latest"
-        $dockerfilePath = $service.Dockerfile
+        $imageTag = "$GAR_REGISTRY/$($service.ImageName):latest"
 
         Write-Host "  Building $($service.Name)..." -ForegroundColor Gray
 
-        # Verify Dockerfile exists
-        if (-not (Test-Path $dockerfilePath)) {
-            Write-Error-Message "Dockerfile not found at $dockerfilePath"
+        if (-not (Test-Path $service.Dockerfile)) {
+            Write-Error-Message "Dockerfile not found at $($service.Dockerfile)"
             return $false
         }
 
-        # Convert to absolute path for docker build
-        $absoluteDockerfilePath = (Resolve-Path $dockerfilePath).Path
-
-        # Use docker build with absolute path (using argument array for proper argument passing)
-        Write-Host "    Running: docker build -t $imageTag -f ... ." -ForegroundColor Gray
+        $absoluteDockerfilePath = (Resolve-Path $service.Dockerfile).Path
         & docker build -t $imageTag -f $absoluteDockerfilePath .
 
         if ($LASTEXITCODE -ne 0) {
@@ -471,7 +279,7 @@ function Build-And-Push-Images {
             return $false
         }
 
-        Write-Host "  Pushing $($service.Name) to GAR..." -ForegroundColor Gray
+        Write-Host "  Pushing $($service.Name)..." -ForegroundColor Gray
         & docker push $imageTag
 
         if ($LASTEXITCODE -ne 0) {
@@ -479,7 +287,7 @@ function Build-And-Push-Images {
             return $false
         }
 
-        Write-Host "    Pushed: $imageTag" -ForegroundColor Green
+        Write-Host "    $imageTag" -ForegroundColor Green
     }
 
     Write-Success "All images built and pushed successfully!"
@@ -491,47 +299,28 @@ function Deploy-Services {
         [string]$Environment = "dev"
     )
 
-    Write-Step "Deploying services to $Environment environment..."
-
-    # Check if .env exists
-    if (-not (Test-Path ".env")) {
-        Write-Warning-Message ".env file not found, copying from .env.example..."
-        Copy-Item ".env.example" ".env"
-    }
-
     if ($Environment -eq "dev") {
-        Write-Host "  Using docker-compose.yml (development)" -ForegroundColor Gray
-        & docker-compose up -d --build
-    } elseif ($Environment -eq "prod") {
-        Write-Host "  Using docker-compose.prod.yml (production)" -ForegroundColor Gray
+        Write-Step "Starting development environment..."
 
-        # Build and push images to GAR for production
-        $buildSuccess = Build-And-Push-Images
-
-        if (-not $buildSuccess) {
-            Write-Error-Message "Image build/push failed. Deployment aborted."
-            return
+        if (-not (Test-Path ".env")) {
+            Write-Warning-Message ".env file not found, copying from .env.example..."
+            Copy-Item ".env.example" ".env"
         }
 
-        # Pull images from GAR (without starting containers)
-        Write-Host "`n  Pulling images from GAR..." -ForegroundColor Gray
-        & docker-compose -f docker-compose.prod.yml pull
-    } else {
-        Write-Error-Message "Invalid environment: $Environment (use 'dev' or 'prod')"
-        return
-    }
+        & docker-compose up -d --build
 
-    if ($LASTEXITCODE -eq 0) {
-        Write-Success "Deployment complete!"
-        if ($Environment -eq "dev") {
-            Write-Host "`nService Status:" -ForegroundColor $ColorInfo
+        if ($LASTEXITCODE -eq 0) {
+            Write-Success "Development environment started!"
             & docker-compose ps
         } else {
-            Write-Host "`nImages ready. To start containers, run:" -ForegroundColor $ColorInfo
-            Write-Host "  docker-compose -f docker-compose.prod.yml up -d" -ForegroundColor Gray
+            Write-Error-Message "Failed to start development environment"
         }
+
+    } elseif ($Environment -eq "prod") {
+        Build-And-Push-Images
+
     } else {
-        Write-Error-Message "Deployment failed"
+        Write-Error-Message "Invalid environment: $Environment (use 'dev' or 'prod')"
     }
 }
 
@@ -543,82 +332,19 @@ function Show-Logs {
     Write-Step "Viewing logs..."
 
     if ($Service) {
-        Write-Host "  Service: $Service" -ForegroundColor Gray
         & docker-compose logs -f $Service
     } else {
-        Write-Host "  All services (Ctrl+C to exit)" -ForegroundColor Gray
         & docker-compose logs -f
-    }
-}
-
-function Run-Migration {
-    param(
-        [string]$Action = "upgrade"
-    )
-
-    Write-Step "Running database migrations: $Action"
-
-    # Services with Alembic migrations and their container names
-    $migrationServices = @(
-        @{ Service = "ingestion";  Container = "minsik-ingestion-service-dev" },
-        @{ Service = "auth";       Container = "minsik-auth-service-dev" },
-        @{ Service = "user-data";  Container = "minsik-user-data-service-dev" }
-    )
-
-    $alembicAction = switch ($Action) {
-        "upgrade"   { "upgrade head" }
-        "downgrade" { "downgrade -1" }
-        "current"   { "current" }
-        "history"   { "history" }
-        default     { "upgrade head" }
-    }
-
-    foreach ($svc in $migrationServices) {
-        $containerName = $svc.Container
-        $serviceName = $svc.Service
-
-        $containerCheck = & docker ps -q -f name=$containerName
-        if (-not $containerCheck) {
-            Write-Warning-Message "Container $containerName is not running -- skipping $serviceName migrations"
-            continue
-        }
-
-        Write-Host "  Running '$alembicAction' for $serviceName..." -ForegroundColor Gray
-        & docker exec $containerName sh -c "alembic $alembicAction"
-
-        if ($LASTEXITCODE -eq 0) {
-            Write-Success "  $serviceName migrations OK"
-        } else {
-            Write-Error-Message "  $serviceName migrations FAILED"
-        }
-    }
-}
-
-function Initialize-Database {
-    Write-Step "Initializing database schemas..."
-
-    Write-Host "  Running init-db.sql script..." -ForegroundColor Gray
-
-    # Run the init script through docker
-    & docker exec minsik-postgres-dev psql -U postgres -d minsik_db -f /docker-entrypoint-initdb.d/init-db.sql
-
-    if ($LASTEXITCODE -eq 0) {
-        Write-Success "Database initialized!"
-    } else {
-        Write-Error-Message "Database initialization failed"
     }
 }
 
 function Run-Tests {
     param(
-        [string]$Service,
-        [switch]$Coverage,
-        [string]$TestFile
+        [string]$Service
     )
 
     Write-Step "Running tests..."
 
-    # Service name mapping
     $serviceMap = @{
         "gateway"   = "gateway-service"
         "ingestion" = "ingestion-service"
@@ -632,31 +358,11 @@ function Run-Tests {
 
         $containerCheck = & docker ps -q -f name=$containerName
         if (-not $containerCheck) {
-            Write-Warning-Message "Service container not running. Starting services..."
-            & docker-compose up -d $($serviceMap[$Service])
-            Start-Sleep -Seconds 5
+            Write-Error-Message "Container $containerName is not running"
+            return
         }
 
-        Write-Host "  Service: $Service" -ForegroundColor Gray
-
-        # Build pytest command
-        $pytestCmd = "pytest"
-
-        if ($TestFile) {
-            $pytestCmd += " tests/$TestFile"
-        } else {
-            $pytestCmd += " tests/"
-        }
-
-        $pytestCmd += " -v"
-
-        if ($Coverage) {
-            $pytestCmd += " --cov=app --cov-report=term-missing --cov-report=html"
-        }
-
-        Write-Host "  Running: $pytestCmd" -ForegroundColor Gray
-
-        & docker exec $containerName sh -c "$pytestCmd"
+        & docker exec $containerName pytest tests/ -v
 
         if ($LASTEXITCODE -eq 0) {
             Write-Success "Tests passed!"
@@ -665,21 +371,17 @@ function Run-Tests {
         }
 
     } else {
-        Write-Host "  All services" -ForegroundColor Gray
-
-        # Run tests for all implemented services
         $services = @("gateway", "ingestion", "books", "auth", "user-data")
         $totalPassed = 0
         $totalFailed = 0
 
         foreach ($svc in $services) {
-            Write-Host "`n  Testing $svc service..." -ForegroundColor $ColorInfo
-
+            Write-Host "`n  Testing $svc..." -ForegroundColor $ColorInfo
             $containerName = "minsik-$($serviceMap[$svc])-dev"
 
             $containerCheck = & docker ps -q -f name=$containerName
             if (-not $containerCheck) {
-                Write-Warning-Message "Service container not running. Skipping $svc..."
+                Write-Warning-Message "  Container not running, skipping"
                 continue
             }
 
@@ -687,16 +389,14 @@ function Run-Tests {
 
             if ($LASTEXITCODE -eq 0) {
                 $totalPassed++
-                Write-Success "$svc tests passed"
+                Write-Success "  $svc passed"
             } else {
                 $totalFailed++
-                Write-Error-Message "$svc tests failed"
+                Write-Error-Message "  $svc failed"
             }
         }
 
-        Write-Host "`nTest Summary:" -ForegroundColor $ColorInfo
-        Write-Host "  Passed: $totalPassed" -ForegroundColor Green
-        Write-Host "  Failed: $totalFailed" -ForegroundColor $(if ($totalFailed -gt 0) { "Red" } else { "Gray" })
+        Write-Host "`nTest Summary: $totalPassed passed, $totalFailed failed" -ForegroundColor $ColorInfo
     }
 }
 
@@ -709,10 +409,7 @@ function Clean-All {
         return
     }
 
-    Write-Step "Stopping services..."
     & docker-compose down -v
-
-    Write-Step "Removing volumes..."
     & docker volume prune -f
 
     Write-Success "Cleanup complete!"
@@ -722,49 +419,15 @@ function Clean-All {
 # Main Execution
 # ============================================================================
 
-# If no parameters, show help
 if ($PSBoundParameters.Count -eq 0) {
     Show-Help
     exit
 }
 
-# Execute commands
-if ($Help) {
-    Show-Help
-}
-
-if ($CompileProto) {
-    Compile-Proto
-}
-
-if ($CreateAdmin) {
-    Create-Admin-User -Email $Email -Password $Password
-}
-
-if ($CreateUser) {
-    Create-Regular-User -Email $Email -Password $Password
-}
-
-if ($Deploy) {
-    Deploy-Services -Environment $Environment
-}
-
-if ($Logs) {
-    Show-Logs -Service $LogService
-}
-
-if ($Migrate) {
-    Run-Migration -Action $MigrateAction
-}
-
-if ($Init) {
-    Initialize-Database
-}
-
-if ($Test) {
-    Run-Tests -Service $TestService
-}
-
-if ($Clean) {
-    Clean-All
-}
+if ($Help)         { Show-Help }
+if ($CompileProto) { Compile-Proto }
+if ($CreateAdmin)  { Create-Admin-User -Email $Email -Password $Password }
+if ($Deploy)       { Deploy-Services -Environment $Environment }
+if ($Logs)         { Show-Logs -Service $LogService }
+if ($Test)         { Run-Tests -Service $TestService }
+if ($Clean)        { Clean-All }
