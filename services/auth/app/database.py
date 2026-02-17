@@ -12,6 +12,7 @@ async_session_maker: sqlalchemy.orm.sessionmaker = None
 
 async def run_migrations() -> None:
     import os
+    import subprocess
 
     alembic_ini = os.path.join(os.path.dirname(__file__), '..', 'alembic.ini')
 
@@ -21,19 +22,20 @@ async def run_migrations() -> None:
         return
 
     try:
-        from alembic import command
-        from alembic.config import Config
-
-        alembic_cfg = Config(alembic_ini)
-        alembic_cfg.set_main_option("sqlalchemy.url", app.config.settings.database_url)
-
-        await asyncio.get_event_loop().run_in_executor(
-            None,
-            lambda: command.upgrade(alembic_cfg, "head")
+        result = subprocess.run(
+            ["alembic", "upgrade", "head"],
+            cwd=os.path.dirname(alembic_ini),
+            capture_output=True,
+            text=True,
+            timeout=300
         )
-        logger.info("Database migrations completed successfully")
-    except ImportError:
-        logger.debug("Alembic not available, skipping migrations")
+
+        if result.returncode != 0:
+            logger.warning(f"Migration error: {result.stderr}")
+        else:
+            logger.info("Database migrations completed successfully")
+    except subprocess.TimeoutExpired:
+        logger.warning("Migration timeout (exceeded 300 seconds)")
     except Exception as e:
         logger.warning(f"Migration error (service will continue): {str(e)}")
 

@@ -209,7 +209,6 @@ async def get_or_create_author(session: sqlalchemy.ext.asyncio.AsyncSession, aut
         open_library_id=author_data.get("open_library_id")
     )
     session.add(new_author)
-    await session.flush()
 
     return new_author
 
@@ -234,7 +233,6 @@ async def get_or_create_genre(session: sqlalchemy.ext.asyncio.AsyncSession, genr
         slug=slug
     )
     session.add(new_genre)
-    await session.flush()
 
     return new_genre
 
@@ -260,7 +258,6 @@ async def get_or_create_series(session: sqlalchemy.ext.asyncio.AsyncSession, ser
         description=series_data.get("description")
     )
     session.add(new_series)
-    await session.flush()
 
     return new_series
 

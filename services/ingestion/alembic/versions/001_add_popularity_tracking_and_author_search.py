@@ -71,8 +71,6 @@ def upgrade() -> None:
         EXECUTE FUNCTION books.update_author_ts_vector();
     """)
 
-    op.execute("UPDATE books.authors SET name = name")
-
 
 def downgrade() -> None:
     op.execute("DROP TRIGGER IF EXISTS trig_update_author_ts_vector ON books.authors CASCADE")

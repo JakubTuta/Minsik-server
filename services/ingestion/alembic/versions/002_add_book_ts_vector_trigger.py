@@ -38,8 +38,6 @@ def upgrade() -> None:
         EXECUTE FUNCTION books.update_book_ts_vector();
     """)
 
-    op.execute("UPDATE books.books SET title = title")
-
 
 def downgrade() -> None:
     op.execute("DROP TRIGGER IF EXISTS trig_update_book_ts_vector ON books.books")

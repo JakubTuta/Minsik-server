@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import gzip
 import json
 import logging
@@ -10,6 +11,7 @@ import httpx
 import redis
 import sqlalchemy
 import sqlalchemy.ext.asyncio
+from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 
 import app.config
 import app.models
@@ -38,6 +40,8 @@ async def _stream_parse_dump(
     queue: asyncio.Queue[typing.Optional[typing.List[dict]]],
     batch_size: int,
 ) -> None:
+    loop = asyncio.get_running_loop()
+
     def _sync_reader() -> None:
         with gzip.open(file_path, "rt", encoding="utf-8") as f:
             batch = []
@@ -53,7 +57,6 @@ async def _stream_parse_dump(
                         data = json.loads(parts[4])
                         batch.append(data)
                         if len(batch) >= batch_size:
-                            loop = asyncio.get_event_loop()
                             loop.call_soon_threadsafe(queue.put_nowait, batch[:])
                             batch = []
                     except json.JSONDecodeError:
@@ -63,10 +66,8 @@ async def _stream_parse_dump(
                     continue
 
             if batch:
-                loop = asyncio.get_event_loop()
                 loop.call_soon_threadsafe(queue.put_nowait, batch)
 
-        loop = asyncio.get_event_loop()
         loop.call_soon_threadsafe(queue.put_nowait, None)
 
     await asyncio.to_thread(_sync_reader)
@@ -90,6 +91,24 @@ def _extract_year(date_string: typing.Optional[str]) -> typing.Optional[int]:
         return None
 
 
+def _parse_date(date_string: typing.Optional[str]) -> typing.Optional[datetime.date]:
+    if not date_string:
+        return None
+    try:
+        date_str = str(date_string).strip()
+        if not date_str:
+            return None
+        if len(date_str) == 4:
+            return datetime.date(int(date_str), 1, 1)
+        elif len(date_str) == 7:
+            year, month = date_str.split("-")
+            return datetime.date(int(year), int(month), 1)
+        else:
+            return datetime.datetime.fromisoformat(date_str[:10]).date()
+    except (ValueError, TypeError, AttributeError):
+        return None
+
+
 def _extract_cover_url(covers: typing.Optional[list]) -> typing.Optional[str]:
     if not covers or not isinstance(covers, list):
         return None
@@ -100,7 +119,7 @@ def _extract_cover_url(covers: typing.Optional[list]) -> typing.Optional[str]:
 
 
 async def process_authors_dump(file_path: str) -> int:
-    queue: asyncio.Queue[typing.Optional[typing.List[dict]]] = asyncio.Queue(maxsize=10)
+    queue: asyncio.Queue[typing.Optional[typing.List[dict]]] = asyncio.Queue(maxsize=100)
 
     parse_task = asyncio.create_task(
         _stream_parse_dump(file_path, "/type/author", queue, app.config.settings.dump_batch_size)
@@ -115,18 +134,15 @@ async def process_authors_dump(file_path: str) -> int:
                 if batch is None:
                     break
 
+                # Build bulk insert data
+                insert_data = []
                 for author_data in batch:
                     try:
-                        author_dict = {
-                            "name": author_data.get("name"),
-                            "bio": _extract_description(author_data.get("bio")) if author_data.get("bio") else None,
-                            "birth_date": author_data.get("birth_date"),
-                            "death_date": author_data.get("death_date"),
-                            "open_library_id": author_data.get("key", "").replace("/authors/", ""),
-                        }
-
-                        if not author_dict.get("name"):
+                        name = author_data.get("name")
+                        if not name:
                             continue
+
+                        bio = _extract_description(author_data.get("bio")) if author_data.get("bio") else None
 
                         photo_url = None
                         photos = author_data.get("photos")
@@ -134,19 +150,41 @@ async def process_authors_dump(file_path: str) -> int:
                             photo_id = photos[0]
                             if isinstance(photo_id, int):
                                 photo_url = f"https://covers.openlibrary.org/a/id/{photo_id}-L.jpg"
-                        author_dict["photo_url"] = photo_url
 
-                        await app.services.book_service.get_or_create_author(session, author_dict)
+                        insert_data.append({
+                            "name": name,
+                            "slug": app.utils.slugify(name),
+                            "bio": bio,
+                            "birth_date": _parse_date(author_data.get("birth_date")),
+                            "death_date": _parse_date(author_data.get("death_date")),
+                            "photo_url": photo_url,
+                            "open_library_id": author_data.get("key", "").replace("/authors/", ""),
+                        })
                         total_count += 1
 
-                        if total_count % 1000 == 0:
-                            logger.info(f"[dump] Authors processed: {total_count}")
-
                     except Exception as e:
-                        logger.debug(f"Error processing author: {str(e)}")
+                        logger.debug(f"Error preparing author: {str(e)}")
                         continue
 
-            await session.commit()
+                # Bulk upsert
+                if insert_data:
+                    try:
+                        stmt = postgresql_insert(app.models.Author).values(insert_data)
+                        stmt = stmt.on_conflict_do_update(
+                            index_elements=["slug"],
+                            set_={"open_library_id": stmt.excluded.open_library_id}
+                        )
+                        await session.execute(stmt)
+                        await session.commit()
+
+                        if total_count % 10000 == 0:
+                            logger.info(f"[dump] Authors processed: {total_count}")
+                    except Exception as e:
+                        logger.warning(f"Error bulk inserting authors: {str(e)}")
+                        await session.rollback()
+                        continue
+
+
             logger.info(f"[dump] Phase 1 complete: {total_count} authors upserted")
             return total_count
 
@@ -159,7 +197,7 @@ async def process_authors_dump(file_path: str) -> int:
 
 
 async def process_works_dump(file_path: str) -> typing.Dict[str, int]:
-    queue: asyncio.Queue[typing.Optional[typing.List[dict]]] = asyncio.Queue(maxsize=10)
+    queue: asyncio.Queue[typing.Optional[typing.List[dict]]] = asyncio.Queue(maxsize=100)
 
     parse_task = asyncio.create_task(
         _stream_parse_dump(file_path, "/type/work", queue, app.config.settings.dump_batch_size)

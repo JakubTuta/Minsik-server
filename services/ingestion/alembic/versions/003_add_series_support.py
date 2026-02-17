@@ -55,7 +55,11 @@ def upgrade() -> None:
 
     op.execute("""
         ALTER TABLE books.books
-        ADD CONSTRAINT IF NOT EXISTS fk_books_series
+        DROP CONSTRAINT IF EXISTS fk_books_series
+    """)
+    op.execute("""
+        ALTER TABLE books.books
+        ADD CONSTRAINT fk_books_series
         FOREIGN KEY (series_id) REFERENCES books.series(series_id) ON DELETE SET NULL
     """)
     op.execute("""
