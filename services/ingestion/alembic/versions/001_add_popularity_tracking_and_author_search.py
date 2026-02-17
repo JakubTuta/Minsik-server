@@ -18,15 +18,39 @@ depends_on = None
 def upgrade() -> None:
     op.execute('CREATE SCHEMA IF NOT EXISTS books')
 
-    op.add_column('books', sa.Column('view_count', sa.Integer(), nullable=False, server_default='0'), schema='books')
-    op.add_column('books', sa.Column('last_viewed_at', sa.TIMESTAMP(), nullable=True), schema='books')
-    op.create_index('idx_books_view_count', 'books', ['view_count'], schema='books', postgresql_ops={'view_count': 'DESC'})
+    op.execute("""
+        ALTER TABLE books.books
+        ADD COLUMN IF NOT EXISTS view_count INTEGER NOT NULL DEFAULT 0
+    """)
+    op.execute("""
+        ALTER TABLE books.books
+        ADD COLUMN IF NOT EXISTS last_viewed_at TIMESTAMP
+    """)
+    op.execute("""
+        CREATE INDEX IF NOT EXISTS idx_books_view_count
+        ON books.books(view_count DESC)
+    """)
 
-    op.add_column('authors', sa.Column('ts_vector', postgresql.TSVECTOR(), nullable=True), schema='books')
-    op.add_column('authors', sa.Column('view_count', sa.Integer(), nullable=False, server_default='0'), schema='books')
-    op.add_column('authors', sa.Column('last_viewed_at', sa.TIMESTAMP(), nullable=True), schema='books')
-    op.create_index('idx_authors_ts_vector', 'authors', ['ts_vector'], schema='books', postgresql_using='gin')
-    op.create_index('idx_authors_view_count', 'authors', ['view_count'], schema='books', postgresql_ops={'view_count': 'DESC'})
+    op.execute("""
+        ALTER TABLE books.authors
+        ADD COLUMN IF NOT EXISTS ts_vector tsvector
+    """)
+    op.execute("""
+        ALTER TABLE books.authors
+        ADD COLUMN IF NOT EXISTS view_count INTEGER NOT NULL DEFAULT 0
+    """)
+    op.execute("""
+        ALTER TABLE books.authors
+        ADD COLUMN IF NOT EXISTS last_viewed_at TIMESTAMP
+    """)
+    op.execute("""
+        CREATE INDEX IF NOT EXISTS idx_authors_ts_vector
+        ON books.authors USING GIN(ts_vector)
+    """)
+    op.execute("""
+        CREATE INDEX IF NOT EXISTS idx_authors_view_count
+        ON books.authors(view_count DESC)
+    """)
 
     op.execute("""
         CREATE OR REPLACE FUNCTION books.update_author_ts_vector()
@@ -51,15 +75,15 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute("DROP TRIGGER IF EXISTS trig_update_author_ts_vector ON books.authors")
-    op.execute("DROP FUNCTION IF EXISTS books.update_author_ts_vector()")
+    op.execute("DROP TRIGGER IF EXISTS trig_update_author_ts_vector ON books.authors CASCADE")
+    op.execute("DROP FUNCTION IF EXISTS books.update_author_ts_vector() CASCADE")
 
-    op.drop_index('idx_authors_view_count', table_name='authors', schema='books')
-    op.drop_index('idx_authors_ts_vector', table_name='authors', schema='books')
-    op.drop_column('authors', 'last_viewed_at', schema='books')
-    op.drop_column('authors', 'view_count', schema='books')
-    op.drop_column('authors', 'ts_vector', schema='books')
+    op.execute("DROP INDEX IF EXISTS books.idx_authors_view_count")
+    op.execute("DROP INDEX IF EXISTS books.idx_authors_ts_vector")
+    op.execute("ALTER TABLE books.authors DROP COLUMN IF EXISTS last_viewed_at")
+    op.execute("ALTER TABLE books.authors DROP COLUMN IF EXISTS view_count")
+    op.execute("ALTER TABLE books.authors DROP COLUMN IF EXISTS ts_vector")
 
-    op.drop_index('idx_books_view_count', table_name='books', schema='books')
-    op.drop_column('books', 'last_viewed_at', schema='books')
-    op.drop_column('books', 'view_count', schema='books')
+    op.execute("DROP INDEX IF EXISTS books.idx_books_view_count")
+    op.execute("ALTER TABLE books.books DROP COLUMN IF EXISTS last_viewed_at")
+    op.execute("ALTER TABLE books.books DROP COLUMN IF EXISTS view_count")

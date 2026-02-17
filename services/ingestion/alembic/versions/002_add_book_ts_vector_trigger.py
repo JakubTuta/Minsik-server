@@ -28,6 +28,10 @@ def upgrade() -> None:
     """)
 
     op.execute("""
+        DROP TRIGGER IF EXISTS trig_update_book_ts_vector ON books.books
+    """)
+
+    op.execute("""
         CREATE TRIGGER trig_update_book_ts_vector
         BEFORE INSERT OR UPDATE ON books.books
         FOR EACH ROW

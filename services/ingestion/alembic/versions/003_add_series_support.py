@@ -16,32 +16,52 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.create_table(
-        'series',
-        sa.Column('series_id', sa.BigInteger(), autoincrement=True, nullable=False),
-        sa.Column('name', sa.String(length=500), nullable=False),
-        sa.Column('slug', sa.String(length=550), nullable=False),
-        sa.Column('description', sa.Text(), nullable=True),
-        sa.Column('total_books', sa.Integer(), nullable=True),
-        sa.Column('ts_vector', postgresql.TSVECTOR(), nullable=True),
-        sa.Column('view_count', sa.Integer(), nullable=False, server_default='0'),
-        sa.Column('last_viewed_at', sa.TIMESTAMP(), nullable=True),
-        sa.Column('created_at', sa.TIMESTAMP(), nullable=False, server_default=sa.text('NOW()')),
-        sa.Column('updated_at', sa.TIMESTAMP(), nullable=False, server_default=sa.text('NOW()')),
-        sa.PrimaryKeyConstraint('series_id'),
-        sa.UniqueConstraint('slug'),
-        schema='books'
-    )
+    op.execute("""
+        CREATE TABLE IF NOT EXISTS books.series (
+            series_id BIGSERIAL PRIMARY KEY,
+            name VARCHAR(500) NOT NULL,
+            slug VARCHAR(550) NOT NULL UNIQUE,
+            description TEXT,
+            total_books INT,
+            ts_vector tsvector,
+            view_count INTEGER NOT NULL DEFAULT 0,
+            last_viewed_at TIMESTAMP,
+            created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+            updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+        )
+    """)
 
-    op.create_index('idx_series_slug', 'series', ['slug'], unique=False, schema='books')
-    op.create_index('idx_series_ts_vector', 'series', ['ts_vector'], unique=False, schema='books', postgresql_using='gin')
-    op.create_index('idx_series_view_count', 'series', ['view_count'], unique=False, schema='books', postgresql_ops={'view_count': 'DESC'})
+    op.execute("""
+        CREATE INDEX IF NOT EXISTS idx_series_slug
+        ON books.series(slug)
+    """)
+    op.execute("""
+        CREATE INDEX IF NOT EXISTS idx_series_ts_vector
+        ON books.series USING GIN(ts_vector)
+    """)
+    op.execute("""
+        CREATE INDEX IF NOT EXISTS idx_series_view_count
+        ON books.series(view_count DESC)
+    """)
 
-    op.add_column('books', sa.Column('series_id', sa.BigInteger(), nullable=True), schema='books')
-    op.add_column('books', sa.Column('series_position', sa.DECIMAL(precision=5, scale=2), nullable=True), schema='books')
+    op.execute("""
+        ALTER TABLE books.books
+        ADD COLUMN IF NOT EXISTS series_id BIGINT
+    """)
+    op.execute("""
+        ALTER TABLE books.books
+        ADD COLUMN IF NOT EXISTS series_position DECIMAL(5, 2)
+    """)
 
-    op.create_foreign_key('fk_books_series', 'books', 'series', ['series_id'], ['series_id'], source_schema='books', referent_schema='books')
-    op.create_index('idx_books_series', 'books', ['series_id', 'series_position'], unique=False, schema='books')
+    op.execute("""
+        ALTER TABLE books.books
+        ADD CONSTRAINT IF NOT EXISTS fk_books_series
+        FOREIGN KEY (series_id) REFERENCES books.series(series_id) ON DELETE SET NULL
+    """)
+    op.execute("""
+        CREATE INDEX IF NOT EXISTS idx_books_series
+        ON books.books(series_id, series_position)
+    """)
 
     op.execute("""
         CREATE OR REPLACE FUNCTION books.update_series_ts_vector()
@@ -56,6 +76,10 @@ def upgrade() -> None:
     """)
 
     op.execute("""
+        DROP TRIGGER IF EXISTS trig_update_series_ts_vector ON books.series
+    """)
+
+    op.execute("""
         CREATE TRIGGER trig_update_series_ts_vector
         BEFORE INSERT OR UPDATE ON books.series
         FOR EACH ROW
@@ -64,15 +88,15 @@ def upgrade() -> None:
 
 
 def downgrade() -> None:
-    op.execute("DROP TRIGGER IF EXISTS trig_update_series_ts_vector ON books.series")
-    op.execute("DROP FUNCTION IF EXISTS books.update_series_ts_vector()")
+    op.execute("DROP TRIGGER IF EXISTS trig_update_series_ts_vector ON books.series CASCADE")
+    op.execute("DROP FUNCTION IF EXISTS books.update_series_ts_vector() CASCADE")
 
-    op.drop_index('idx_books_series', table_name='books', schema='books')
-    op.drop_constraint('fk_books_series', 'books', schema='books', type_='foreignkey')
-    op.drop_column('books', 'series_position', schema='books')
-    op.drop_column('books', 'series_id', schema='books')
+    op.execute("DROP INDEX IF EXISTS books.idx_books_series")
+    op.execute("ALTER TABLE books.books DROP CONSTRAINT IF EXISTS fk_books_series")
+    op.execute("ALTER TABLE books.books DROP COLUMN IF EXISTS series_position")
+    op.execute("ALTER TABLE books.books DROP COLUMN IF EXISTS series_id")
 
-    op.drop_index('idx_series_view_count', table_name='series', schema='books')
-    op.drop_index('idx_series_ts_vector', table_name='series', schema='books')
-    op.drop_index('idx_series_slug', table_name='series', schema='books')
-    op.drop_table('series', schema='books')
+    op.execute("DROP INDEX IF EXISTS books.idx_series_view_count")
+    op.execute("DROP INDEX IF EXISTS books.idx_series_ts_vector")
+    op.execute("DROP INDEX IF EXISTS books.idx_series_slug")
+    op.execute("DROP TABLE IF EXISTS books.series CASCADE")

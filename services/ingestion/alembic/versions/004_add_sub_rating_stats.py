@@ -16,17 +16,11 @@ depends_on = None
 
 
 def upgrade() -> None:
-    op.add_column(
-        'books',
-        sa.Column(
-            'sub_rating_stats',
-            postgresql.JSONB(),
-            nullable=False,
-            server_default=sa.text("'{}'::jsonb")
-        ),
-        schema='books'
-    )
+    op.execute("""
+        ALTER TABLE books.books
+        ADD COLUMN IF NOT EXISTS sub_rating_stats JSONB NOT NULL DEFAULT '{}'::jsonb
+    """)
 
 
 def downgrade() -> None:
-    op.drop_column('books', 'sub_rating_stats', schema='books')
+    op.execute("ALTER TABLE books.books DROP COLUMN IF EXISTS sub_rating_stats")
