@@ -11,20 +11,29 @@ async_session_maker: sqlalchemy.orm.sessionmaker = None
 
 
 async def run_migrations() -> None:
-    from alembic import command
-    from alembic.config import Config
     import os
 
     alembic_ini = os.path.join(os.path.dirname(__file__), '..', 'alembic.ini')
-    alembic_cfg = Config(alembic_ini)
-    alembic_cfg.set_main_option("sqlalchemy.url", app.config.settings.database_url)
+
+    # Skip migrations if alembic.ini doesn't exist
+    if not os.path.exists(alembic_ini):
+        logger.debug("No alembic.ini found, skipping migrations")
+        return
 
     try:
+        from alembic import command
+        from alembic.config import Config
+
+        alembic_cfg = Config(alembic_ini)
+        alembic_cfg.set_main_option("sqlalchemy.url", app.config.settings.database_url)
+
         await asyncio.get_event_loop().run_in_executor(
             None,
             lambda: command.upgrade(alembic_cfg, "head")
         )
         logger.info("Database migrations completed successfully")
+    except ImportError:
+        logger.debug("Alembic not available, skipping migrations")
     except Exception as e:
         logger.error(f"Error running migrations: {str(e)}")
         raise

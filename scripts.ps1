@@ -282,46 +282,68 @@ function Create-Admin-User {
 
         $createAdminScript = @"
 import asyncio
-import sys
 import argparse
-from passlib.hash import bcrypt
+import os
+import sys
+import bcrypt
+from sqlalchemy import text
 from sqlalchemy.ext.asyncio import create_async_engine, AsyncSession
 from sqlalchemy.orm import sessionmaker
-import os
 from dotenv import load_dotenv
 
 load_dotenv()
 
-async def create_admin(email: str, password: str):
-    # Database connection
-    db_url = os.getenv('DATABASE_URL') or f"postgresql+asyncpg://{os.getenv('DB_USER')}:{os.getenv('DB_PASSWORD')}@{os.getenv('DB_HOST')}:{os.getenv('DB_PORT')}/{os.getenv('DB_NAME')}"
+async def create_admin(email: str, password: str) -> None:
+    """Create an admin user in the database."""
+    db_user = os.getenv("DB_USER", "postgres")
+    db_password = os.getenv("DB_PASSWORD", "postgres")
+    db_host = os.getenv("DB_HOST", "postgres")
+    db_port = os.getenv("DB_PORT", "5432")
+    db_name = os.getenv("DB_NAME", "minsik_db")
 
-    engine = create_async_engine(db_url)
-    async_session = sessionmaker(engine, class_=AsyncSession, expire_on_commit=False)
+    db_url = f"postgresql+asyncpg://{db_user}:{db_password}@{db_host}:{db_port}/{db_name}"
 
-    async with async_session() as session:
-        # Hash password
-        password_hash = bcrypt.hash(password)
-
-        # Insert admin user (raw SQL for simplicity)
-        await session.execute(
-            '''
-            INSERT INTO auth.users (email, password_hash, role, is_verified, is_active)
-            VALUES (:email, :password_hash, 'admin', true, true)
-            ON CONFLICT (email) DO UPDATE SET
-                password_hash = :password_hash,
-                role = 'admin'
-            ''',
-            {'email': email, 'password_hash': password_hash}
+    try:
+        engine = create_async_engine(db_url, echo=False)
+        async_session = sessionmaker(
+            engine,
+            class_=AsyncSession,
+            expire_on_commit=False
         )
-        await session.commit()
 
-    print(f'Admin user created: {email}')
+        async with async_session() as session:
+            password_bytes = password[:72].encode("utf-8")
+            password_hash = bcrypt.hashpw(
+                password_bytes, bcrypt.gensalt(rounds=12)
+            ).decode("utf-8")
 
-if __name__ == '__main__':
-    parser = argparse.ArgumentParser()
-    parser.add_argument('--email', required=True)
-    parser.add_argument('--password', required=True)
+            username = email.split("@")[0].lower()
+
+            await session.execute(
+                text("""
+                    INSERT INTO auth.users (email, username, password_hash, role, is_active)
+                    VALUES (:email, :username, :password_hash, 'admin', true)
+                    ON CONFLICT (email) DO UPDATE SET
+                        password_hash = :password_hash,
+                        role = 'admin'
+                """),
+                {"email": email, "username": username, "password_hash": password_hash}
+            )
+            await session.commit()
+
+        await engine.dispose()
+        print(f"✓ Admin user created: {email}")
+
+    except Exception as e:
+        print(f"✗ Error: {str(e)}", file=sys.stderr)
+        sys.exit(1)
+
+if __name__ == "__main__":
+    parser = argparse.ArgumentParser(
+        description="Create an admin user in the Minsik database"
+    )
+    parser.add_argument("--email", required=True, help="Admin email address")
+    parser.add_argument("--password", required=True, help="Admin password")
     args = parser.parse_args()
 
     asyncio.run(create_admin(args.email, args.password))
@@ -329,13 +351,31 @@ if __name__ == '__main__':
         Set-Content -Path "scripts/create_admin.py" -Value $createAdminScript
     }
 
-    # Run the Python script
+    # Check if auth service container is running
+    $authContainer = & docker ps -q -f name=minsik-auth-service-dev
+    if ($authContainer) {
+        Write-Host "  Using auth service container" -ForegroundColor Gray
+
+        # Copy script into container and run it
+        & docker cp scripts/create_admin.py ${authContainer}:/tmp/create_admin.py 2>$null
+        & docker exec $authContainer python /tmp/create_admin.py --email $Email --password $Password
+
+        if ($LASTEXITCODE -eq 0) {
+            Write-Success "Admin user created successfully!"
+        } else {
+            Write-Error-Message "Failed to create admin user"
+        }
+        return
+    }
+
+    # Fallback: Run the Python script locally (only works if database is accessible)
+    Write-Warning-Message "Auth service container not running. Attempting to run script locally..."
     & "$env:PYTHON" scripts/create_admin.py --email $Email --password $Password
 
     if ($LASTEXITCODE -eq 0) {
         Write-Success "Admin user created successfully!"
     } else {
-        Write-Error-Message "Failed to create admin user"
+        Write-Error-Message "Failed to create admin user (containers may be required)"
     }
 }
 
