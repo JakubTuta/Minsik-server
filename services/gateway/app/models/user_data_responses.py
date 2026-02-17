@@ -185,16 +185,16 @@ class UpsertBookshelfRequest(pydantic.BaseModel):
 
 
 class UpsertRatingRequest(pydantic.BaseModel):
-    overall_rating: float = pydantic.Field(ge=1.0, le=5.0)
+    overall_rating: float = pydantic.Field(ge=0.5, le=5.0)
     review_text: typing.Optional[str] = pydantic.Field(default=None, max_length=5000)
-    pacing: typing.Optional[float] = pydantic.Field(default=None, ge=1.0, le=5.0, description="1: slow, deliberate / 5: fast, action-packed")
-    emotional_impact: typing.Optional[float] = pydantic.Field(default=None, ge=1.0, le=5.0, description="1: leaves no impression / 5: deeply moving")
-    intellectual_depth: typing.Optional[float] = pydantic.Field(default=None, ge=1.0, le=5.0, description="1: shallow, surface-level / 5: profound, thought-provoking")
-    writing_quality: typing.Optional[float] = pydantic.Field(default=None, ge=1.0, le=5.0, description="1: poorly written / 5: masterfully crafted prose")
-    rereadability: typing.Optional[float] = pydantic.Field(default=None, ge=1.0, le=5.0, description="1: no desire to revisit / 5: would gladly reread")
-    readability: typing.Optional[float] = pydantic.Field(default=None, ge=1.0, le=5.0, description="1: dense, challenging / 5: light, easy read")
-    plot_complexity: typing.Optional[float] = pydantic.Field(default=None, ge=1.0, le=5.0, description="1: simple, straightforward / 5: complex, multi-layered")
-    humor: typing.Optional[float] = pydantic.Field(default=None, ge=1.0, le=5.0, description="1: serious, no humor / 5: very funny, comedic")
+    pacing: typing.Optional[float] = pydantic.Field(default=None, ge=0.5, le=5.0, description="1: slow, deliberate / 5: fast, action-packed")
+    emotional_impact: typing.Optional[float] = pydantic.Field(default=None, ge=0.5, le=5.0, description="1: leaves no impression / 5: deeply moving")
+    intellectual_depth: typing.Optional[float] = pydantic.Field(default=None, ge=0.5, le=5.0, description="1: shallow, surface-level / 5: profound, thought-provoking")
+    writing_quality: typing.Optional[float] = pydantic.Field(default=None, ge=0.5, le=5.0, description="1: poorly written / 5: masterfully crafted prose")
+    rereadability: typing.Optional[float] = pydantic.Field(default=None, ge=0.5, le=5.0, description="1: no desire to revisit / 5: would gladly reread")
+    readability: typing.Optional[float] = pydantic.Field(default=None, ge=0.5, le=5.0, description="1: dense, challenging / 5: light, easy read")
+    plot_complexity: typing.Optional[float] = pydantic.Field(default=None, ge=0.5, le=5.0, description="1: simple, straightforward / 5: complex, multi-layered")
+    humor: typing.Optional[float] = pydantic.Field(default=None, ge=0.5, le=5.0, description="1: serious, no humor / 5: very funny, comedic")
 
     model_config = pydantic.ConfigDict(
         json_schema_extra={

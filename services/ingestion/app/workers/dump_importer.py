@@ -23,7 +23,7 @@ _OPENLIBRARY_COVER_URL_TEMPLATE = "https://covers.openlibrary.org/b/id/{cover_id
 
 async def download_file(url: str, dest_path: str) -> None:
     logger.info(f"[dump] Downloading {url}")
-    async with httpx.AsyncClient(timeout=3600) as client:
+    async with httpx.AsyncClient(timeout=3600, follow_redirects=True) as client:
         async with client.stream("GET", url) as response:
             response.raise_for_status()
             with open(dest_path, "wb") as f:

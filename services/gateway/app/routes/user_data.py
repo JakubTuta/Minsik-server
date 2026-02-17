@@ -503,8 +503,8 @@ async def get_user_favourites(
     status_code=201,
     summary="Rate a book",
     description="""
-    Submit or update a rating for a book. Only `overall_rating` is required (1.0–5.0).
-    All sub-dimension ratings are optional (1.0–5.0 each).
+    Submit or update a rating for a book. Only `overall_rating` is required (0.5–5.0).
+    All sub-dimension ratings are optional (0.5–5.0 each).
 
     **Quality dimensions** (higher = better): `writing_quality`, `emotional_impact`,
     `intellectual_depth`, `rereadability`.
@@ -602,7 +602,7 @@ async def delete_rating(
     description="""
     Retrieve all books the authenticated user has rated.
 
-    **Filtering:** `min_rating`, `max_rating` (1.0–5.0).
+    **Filtering:** `min_rating`, `max_rating` (0.5–5.0).
 
     **Sorting:** `sort_by` (`created_at`, `overall_rating`), `order` (`asc`, `desc`).
 
@@ -620,8 +620,8 @@ async def get_user_ratings(
     offset: int = fastapi.Query(0, ge=0),
     sort_by: typing.Literal["created_at", "overall_rating"] = fastapi.Query("created_at"),
     order: typing.Literal["asc", "desc"] = fastapi.Query("desc"),
-    min_rating: typing.Optional[float] = fastapi.Query(None, ge=1.0, le=5.0),
-    max_rating: typing.Optional[float] = fastapi.Query(None, ge=1.0, le=5.0),
+    min_rating: typing.Optional[float] = fastapi.Query(None, ge=0.5, le=5.0),
+    max_rating: typing.Optional[float] = fastapi.Query(None, ge=0.5, le=5.0),
     current_user: typing.Dict[str, typing.Any] = fastapi.Depends(app.middleware.auth.require_user)
 ):
     try:
