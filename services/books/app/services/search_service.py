@@ -1,16 +1,12 @@
 import typing
 import logging
-import math
 import datetime
 import sqlalchemy
 import sqlalchemy.ext.asyncio
-import sqlalchemy.sql.functions as func
-from sqlalchemy import select, text, or_
+from sqlalchemy import text
 import app.config
-import app.models.book
-import app.models.author
-import app.models.series
 import app.cache
+import app.es_client
 
 logger = logging.getLogger(__name__)
 
@@ -31,12 +27,12 @@ async def search_books_and_authors(
     total_count = 0
 
     if type_filter in ["all", "books"]:
-        book_results, book_total = await _search_books(session, query, limit * 2, offset)
+        book_results, book_total = await _search_books_es(query, limit * 2, offset)
         results.extend(book_results)
         total_count += book_total
 
     if type_filter in ["all", "authors"]:
-        author_results, author_total = await _search_authors(session, query, limit * 2, offset)
+        author_results, author_total = await _search_authors_es(query, limit * 2, offset)
         results.extend(author_results)
         total_count += author_total
 
@@ -50,7 +46,7 @@ async def search_books_and_authors(
                 results.extend(author_books)
 
     if type_filter in ["all", "series"]:
-        series_results, series_total = await _search_series(session, query, limit * 2, offset)
+        series_results, series_total = await _search_series_es(query, limit * 2, offset)
         results.extend(series_results)
         total_count += series_total
 
@@ -63,7 +59,7 @@ async def search_books_and_authors(
                 )
                 results.extend(series_books)
 
-    seen_items = {}
+    seen_items: typing.Dict[typing.Tuple[str, int], typing.Dict[str, typing.Any]] = {}
     for result in results:
         key = (result["type"], result["id"])
         if key not in seen_items:
@@ -86,151 +82,174 @@ async def search_books_and_authors(
     return final_results, total_count
 
 
-async def _search_books(
-    session: sqlalchemy.ext.asyncio.AsyncSession,
+def _build_function_score_query(query: str, fields: typing.List[str]) -> typing.Dict[str, typing.Any]:
+    return {
+        "function_score": {
+            "query": {
+                "multi_match": {
+                    "query": query,
+                    "fields": fields,
+                    "type": "best_fields",
+                    "fuzziness": "AUTO"
+                }
+            },
+            "functions": [
+                {
+                    "field_value_factor": {
+                        "field": "view_count",
+                        "modifier": "log1p",
+                        "factor": 1.0,
+                        "missing": 0
+                    },
+                    "weight": 0.3
+                },
+                {
+                    "gauss": {
+                        "last_viewed_at": {
+                            "scale": "7d",
+                            "decay": 0.5
+                        }
+                    },
+                    "weight": 0.3
+                }
+            ],
+            "score_mode": "sum",
+            "boost_mode": "sum"
+        }
+    }
+
+
+async def _search_books_es(
     query: str,
     limit: int,
     offset: int
 ) -> typing.Tuple[typing.List[typing.Dict[str, typing.Any]], int]:
-    search_query = text("""
-        SELECT
-            b.book_id,
-            b.title,
-            b.slug,
-            b.primary_cover_url,
-            b.view_count,
-            ts_rank(b.ts_vector, plainto_tsquery('english', :query)) as text_rank,
-            COALESCE(b.view_count, 0) as views,
-            b.last_viewed_at,
-            (
-                ts_rank(b.ts_vector, plainto_tsquery('english', :query)) * :text_weight +
-                (LOG(COALESCE(b.view_count, 0) + 1) *
-                    CASE
-                        WHEN b.last_viewed_at > NOW() - (:recent_days * INTERVAL '1 day') THEN :recent_multiplier
-                        ELSE 1.0
-                    END * :popularity_weight)
-            ) as final_rank,
-            ARRAY_AGG(a.name) FILTER (WHERE a.name IS NOT NULL) as author_names,
-            ARRAY_AGG(a.slug) FILTER (WHERE a.slug IS NOT NULL) as author_slugs,
-            s.slug as series_slug
-        FROM books.books b
-        LEFT JOIN books.book_authors ba ON b.book_id = ba.book_id
-        LEFT JOIN books.authors a ON ba.author_id = a.author_id
-        LEFT JOIN books.series s ON b.series_id = s.series_id
-        WHERE b.ts_vector @@ plainto_tsquery('english', :query)
-        GROUP BY b.book_id, b.title, b.slug, b.primary_cover_url, b.view_count, b.last_viewed_at, b.ts_vector, s.slug
-        ORDER BY final_rank DESC
-        LIMIT :limit OFFSET :offset
-    """)
+    es = app.es_client.get_es()
+    index = app.config.settings.es_index_books
 
-    count_query = text("""
-        SELECT COUNT(DISTINCT b.book_id)
-        FROM books.books b
-        WHERE b.ts_vector @@ plainto_tsquery('english', :query)
-    """)
+    es_query = _build_function_score_query(
+        query,
+        ["title^3", "authors_names^2", "description", "series_name"]
+    )
 
-    result = await session.execute(
-        search_query,
-        {
-            "query": query,
-            "text_weight": app.config.settings.text_relevance_weight,
-            "popularity_weight": app.config.settings.popularity_weight,
-            "recent_days": app.config.settings.recent_views_days,
-            "recent_multiplier": app.config.settings.recent_views_multiplier,
-            "limit": limit,
-            "offset": offset
+    response = await es.search(
+        index=index,
+        body={
+            "query": es_query,
+            "from": offset,
+            "size": limit,
+            "_source": [
+                "book_id", "title", "slug", "primary_cover_url",
+                "authors_names", "author_slugs", "series_slug", "view_count"
+            ]
         }
     )
 
-    count_result = await session.execute(count_query, {"query": query})
-    total = count_result.scalar() or 0
-
+    total = response["hits"]["total"]["value"]
     books = []
-    for row in result:
+    for hit in response["hits"]["hits"]:
+        src = hit["_source"]
+        authors_names = src.get("authors_names") or []
+        if isinstance(authors_names, str):
+            authors_names = [authors_names]
+        author_slugs = src.get("author_slugs") or []
+        if isinstance(author_slugs, str):
+            author_slugs = [author_slugs]
+
         books.append({
             "type": "book",
-            "id": row.book_id,
-            "title": row.title,
-            "slug": row.slug,
-            "cover_url": row.primary_cover_url or "",
-            "authors": row.author_names or [],
-            "relevance_score": float(row.final_rank),
-            "view_count": row.views,
-            "author_slugs": row.author_slugs or [],
-            "series_slug": row.series_slug or ""
+            "id": src["book_id"],
+            "title": src.get("title", ""),
+            "slug": src.get("slug", ""),
+            "cover_url": src.get("primary_cover_url") or "",
+            "authors": authors_names,
+            "relevance_score": float(hit["_score"] or 0),
+            "view_count": src.get("view_count") or 0,
+            "author_slugs": author_slugs,
+            "series_slug": src.get("series_slug") or ""
         })
 
     return books, total
 
 
-async def _search_authors(
-    session: sqlalchemy.ext.asyncio.AsyncSession,
+async def _search_authors_es(
     query: str,
     limit: int,
     offset: int
 ) -> typing.Tuple[typing.List[typing.Dict[str, typing.Any]], int]:
-    search_query = text("""
-        SELECT
-            a.author_id,
-            a.name,
-            a.slug,
-            a.photo_url,
-            a.view_count,
-            ts_rank(a.ts_vector, plainto_tsquery('english', :query)) as text_rank,
-            COALESCE(a.view_count, 0) as views,
-            a.last_viewed_at,
-            (
-                ts_rank(a.ts_vector, plainto_tsquery('english', :query)) * :text_weight +
-                (LOG(COALESCE(a.view_count, 0) + 1) *
-                    CASE
-                        WHEN a.last_viewed_at > NOW() - (:recent_days * INTERVAL '1 day') THEN :recent_multiplier
-                        ELSE 1.0
-                    END * :popularity_weight)
-            ) as final_rank
-        FROM books.authors a
-        WHERE a.ts_vector @@ plainto_tsquery('english', :query)
-        ORDER BY final_rank DESC
-        LIMIT :limit OFFSET :offset
-    """)
+    es = app.es_client.get_es()
+    index = app.config.settings.es_index_authors
 
-    count_query = text("""
-        SELECT COUNT(*)
-        FROM books.authors a
-        WHERE a.ts_vector @@ plainto_tsquery('english', :query)
-    """)
+    es_query = _build_function_score_query(query, ["name^3", "bio"])
 
-    result = await session.execute(
-        search_query,
-        {
-            "query": query,
-            "text_weight": app.config.settings.text_relevance_weight,
-            "popularity_weight": app.config.settings.popularity_weight,
-            "recent_days": app.config.settings.recent_views_days,
-            "recent_multiplier": app.config.settings.recent_views_multiplier,
-            "limit": limit,
-            "offset": offset
+    response = await es.search(
+        index=index,
+        body={
+            "query": es_query,
+            "from": offset,
+            "size": limit,
+            "_source": ["author_id", "name", "slug", "photo_url", "view_count"]
         }
     )
 
-    count_result = await session.execute(count_query, {"query": query})
-    total = count_result.scalar() or 0
-
+    total = response["hits"]["total"]["value"]
     authors = []
-    for row in result:
+    for hit in response["hits"]["hits"]:
+        src = hit["_source"]
         authors.append({
             "type": "author",
-            "id": row.author_id,
-            "title": row.name,
-            "slug": row.slug,
-            "cover_url": row.photo_url or "",
+            "id": src["author_id"],
+            "title": src.get("name", ""),
+            "slug": src.get("slug", ""),
+            "cover_url": src.get("photo_url") or "",
             "authors": [],
-            "relevance_score": float(row.final_rank),
-            "view_count": row.views,
+            "relevance_score": float(hit["_score"] or 0),
+            "view_count": src.get("view_count") or 0,
             "author_slugs": [],
             "series_slug": ""
         })
 
     return authors, total
+
+
+async def _search_series_es(
+    query: str,
+    limit: int,
+    offset: int
+) -> typing.Tuple[typing.List[typing.Dict[str, typing.Any]], int]:
+    es = app.es_client.get_es()
+    index = app.config.settings.es_index_series
+
+    es_query = _build_function_score_query(query, ["name^3", "description"])
+
+    response = await es.search(
+        index=index,
+        body={
+            "query": es_query,
+            "from": offset,
+            "size": limit,
+            "_source": ["series_id", "name", "slug", "view_count"]
+        }
+    )
+
+    total = response["hits"]["total"]["value"]
+    series_list = []
+    for hit in response["hits"]["hits"]:
+        src = hit["_source"]
+        series_list.append({
+            "type": "series",
+            "id": src["series_id"],
+            "title": src.get("name", ""),
+            "slug": src.get("slug", ""),
+            "cover_url": "",
+            "authors": [],
+            "relevance_score": float(hit["_score"] or 0),
+            "view_count": src.get("view_count") or 0,
+            "author_slugs": [],
+            "series_slug": ""
+        })
+
+    return series_list, total
 
 
 async def _get_author_top_books(
@@ -282,76 +301,6 @@ async def _get_author_top_books(
         })
 
     return books
-
-
-async def _search_series(
-    session: sqlalchemy.ext.asyncio.AsyncSession,
-    query: str,
-    limit: int,
-    offset: int
-) -> typing.Tuple[typing.List[typing.Dict[str, typing.Any]], int]:
-    search_query = text("""
-        SELECT
-            s.series_id,
-            s.name,
-            s.slug,
-            s.view_count,
-            ts_rank(s.ts_vector, plainto_tsquery('english', :query)) as text_rank,
-            COALESCE(s.view_count, 0) as views,
-            s.last_viewed_at,
-            (
-                ts_rank(s.ts_vector, plainto_tsquery('english', :query)) * :text_weight +
-                (LOG(COALESCE(s.view_count, 0) + 1) *
-                    CASE
-                        WHEN s.last_viewed_at > NOW() - (:recent_days * INTERVAL '1 day') THEN :recent_multiplier
-                        ELSE 1.0
-                    END * :popularity_weight)
-            ) as final_rank,
-            (SELECT COUNT(*) FROM books.books b WHERE b.series_id = s.series_id) as book_count
-        FROM books.series s
-        WHERE s.ts_vector @@ plainto_tsquery('english', :query)
-        ORDER BY final_rank DESC
-        LIMIT :limit OFFSET :offset
-    """)
-
-    count_query = text("""
-        SELECT COUNT(*)
-        FROM books.series s
-        WHERE s.ts_vector @@ plainto_tsquery('english', :query)
-    """)
-
-    result = await session.execute(
-        search_query,
-        {
-            "query": query,
-            "text_weight": app.config.settings.text_relevance_weight,
-            "popularity_weight": app.config.settings.popularity_weight,
-            "recent_days": app.config.settings.recent_views_days,
-            "recent_multiplier": app.config.settings.recent_views_multiplier,
-            "limit": limit,
-            "offset": offset
-        }
-    )
-
-    count_result = await session.execute(count_query, {"query": query})
-    total = count_result.scalar() or 0
-
-    series_list = []
-    for row in result:
-        series_list.append({
-            "type": "series",
-            "id": row.series_id,
-            "title": row.name,
-            "slug": row.slug,
-            "cover_url": "",
-            "authors": [f"{row.book_count} books"],
-            "relevance_score": float(row.final_rank),
-            "view_count": row.views,
-            "author_slugs": [],
-            "series_slug": ""
-        })
-
-    return series_list, total
 
 
 async def _get_series_top_books(

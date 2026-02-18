@@ -47,8 +47,6 @@ CREATE TABLE books.books (
 
     primary_cover_url VARCHAR(1000),
 
-    ts_vector tsvector,                      -- Full-text search (auto-updated by trigger)
-
     -- Denormalized statistics
     rating_count INT NOT NULL DEFAULT 0,
     avg_rating DECIMAL(3,2),                 -- Average overall rating (0.00-5.00)
@@ -85,7 +83,6 @@ CREATE TABLE books.books (
 
 -- Indexes for books.books
 CREATE INDEX idx_books_language ON books.books(language);
-CREATE INDEX idx_books_ts_vector ON books.books USING GIN(ts_vector);
 CREATE UNIQUE INDEX idx_books_language_slug ON books.books(language, slug);
 CREATE INDEX idx_books_rating_count ON books.books(rating_count DESC);
 CREATE INDEX idx_books_view_count ON books.books(view_count DESC);
@@ -111,8 +108,6 @@ CREATE TABLE books.authors (
     nationality VARCHAR(200),
     photo_url VARCHAR(1000),
 
-    ts_vector tsvector,                      -- For author name search
-
     view_count INT NOT NULL DEFAULT 0,
     last_viewed_at TIMESTAMP,
 
@@ -125,7 +120,6 @@ CREATE TABLE books.authors (
 -- Indexes for books.authors
 CREATE UNIQUE INDEX idx_authors_slug ON books.authors(slug);
 CREATE INDEX idx_authors_name ON books.authors(name);
-CREATE INDEX idx_authors_ts_vector ON books.authors USING GIN(ts_vector);
 CREATE INDEX idx_authors_view_count ON books.authors(view_count DESC);
 
 COMMENT ON TABLE books.authors IS 'Author catalog. Authors are language-agnostic (same author for all translations)';
@@ -141,8 +135,6 @@ CREATE TABLE books.series (
     description TEXT,
     total_books INT,
 
-    ts_vector tsvector,                      -- For series name search
-
     view_count INT NOT NULL DEFAULT 0,
     last_viewed_at TIMESTAMP,
 
@@ -152,7 +144,6 @@ CREATE TABLE books.series (
 
 -- Indexes for books.series
 CREATE UNIQUE INDEX idx_series_slug ON books.series(slug);
-CREATE INDEX idx_series_ts_vector ON books.series USING GIN(ts_vector);
 CREATE INDEX idx_series_view_count ON books.series(view_count DESC);
 
 COMMENT ON TABLE books.series IS 'Book series with full-text search. Positions tracked via books.series_position';
@@ -382,36 +373,16 @@ COMMENT ON TABLE user_data.comments IS 'Public book reviews. One comment per use
 -- recommendations.book_influences - Book lineage graph (planned)
 
 -- ============================================================================
+-- SEARCH
+-- ============================================================================
+-- Full-text search via Elasticsearch (removed from PostgreSQL in migration 003)
+-- ES indexes: books, authors, series (created and managed by books service on startup)
+-- Periodic re-index every ES_REINDEX_INTERVAL_HOURS hours (default: 6h)
+-- Initial full index on first books-service startup (no es:last_sync_ts in Redis)
+
+-- ============================================================================
 -- TRIGGERS - Automated field updates
 -- ============================================================================
-
--- Full-text search trigger for books.books
-CREATE OR REPLACE FUNCTION books.update_books_ts_vector() RETURNS trigger AS $$
-BEGIN
-    NEW.ts_vector :=
-        setweight(to_tsvector('english', COALESCE(NEW.title, '')), 'A') ||
-        setweight(to_tsvector('english', COALESCE(NEW.description, '')), 'B');
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER books_ts_vector_update
-BEFORE INSERT OR UPDATE ON books.books
-FOR EACH ROW EXECUTE FUNCTION books.update_books_ts_vector();
-
--- Full-text search trigger for books.authors
-CREATE OR REPLACE FUNCTION books.update_authors_ts_vector() RETURNS trigger AS $$
-BEGIN
-    NEW.ts_vector :=
-        setweight(to_tsvector('english', COALESCE(NEW.name, '')), 'A') ||
-        setweight(to_tsvector('english', COALESCE(NEW.bio, '')), 'B');
-    RETURN NEW;
-END;
-$$ LANGUAGE plpgsql;
-
-CREATE TRIGGER authors_ts_vector_update
-BEFORE INSERT OR UPDATE ON books.authors
-FOR EACH ROW EXECUTE FUNCTION books.update_authors_ts_vector();
 
 -- Updated_at triggers (user_data schema uses its own function)
 CREATE OR REPLACE FUNCTION user_data.update_updated_at() RETURNS trigger AS $$

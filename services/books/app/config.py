@@ -37,10 +37,13 @@ class Settings(BaseSettings):
     search_max_limit: int = Field(default=100)
     search_author_books_expansion: int = Field(default=3)
 
-    popularity_weight: float = Field(default=0.3)
-    text_relevance_weight: float = Field(default=0.7)
-    recent_views_days: int = Field(default=7)
-    recent_views_multiplier: float = Field(default=2.0)
+    es_host: str = Field(default="elasticsearch")
+    es_port: int = Field(default=9200)
+    es_index_books: str = Field(default="books")
+    es_index_authors: str = Field(default="authors")
+    es_index_series: str = Field(default="series")
+    es_reindex_interval_hours: int = Field(default=6)
+    es_reindex_batch_size: int = Field(default=1000)
 
     class Config:
         env_file = ".env"

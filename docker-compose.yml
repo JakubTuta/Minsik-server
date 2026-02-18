@@ -59,6 +59,32 @@ services:
     restart: unless-stopped
 
   # ============================================================================
+  # Elasticsearch - Development Configuration
+  # ============================================================================
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.4
+    container_name: minsik-elasticsearch-dev
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms512m -Xmx512m
+    ports:
+      # EXPOSED for local access (Kibana, debugging)
+      - "9200:9200"
+    volumes:
+      - es_data_dev:/usr/share/elasticsearch/data
+    healthcheck:
+      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+    networks:
+      - minsik-network
+    restart: unless-stopped
+    # No resource limits in development
+
+  # ============================================================================
   # Gateway Service - Development Configuration
   # ============================================================================
   gateway-service:
@@ -181,6 +207,13 @@ services:
       CACHE_SEARCH_TTL: ${CACHE_SEARCH_TTL}
       VIEW_COUNT_FLUSH_INTERVAL: ${VIEW_COUNT_FLUSH_INTERVAL}
       SEARCH_AUTHOR_BOOKS_EXPANSION: ${SEARCH_AUTHOR_BOOKS_EXPANSION}
+      ES_HOST: ${ES_HOST}
+      ES_PORT: ${ES_PORT}
+      ES_INDEX_BOOKS: ${ES_INDEX_BOOKS}
+      ES_INDEX_AUTHORS: ${ES_INDEX_AUTHORS}
+      ES_INDEX_SERIES: ${ES_INDEX_SERIES}
+      ES_REINDEX_INTERVAL_HOURS: ${ES_REINDEX_INTERVAL_HOURS}
+      ES_REINDEX_BATCH_SIZE: ${ES_REINDEX_BATCH_SIZE}
     ports:
       # EXPOSED for local access (gRPC debugging)
       - "${BOOKS_GRPC_PORT}:50055"
@@ -188,6 +221,8 @@ services:
       postgres:
         condition: service_healthy
       redis:
+        condition: service_healthy
+      elasticsearch:
         condition: service_healthy
     networks:
       - minsik-network
@@ -316,6 +351,8 @@ volumes:
   postgres_data_dev:
     driver: local
   redis_data_dev:
+    driver: local
+  es_data_dev:
     driver: local
 
 # ============================================================================

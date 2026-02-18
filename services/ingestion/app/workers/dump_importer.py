@@ -82,15 +82,6 @@ def _extract_description(data: dict) -> typing.Optional[str]:
     return None
 
 
-def _extract_year(date_string: typing.Optional[str]) -> typing.Optional[int]:
-    if not date_string:
-        return None
-    try:
-        return int(str(date_string)[:4])
-    except (ValueError, TypeError):
-        return None
-
-
 def _parse_date(date_string: typing.Optional[str]) -> typing.Optional[datetime.date]:
     if not date_string:
         return None
@@ -246,14 +237,14 @@ async def process_works_dump(file_path: str) -> typing.Dict[str, int]:
                                 genres_list.append({"name": subject.lower(), "slug": app.utils.slugify(subject)})
 
                         description = _extract_description(work_data.get("description"))
-                        year = _extract_year(work_data.get("first_publish_date"))
+                        publication_date = _parse_date(work_data.get("first_publish_date"))
                         cover_url = _extract_cover_url(work_data.get("covers"))
 
                         book_data = {
                             "title": title,
                             "language": "en",
                             "description": description,
-                            "original_publication_year": year,
+                            "original_publication_year": publication_date,
                             "primary_cover_url": cover_url,
                             "open_library_id": work_data.get("key", "").replace("/works/", ""),
                             "google_books_id": None,
@@ -269,6 +260,7 @@ async def process_works_dump(file_path: str) -> typing.Dict[str, int]:
 
                         if processed % 1000 == 0:
                             logger.info(f"[dump] Works processed: {processed}, successful: {successful}, failed: {failed}")
+                            await session.commit()
 
                     except Exception as e:
                         logger.debug(f"Error processing work: {str(e)}")
