@@ -7,16 +7,15 @@ import os
 import typing
 from pathlib import Path
 
+import app.config
+import app.models
+import app.services.book_service
+import app.utils
 import httpx
 import redis
 import sqlalchemy
 import sqlalchemy.ext.asyncio
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
-
-import app.config
-import app.models
-import app.services.book_service
-import app.utils
 
 logger = logging.getLogger(__name__)
 
@@ -57,7 +56,9 @@ async def _stream_parse_dump(
                         data = json.loads(parts[4])
                         batch.append(data)
                         if len(batch) >= batch_size:
-                            loop.call_soon_threadsafe(queue.put_nowait, batch[:])
+                            asyncio.run_coroutine_threadsafe(
+                                queue.put(batch[:]), loop
+                            ).result()
                             batch = []
                     except json.JSONDecodeError:
                         continue
@@ -66,9 +67,9 @@ async def _stream_parse_dump(
                     continue
 
             if batch:
-                loop.call_soon_threadsafe(queue.put_nowait, batch)
+                asyncio.run_coroutine_threadsafe(queue.put(batch), loop).result()
 
-        loop.call_soon_threadsafe(queue.put_nowait, None)
+        asyncio.run_coroutine_threadsafe(queue.put(None), loop).result()
 
     await asyncio.to_thread(_sync_reader)
 
@@ -110,10 +111,14 @@ def _extract_cover_url(covers: typing.Optional[list]) -> typing.Optional[str]:
 
 
 async def process_authors_dump(file_path: str) -> int:
-    queue: asyncio.Queue[typing.Optional[typing.List[dict]]] = asyncio.Queue(maxsize=100)
+    queue: asyncio.Queue[typing.Optional[typing.List[dict]]] = asyncio.Queue(
+        maxsize=100
+    )
 
     parse_task = asyncio.create_task(
-        _stream_parse_dump(file_path, "/type/author", queue, app.config.settings.dump_batch_size)
+        _stream_parse_dump(
+            file_path, "/type/author", queue, app.config.settings.dump_batch_size
+        )
     )
 
     async with app.models.AsyncSessionLocal() as session:
@@ -133,7 +138,13 @@ async def process_authors_dump(file_path: str) -> int:
                         if not name:
                             continue
 
-                        bio = _extract_description(author_data.get("bio")) if author_data.get("bio") else None
+                        name = name[:300]
+
+                        bio = (
+                            _extract_description(author_data.get("bio"))
+                            if author_data.get("bio")
+                            else None
+                        )
 
                         photo_url = None
                         photos = author_data.get("photos")
@@ -142,20 +153,34 @@ async def process_authors_dump(file_path: str) -> int:
                             if isinstance(photo_id, int):
                                 photo_url = f"https://covers.openlibrary.org/a/id/{photo_id}-L.jpg"
 
-                        insert_data.append({
-                            "name": name,
-                            "slug": app.utils.slugify(name),
-                            "bio": bio,
-                            "birth_date": _parse_date(author_data.get("birth_date")),
-                            "death_date": _parse_date(author_data.get("death_date")),
-                            "photo_url": photo_url,
-                            "open_library_id": author_data.get("key", "").replace("/authors/", ""),
-                        })
+                        insert_data.append(
+                            {
+                                "name": name,
+                                "slug": app.utils.slugify(name),
+                                "bio": bio,
+                                "birth_date": _parse_date(
+                                    author_data.get("birth_date")
+                                ),
+                                "death_date": _parse_date(
+                                    author_data.get("death_date")
+                                ),
+                                "photo_url": photo_url,
+                                "open_library_id": author_data.get("key", "").replace(
+                                    "/authors/", ""
+                                ),
+                            }
+                        )
                         total_count += 1
 
                     except Exception as e:
                         logger.debug(f"Error preparing author: {str(e)}")
                         continue
+
+                # Deduplicate by slug within the batch
+                seen_slugs: dict[str, int] = {}
+                for idx, row in enumerate(insert_data):
+                    seen_slugs[row["slug"]] = idx
+                insert_data = [insert_data[i] for i in sorted(seen_slugs.values())]
 
                 # Bulk upsert
                 if insert_data:
@@ -163,7 +188,7 @@ async def process_authors_dump(file_path: str) -> int:
                         stmt = postgresql_insert(app.models.Author).values(insert_data)
                         stmt = stmt.on_conflict_do_update(
                             index_elements=["slug"],
-                            set_={"open_library_id": stmt.excluded.open_library_id}
+                            set_={"open_library_id": stmt.excluded.open_library_id},
                         )
                         await session.execute(stmt)
                         await session.commit()
@@ -174,7 +199,6 @@ async def process_authors_dump(file_path: str) -> int:
                         logger.warning(f"Error bulk inserting authors: {str(e)}")
                         await session.rollback()
                         continue
-
 
             logger.info(f"[dump] Phase 1 complete: {total_count} authors upserted")
             return total_count
@@ -188,10 +212,14 @@ async def process_authors_dump(file_path: str) -> int:
 
 
 async def process_works_dump(file_path: str) -> typing.Dict[str, int]:
-    queue: asyncio.Queue[typing.Optional[typing.List[dict]]] = asyncio.Queue(maxsize=100)
+    queue: asyncio.Queue[typing.Optional[typing.List[dict]]] = asyncio.Queue(
+        maxsize=100
+    )
 
     parse_task = asyncio.create_task(
-        _stream_parse_dump(file_path, "/type/work", queue, app.config.settings.dump_batch_size)
+        _stream_parse_dump(
+            file_path, "/type/work", queue, app.config.settings.dump_batch_size
+        )
     )
 
     async with app.models.AsyncSessionLocal() as session:
@@ -204,6 +232,8 @@ async def process_works_dump(file_path: str) -> typing.Dict[str, int]:
                 batch = await queue.get()
                 if batch is None:
                     break
+
+                books_to_insert = []
 
                 for work_data in batch:
                     processed += 1
@@ -220,7 +250,9 @@ async def process_works_dump(file_path: str) -> typing.Dict[str, int]:
                                 author_key = author_ref.get("author", {}).get("key", "")
                                 ol_id = author_key.replace("/authors/", "")
                                 if ol_id:
-                                    author = await app.services.book_service.get_author_by_ol_id(session, ol_id)
+                                    author = await app.services.book_service.get_author_by_ol_id(
+                                        session, ol_id
+                                    )
                                     if author:
                                         authors_list.append(
                                             {
@@ -234,10 +266,17 @@ async def process_works_dump(file_path: str) -> typing.Dict[str, int]:
                         genres_list = []
                         for subject in subjects[:5]:
                             if isinstance(subject, str):
-                                genres_list.append({"name": subject.lower(), "slug": app.utils.slugify(subject)})
+                                genres_list.append(
+                                    {
+                                        "name": subject.lower(),
+                                        "slug": app.utils.slugify(subject),
+                                    }
+                                )
 
                         description = _extract_description(work_data.get("description"))
-                        publication_date = _parse_date(work_data.get("first_publish_date"))
+                        publication_date = _parse_date(
+                            work_data.get("first_publish_date")
+                        )
                         cover_url = _extract_cover_url(work_data.get("covers"))
 
                         book_data = {
@@ -246,7 +285,9 @@ async def process_works_dump(file_path: str) -> typing.Dict[str, int]:
                             "description": description,
                             "original_publication_year": publication_date,
                             "primary_cover_url": cover_url,
-                            "open_library_id": work_data.get("key", "").replace("/works/", ""),
+                            "open_library_id": work_data.get("key", "").replace(
+                                "/works/", ""
+                            ),
                             "google_books_id": None,
                             "authors": authors_list,
                             "genres": genres_list,
@@ -255,20 +296,36 @@ async def process_works_dump(file_path: str) -> typing.Dict[str, int]:
                             "series": None,
                         }
 
-                        await app.services.book_service.process_single_book(session, book_data)
-                        successful += 1
-
-                        if processed % 1000 == 0:
-                            logger.info(f"[dump] Works processed: {processed}, successful: {successful}, failed: {failed}")
-                            await session.commit()
+                        books_to_insert.append(book_data)
 
                     except Exception as e:
-                        logger.debug(f"Error processing work: {str(e)}")
+                        logger.debug(f"Error preparing work: {str(e)}")
                         failed += 1
                         continue
 
+                if books_to_insert:
+                    try:
+                        result = await app.services.book_service.insert_books_batch(
+                            session, books_to_insert, commit=False
+                        )
+                        successful += result["successful"]
+                        failed += result["failed"]
+
+                        if processed % 1000 == 0:
+                            logger.info(
+                                f"[dump] Works processed: {processed}, successful: {successful}, failed: {failed}"
+                            )
+                            await session.commit()
+                    except Exception as e:
+                        logger.error(f"[dump] Error batch inserting works: {str(e)}")
+                        await session.rollback()
+                        failed += len(books_to_insert)
+                        continue
+
             await session.commit()
-            logger.info(f"[dump] Phase 2 complete: {processed} processed, {successful} successful, {failed} failed")
+            logger.info(
+                f"[dump] Phase 2 complete: {processed} processed, {successful} successful, {failed} failed"
+            )
             return {"processed": processed, "successful": successful, "failed": failed}
 
         except Exception as e:
@@ -296,14 +353,20 @@ async def run_import_dump(job_id: str, redis_client: redis.Redis) -> None:
 
         redis_client.set(f"dump_import_{job_id}_status", "Phase 1: downloading authors")
 
-        await download_file(f"{app.config.settings.ol_dump_base_url}/ol_dump_authors_latest.txt.gz", str(authors_file))
+        await download_file(
+            f"{app.config.settings.ol_dump_base_url}/ol_dump_authors_latest.txt.gz",
+            str(authors_file),
+        )
 
         redis_client.set(f"dump_import_{job_id}_status", "Phase 1: processing authors")
         authors_count = await process_authors_dump(str(authors_file))
         authors_file.unlink(missing_ok=True)
 
         redis_client.set(f"dump_import_{job_id}_status", "Phase 2: downloading works")
-        await download_file(f"{app.config.settings.ol_dump_base_url}/ol_dump_works_latest.txt.gz", str(works_file))
+        await download_file(
+            f"{app.config.settings.ol_dump_base_url}/ol_dump_works_latest.txt.gz",
+            str(works_file),
+        )
 
         redis_client.set(f"dump_import_{job_id}_status", "Phase 2: processing works")
         works_stats = await process_works_dump(str(works_file))

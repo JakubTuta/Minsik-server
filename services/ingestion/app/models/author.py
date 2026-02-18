@@ -1,5 +1,4 @@
 from sqlalchemy import Column, BigInteger, String, Integer, Text, Date, TIMESTAMP, Index, text
-from sqlalchemy.dialects.postgresql import TSVECTOR
 from sqlalchemy.orm import relationship
 from app.models.base import Base
 
@@ -9,7 +8,6 @@ class Author(Base):
     __table_args__ = (
         Index("idx_authors_slug", "slug", unique=True),
         Index("idx_authors_name", "name"),
-        Index("idx_authors_ts_vector", "ts_vector", postgresql_using="gin"),
         Index("idx_authors_view_count", "view_count", postgresql_ops={"view_count": "DESC"}),
         {"schema": "books"}
     )
@@ -23,8 +21,6 @@ class Author(Base):
     birth_place = Column(String(500))
     nationality = Column(String(200))
     photo_url = Column(String(1000))
-
-    ts_vector = Column(TSVECTOR)
 
     view_count = Column(Integer, nullable=False, server_default=text("0"))
     last_viewed_at = Column(TIMESTAMP)

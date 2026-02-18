@@ -42,22 +42,39 @@ async def process_ingestion_job(
         else:
             raise ValueError(f"Invalid source: {source}")
 
+        if not books_data:
+            return {
+                "processed": 0,
+                "successful": 0,
+                "failed": 0,
+                "error": None
+            }
+
+        batch_size = 1000
         processed = 0
         successful = 0
         failed = 0
 
         async with app.models.AsyncSessionLocal() as session:
-            for book_data in books_data:
-                try:
-                    await app.services.book_service.process_single_book(session, book_data)
-                    await session.commit()
-                    successful += 1
-                except Exception as e:
-                    logger.error(f"Book processing error: {str(e)}")
-                    await session.rollback()
-                    failed += 1
+            try:
+                for batch_start in range(0, len(books_data), batch_size):
+                    batch = books_data[batch_start:batch_start + batch_size]
 
-                processed += 1
+                    try:
+                        result = await app.services.book_service.insert_books_batch(session, batch, commit=True)
+                        successful += result["successful"]
+                        failed += result["failed"]
+                        processed += len(batch)
+                    except Exception as e:
+                        logger.error(f"Batch processing error: {str(e)}")
+                        await session.rollback()
+                        failed += len(batch)
+                        processed += len(batch)
+
+            except Exception as e:
+                logger.error(f"Ingestion job {job_id} failed during batch processing: {str(e)}")
+                await session.rollback()
+                raise
 
         logger.info(f"Ingestion job {job_id} completed: {processed} processed, {successful} successful, {failed} failed")
 

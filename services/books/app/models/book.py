@@ -1,5 +1,5 @@
 from sqlalchemy import Column, BigInteger, String, Integer, Text, DECIMAL, TIMESTAMP, Index, text, ForeignKey
-from sqlalchemy.dialects.postgresql import JSONB, TSVECTOR
+from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
 from datetime import datetime
 from app.models.base import Base
@@ -9,7 +9,6 @@ class Book(Base):
     __tablename__ = "books"
     __table_args__ = (
         Index("idx_books_language", "language"),
-        Index("idx_books_ts_vector", "ts_vector", postgresql_using="gin"),
         Index("idx_books_language_slug", "language", "slug", unique=True),
         Index("idx_books_rating_count", "rating_count", postgresql_ops={"rating_count": "DESC"}),
         Index("idx_books_view_count", "view_count", postgresql_ops={"view_count": "DESC"}),
@@ -26,8 +25,6 @@ class Book(Base):
     formats = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     cover_history = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     primary_cover_url = Column(String(1000))
-
-    ts_vector = Column(TSVECTOR)
 
     rating_count = Column(Integer, nullable=False, server_default=text("0"))
     avg_rating = Column(DECIMAL(3, 2))

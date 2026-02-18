@@ -1,7 +1,6 @@
 import pytest
-from sqlalchemy import select, func
-
-from app.models import Book, Author, Genre, BookAuthor, BookGenre
+from app.models import Author, Book, BookAuthor, BookGenre, Genre
+from sqlalchemy import func, select
 
 
 @pytest.mark.asyncio
@@ -14,10 +13,15 @@ async def test_create_book(db_session):
         description="A science fiction novel",
         original_publication_year=1984,
         formats=["hardcover", "ebook"],
-        cover_history=[{"year": 1984, "cover_url": "http://example.com/cover.jpg", "publisher": "Ace"}],
+        cover_history=[
+            {
+                "year": 1984,
+                "cover_url": "http://example.com/cover.jpg",
+                "publisher": "Ace",
+            }
+        ],
         primary_cover_url="http://example.com/cover.jpg",
         open_library_id="OL123W",
-        ts_vector=func.to_tsvector('english', "Neuromancer")
     )
 
     db_session.add(book)
@@ -37,7 +41,7 @@ async def test_create_author(db_session):
         name="William Gibson",
         slug="william-gibson",
         bio="Canadian-American science fiction writer",
-        open_library_id="OL456A"
+        open_library_id="OL456A",
     )
 
     db_session.add(author)
@@ -51,10 +55,7 @@ async def test_create_author(db_session):
 @pytest.mark.asyncio
 @pytest.mark.unit
 async def test_create_genre(db_session):
-    genre = Genre(
-        name="Science Fiction",
-        slug="science-fiction"
-    )
+    genre = Genre(name="Science Fiction", slug="science-fiction")
 
     db_session.add(genre)
     await db_session.flush()
@@ -70,13 +71,9 @@ async def test_book_author_relationship(db_session):
         title="Neuromancer",
         language="en",
         slug="neuromancer",
-        ts_vector=func.to_tsvector('english', "Neuromancer")
     )
 
-    author = Author(
-        name="William Gibson",
-        slug="william-gibson"
-    )
+    author = Author(name="William Gibson", slug="william-gibson")
 
     db_session.add(book)
     db_session.add(author)
@@ -102,13 +99,9 @@ async def test_book_genre_relationship(db_session):
         title="Neuromancer",
         language="en",
         slug="neuromancer",
-        ts_vector=func.to_tsvector('english', "Neuromancer")
     )
 
-    genre = Genre(
-        name="Science Fiction",
-        slug="science-fiction"
-    )
+    genre = Genre(name="Science Fiction", slug="science-fiction")
 
     db_session.add(book)
     db_session.add(genre)
@@ -134,7 +127,6 @@ async def test_book_unique_language_slug(db_session):
         title="Neuromancer",
         language="en",
         slug="neuromancer",
-        ts_vector=func.to_tsvector('english', "Neuromancer")
     )
 
     db_session.add(book1)
@@ -144,7 +136,6 @@ async def test_book_unique_language_slug(db_session):
         title="Neuromancer",
         language="en",
         slug="neuromancer",
-        ts_vector=func.to_tsvector('english', "Neuromancer")
     )
 
     db_session.add(book2)
@@ -160,14 +151,12 @@ async def test_book_different_languages(db_session):
         title="Neuromancer",
         language="en",
         slug="neuromancer",
-        ts_vector=func.to_tsvector('english', "Neuromancer")
     )
 
     book_fr = Book(
         title="Neuromancien",
         language="fr",
         slug="neuromancien",
-        ts_vector=func.to_tsvector('french', "Neuromancien")
     )
 
     db_session.add(book_en)

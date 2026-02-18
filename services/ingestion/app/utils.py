@@ -1,14 +1,19 @@
-import re
-import unicodedata
 import datetime
-import typing
 import html as html_module
+import re
+import typing
+import unicodedata
+import uuid
+
 from dateutil import parser as date_parser
+from text_unidecode import unidecode
 
 
 def slugify(text: str, max_length: int = 200) -> str:
     if not text:
         return ""
+
+    text = unidecode(text)
 
     text = unicodedata.normalize("NFKD", text)
     text = text.encode("ascii", "ignore").decode("ascii")
@@ -20,6 +25,9 @@ def slugify(text: str, max_length: int = 200) -> str:
     text = re.sub(r"[-\s]+", "-", text)
 
     text = text.strip("-")
+
+    if not text:
+        return uuid.uuid4().hex[:16]
 
     return text[:max_length]
 
@@ -55,32 +63,27 @@ def clean_description(description: typing.Optional[str]) -> typing.Optional[str]
 
     description = html_module.unescape(description)
 
-    description = re.sub(r'<[^>]+>', '', description)
+    description = re.sub(r"<[^>]+>", "", description)
 
-    description = re.sub(r'\[http[s]?://[^\]]+\]', '', description)
+    description = re.sub(r"\[http[s]?://[^\]]+\]", "", description)
 
-    description = re.sub(r'https?://[^\s]+', '', description)
+    description = re.sub(r"https?://[^\s]+", "", description)
 
-    description = re.sub(r'\(https?://[^\)]+\)', '', description)
+    description = re.sub(r"\(https?://[^\)]+\)", "", description)
 
-    description = re.sub(r'\[\d+\]\s*', '', description)
+    description = re.sub(r"\[\d+\]\s*", "", description)
 
-    description = re.sub(r'\*\*([^*]+)\*\*', r'\1', description)
+    description = re.sub(r"\*\*([^*]+)\*\*", r"\1", description)
 
-    description = re.sub(r'__([^_]+)__', r'\1', description)
+    description = re.sub(r"__([^_]+)__", r"\1", description)
 
-    description = re.sub(r'\*([^*]+)\*', r'\1', description)
+    description = re.sub(r"\*([^*]+)\*", r"\1", description)
 
-    description = re.sub(r'_([^_]+)_', r'\1', description)
+    description = re.sub(r"_([^_]+)_", r"\1", description)
 
-    description = re.sub(r'^#+\s+', '', description, flags=re.MULTILINE)
+    description = re.sub(r"^#+\s+", "", description, flags=re.MULTILINE)
 
-    separators = [
-        r"-{5,}",
-        r"={5,}",
-        r"\*{5,}",
-        r"_{5,}"
-    ]
+    separators = [r"-{5,}", r"={5,}", r"\*{5,}", r"_{5,}"]
 
     for separator in separators:
         if re.search(separator, description):
@@ -98,15 +101,17 @@ def clean_description(description: typing.Optional[str]) -> typing.Optional[str]
         r"^From Wikipedia.*$",
         r"^See also:.*$",
         r"^References:.*$",
-        r"\n\nCopyright.*$"
+        r"\n\nCopyright.*$",
     ]
 
     for pattern in metadata_patterns:
-        description = re.sub(pattern, "", description, flags=re.DOTALL | re.MULTILINE | re.IGNORECASE)
+        description = re.sub(
+            pattern, "", description, flags=re.DOTALL | re.MULTILINE | re.IGNORECASE
+        )
 
-    description = re.sub(r'\n{3,}', '\n\n', description)
+    description = re.sub(r"\n{3,}", "\n\n", description)
 
-    description = re.sub(r'[ \t]{2,}', ' ', description)
+    description = re.sub(r"[ \t]{2,}", " ", description)
 
     description = description.strip()
 
@@ -123,7 +128,7 @@ def format_title_with_series(title: str, series_name: typing.Optional[str]) -> s
     title_lower = title.lower()
     series_lower = series_name.lower()
 
-    series_core = re.sub(r'^the\s+', '', series_lower).strip()
+    series_core = re.sub(r"^the\s+", "", series_lower).strip()
 
     if series_lower in title_lower or series_core in title_lower:
         return title
