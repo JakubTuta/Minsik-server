@@ -56,6 +56,7 @@ class Settings(BaseSettings):
     dump_ratings_enabled: bool = Field(default=True)
     dump_reading_log_enabled: bool = Field(default=True)
     dump_wikidata_enabled: bool = Field(default=True)
+    dump_edition_flush_interval: int = Field(default=5_000_000)
 
     cleanup_enabled: bool = Field(default=True)
     cleanup_interval_hours: int = Field(default=12)
@@ -66,6 +67,7 @@ class Settings(BaseSettings):
     class Config:
         env_file = ".env"
         case_sensitive = False
+        extra = "ignore"
 
     @property
     def database_url(self) -> str:

@@ -1,23 +1,23 @@
-import grpc
+import asyncio
+import concurrent.futures
+import json
 import logging
 import uuid
-import asyncio
-import json
-import concurrent.futures
+
+import app.config
+import app.fetchers.google_books
+import app.fetchers.open_library
+import app.models
+import app.proto.ingestion_pb2 as ingestion_pb2
+import app.proto.ingestion_pb2_grpc as ingestion_pb2_grpc
+import app.services.book_service
+import app.workers.dump_importer
+import app.workers.ingestion_worker
+import grpc
 import httpx
 import redis
 import sqlalchemy
 import sqlalchemy.ext.asyncio
-
-import app.config
-import app.models
-import app.fetchers.open_library
-import app.fetchers.google_books
-import app.services.book_service
-import app.workers.ingestion_worker
-import app.workers.dump_importer
-import app.proto.ingestion_pb2 as ingestion_pb2
-import app.proto.ingestion_pb2_grpc as ingestion_pb2_grpc
 
 logger = logging.getLogger(__name__)
 
@@ -25,8 +25,12 @@ redis_client = redis.Redis(
     host=app.config.settings.redis_host,
     port=app.config.settings.redis_port,
     db=app.config.settings.redis_db,
-    password=app.config.settings.redis_password if app.config.settings.redis_password else None,
-    decode_responses=True
+    password=(
+        app.config.settings.redis_password
+        if app.config.settings.redis_password
+        else None
+    ),
+    decode_responses=True,
 )
 
 _COVERAGE_CACHE_KEY = "coverage_stats"
@@ -47,14 +51,20 @@ class IngestionService(ingestion_pb2_grpc.IngestionServiceServicer):
 
             if source not in ["open_library", "google_books", "both"]:
                 context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
-                context.set_details("source must be one of: open_library, google_books, both")
+                context.set_details(
+                    "source must be one of: open_library, google_books, both"
+                )
                 return ingestion_pb2.TriggerIngestionResponse()
 
             job_id = str(uuid.uuid4())
 
-            logger.info(f"Starting synchronous ingestion job {job_id}: {total_books} books from {source} ({language})")
+            logger.info(
+                f"Starting synchronous ingestion job {job_id}: {total_books} books from {source} ({language})"
+            )
 
-            result = await app.workers.ingestion_worker.process_ingestion_job(job_id, total_books, source, language)
+            result = await app.workers.ingestion_worker.process_ingestion_job(
+                job_id, total_books, source, language
+            )
 
             return ingestion_pb2.TriggerIngestionResponse(
                 job_id=job_id,
@@ -63,7 +73,7 @@ class IngestionService(ingestion_pb2_grpc.IngestionServiceServicer):
                 processed=result["processed"],
                 successful=result["successful"],
                 failed=result["failed"],
-                error_message=result["error"] or ""
+                error_message=result["error"] or "",
             )
 
         except Exception as e:
@@ -86,7 +96,9 @@ class IngestionService(ingestion_pb2_grpc.IngestionServiceServicer):
 
             if source not in ["open_library", "google_books", "both"]:
                 context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
-                context.set_details("source must be one of: open_library, google_books, both")
+                context.set_details(
+                    "source must be one of: open_library, google_books, both"
+                )
                 return ingestion_pb2.SearchBookResponse()
 
             all_books = []
@@ -118,7 +130,7 @@ class IngestionService(ingestion_pb2_grpc.IngestionServiceServicer):
                     genres=book.get("genres", []),
                     open_library_id=book.get("open_library_id") or "",
                     google_books_id=book.get("google_books_id") or "",
-                    source=book.get("source", "")
+                    source=book.get("source", ""),
                 )
                 book_results.append(book_result)
 
@@ -131,7 +143,15 @@ class IngestionService(ingestion_pb2_grpc.IngestionServiceServicer):
                     "open_library_id": book.get("open_library_id"),
                     "google_books_id": book.get("google_books_id"),
                     "authors": [
-                        {"name": author_name, "slug": None, "bio": None, "birth_date": None, "death_date": None, "photo_url": None, "open_library_id": None}
+                        {
+                            "name": author_name,
+                            "slug": None,
+                            "bio": None,
+                            "birth_date": None,
+                            "death_date": None,
+                            "photo_url": None,
+                            "open_library_id": None,
+                        }
                         for author_name in book.get("authors", [])
                     ],
                     "genres": [
@@ -139,28 +159,37 @@ class IngestionService(ingestion_pb2_grpc.IngestionServiceServicer):
                         for genre_name in book.get("genres", [])
                     ],
                     "formats": [],
-                    "cover_history": [
-                        {
-                            "year": book.get("publication_year") or 2024,
-                            "cover_url": book.get("cover_url"),
-                            "publisher": book.get("publisher", "Unknown")
-                        }
-                    ] if book.get("cover_url") else []
+                    "cover_history": (
+                        [
+                            {
+                                "year": book.get("publication_year") or 2024,
+                                "cover_url": book.get("cover_url"),
+                                "publisher": book.get("publisher", "Unknown"),
+                            }
+                        ]
+                        if book.get("cover_url")
+                        else []
+                    ),
                 }
                 books_to_insert.append(book_for_db)
 
             if books_to_insert:
                 try:
-                    insert_result = await app.services.book_service.insert_books(books_to_insert)
-                    logger.info(f"Inserted {insert_result['successful']} books, {insert_result['failed']} failed")
+                    insert_result = await app.services.book_service.insert_books(
+                        books_to_insert
+                    )
+                    logger.info(
+                        f"Inserted {insert_result['successful']} books, {insert_result['failed']} failed"
+                    )
                 except Exception as e:
                     logger.error(f"Error inserting books into database: {str(e)}")
 
-            logger.info(f"Search for '{title}' by '{author}' returned {len(book_results)} results from {source}")
+            logger.info(
+                f"Search for '{title}' by '{author}' returned {len(book_results)} results from {source}"
+            )
 
             return ingestion_pb2.SearchBookResponse(
-                total_results=len(book_results),
-                books=book_results
+                total_results=len(book_results), books=book_results
             )
 
         except Exception as e:
@@ -180,12 +209,14 @@ class IngestionService(ingestion_pb2_grpc.IngestionServiceServicer):
                     db_series_count=data["db_series_count"],
                     ol_english_total=data["ol_english_total"],
                     coverage_percent=data["coverage_percent"],
-                    cached=True
+                    cached=True,
                 )
 
             async with app.models.AsyncSessionLocal() as session:
                 books_result = await session.execute(
-                    sqlalchemy.text("SELECT COUNT(*) FROM books.books WHERE language = 'en'")
+                    sqlalchemy.text(
+                        "SELECT COUNT(*) FROM books.books WHERE language = 'en'"
+                    )
                 )
                 db_books_count = books_result.scalar_one()
 
@@ -210,11 +241,15 @@ class IngestionService(ingestion_pb2_grpc.IngestionServiceServicer):
                 "db_authors_count": db_authors_count,
                 "db_series_count": db_series_count,
                 "ol_english_total": ol_english_total,
-                "coverage_percent": coverage_percent
+                "coverage_percent": coverage_percent,
             }
-            redis_client.setex(_COVERAGE_CACHE_KEY, _COVERAGE_CACHE_TTL, json.dumps(cache_data))
+            redis_client.setex(
+                _COVERAGE_CACHE_KEY, _COVERAGE_CACHE_TTL, json.dumps(cache_data)
+            )
 
-            logger.info(f"Data coverage: {db_books_count} books, {ol_english_total} OL total, {coverage_percent:.4f}%")
+            logger.info(
+                f"Data coverage: {db_books_count} books, {ol_english_total} OL total, {coverage_percent:.4f}%"
+            )
 
             return ingestion_pb2.GetDataCoverageResponse(
                 db_books_count=db_books_count,
@@ -222,7 +257,7 @@ class IngestionService(ingestion_pb2_grpc.IngestionServiceServicer):
                 db_series_count=db_series_count,
                 ol_english_total=ol_english_total,
                 coverage_percent=coverage_percent,
-                cached=False
+                cached=False,
             )
 
         except Exception as e:
@@ -237,15 +272,32 @@ class IngestionService(ingestion_pb2_grpc.IngestionServiceServicer):
             if is_running:
                 return ingestion_pb2.ImportDumpResponse(
                     status="already_running",
-                    message="Dump import is already in progress"
+                    message="Dump import is already in progress",
+                )
+
+            saved_state = app.workers.dump_importer._get_job_state(redis_client)
+            if saved_state and len(saved_state.get("completed_phases", [])) < 6:
+                job_id = saved_state["job_id"]
+                completed = saved_state["completed_phases"]
+                asyncio.create_task(
+                    app.workers.dump_importer.run_import_dump(job_id, redis_client)
+                )
+                return ingestion_pb2.ImportDumpResponse(
+                    status="resuming",
+                    message=(
+                        f"Resuming dump import (job_id: {job_id}), "
+                        f"phases already completed: {completed}"
+                    ),
                 )
 
             job_id = str(uuid.uuid4())
-            asyncio.create_task(app.workers.dump_importer.run_import_dump(job_id, redis_client))
+            asyncio.create_task(
+                app.workers.dump_importer.run_import_dump(job_id, redis_client)
+            )
 
             return ingestion_pb2.ImportDumpResponse(
                 status="started",
-                message=f"Dump import started (job_id: {job_id}). Check service logs for progress."
+                message=f"Dump import started (job_id: {job_id}). Check service logs for progress.",
             )
 
         except Exception as e:
@@ -261,7 +313,7 @@ async def _fetch_ol_english_total() -> int:
             response = await client.get(
                 f"{app.config.settings.open_library_api_url}/search.json",
                 params={"language": "eng", "limit": 0},
-                headers={"User-Agent": "Minsik/1.0 (contact@minsik.app)"}
+                headers={"User-Agent": "Minsik/1.0 (contact@minsik.app)"},
             )
             response.raise_for_status()
             data = response.json()
@@ -273,7 +325,9 @@ async def _fetch_ol_english_total() -> int:
 
 async def serve():
     server = grpc.aio.server(concurrent.futures.ThreadPoolExecutor(max_workers=10))
-    ingestion_pb2_grpc.add_IngestionServiceServicer_to_server(IngestionService(), server)
+    ingestion_pb2_grpc.add_IngestionServiceServicer_to_server(
+        IngestionService(), server
+    )
 
     listen_addr = f"{app.config.settings.ingestion_service_host}:{app.config.settings.ingestion_grpc_port}"
     server.add_insecure_port(listen_addr)

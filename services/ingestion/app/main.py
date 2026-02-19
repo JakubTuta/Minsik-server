@@ -57,6 +57,34 @@ async def init_db():
     logger.info("Database migrations completed successfully")
 
 
+async def clear_stale_import_flag():
+    try:
+        import redis as redis_lib
+
+        r = redis_lib.Redis(
+            host=app.config.settings.redis_host,
+            port=app.config.settings.redis_port,
+            db=app.config.settings.redis_db,
+            password=app.config.settings.redis_password or None,
+        )
+        if r.exists("dump_import_running"):
+            r.delete("dump_import_running")
+            logger.info("Cleared stale dump_import_running flag from previous run")
+
+        from app.workers import dump_importer
+
+        state = dump_importer._get_job_state(r)
+        if state and len(state.get("completed_phases", [])) < 6:
+            logger.info(
+                f"Resumable dump job detected (job_id: {state['job_id']}), "
+                f"completed phases: {state['completed_phases']}. "
+                f"Call ImportDump to continue."
+            )
+        r.close()
+    except Exception:
+        pass
+
+
 async def shutdown(signal_received=None):
     shutdown_event.set()
     await app.models.engine.dispose()
@@ -65,6 +93,7 @@ async def shutdown(signal_received=None):
 async def main():
     try:
         await init_db()
+        await clear_stale_import_flag()
 
         loop = asyncio.get_event_loop()
         for sig in (signal.SIGTERM, signal.SIGINT):
