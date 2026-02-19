@@ -108,7 +108,11 @@ services:
     volumes:
       - es_data:/usr/share/elasticsearch/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "curl -sf http://localhost:9200/_cluster/health || exit 1",
+        ]
       interval: 60s
       timeout: 10s
       retries: 3
@@ -215,6 +219,17 @@ services:
       GOOGLE_BOOKS_API_URL: ${GOOGLE_BOOKS_API_URL}
       GOOGLE_BOOKS_API_KEY: ${GOOGLE_BOOKS_API_KEY}
       REQUEST_TIMEOUT: ${REQUEST_TIMEOUT}
+      CLEANUP_ENABLED: ${CLEANUP_ENABLED}
+      CLEANUP_INTERVAL_HOURS: ${CLEANUP_INTERVAL_HOURS}
+      CLEANUP_BATCH_SIZE: ${CLEANUP_BATCH_SIZE}
+      CLEANUP_BOOK_MIN_QUALITY_SCORE: ${CLEANUP_BOOK_MIN_QUALITY_SCORE}
+      CLEANUP_AUTHOR_MIN_BOOKS: ${CLEANUP_AUTHOR_MIN_BOOKS}
+      DUMP_COMMIT_INTERVAL: ${DUMP_COMMIT_INTERVAL}
+      DUMP_EDITION_BATCH_SIZE: ${DUMP_EDITION_BATCH_SIZE}
+      DUMP_EDITIONS_ENABLED: ${DUMP_EDITIONS_ENABLED}
+      DUMP_RATINGS_ENABLED: ${DUMP_RATINGS_ENABLED}
+      DUMP_READING_LOG_ENABLED: ${DUMP_READING_LOG_ENABLED}
+      DUMP_WIKIDATA_ENABLED: ${DUMP_WIKIDATA_ENABLED}
     # NO EXPOSED PORTS - internal network only (security)
     depends_on:
       postgres:
@@ -224,11 +239,11 @@ services:
     deploy:
       resources:
         limits:
+          cpus: "1.0"
+          memory: 4096M
+        reservations:
           cpus: "0.5"
           memory: 512M
-        reservations:
-          cpus: "0.25"
-          memory: 256M
     networks:
       - minsik-internal
     restart: unless-stopped

@@ -1,7 +1,8 @@
 from google.protobuf.internal import containers as _containers
 from google.protobuf import descriptor as _descriptor
 from google.protobuf import message as _message
-from typing import ClassVar as _ClassVar, Iterable as _Iterable, Mapping as _Mapping, Optional as _Optional, Union as _Union
+from collections.abc import Iterable as _Iterable, Mapping as _Mapping
+from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
@@ -16,58 +17,22 @@ class TriggerIngestionRequest(_message.Message):
     def __init__(self, total_books: _Optional[int] = ..., source: _Optional[str] = ..., language: _Optional[str] = ...) -> None: ...
 
 class TriggerIngestionResponse(_message.Message):
-    __slots__ = ("job_id", "status", "total_books", "message")
+    __slots__ = ("job_id", "status", "total_books", "processed", "successful", "failed", "error_message")
     JOB_ID_FIELD_NUMBER: _ClassVar[int]
     STATUS_FIELD_NUMBER: _ClassVar[int]
     TOTAL_BOOKS_FIELD_NUMBER: _ClassVar[int]
-    MESSAGE_FIELD_NUMBER: _ClassVar[int]
+    PROCESSED_FIELD_NUMBER: _ClassVar[int]
+    SUCCESSFUL_FIELD_NUMBER: _ClassVar[int]
+    FAILED_FIELD_NUMBER: _ClassVar[int]
+    ERROR_MESSAGE_FIELD_NUMBER: _ClassVar[int]
     job_id: str
     status: str
     total_books: int
-    message: str
-    def __init__(self, job_id: _Optional[str] = ..., status: _Optional[str] = ..., total_books: _Optional[int] = ..., message: _Optional[str] = ...) -> None: ...
-
-class GetIngestionStatusRequest(_message.Message):
-    __slots__ = ("job_id",)
-    JOB_ID_FIELD_NUMBER: _ClassVar[int]
-    job_id: str
-    def __init__(self, job_id: _Optional[str] = ...) -> None: ...
-
-class GetIngestionStatusResponse(_message.Message):
-    __slots__ = ("job_id", "status", "processed", "total", "successful", "failed", "error", "started_at", "completed_at")
-    JOB_ID_FIELD_NUMBER: _ClassVar[int]
-    STATUS_FIELD_NUMBER: _ClassVar[int]
-    PROCESSED_FIELD_NUMBER: _ClassVar[int]
-    TOTAL_FIELD_NUMBER: _ClassVar[int]
-    SUCCESSFUL_FIELD_NUMBER: _ClassVar[int]
-    FAILED_FIELD_NUMBER: _ClassVar[int]
-    ERROR_FIELD_NUMBER: _ClassVar[int]
-    STARTED_AT_FIELD_NUMBER: _ClassVar[int]
-    COMPLETED_AT_FIELD_NUMBER: _ClassVar[int]
-    job_id: str
-    status: str
     processed: int
-    total: int
     successful: int
     failed: int
-    error: str
-    started_at: int
-    completed_at: int
-    def __init__(self, job_id: _Optional[str] = ..., status: _Optional[str] = ..., processed: _Optional[int] = ..., total: _Optional[int] = ..., successful: _Optional[int] = ..., failed: _Optional[int] = ..., error: _Optional[str] = ..., started_at: _Optional[int] = ..., completed_at: _Optional[int] = ...) -> None: ...
-
-class CancelIngestionRequest(_message.Message):
-    __slots__ = ("job_id",)
-    JOB_ID_FIELD_NUMBER: _ClassVar[int]
-    job_id: str
-    def __init__(self, job_id: _Optional[str] = ...) -> None: ...
-
-class CancelIngestionResponse(_message.Message):
-    __slots__ = ("success", "message")
-    SUCCESS_FIELD_NUMBER: _ClassVar[int]
-    MESSAGE_FIELD_NUMBER: _ClassVar[int]
-    success: bool
-    message: str
-    def __init__(self, success: bool = ..., message: _Optional[str] = ...) -> None: ...
+    error_message: str
+    def __init__(self, job_id: _Optional[str] = ..., status: _Optional[str] = ..., total_books: _Optional[int] = ..., processed: _Optional[int] = ..., successful: _Optional[int] = ..., failed: _Optional[int] = ..., error_message: _Optional[str] = ...) -> None: ...
 
 class SearchBookRequest(_message.Message):
     __slots__ = ("title", "author", "source", "limit")
@@ -118,3 +83,49 @@ class SearchBookResponse(_message.Message):
     total_results: int
     books: _containers.RepeatedCompositeFieldContainer[BookResult]
     def __init__(self, total_results: _Optional[int] = ..., books: _Optional[_Iterable[_Union[BookResult, _Mapping]]] = ...) -> None: ...
+
+class GetDataCoverageRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class GetDataCoverageResponse(_message.Message):
+    __slots__ = ("db_books_count", "db_authors_count", "db_series_count", "ol_english_total", "coverage_percent", "cached")
+    DB_BOOKS_COUNT_FIELD_NUMBER: _ClassVar[int]
+    DB_AUTHORS_COUNT_FIELD_NUMBER: _ClassVar[int]
+    DB_SERIES_COUNT_FIELD_NUMBER: _ClassVar[int]
+    OL_ENGLISH_TOTAL_FIELD_NUMBER: _ClassVar[int]
+    COVERAGE_PERCENT_FIELD_NUMBER: _ClassVar[int]
+    CACHED_FIELD_NUMBER: _ClassVar[int]
+    db_books_count: int
+    db_authors_count: int
+    db_series_count: int
+    ol_english_total: int
+    coverage_percent: float
+    cached: bool
+    def __init__(self, db_books_count: _Optional[int] = ..., db_authors_count: _Optional[int] = ..., db_series_count: _Optional[int] = ..., ol_english_total: _Optional[int] = ..., coverage_percent: _Optional[float] = ..., cached: bool = ...) -> None: ...
+
+class ImportDumpRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class ImportDumpResponse(_message.Message):
+    __slots__ = ("status", "message", "authors_count", "wikidata_count", "works_count", "editions_enriched", "editions_new_lang_rows", "ratings_count", "reading_log_count")
+    STATUS_FIELD_NUMBER: _ClassVar[int]
+    MESSAGE_FIELD_NUMBER: _ClassVar[int]
+    AUTHORS_COUNT_FIELD_NUMBER: _ClassVar[int]
+    WIKIDATA_COUNT_FIELD_NUMBER: _ClassVar[int]
+    WORKS_COUNT_FIELD_NUMBER: _ClassVar[int]
+    EDITIONS_ENRICHED_FIELD_NUMBER: _ClassVar[int]
+    EDITIONS_NEW_LANG_ROWS_FIELD_NUMBER: _ClassVar[int]
+    RATINGS_COUNT_FIELD_NUMBER: _ClassVar[int]
+    READING_LOG_COUNT_FIELD_NUMBER: _ClassVar[int]
+    status: str
+    message: str
+    authors_count: int
+    wikidata_count: int
+    works_count: int
+    editions_enriched: int
+    editions_new_lang_rows: int
+    ratings_count: int
+    reading_log_count: int
+    def __init__(self, status: _Optional[str] = ..., message: _Optional[str] = ..., authors_count: _Optional[int] = ..., wikidata_count: _Optional[int] = ..., works_count: _Optional[int] = ..., editions_enriched: _Optional[int] = ..., editions_new_lang_rows: _Optional[int] = ..., ratings_count: _Optional[int] = ..., reading_log_count: _Optional[int] = ...) -> None: ...

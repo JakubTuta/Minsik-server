@@ -168,3 +168,58 @@ async def test_book_different_languages(db_session):
 
     assert len(books) == 2
     assert {book.language for book in books} == {"en", "fr"}
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_book_new_columns(db_session):
+    book = Book(
+        title="Neuromancer",
+        language="en",
+        slug="neuromancer-new-cols",
+        isbn=["9780441569595", "0441569595"],
+        publisher="Ace Books",
+        number_of_pages=271,
+        external_ids={"goodreads": "888"},
+        ol_rating_count=1500,
+        ol_avg_rating=4.05,
+        ol_want_to_read_count=3000,
+        ol_currently_reading_count=200,
+        ol_already_read_count=5000,
+    )
+
+    db_session.add(book)
+    await db_session.flush()
+
+    assert book.book_id is not None
+    assert book.isbn == ["9780441569595", "0441569595"]
+    assert book.publisher == "Ace Books"
+    assert book.number_of_pages == 271
+    assert book.external_ids == {"goodreads": "888"}
+    assert book.ol_rating_count == 1500
+    assert float(book.ol_avg_rating) == 4.05
+    assert book.ol_want_to_read_count == 3000
+    assert book.ol_currently_reading_count == 200
+    assert book.ol_already_read_count == 5000
+
+
+@pytest.mark.asyncio
+@pytest.mark.unit
+async def test_author_new_columns(db_session):
+    author = Author(
+        name="William Gibson",
+        slug="william-gibson-new-cols",
+        wikidata_id="Q188987",
+        wikipedia_url="https://en.wikipedia.org/wiki/William_Gibson",
+        remote_ids={"wikidata": "Q188987", "viaf": "108216766"},
+        alternate_names=["William Ford Gibson"],
+    )
+
+    db_session.add(author)
+    await db_session.flush()
+
+    assert author.author_id is not None
+    assert author.wikidata_id == "Q188987"
+    assert author.wikipedia_url == "https://en.wikipedia.org/wiki/William_Gibson"
+    assert author.remote_ids == {"wikidata": "Q188987", "viaf": "108216766"}
+    assert author.alternate_names == ["William Ford Gibson"]

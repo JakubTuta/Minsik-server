@@ -74,7 +74,11 @@ services:
     volumes:
       - es_data_dev:/usr/share/elasticsearch/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "curl -sf http://localhost:9200/_cluster/health || exit 1",
+        ]
       interval: 10s
       timeout: 5s
       retries: 10
@@ -162,6 +166,17 @@ services:
       GOOGLE_BOOKS_API_URL: ${GOOGLE_BOOKS_API_URL}
       GOOGLE_BOOKS_API_KEY: ${GOOGLE_BOOKS_API_KEY}
       REQUEST_TIMEOUT: ${REQUEST_TIMEOUT}
+      CLEANUP_ENABLED: ${CLEANUP_ENABLED}
+      CLEANUP_INTERVAL_HOURS: ${CLEANUP_INTERVAL_HOURS}
+      CLEANUP_BATCH_SIZE: ${CLEANUP_BATCH_SIZE}
+      CLEANUP_BOOK_MIN_QUALITY_SCORE: ${CLEANUP_BOOK_MIN_QUALITY_SCORE}
+      CLEANUP_AUTHOR_MIN_BOOKS: ${CLEANUP_AUTHOR_MIN_BOOKS}
+      DUMP_COMMIT_INTERVAL: ${DUMP_COMMIT_INTERVAL}
+      DUMP_EDITION_BATCH_SIZE: ${DUMP_EDITION_BATCH_SIZE}
+      DUMP_EDITIONS_ENABLED: ${DUMP_EDITIONS_ENABLED}
+      DUMP_RATINGS_ENABLED: ${DUMP_RATINGS_ENABLED}
+      DUMP_READING_LOG_ENABLED: ${DUMP_READING_LOG_ENABLED}
+      DUMP_WIKIDATA_ENABLED: ${DUMP_WIKIDATA_ENABLED}
     ports:
       # EXPOSED for local access (gRPC debugging)
       - "${INGESTION_GRPC_PORT}:50054"

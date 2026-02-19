@@ -69,4 +69,11 @@ message ImportDumpRequest {}
 message ImportDumpResponse {
   string status = 1;
   string message = 2;
+  int32 authors_count = 3;
+  int32 wikidata_count = 4;
+  int32 works_count = 5;
+  int32 editions_enriched = 6;
+  int32 editions_new_lang_rows = 7;
+  int32 ratings_count = 8;
+  int32 reading_log_count = 9;
 }

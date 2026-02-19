@@ -1,5 +1,5 @@
-from pydantic_settings import BaseSettings
 from pydantic import Field
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -50,6 +50,18 @@ class Settings(BaseSettings):
     ol_dump_base_url: str = Field(default="https://openlibrary.org/data")
     dump_batch_size: int = Field(default=500)
     dump_tmp_dir: str = Field(default="/tmp")
+    dump_commit_interval: int = Field(default=5000)
+    dump_edition_batch_size: int = Field(default=2000)
+    dump_editions_enabled: bool = Field(default=True)
+    dump_ratings_enabled: bool = Field(default=True)
+    dump_reading_log_enabled: bool = Field(default=True)
+    dump_wikidata_enabled: bool = Field(default=True)
+
+    cleanup_enabled: bool = Field(default=True)
+    cleanup_interval_hours: int = Field(default=12)
+    cleanup_batch_size: int = Field(default=1000)
+    cleanup_book_min_quality_score: int = Field(default=4)
+    cleanup_author_min_books: int = Field(default=2)
 
     class Config:
         env_file = ".env"

@@ -1,8 +1,9 @@
 import logging
 import typing
 from datetime import datetime
-from app.fetchers.base import BaseFetcher
+
 import app.config
+from app.fetchers.base import BaseFetcher
 from app.utils import slugify
 
 logger = logging.getLogger(__name__)
@@ -12,7 +13,7 @@ class GoogleBooksFetcher(BaseFetcher):
     def __init__(self):
         super().__init__(
             api_url=app.config.settings.google_books_api_url,
-            rate_limit=app.config.settings.open_library_rate_limit
+            rate_limit=app.config.settings.open_library_rate_limit,
         )
         self.search_queries = [
             "science fiction",
@@ -24,10 +25,12 @@ class GoogleBooksFetcher(BaseFetcher):
             "philosophy",
             "psychology",
             "business",
-            "technology"
+            "technology",
         ]
 
-    async def fetch_books(self, count: int, language: str = "en", offset: int = 0) -> list[typing.Dict[str, typing.Any]]:
+    async def fetch_books(
+        self, count: int, language: str = "en", offset: int = 0
+    ) -> list[typing.Dict[str, typing.Any]]:
         books = []
         per_query = max(count // len(self.search_queries), 10)
         query_offset = offset // len(self.search_queries)
@@ -42,7 +45,7 @@ class GoogleBooksFetcher(BaseFetcher):
                 "langRestrict": language,
                 "maxResults": min(per_query, 40),
                 "startIndex": query_offset,
-                "orderBy": "relevance"
+                "orderBy": "relevance",
             }
 
             if app.config.settings.google_books_api_key:
@@ -62,7 +65,9 @@ class GoogleBooksFetcher(BaseFetcher):
 
         return books[:count]
 
-    async def search_book(self, title: str, author: str, limit: int = 10) -> list[typing.Dict[str, typing.Any]]:
+    async def search_book(
+        self, title: str, author: str, limit: int = 10
+    ) -> list[typing.Dict[str, typing.Any]]:
         books = []
 
         url = f"{self.api_url}/volumes"
@@ -70,10 +75,7 @@ class GoogleBooksFetcher(BaseFetcher):
         if author:
             query += f"+inauthor:{author}"
 
-        params = {
-            "q": query,
-            "maxResults": min(limit, 40)
-        }
+        params = {"q": query, "maxResults": min(limit, 40)}
 
         if app.config.settings.google_books_api_key:
             params["key"] = app.config.settings.google_books_api_key
@@ -108,9 +110,9 @@ class GoogleBooksFetcher(BaseFetcher):
 
                 image_links = volume_info.get("imageLinks", {})
                 cover_url = (
-                    image_links.get("large") or
-                    image_links.get("medium") or
-                    image_links.get("thumbnail")
+                    image_links.get("large")
+                    or image_links.get("medium")
+                    or image_links.get("thumbnail")
                 )
 
                 industry_identifiers = volume_info.get("industryIdentifiers", [])
@@ -124,21 +126,23 @@ class GoogleBooksFetcher(BaseFetcher):
 
                 categories = volume_info.get("categories", [])
 
-                books.append({
-                    "title": book_title,
-                    "authors": author_names,
-                    "description": description,
-                    "publication_year": publication_year,
-                    "language": language,
-                    "page_count": page_count,
-                    "cover_url": cover_url,
-                    "isbn": isbn_list,
-                    "publisher": publisher,
-                    "genres": categories,
-                    "open_library_id": None,
-                    "google_books_id": item.get("id"),
-                    "source": "google_books"
-                })
+                books.append(
+                    {
+                        "title": book_title,
+                        "authors": author_names,
+                        "description": description,
+                        "publication_year": publication_year,
+                        "language": language,
+                        "page_count": page_count,
+                        "cover_url": cover_url,
+                        "isbn": isbn_list,
+                        "publisher": publisher,
+                        "genres": categories,
+                        "open_library_id": None,
+                        "google_books_id": item.get("id"),
+                        "source": "google_books",
+                    }
+                )
 
             except Exception as e:
                 logger.error(f"Error parsing search result: {str(e)}")
@@ -146,7 +150,9 @@ class GoogleBooksFetcher(BaseFetcher):
 
         return books
 
-    async def parse_book_data(self, raw_data: typing.Dict[str, typing.Any], language: str = "en") -> typing.Optional[typing.Dict[str, typing.Any]]:
+    async def parse_book_data(
+        self, raw_data: typing.Dict[str, typing.Any], language: str = "en"
+    ) -> typing.Optional[typing.Dict[str, typing.Any]]:
         try:
             volume_info = raw_data.get("volumeInfo", {})
 
@@ -156,30 +162,29 @@ class GoogleBooksFetcher(BaseFetcher):
 
             authors = []
             for author_name in volume_info.get("authors", []):
-                authors.append({
-                    "name": author_name,
-                    "slug": slugify(author_name),
-                    "bio": None,
-                    "birth_date": None,
-                    "death_date": None,
-                    "photo_url": None,
-                    "open_library_id": None
-                })
+                authors.append(
+                    {
+                        "name": author_name,
+                        "slug": slugify(author_name),
+                        "bio": None,
+                        "birth_date": None,
+                        "death_date": None,
+                        "photo_url": None,
+                        "open_library_id": None,
+                    }
+                )
 
             image_links = volume_info.get("imageLinks", {})
             primary_cover_url = (
-                image_links.get("extraLarge") or
-                image_links.get("large") or
-                image_links.get("medium") or
-                image_links.get("thumbnail")
+                image_links.get("extraLarge")
+                or image_links.get("large")
+                or image_links.get("medium")
+                or image_links.get("thumbnail")
             )
 
             genres = []
             for category in volume_info.get("categories", [])[:5]:
-                genres.append({
-                    "name": category,
-                    "slug": slugify(category)
-                })
+                genres.append({"name": category, "slug": slugify(category)})
 
             formats = self._extract_formats(raw_data)
             cover_history = self._extract_cover_history(volume_info, primary_cover_url)
@@ -193,6 +198,30 @@ class GoogleBooksFetcher(BaseFetcher):
                 except (ValueError, TypeError):
                     pass
 
+            isbn_list: list[str] = []
+            for identifier in volume_info.get("industryIdentifiers", []):
+                if identifier.get("type") in ("ISBN_10", "ISBN_13"):
+                    isbn_val = identifier.get("identifier")
+                    if isinstance(isbn_val, str) and isbn_val:
+                        isbn_list.append(isbn_val)
+
+            publisher = volume_info.get("publisher")
+            if isinstance(publisher, str):
+                publisher = publisher[:500]
+            else:
+                publisher = None
+
+            page_count = volume_info.get("pageCount")
+            if not isinstance(page_count, int) or page_count <= 0:
+                page_count = None
+
+            external_ids: dict[str, str] = {}
+            for identifier in volume_info.get("industryIdentifiers", []):
+                id_type = identifier.get("type")
+                id_val = identifier.get("identifier")
+                if id_type and id_val and id_type not in ("ISBN_10", "ISBN_13"):
+                    external_ids[id_type] = id_val
+
             return {
                 "title": title,
                 "language": language,
@@ -204,7 +233,11 @@ class GoogleBooksFetcher(BaseFetcher):
                 "primary_cover_url": primary_cover_url,
                 "google_books_id": raw_data.get("id"),
                 "authors": authors,
-                "genres": genres
+                "genres": genres,
+                "isbn": isbn_list,
+                "publisher": publisher,
+                "number_of_pages": page_count,
+                "external_ids": external_ids,
             }
 
         except Exception as e:
@@ -232,7 +265,11 @@ class GoogleBooksFetcher(BaseFetcher):
 
         return list(formats)
 
-    def _extract_cover_history(self, volume_info: typing.Dict[str, typing.Any], primary_cover_url: typing.Optional[str]) -> list[typing.Dict[str, typing.Any]]:
+    def _extract_cover_history(
+        self,
+        volume_info: typing.Dict[str, typing.Any],
+        primary_cover_url: typing.Optional[str],
+    ) -> list[typing.Dict[str, typing.Any]]:
         cover_history = []
 
         if primary_cover_url:
@@ -248,10 +285,8 @@ class GoogleBooksFetcher(BaseFetcher):
 
             publisher = volume_info.get("publisher", "Unknown")
 
-            cover_history.append({
-                "year": year,
-                "cover_url": primary_cover_url,
-                "publisher": publisher
-            })
+            cover_history.append(
+                {"year": year, "cover_url": primary_cover_url, "publisher": publisher}
+            )
 
         return cover_history

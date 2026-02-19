@@ -68,6 +68,15 @@ message BookDetail {
   SeriesInfo series = 20;
   string series_position = 21;
   map<string, SubRatingStat> sub_rating_stats = 22;
+  repeated string isbn = 23;
+  string publisher = 24;
+  int32 number_of_pages = 25;
+  map<string, string> external_ids = 26;
+  int32 ol_rating_count = 27;
+  string ol_avg_rating = 28;
+  int32 ol_want_to_read_count = 29;
+  int32 ol_currently_reading_count = 30;
+  int32 ol_already_read_count = 31;
 }
 
 message CoverHistory {
@@ -124,6 +133,10 @@ message AuthorDetail {
   string books_avg_rating = 17;
   int32 books_total_ratings = 18;
   int32 books_total_views = 19;
+  string wikidata_id = 20;
+  string wikipedia_url = 21;
+  map<string, string> remote_ids = 22;
+  repeated string alternate_names = 23;
 }
 
 message AuthorDetailResponse {

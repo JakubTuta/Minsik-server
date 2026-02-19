@@ -1,17 +1,18 @@
 import logging
 import typing
-from typing import List, Dict, Any, Optional
+from typing import Any, Dict, List, Optional
+
+import app.config
+import app.models.author
+import app.models.book
+import app.models.book_author
+import app.models.book_genre
+import app.models.genre
+import app.models.series
+import app.utils
 import sqlalchemy
 import sqlalchemy.ext.asyncio
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
-import app.config
-import app.models.book
-import app.models.author
-import app.models.genre
-import app.models.series
-import app.models.book_author
-import app.models.book_genre
-import app.utils
 
 logger = logging.getLogger(__name__)
 
@@ -21,13 +22,11 @@ async def get_db_session() -> sqlalchemy.ext.asyncio.AsyncSession:
         app.config.settings.database_url,
         pool_size=app.config.settings.db_pool_size,
         max_overflow=app.config.settings.db_max_overflow,
-        echo=False
+        echo=False,
     )
 
     async_session = sqlalchemy.ext.asyncio.async_sessionmaker(
-        engine,
-        class_=sqlalchemy.ext.asyncio.AsyncSession,
-        expire_on_commit=False
+        engine, class_=sqlalchemy.ext.asyncio.AsyncSession, expire_on_commit=False
     )
 
     return async_session()
@@ -36,7 +35,7 @@ async def get_db_session() -> sqlalchemy.ext.asyncio.AsyncSession:
 async def insert_books_batch(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     books_data: List[Dict[str, Any]],
-    commit: bool = True
+    commit: bool = True,
 ) -> Dict[str, int]:
     if not books_data:
         return {"successful": 0, "failed": 0, "updated": 0}
@@ -53,7 +52,9 @@ async def insert_books_batch(
                 if cleaned:
                     cleaned_books.append(cleaned)
             except Exception as e:
-                logger.debug(f"Error cleaning book '{book_data.get('title')}': {str(e)}")
+                logger.debug(
+                    f"Error cleaning book '{book_data.get('title')}': {str(e)}"
+                )
                 failed += 1
 
         if not cleaned_books:
@@ -67,7 +68,9 @@ async def insert_books_batch(
         genre_id_map = await _bulk_insert_genres(session, cleaned_books, dedup_cache)
         series_id_map = await _bulk_insert_series(session, cleaned_books, dedup_cache)
 
-        book_results = await _bulk_insert_books(session, cleaned_books, dedup_cache, series_id_map)
+        book_results = await _bulk_insert_books(
+            session, cleaned_books, dedup_cache, series_id_map
+        )
         successful = book_results["inserted"]
         updated = book_results["updated"]
 
@@ -77,7 +80,7 @@ async def insert_books_batch(
             dedup_cache,
             book_results["book_id_map"],
             author_id_map,
-            genre_id_map
+            genre_id_map,
         )
 
         await session.flush()
@@ -119,6 +122,24 @@ def _validate_and_clean_book(book_data: Dict[str, Any]) -> Optional[Dict[str, An
     formats = book_data.get("formats", [])
     formats = [fmt.lower() if isinstance(fmt, str) else fmt for fmt in formats]
 
+    isbn = book_data.get("isbn", [])
+    if not isinstance(isbn, list):
+        isbn = []
+
+    publisher = book_data.get("publisher")
+    if isinstance(publisher, str):
+        publisher = publisher[:500]
+    else:
+        publisher = None
+
+    number_of_pages = book_data.get("number_of_pages")
+    if not isinstance(number_of_pages, int) or number_of_pages <= 0:
+        number_of_pages = None
+
+    external_ids = book_data.get("external_ids", {})
+    if not isinstance(external_ids, dict):
+        external_ids = {}
+
     return {
         "title": title,
         "language": language,
@@ -132,17 +153,17 @@ def _validate_and_clean_book(book_data: Dict[str, Any]) -> Optional[Dict[str, An
         "series_name": series_name,
         "formats": formats,
         "cover_history": book_data.get("cover_history", []),
+        "isbn": isbn,
+        "publisher": publisher,
+        "number_of_pages": number_of_pages,
+        "external_ids": external_ids,
         "authors": book_data.get("authors", []),
-        "genres": book_data.get("genres", [])
+        "genres": book_data.get("genres", []),
     }
 
 
 def _build_dedup_cache(cleaned_books: List[Dict[str, Any]]) -> Dict[str, Any]:
-    cache = {
-        "authors": {},
-        "genres": {},
-        "series": {}
-    }
+    cache = {"authors": {}, "genres": {}, "series": {}}
 
     for book in cleaned_books:
         for author_data in book.get("authors", []):
@@ -169,7 +190,7 @@ def _build_dedup_cache(cleaned_books: List[Dict[str, Any]]) -> Dict[str, Any]:
 async def _bulk_insert_authors(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     cleaned_books: List[Dict[str, Any]],
-    dedup_cache: Dict[str, Any]
+    dedup_cache: Dict[str, Any],
 ) -> Dict[str, int]:
     if not dedup_cache["authors"]:
         return {}
@@ -177,15 +198,21 @@ async def _bulk_insert_authors(
     insert_data = []
     for author_slug, author_data in dedup_cache["authors"].items():
         name = author_data.get("name")
-        insert_data.append({
-            "name": name,
-            "slug": author_slug,
-            "bio": app.utils.clean_description(author_data.get("bio")),
-            "birth_date": app.utils.parse_date(author_data.get("birth_date")),
-            "death_date": app.utils.parse_date(author_data.get("death_date")),
-            "photo_url": author_data.get("photo_url"),
-            "open_library_id": author_data.get("open_library_id")
-        })
+        insert_data.append(
+            {
+                "name": name,
+                "slug": author_slug,
+                "bio": app.utils.clean_description(author_data.get("bio")),
+                "birth_date": app.utils.parse_date(author_data.get("birth_date")),
+                "death_date": app.utils.parse_date(author_data.get("death_date")),
+                "photo_url": author_data.get("photo_url"),
+                "open_library_id": author_data.get("open_library_id"),
+                "wikidata_id": author_data.get("wikidata_id"),
+                "wikipedia_url": author_data.get("wikipedia_url"),
+                "remote_ids": author_data.get("remote_ids", {}),
+                "alternate_names": author_data.get("alternate_names", []),
+            }
+        )
 
     stmt = postgresql_insert(app.models.author.Author).values(insert_data)
     stmt = stmt.on_conflict_do_update(
@@ -195,8 +222,12 @@ async def _bulk_insert_authors(
             "birth_date": stmt.excluded.birth_date,
             "death_date": stmt.excluded.death_date,
             "photo_url": stmt.excluded.photo_url,
-            "open_library_id": stmt.excluded.open_library_id
-        }
+            "open_library_id": stmt.excluded.open_library_id,
+            "wikidata_id": stmt.excluded.wikidata_id,
+            "wikipedia_url": stmt.excluded.wikipedia_url,
+            "remote_ids": stmt.excluded.remote_ids,
+            "alternate_names": stmt.excluded.alternate_names,
+        },
     )
 
     await session.execute(stmt)
@@ -214,7 +245,7 @@ async def _bulk_insert_authors(
 async def _bulk_insert_genres(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     cleaned_books: List[Dict[str, Any]],
-    dedup_cache: Dict[str, Any]
+    dedup_cache: Dict[str, Any],
 ) -> Dict[str, int]:
     if not dedup_cache["genres"]:
         return {}
@@ -222,10 +253,7 @@ async def _bulk_insert_genres(
     insert_data = list(dedup_cache["genres"].values())
 
     stmt = postgresql_insert(app.models.genre.Genre).values(insert_data)
-    stmt = stmt.on_conflict_do_update(
-        index_elements=["slug"],
-        set_={}
-    )
+    stmt = stmt.on_conflict_do_update(index_elements=["slug"], set_={})
 
     await session.execute(stmt)
 
@@ -242,23 +270,24 @@ async def _bulk_insert_genres(
 async def _bulk_insert_series(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     cleaned_books: List[Dict[str, Any]],
-    dedup_cache: Dict[str, Any]
+    dedup_cache: Dict[str, Any],
 ) -> Dict[str, int]:
     if not dedup_cache["series"]:
         return {}
 
     insert_data = []
     for series_slug, series_data in dedup_cache["series"].items():
-        insert_data.append({
-            "name": series_data.get("name"),
-            "slug": series_slug,
-            "description": series_data.get("description")
-        })
+        insert_data.append(
+            {
+                "name": series_data.get("name"),
+                "slug": series_slug,
+                "description": series_data.get("description"),
+            }
+        )
 
     stmt = postgresql_insert(app.models.series.Series).values(insert_data)
     stmt = stmt.on_conflict_do_update(
-        index_elements=["slug"],
-        set_={"description": stmt.excluded.description}
+        index_elements=["slug"], set_={"description": stmt.excluded.description}
     )
 
     await session.execute(stmt)
@@ -277,7 +306,7 @@ async def _bulk_insert_books(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     cleaned_books: List[Dict[str, Any]],
     dedup_cache: Dict[str, Any],
-    series_id_map: Dict[str, int]
+    series_id_map: Dict[str, int],
 ) -> Dict[str, Any]:
     insert_data = []
     upsert_data = []
@@ -298,9 +327,15 @@ async def _bulk_insert_books(
             "open_library_id": book["open_library_id"],
             "google_books_id": book["google_books_id"],
             "series_id": series_id,
-            "series_position": book["series_data"].get("position") if book.get("series_data") else None,
+            "series_position": (
+                book["series_data"].get("position") if book.get("series_data") else None
+            ),
             "formats": book["formats"],
-            "cover_history": book["cover_history"]
+            "cover_history": book["cover_history"],
+            "isbn": book.get("isbn", []),
+            "publisher": book.get("publisher"),
+            "number_of_pages": book.get("number_of_pages"),
+            "external_ids": book.get("external_ids", {}),
         }
 
         insert_data.append(book_entry)
@@ -312,8 +347,12 @@ async def _bulk_insert_books(
         set_={
             "description": stmt.excluded.description,
             "open_library_id": stmt.excluded.open_library_id,
-            "google_books_id": stmt.excluded.google_books_id
-        }
+            "google_books_id": stmt.excluded.google_books_id,
+            "isbn": stmt.excluded.isbn,
+            "publisher": stmt.excluded.publisher,
+            "number_of_pages": stmt.excluded.number_of_pages,
+            "external_ids": stmt.excluded.external_ids,
+        },
     )
 
     await session.execute(stmt)
@@ -332,7 +371,7 @@ async def _bulk_insert_books(
     return {
         "book_id_map": book_id_map,
         "inserted": inserted_count,
-        "updated": updated_count
+        "updated": updated_count,
     }
 
 
@@ -342,7 +381,7 @@ async def _bulk_insert_relationships(
     dedup_cache: Dict[str, Any],
     book_id_map: Dict[str, int],
     author_id_map: Dict[str, int],
-    genre_id_map: Dict[str, int]
+    genre_id_map: Dict[str, int],
 ) -> None:
     book_authors_data = []
     book_genres_data = []
@@ -356,10 +395,7 @@ async def _bulk_insert_relationships(
             author_slug = app.utils.slugify(author_data.get("name", ""))
             author_id = author_id_map.get(author_slug)
             if author_id:
-                book_authors_data.append({
-                    "book_id": book_id,
-                    "author_id": author_id
-                })
+                book_authors_data.append({"book_id": book_id, "author_id": author_id})
 
         for genre_data in book.get("genres", []):
             genre_name = genre_data.get("name", "")
@@ -368,23 +404,20 @@ async def _bulk_insert_relationships(
             genre_slug = app.utils.slugify(genre_name)
             genre_id = genre_id_map.get(genre_slug)
             if genre_id:
-                book_genres_data.append({
-                    "book_id": book_id,
-                    "genre_id": genre_id
-                })
+                book_genres_data.append({"book_id": book_id, "genre_id": genre_id})
 
     if book_authors_data:
-        stmt = postgresql_insert(app.models.book_author.BookAuthor).values(book_authors_data)
-        stmt = stmt.on_conflict_do_nothing(
-            index_elements=["book_id", "author_id"]
+        stmt = postgresql_insert(app.models.book_author.BookAuthor).values(
+            book_authors_data
         )
+        stmt = stmt.on_conflict_do_nothing(index_elements=["book_id", "author_id"])
         await session.execute(stmt)
 
     if book_genres_data:
-        stmt = postgresql_insert(app.models.book_genre.BookGenre).values(book_genres_data)
-        stmt = stmt.on_conflict_do_nothing(
-            index_elements=["book_id", "genre_id"]
+        stmt = postgresql_insert(app.models.book_genre.BookGenre).values(
+            book_genres_data
         )
+        stmt = stmt.on_conflict_do_nothing(index_elements=["book_id", "genre_id"])
         await session.execute(stmt)
 
 
@@ -400,15 +433,9 @@ async def insert_books(books_data: List[Dict[str, Any]]) -> Dict[str, int]:
         await session.close()
 
 
-async def process_single_book(session: sqlalchemy.ext.asyncio.AsyncSession, book_data: Dict[str, Any]) -> None:
+async def process_single_book(
+    session: sqlalchemy.ext.asyncio.AsyncSession, book_data: Dict[str, Any]
+) -> None:
     result = await insert_books_batch(session, [book_data], commit=False)
     if result["failed"] > 0:
         raise ValueError(f"Failed to process book: {book_data.get('title')}")
-
-
-async def get_author_by_ol_id(session: sqlalchemy.ext.asyncio.AsyncSession, ol_id: str) -> Optional[app.models.author.Author]:
-    query = sqlalchemy.select(app.models.author.Author).where(
-        app.models.author.Author.open_library_id == ol_id
-    )
-    result = await session.execute(query)
-    return result.scalar_one_or_none()

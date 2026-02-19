@@ -1,6 +1,7 @@
 import typing
-import pydantic
+
 import app.models.responses
+import pydantic
 
 
 class GenreSchema(pydantic.BaseModel):
@@ -56,8 +57,13 @@ class SearchResponse(pydantic.BaseModel):
 
 
 class SubRatingStatSchema(pydantic.BaseModel):
-    avg: typing.Optional[str] = pydantic.Field(default=None, description="Average score as string (e.g. '3.50'), '0' when no ratings")
-    count: int = pydantic.Field(default=0, description="Number of ratings for this dimension")
+    avg: typing.Optional[str] = pydantic.Field(
+        default=None,
+        description="Average score as string (e.g. '3.50'), '0' when no ratings",
+    )
+    count: int = pydantic.Field(
+        default=0, description="Number of ratings for this dimension"
+    )
 
 
 class BookDetailData(pydantic.BaseModel):
@@ -83,6 +89,15 @@ class BookDetailData(pydantic.BaseModel):
     google_books_id: typing.Optional[str] = None
     created_at: str
     updated_at: str
+    isbn: typing.List[str] = []
+    publisher: typing.Optional[str] = None
+    number_of_pages: int = 0
+    external_ids: typing.Dict[str, str] = {}
+    ol_rating_count: int = 0
+    ol_avg_rating: typing.Optional[str] = None
+    ol_want_to_read_count: int = 0
+    ol_currently_reading_count: int = 0
+    ol_already_read_count: int = 0
 
 
 class BookDetailResponse(pydantic.BaseModel):
@@ -111,6 +126,10 @@ class AuthorDetailData(pydantic.BaseModel):
     open_library_id: typing.Optional[str] = None
     created_at: str
     updated_at: str
+    wikidata_id: typing.Optional[str] = None
+    wikipedia_url: typing.Optional[str] = None
+    remote_ids: typing.Dict[str, str] = {}
+    alternate_names: typing.List[str] = []
 
 
 class AuthorDetailResponse(pydantic.BaseModel):

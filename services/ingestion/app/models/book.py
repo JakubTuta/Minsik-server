@@ -1,8 +1,20 @@
-from sqlalchemy import Column, BigInteger, String, Integer, Text, DECIMAL, TIMESTAMP, Index, text, ForeignKey
+from datetime import datetime
+
+from app.models.base import Base
+from sqlalchemy import (
+    DECIMAL,
+    TIMESTAMP,
+    BigInteger,
+    Column,
+    ForeignKey,
+    Index,
+    Integer,
+    String,
+    Text,
+    text,
+)
 from sqlalchemy.dialects.postgresql import JSONB
 from sqlalchemy.orm import relationship
-from datetime import datetime
-from app.models.base import Base
 
 
 class Book(Base):
@@ -10,9 +22,27 @@ class Book(Base):
     __table_args__ = (
         Index("idx_books_language", "language"),
         Index("idx_books_language_slug", "language", "slug", unique=True),
-        Index("idx_books_rating_count", "rating_count", postgresql_ops={"rating_count": "DESC"}),
-        Index("idx_books_view_count", "view_count", postgresql_ops={"view_count": "DESC"}),
-        {"schema": "books"}
+        Index(
+            "idx_books_rating_count",
+            "rating_count",
+            postgresql_ops={"rating_count": "DESC"},
+        ),
+        Index(
+            "idx_books_view_count", "view_count", postgresql_ops={"view_count": "DESC"}
+        ),
+        Index("idx_books_open_library_id", "open_library_id"),
+        Index("idx_books_isbn", "isbn", postgresql_using="gin"),
+        Index(
+            "idx_books_ol_rating_count",
+            "ol_rating_count",
+            postgresql_ops={"ol_rating_count": "DESC"},
+        ),
+        Index(
+            "idx_books_ol_already_read_count",
+            "ol_already_read_count",
+            postgresql_ops={"ol_already_read_count": "DESC"},
+        ),
+        {"schema": "books"},
     )
 
     book_id = Column(BigInteger, primary_key=True, autoincrement=True)
@@ -26,9 +56,22 @@ class Book(Base):
     cover_history = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     primary_cover_url = Column(String(1000))
 
+    isbn = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
+    publisher = Column(String(500))
+    number_of_pages = Column(Integer)
+    external_ids = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+
     rating_count = Column(Integer, nullable=False, server_default=text("0"))
     avg_rating = Column(DECIMAL(3, 2))
     sub_rating_stats = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+
+    ol_rating_count = Column(Integer, nullable=False, server_default=text("0"))
+    ol_avg_rating = Column(DECIMAL(3, 2))
+    ol_want_to_read_count = Column(Integer, nullable=False, server_default=text("0"))
+    ol_currently_reading_count = Column(
+        Integer, nullable=False, server_default=text("0")
+    )
+    ol_already_read_count = Column(Integer, nullable=False, server_default=text("0"))
 
     view_count = Column(Integer, nullable=False, server_default=text("0"))
     last_viewed_at = Column(TIMESTAMP)
@@ -42,6 +85,10 @@ class Book(Base):
     series_id = Column(BigInteger, ForeignKey("books.series.series_id"))
     series_position = Column(DECIMAL(5, 2))
 
-    authors = relationship("Author", secondary="books.book_authors", back_populates="books")
-    genres = relationship("Genre", secondary="books.book_genres", back_populates="books")
+    authors = relationship(
+        "Author", secondary="books.book_authors", back_populates="books"
+    )
+    genres = relationship(
+        "Genre", secondary="books.book_genres", back_populates="books"
+    )
     series = relationship("Series", back_populates="books")
