@@ -1,10 +1,10 @@
 import typing
-import sqlalchemy
-import sqlalchemy.ext.asyncio
-import sqlalchemy.dialects.postgresql
+
 import app.models.rating
 import app.services.stats_service
-
+import sqlalchemy
+import sqlalchemy.dialects.postgresql
+import sqlalchemy.ext.asyncio
 
 _RATING_SORT_COLUMNS: typing.Dict[str, typing.Any] = {
     "created_at": app.models.rating.Rating.created_at,
@@ -13,10 +13,11 @@ _RATING_SORT_COLUMNS: typing.Dict[str, typing.Any] = {
 
 
 async def _update_book_stats(
-    session: sqlalchemy.ext.asyncio.AsyncSession,
-    book_id: int
+    session: sqlalchemy.ext.asyncio.AsyncSession, book_id: int
 ) -> None:
-    await session.execute(sqlalchemy.text("""
+    await session.execute(
+        sqlalchemy.text(
+            """
         WITH stats AS (
             SELECT
                 ROUND(AVG(overall_rating)::NUMERIC, 2)    AS avg_overall,
@@ -59,7 +60,10 @@ async def _update_book_stats(
             )
         FROM stats
         WHERE books.books.book_id = :book_id
-    """), {"book_id": book_id})
+    """
+        ),
+        {"book_id": book_id},
+    )
 
 
 async def upsert_rating(
@@ -68,7 +72,7 @@ async def upsert_rating(
     book_id: int,
     overall_rating: float,
     sub_ratings: typing.Dict[str, float],
-    review_text: typing.Optional[str]
+    review_text: typing.Optional[str],
 ) -> app.models.rating.Rating:
     insert_values: typing.Dict[str, typing.Any] = {
         "user_id": user_id,
@@ -81,16 +85,16 @@ async def upsert_rating(
     update_values: typing.Dict[str, typing.Any] = {
         "overall_rating": overall_rating,
         "review_text": review_text,
-        "updated_at": sqlalchemy.func.now()
+        "updated_at": sqlalchemy.func.now(),
     }
     update_values.update(sub_ratings)
 
-    stmt = sqlalchemy.dialects.postgresql.insert(app.models.rating.Rating).values(
-        **insert_values
-    ).on_conflict_do_update(
-        constraint="uq_ratings_user_book",
-        set_=update_values
-    ).returning(app.models.rating.Rating)
+    stmt = (
+        sqlalchemy.dialects.postgresql.insert(app.models.rating.Rating)
+        .values(**insert_values)
+        .on_conflict_do_update(constraint="uq_ratings_user_book", set_=update_values)
+        .returning(app.models.rating.Rating)
+    )
 
     result = await session.execute(stmt)
     row = result.scalar_one()
@@ -101,14 +105,16 @@ async def upsert_rating(
 
 
 async def delete_rating(
-    session: sqlalchemy.ext.asyncio.AsyncSession,
-    user_id: int,
-    book_id: int
+    session: sqlalchemy.ext.asyncio.AsyncSession, user_id: int, book_id: int
 ) -> None:
-    stmt = sqlalchemy.delete(app.models.rating.Rating).where(
-        app.models.rating.Rating.user_id == user_id,
-        app.models.rating.Rating.book_id == book_id
-    ).returning(app.models.rating.Rating.rating_id)
+    stmt = (
+        sqlalchemy.delete(app.models.rating.Rating)
+        .where(
+            app.models.rating.Rating.user_id == user_id,
+            app.models.rating.Rating.book_id == book_id,
+        )
+        .returning(app.models.rating.Rating.rating_id)
+    )
 
     result = await session.execute(stmt)
     if result.scalar_one_or_none() is None:
@@ -120,16 +126,17 @@ async def delete_rating(
 
 
 async def get_rating(
-    session: sqlalchemy.ext.asyncio.AsyncSession,
-    user_id: int,
-    book_id: int
-) -> typing.Optional[app.models.rating.Rating]:
+    session: sqlalchemy.ext.asyncio.AsyncSession, user_id: int, book_id: int
+) -> app.models.rating.Rating:
     stmt = sqlalchemy.select(app.models.rating.Rating).where(
         app.models.rating.Rating.user_id == user_id,
-        app.models.rating.Rating.book_id == book_id
+        app.models.rating.Rating.book_id == book_id,
     )
     result = await session.execute(stmt)
-    return result.scalar_one_or_none()
+    row = result.scalar_one_or_none()
+    if row is None:
+        raise ValueError("not_found")
+    return row
 
 
 async def get_user_ratings(
@@ -140,7 +147,7 @@ async def get_user_ratings(
     sort_by: str,
     order: str,
     min_rating: float,
-    max_rating: float
+    max_rating: float,
 ) -> typing.Tuple[typing.List[app.models.rating.Rating], int]:
     sort_col = _RATING_SORT_COLUMNS.get(sort_by, app.models.rating.Rating.created_at)
     order_expr = sort_col.desc() if order == "desc" else sort_col.asc()
@@ -151,27 +158,34 @@ async def get_user_ratings(
     if max_rating > 0.0:
         base_conditions.append(app.models.rating.Rating.overall_rating <= max_rating)
 
-    count_stmt = sqlalchemy.select(sqlalchemy.func.count()).select_from(
-        app.models.rating.Rating
-    ).where(*base_conditions)
+    count_stmt = (
+        sqlalchemy.select(sqlalchemy.func.count())
+        .select_from(app.models.rating.Rating)
+        .where(*base_conditions)
+    )
     count_result = await session.execute(count_stmt)
     total_count = count_result.scalar_one()
 
-    stmt = sqlalchemy.select(app.models.rating.Rating).where(
-        *base_conditions
-    ).order_by(order_expr).limit(limit).offset(offset)
+    stmt = (
+        sqlalchemy.select(app.models.rating.Rating)
+        .where(*base_conditions)
+        .order_by(order_expr)
+        .limit(limit)
+        .offset(offset)
+    )
 
     result = await session.execute(stmt)
     return result.scalars().all(), total_count
 
 
 async def delete_user_ratings(
-    session: sqlalchemy.ext.asyncio.AsyncSession,
-    user_id: int
+    session: sqlalchemy.ext.asyncio.AsyncSession, user_id: int
 ) -> None:
     book_ids_result = await session.execute(
-        sqlalchemy.text("SELECT DISTINCT book_id FROM user_data.ratings WHERE user_id = :user_id"),
-        {"user_id": user_id}
+        sqlalchemy.text(
+            "SELECT DISTINCT book_id FROM user_data.ratings WHERE user_id = :user_id"
+        ),
+        {"user_id": user_id},
     )
     affected_book_ids = [row.book_id for row in book_ids_result.fetchall()]
 

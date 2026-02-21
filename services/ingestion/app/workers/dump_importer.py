@@ -109,15 +109,102 @@ _OL_LANG_TO_ISO: dict[str, str] = {
 }
 
 
+_DOWNLOAD_MAX_RETRIES = 5
+_DOWNLOAD_READ_TIMEOUT = 300
+_DOWNLOAD_CONNECT_TIMEOUT = 60
+_DOWNLOAD_LOG_EVERY_MB = 100
+
+
 async def download_file(url: str, dest_path: str) -> None:
     logger.info(f"[dump] Downloading {url}")
-    async with httpx.AsyncClient(timeout=3600, follow_redirects=True) as client:
-        async with client.stream("GET", url) as response:
-            response.raise_for_status()
-            with open(dest_path, "wb") as f:
-                async for chunk in response.aiter_bytes(chunk_size=65536):
-                    f.write(chunk)
-    logger.info(f"[dump] Downloaded to {dest_path}")
+    timeout = httpx.Timeout(
+        connect=_DOWNLOAD_CONNECT_TIMEOUT,
+        read=_DOWNLOAD_READ_TIMEOUT,
+        write=30.0,
+        pool=60.0,
+    )
+
+    downloaded = 0
+    total_size: typing.Optional[int] = None
+    last_logged_mb = 0
+
+    for attempt in range(1, _DOWNLOAD_MAX_RETRIES + 1):
+        headers: dict[str, str] = {}
+        file_mode = "wb"
+
+        if downloaded > 0:
+            headers["Range"] = f"bytes={downloaded}-"
+            file_mode = "ab"
+            logger.info(
+                f"[dump] Resuming download from {downloaded / (1024 * 1024):.0f} MB "
+                f"(attempt {attempt}/{_DOWNLOAD_MAX_RETRIES})"
+            )
+
+        try:
+            async with httpx.AsyncClient(
+                timeout=timeout, follow_redirects=True
+            ) as client:
+                async with client.stream("GET", url, headers=headers) as response:
+                    if response.status_code == 416:
+                        logger.info("[dump] Download already complete (416 response)")
+                        break
+
+                    response.raise_for_status()
+
+                    if total_size is None:
+                        content_length = response.headers.get("content-length")
+                        if content_length:
+                            total_size = int(content_length) + downloaded
+
+                    with open(dest_path, file_mode) as f:
+                        async for chunk in response.aiter_bytes(chunk_size=65536):
+                            f.write(chunk)
+                            downloaded += len(chunk)
+                            current_mb = downloaded / (1024 * 1024)
+                            if current_mb - last_logged_mb >= _DOWNLOAD_LOG_EVERY_MB:
+                                last_logged_mb = current_mb
+                                total_mb = (
+                                    total_size / (1024 * 1024) if total_size else None
+                                )
+                                if total_mb:
+                                    pct = (downloaded / total_size) * 100
+                                    logger.info(
+                                        f"[dump] Download progress: "
+                                        f"{current_mb:.0f}/{total_mb:.0f} MB "
+                                        f"({pct:.1f}%)"
+                                    )
+                                else:
+                                    logger.info(
+                                        f"[dump] Download progress: "
+                                        f"{current_mb:.0f} MB"
+                                    )
+
+            logger.info(
+                f"[dump] Downloaded to {dest_path} "
+                f"({downloaded / (1024 * 1024):.0f} MB)"
+            )
+            return
+
+        except (
+            httpx.ReadTimeout,
+            httpx.ConnectTimeout,
+            httpx.RemoteProtocolError,
+            httpx.ReadError,
+            httpx.ConnectError,
+        ) as e:
+            if attempt == _DOWNLOAD_MAX_RETRIES:
+                logger.error(
+                    f"[dump] Download failed after {_DOWNLOAD_MAX_RETRIES} attempts: {e}"
+                )
+                raise
+
+            wait_seconds = min(30 * (2 ** (attempt - 1)), 300)
+            logger.warning(
+                f"[dump] Download interrupted ({type(e).__name__}), "
+                f"downloaded {downloaded / (1024 * 1024):.0f} MB so far. "
+                f"Retrying in {wait_seconds}s (attempt {attempt}/{_DOWNLOAD_MAX_RETRIES})"
+            )
+            await asyncio.sleep(wait_seconds)
 
 
 async def _stream_parse_dump(
@@ -599,29 +686,35 @@ async def _flush_wikidata_updates(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     updates: list[dict],
 ) -> int:
-    count = 0
-    for update in updates:
-        set_clauses: dict[str, str] = {}
-        params: dict[str, typing.Any] = {"wid": update["wikidata_id"]}
-        if update["nationality"]:
-            set_clauses["nationality"] = "COALESCE(nationality, :nat)"
-            params["nat"] = update["nationality"]
-        if update["birth_place"]:
-            set_clauses["birth_place"] = "COALESCE(birth_place, :bp)"
-            params["bp"] = update["birth_place"]
-        if update["wikipedia_url"]:
-            set_clauses["wikipedia_url"] = "COALESCE(wikipedia_url, :wurl)"
-            params["wurl"] = update["wikipedia_url"]
+    if not updates:
+        return 0
 
-        if set_clauses:
-            set_sql = ", ".join(f"{col} = {expr}" for col, expr in set_clauses.items())
-            await session.execute(
-                sqlalchemy.text(
-                    f"UPDATE books.authors SET {set_sql} WHERE wikidata_id = :wid"
-                ),
-                params,
-            )
-            count += 1
+    count = 0
+    batch_size = 500
+    for i in range(0, len(updates), batch_size):
+        sub_batch = updates[i : i + batch_size]
+        values_parts: list[str] = []
+        params: dict[str, typing.Any] = {}
+        for k, update in enumerate(sub_batch):
+            values_parts.append(f"(:wid_{k}, :nat_{k}, :bp_{k}, :wurl_{k})")
+            params[f"wid_{k}"] = update["wikidata_id"]
+            params[f"nat_{k}"] = update["nationality"]
+            params[f"bp_{k}"] = update["birth_place"]
+            params[f"wurl_{k}"] = update["wikipedia_url"]
+
+        await session.execute(
+            sqlalchemy.text(
+                "UPDATE books.authors AS a SET "
+                "nationality = COALESCE(a.nationality, v.nat), "
+                "birth_place = COALESCE(a.birth_place, v.bp), "
+                "wikipedia_url = COALESCE(a.wikipedia_url, v.wurl) "
+                f"FROM (VALUES {', '.join(values_parts)}) "
+                "AS v(wid, nat, bp, wurl) "
+                "WHERE a.wikidata_id = v.wid"
+            ),
+            params,
+        )
+        count += len(sub_batch)
     return count
 
 
@@ -706,10 +799,13 @@ async def process_works_dump(file_path: str) -> int:
                         for subject in subjects[:5]:
                             if isinstance(subject, str):
                                 genre_name = subject.lower()[:100]
+                                genre_slug = app.utils.slugify(genre_name)[:150]
+                                if not genre_slug:
+                                    continue
                                 genres_list.append(
                                     {
                                         "name": genre_name,
-                                        "slug": app.utils.slugify(genre_name),
+                                        "slug": genre_slug,
                                     }
                                 )
 
@@ -744,8 +840,14 @@ async def process_works_dump(file_path: str) -> int:
                     try:
                         from app.services import book_service
 
+                        prebuilt_author_id_map = {
+                            slug: aid for aid, _name, slug in author_lookup.values()
+                        }
                         result = await book_service.insert_books_batch(
-                            session, books_to_insert, commit=False
+                            session,
+                            books_to_insert,
+                            commit=False,
+                            author_id_map=prebuilt_author_id_map,
                         )
                         successful += result["successful"]
                         failed += result["failed"]
@@ -1066,51 +1168,65 @@ async def _flush_edition_updates(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     updates: list[dict],
 ) -> None:
+    existing_updates: list[dict] = []
+    new_lang_updates: list[dict] = []
     for update in updates:
+        if update.get("book_id") is not None:
+            existing_updates.append(update)
+        else:
+            new_lang_updates.append(update)
+
+    batch_size = 500
+    for i in range(0, len(existing_updates), batch_size):
+        sub = existing_updates[i : i + batch_size]
+        values_parts: list[str] = []
+        params: dict[str, typing.Any] = {}
+        for k, u in enumerate(sub):
+            values_parts.append(
+                f"(:bid_{k}::bigint, :isbn_{k}::jsonb, :pages_{k}::int, "
+                f":pub_{k}, :ext_{k}::jsonb, :cover_{k}, :desc_{k}, :fmt_{k}::jsonb)"
+            )
+            params[f"bid_{k}"] = u["book_id"]
+            params[f"isbn_{k}"] = json.dumps(u["isbn"]) if u["isbn"] else None
+            params[f"pages_{k}"] = u["number_of_pages"]
+            params[f"pub_{k}"] = u["publisher"][:500] if u["publisher"] else None
+            params[f"ext_{k}"] = (
+                json.dumps(u["external_ids"]) if u["external_ids"] else None
+            )
+            params[f"cover_{k}"] = u["cover_url"][:1000] if u["cover_url"] else None
+            params[f"desc_{k}"] = u["description"]
+            params[f"fmt_{k}"] = (
+                json.dumps([u["physical_format"]]) if u["physical_format"] else None
+            )
+
         try:
-            if update.get("book_id") is not None:
-                set_parts: list[str] = []
-                params: dict[str, typing.Any] = {"bid": update["book_id"]}
-
-                if update["isbn"]:
-                    set_parts.append("isbn = :isbn")
-                    params["isbn"] = json.dumps(update["isbn"])
-                if update["number_of_pages"]:
-                    set_parts.append(
-                        "number_of_pages = COALESCE(number_of_pages, :pages)"
-                    )
-                    params["pages"] = update["number_of_pages"]
-                if update["publisher"]:
-                    set_parts.append("publisher = COALESCE(publisher, :pub)")
-                    params["pub"] = update["publisher"]
-                if update["external_ids"]:
-                    set_parts.append("external_ids = :ext_ids")
-                    params["ext_ids"] = json.dumps(update["external_ids"])
-                if update["cover_url"]:
-                    set_parts.append(
-                        "primary_cover_url = COALESCE(primary_cover_url, :cover)"
-                    )
-                    params["cover"] = update["cover_url"]
-                if update["description"]:
-                    set_parts.append("description = COALESCE(description, :desc)")
-                    params["desc"] = update["description"]
-                if update["physical_format"]:
-                    set_parts.append(
-                        "formats = CASE WHEN NOT formats @> :fmt::jsonb "
-                        "THEN formats || :fmt::jsonb ELSE formats END"
-                    )
-                    params["fmt"] = json.dumps([update["physical_format"]])
-
-                if set_parts:
-                    sql = (
-                        f"UPDATE books.books SET {', '.join(set_parts)} "
-                        f"WHERE book_id = :bid"
-                    )
-                    await session.execute(sqlalchemy.text(sql), params)
-            else:
-                await _insert_new_language_row(session, update)
+            await session.execute(
+                sqlalchemy.text(
+                    "UPDATE books.books AS b SET "
+                    "isbn = CASE WHEN v.isbn IS NOT NULL THEN v.isbn ELSE b.isbn END, "
+                    "number_of_pages = COALESCE(b.number_of_pages, v.pages), "
+                    "publisher = COALESCE(b.publisher, v.pub), "
+                    "external_ids = CASE WHEN v.ext IS NOT NULL "
+                    "THEN v.ext ELSE b.external_ids END, "
+                    "primary_cover_url = COALESCE(b.primary_cover_url, v.cover), "
+                    "description = COALESCE(b.description, v.descr), "
+                    "formats = CASE "
+                    "WHEN v.fmt IS NOT NULL AND NOT b.formats @> v.fmt "
+                    "THEN b.formats || v.fmt ELSE b.formats END "
+                    f"FROM (VALUES {', '.join(values_parts)}) "
+                    "AS v(bid, isbn, pages, pub, ext, cover, descr, fmt) "
+                    "WHERE b.book_id = v.bid"
+                ),
+                params,
+            )
         except Exception as e:
-            logger.debug(f"Error applying edition update: {e}")
+            logger.debug(f"Error batch updating editions: {e}")
+
+    for update in new_lang_updates:
+        try:
+            await _insert_new_language_row(session, update)
+        except Exception as e:
+            logger.debug(f"Error inserting new language row: {e}")
 
 
 async def _insert_new_language_row(
@@ -1135,21 +1251,32 @@ async def _insert_new_language_row(
 
     slug = app.utils.slugify(source.title)
 
+    title = source.title[:500] if source.title else source.title
+    cover_url = update["cover_url"] or source.primary_cover_url
+    if isinstance(cover_url, str):
+        cover_url = cover_url[:1000]
+    publisher = update["publisher"]
+    if isinstance(publisher, str):
+        publisher = publisher[:500]
+    series_position = source.series_position
+    if isinstance(series_position, (int, float)) and series_position > 999.99:
+        series_position = None
+
     insert_data = {
-        "title": source.title,
+        "title": title,
         "language": lang,
         "slug": slug,
         "description": update["description"] or source.description,
         "original_publication_year": source.original_publication_year,
-        "primary_cover_url": update["cover_url"] or source.primary_cover_url,
+        "primary_cover_url": cover_url,
         "open_library_id": work_ol_id,
         "isbn": update["isbn"] or [],
-        "publisher": update["publisher"],
+        "publisher": publisher,
         "number_of_pages": update["number_of_pages"],
         "external_ids": update["external_ids"] or {},
         "formats": ([update["physical_format"]] if update["physical_format"] else []),
         "series_id": source.series_id,
-        "series_position": source.series_position,
+        "series_position": series_position,
     }
 
     stmt = postgresql_insert(app.models.Book).values(insert_data)
@@ -1162,45 +1289,29 @@ async def _insert_new_language_row(
             "external_ids": stmt.excluded.external_ids,
         },
     )
-    await session.execute(stmt)
-
-    new_book_result = await session.execute(
-        sqlalchemy.text(
-            "SELECT book_id FROM books.books " "WHERE language = :lang AND slug = :slug"
-        ),
-        {"lang": lang, "slug": slug},
-    )
-    new_row = new_book_result.first()
+    stmt = stmt.returning(app.models.Book.book_id)
+    result = await session.execute(stmt)
+    new_row = result.first()
     if not new_row:
         return
 
-    source_rels = await session.execute(
+    await session.execute(
         sqlalchemy.text(
-            "SELECT author_id FROM books.book_authors WHERE book_id = :sid"
+            "INSERT INTO books.book_authors (book_id, author_id) "
+            "SELECT :new_bid, author_id FROM books.book_authors "
+            "WHERE book_id = :sid ON CONFLICT DO NOTHING"
         ),
-        {"sid": source_id},
+        {"new_bid": new_row.book_id, "sid": source_id},
     )
-    for rel_row in source_rels:
-        await session.execute(
-            sqlalchemy.text(
-                "INSERT INTO books.book_authors (book_id, author_id) "
-                "VALUES (:bid, :aid) ON CONFLICT DO NOTHING"
-            ),
-            {"bid": new_row.book_id, "aid": rel_row.author_id},
-        )
 
-    source_genres = await session.execute(
-        sqlalchemy.text("SELECT genre_id FROM books.book_genres WHERE book_id = :sid"),
-        {"sid": source_id},
+    await session.execute(
+        sqlalchemy.text(
+            "INSERT INTO books.book_genres (book_id, genre_id) "
+            "SELECT :new_bid, genre_id FROM books.book_genres "
+            "WHERE book_id = :sid ON CONFLICT DO NOTHING"
+        ),
+        {"new_bid": new_row.book_id, "sid": source_id},
     )
-    for genre_row in source_genres:
-        await session.execute(
-            sqlalchemy.text(
-                "INSERT INTO books.book_genres (book_id, genre_id) "
-                "VALUES (:bid, :gid) ON CONFLICT DO NOTHING"
-            ),
-            {"bid": new_row.book_id, "gid": genre_row.genre_id},
-        )
 
 
 # ---------------------------------------------------------------------------
@@ -1254,14 +1365,26 @@ async def process_ratings_dump(file_path: str) -> int:
                             {"bid": book_id, "cnt": agg["count"], "avg": avg}
                         )
 
-                for p in batch_params:
+                for j in range(0, len(batch_params), 500):
+                    sub = batch_params[j : j + 500]
+                    values_parts: list[str] = []
+                    params: dict[str, typing.Any] = {}
+                    for k, p in enumerate(sub):
+                        values_parts.append(
+                            f"(:bid_{k}::bigint, :cnt_{k}::int, :avg_{k}::numeric)"
+                        )
+                        params[f"bid_{k}"] = p["bid"]
+                        params[f"cnt_{k}"] = p["cnt"]
+                        params[f"avg_{k}"] = p["avg"]
                     await session.execute(
                         sqlalchemy.text(
-                            "UPDATE books.books SET "
-                            "ol_rating_count = :cnt, ol_avg_rating = :avg "
-                            "WHERE book_id = :bid"
+                            "UPDATE books.books AS b SET "
+                            "ol_rating_count = v.cnt, ol_avg_rating = v.avg "
+                            f"FROM (VALUES {', '.join(values_parts)}) "
+                            "AS v(bid, cnt, avg) "
+                            "WHERE b.book_id = v.bid"
                         ),
-                        p,
+                        params,
                     )
                 updated += len(batch_params)
                 await session.commit()
@@ -1335,16 +1458,30 @@ async def process_reading_log_dump(file_path: str) -> int:
                             }
                         )
 
-                for p in batch_params:
+                for j in range(0, len(batch_params), 500):
+                    sub = batch_params[j : j + 500]
+                    values_parts: list[str] = []
+                    params: dict[str, typing.Any] = {}
+                    for k, p in enumerate(sub):
+                        values_parts.append(
+                            f"(:bid_{k}::bigint, :want_{k}::int, "
+                            f":reading_{k}::int, :read_{k}::int)"
+                        )
+                        params[f"bid_{k}"] = p["bid"]
+                        params[f"want_{k}"] = p["want"]
+                        params[f"reading_{k}"] = p["reading"]
+                        params[f"read_{k}"] = p["read"]
                     await session.execute(
                         sqlalchemy.text(
-                            "UPDATE books.books SET "
-                            "ol_want_to_read_count = :want, "
-                            "ol_currently_reading_count = :reading, "
-                            "ol_already_read_count = :read "
-                            "WHERE book_id = :bid"
+                            "UPDATE books.books AS b SET "
+                            "ol_want_to_read_count = v.want, "
+                            "ol_currently_reading_count = v.reading, "
+                            "ol_already_read_count = v.already_read "
+                            f"FROM (VALUES {', '.join(values_parts)}) "
+                            "AS v(bid, want, reading, already_read) "
+                            "WHERE b.book_id = v.bid"
                         ),
-                        p,
+                        params,
                     )
                 updated += len(batch_params)
                 await session.commit()

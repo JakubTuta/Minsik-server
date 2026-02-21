@@ -26,14 +26,24 @@ services:
       timeout: 10s
       retries: 3
       start_period: 30s
+    command: >
+      postgres
+      -c shared_buffers=384MB
+      -c work_mem=8MB
+      -c maintenance_work_mem=128MB
+      -c effective_cache_size=1GB
+      -c wal_buffers=16MB
+      -c max_connections=50
+      -c checkpoint_completion_target=0.9
+      -c random_page_cost=1.1
     deploy:
       resources:
         limits:
-          cpus: "0.5"
-          memory: 512M
+          cpus: "1.0"
+          memory: 1536M
         reservations:
           cpus: "0.25"
-          memory: 256M
+          memory: 512M
     networks:
       - minsik-internal
     restart: unless-stopped
@@ -177,10 +187,10 @@ services:
       resources:
         limits:
           cpus: "0.5"
-          memory: 512M
+          memory: 384M
         reservations:
           cpus: "0.25"
-          memory: 256M
+          memory: 192M
     networks:
       - minsik-internal
     restart: unless-stopped
@@ -240,7 +250,7 @@ services:
       resources:
         limits:
           cpus: "1.0"
-          memory: 4096M
+          memory: 2048M
         reservations:
           cpus: "0.5"
           memory: 512M
@@ -302,10 +312,10 @@ services:
       resources:
         limits:
           cpus: "0.5"
-          memory: 512M
+          memory: 384M
         reservations:
           cpus: "0.25"
-          memory: 256M
+          memory: 192M
     networks:
       - minsik-internal
     restart: unless-stopped
@@ -346,10 +356,10 @@ services:
       resources:
         limits:
           cpus: "0.5"
-          memory: 512M
+          memory: 256M
         reservations:
           cpus: "0.25"
-          memory: 256M
+          memory: 128M
     networks:
       - minsik-internal
     restart: unless-stopped
@@ -393,10 +403,10 @@ services:
       resources:
         limits:
           cpus: "0.5"
-          memory: 512M
+          memory: 384M
         reservations:
           cpus: "0.25"
-          memory: 256M
+          memory: 192M
     networks:
       - minsik-internal
     restart: unless-stopped
@@ -444,10 +454,10 @@ services:
       resources:
         limits:
           cpus: "0.5"
-          memory: 768M
+          memory: 512M
         reservations:
           cpus: "0.25"
-          memory: 384M
+          memory: 256M
     networks:
       - minsik-internal
     restart: unless-stopped

@@ -69,6 +69,9 @@ async def search_books_and_authors(
                     "view_count": result.view_count,
                     "author_slugs": list(result.author_slugs),
                     "series_slug": result.series_slug,
+                    "avg_rating": result.avg_rating or None,
+                    "rating_count": result.rating_count,
+                    "book_count": result.book_count,
                 }
             )
 

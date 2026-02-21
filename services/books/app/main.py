@@ -1,26 +1,27 @@
 import asyncio
-import signal
-import logging
-import sys
 import datetime
-import grpc
-from grpc_reflection.v1alpha import reflection
-import sqlalchemy
-import elasticsearch.helpers
+import logging
+import signal
+import sys
+
+import app.cache
 import app.config
 import app.db
-import app.cache
 import app.es_client
 import app.grpc.server
 import app.proto.books_pb2
 import app.proto.books_pb2_grpc
-import app.services.book_service
 import app.services.author_service
+import app.services.book_service
+import elasticsearch.helpers
+import grpc
+import sqlalchemy
+from grpc_reflection.v1alpha import reflection
 
 logging.basicConfig(
     level=getattr(logging, app.config.settings.log_level.upper()),
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s',
-    handlers=[logging.StreamHandler(sys.stdout)]
+    format="%(asctime)s - %(name)s - %(levelname)s - %(message)s",
+    handlers=[logging.StreamHandler(sys.stdout)],
 )
 
 logger = logging.getLogger(__name__)
@@ -70,7 +71,8 @@ async def reindex_all_to_es() -> None:
     series_indexed = 0
 
     async with app.db.async_session_maker() as session:
-        books_query = sqlalchemy.text("""
+        books_query = sqlalchemy.text(
+            """
             SELECT
                 b.book_id, b.title, b.description, b.language, b.slug,
                 b.primary_cover_url, b.view_count, b.last_viewed_at,
@@ -85,7 +87,8 @@ async def reindex_all_to_es() -> None:
             WHERE b.updated_at > :last_sync
             GROUP BY b.book_id, s.name, s.slug
             ORDER BY b.book_id
-        """)
+        """
+        )
 
         result = await session.execute(books_query, {"last_sync": last_sync})
         batch: list = []
@@ -106,11 +109,15 @@ async def reindex_all_to_es() -> None:
                     "series_name": row.series_name or "",
                     "series_slug": row.series_slug or "",
                     "view_count": row.view_count or 0,
-                    "last_viewed_at": row.last_viewed_at.isoformat() if row.last_viewed_at else None,
+                    "last_viewed_at": (
+                        row.last_viewed_at.isoformat() if row.last_viewed_at else None
+                    ),
                     "rating_count": row.rating_count or 0,
                     "avg_rating": float(row.avg_rating) if row.avg_rating else None,
-                    "created_at": row.created_at.isoformat() if row.created_at else None,
-                }
+                    "created_at": (
+                        row.created_at.isoformat() if row.created_at else None
+                    ),
+                },
             }
             batch.append(doc)
 
@@ -123,12 +130,22 @@ async def reindex_all_to_es() -> None:
             await _bulk_index(es, batch)
             books_indexed += len(batch)
 
-        authors_query = sqlalchemy.text("""
-            SELECT author_id, name, bio, slug, photo_url, view_count, last_viewed_at, created_at
-            FROM books.authors
-            WHERE updated_at > :last_sync
-            ORDER BY author_id
-        """)
+        authors_query = sqlalchemy.text(
+            """
+            SELECT
+                a.author_id, a.name, a.bio, a.slug, a.photo_url,
+                a.view_count, a.last_viewed_at, a.created_at,
+                COUNT(DISTINCT ba.book_id) as book_count,
+                COALESCE(AVG(b.avg_rating), 0) as avg_rating,
+                COALESCE(SUM(b.rating_count), 0) as rating_count
+            FROM books.authors a
+            LEFT JOIN books.book_authors ba ON a.author_id = ba.author_id
+            LEFT JOIN books.books b ON ba.book_id = b.book_id
+            WHERE a.updated_at > :last_sync
+            GROUP BY a.author_id
+            ORDER BY a.author_id
+        """
+        )
 
         result = await session.execute(authors_query, {"last_sync": last_sync})
         batch = []
@@ -144,9 +161,16 @@ async def reindex_all_to_es() -> None:
                     "slug": row.slug or "",
                     "photo_url": row.photo_url or "",
                     "view_count": row.view_count or 0,
-                    "last_viewed_at": row.last_viewed_at.isoformat() if row.last_viewed_at else None,
-                    "created_at": row.created_at.isoformat() if row.created_at else None,
-                }
+                    "last_viewed_at": (
+                        row.last_viewed_at.isoformat() if row.last_viewed_at else None
+                    ),
+                    "created_at": (
+                        row.created_at.isoformat() if row.created_at else None
+                    ),
+                    "book_count": row.book_count or 0,
+                    "avg_rating": float(row.avg_rating) if row.avg_rating else None,
+                    "rating_count": row.rating_count or 0,
+                },
             }
             batch.append(doc)
 
@@ -159,12 +183,21 @@ async def reindex_all_to_es() -> None:
             await _bulk_index(es, batch)
             authors_indexed += len(batch)
 
-        series_query = sqlalchemy.text("""
-            SELECT series_id, name, description, slug, view_count, last_viewed_at, created_at
-            FROM books.series
-            WHERE updated_at > :last_sync
-            ORDER BY series_id
-        """)
+        series_query = sqlalchemy.text(
+            """
+            SELECT
+                s.series_id, s.name, s.description, s.slug,
+                s.view_count, s.last_viewed_at, s.created_at,
+                COUNT(DISTINCT b.book_id) as book_count,
+                COALESCE(AVG(b.avg_rating), 0) as avg_rating,
+                COALESCE(SUM(b.rating_count), 0) as rating_count
+            FROM books.series s
+            LEFT JOIN books.books b ON s.series_id = b.series_id
+            WHERE s.updated_at > :last_sync
+            GROUP BY s.series_id
+            ORDER BY s.series_id
+        """
+        )
 
         result = await session.execute(series_query, {"last_sync": last_sync})
         batch = []
@@ -179,9 +212,16 @@ async def reindex_all_to_es() -> None:
                     "description": row.description or "",
                     "slug": row.slug or "",
                     "view_count": row.view_count or 0,
-                    "last_viewed_at": row.last_viewed_at.isoformat() if row.last_viewed_at else None,
-                    "created_at": row.created_at.isoformat() if row.created_at else None,
-                }
+                    "last_viewed_at": (
+                        row.last_viewed_at.isoformat() if row.last_viewed_at else None
+                    ),
+                    "created_at": (
+                        row.created_at.isoformat() if row.created_at else None
+                    ),
+                    "book_count": row.book_count or 0,
+                    "avg_rating": float(row.avg_rating) if row.avg_rating else None,
+                    "rating_count": row.rating_count or 0,
+                },
             }
             batch.append(doc)
 
@@ -232,22 +272,23 @@ async def start_server() -> None:
     await app.cache.init_redis()
 
     logger.info("Initializing Elasticsearch connection")
-    await app.es_client.init_es(app.config.settings.es_host, app.config.settings.es_port)
+    await app.es_client.init_es(
+        app.config.settings.es_host, app.config.settings.es_port
+    )
     await app.es_client.create_indexes(
         app.config.settings.es_index_books,
         app.config.settings.es_index_authors,
-        app.config.settings.es_index_series
+        app.config.settings.es_index_series,
     )
 
     grpc_server = grpc.aio.server()
 
     app.proto.books_pb2_grpc.add_BooksServiceServicer_to_server(
-        app.grpc.server.BooksServicer(),
-        grpc_server
+        app.grpc.server.BooksServicer(), grpc_server
     )
 
     SERVICE_NAMES = (
-        app.proto.books_pb2.DESCRIPTOR.services_by_name['BooksService'].full_name,
+        app.proto.books_pb2.DESCRIPTOR.services_by_name["BooksService"].full_name,
         reflection.SERVICE_NAME,
     )
     reflection.enable_server_reflection(SERVICE_NAMES, grpc_server)

@@ -1,17 +1,23 @@
-import pytest
+import datetime
+
+import app.config
 import grpc
 import jwt
-import datetime
-import app.config
+import pytest
 
 
 def make_token(role: str = "admin", user_id: int = 1) -> str:
     payload = {
         "sub": str(user_id),
         "role": role,
-        "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=15)
+        "exp": datetime.datetime.now(datetime.timezone.utc)
+        + datetime.timedelta(minutes=15),
     }
-    return jwt.encode(payload, app.config.settings.jwt_secret_key, algorithm=app.config.settings.jwt_algorithm)
+    return jwt.encode(
+        payload,
+        app.config.settings.jwt_secret_key,
+        algorithm=app.config.settings.jwt_algorithm,
+    )
 
 
 ADMIN_HEADERS = {"Authorization": f"Bearer {make_token(role='admin')}"}
@@ -37,19 +43,28 @@ class TestTriggerIngestion:
         mock_response.job_id = "test-job-123"
         mock_response.status = "pending"
         mock_response.total_books = 100
-        mock_response.message = "Ingestion job started: 100 books from both"
+        mock_response.processed = 0
+        mock_response.successful = 0
+        mock_response.failed = 0
+        mock_response.error_message = ""
 
         mock_ingestion_client = mocker.MagicMock()
-        mock_ingestion_client.trigger_ingestion = mocker.AsyncMock(return_value=mock_response)
-        mock_ingestion_client.__aenter__ = mocker.AsyncMock(return_value=mock_ingestion_client)
+        mock_ingestion_client.trigger_ingestion = mocker.AsyncMock(
+            return_value=mock_response
+        )
+        mock_ingestion_client.__aenter__ = mocker.AsyncMock(
+            return_value=mock_ingestion_client
+        )
         mock_ingestion_client.__aexit__ = mocker.AsyncMock()
 
-        mocker.patch("app.grpc_clients.IngestionClient", return_value=mock_ingestion_client)
+        mocker.patch(
+            "app.grpc_clients.IngestionClient", return_value=mock_ingestion_client
+        )
 
         response = client.post(
             "/api/v1/admin/ingestion/trigger",
             json={"total_books": 100, "source": "both", "language": "en"},
-            headers=ADMIN_HEADERS
+            headers=ADMIN_HEADERS,
         )
 
         assert response.status_code == 200
@@ -64,7 +79,7 @@ class TestTriggerIngestion:
     def test_no_auth(self, client):
         response = client.post(
             "/api/v1/admin/ingestion/trigger",
-            json={"total_books": 100, "source": "both", "language": "en"}
+            json={"total_books": 100, "source": "both", "language": "en"},
         )
 
         assert response.status_code == 401
@@ -73,7 +88,7 @@ class TestTriggerIngestion:
         response = client.post(
             "/api/v1/admin/ingestion/trigger",
             json={"total_books": 100, "source": "both", "language": "en"},
-            headers=USER_HEADERS
+            headers=USER_HEADERS,
         )
 
         assert response.status_code == 403
@@ -82,7 +97,7 @@ class TestTriggerIngestion:
         response = client.post(
             "/api/v1/admin/ingestion/trigger",
             json={"total_books": 0, "source": "both", "language": "en"},
-            headers=ADMIN_HEADERS
+            headers=ADMIN_HEADERS,
         )
 
         assert response.status_code == 422
@@ -91,7 +106,7 @@ class TestTriggerIngestion:
         response = client.post(
             "/api/v1/admin/ingestion/trigger",
             json={"total_books": 100, "source": "invalid_source", "language": "en"},
-            headers=ADMIN_HEADERS
+            headers=ADMIN_HEADERS,
         )
 
         assert response.status_code == 422
@@ -111,12 +126,14 @@ class TestTriggerIngestion:
         mock_ingestion_client.__aenter__ = mock_aenter
         mock_ingestion_client.__aexit__ = mock_aexit
 
-        mocker.patch("app.grpc_clients.IngestionClient", return_value=mock_ingestion_client)
+        mocker.patch(
+            "app.grpc_clients.IngestionClient", return_value=mock_ingestion_client
+        )
 
         response = client.post(
             "/api/v1/admin/ingestion/trigger",
             json={"total_books": 100, "source": "both", "language": "en"},
-            headers=ADMIN_HEADERS
+            headers=ADMIN_HEADERS,
         )
 
         assert response.status_code == 500
@@ -141,15 +158,20 @@ class TestGetIngestionStatus:
         mock_response.completed_at = 0
 
         mock_ingestion_client = mocker.MagicMock()
-        mock_ingestion_client.get_ingestion_status = mocker.AsyncMock(return_value=mock_response)
-        mock_ingestion_client.__aenter__ = mocker.AsyncMock(return_value=mock_ingestion_client)
+        mock_ingestion_client.get_ingestion_status = mocker.AsyncMock(
+            return_value=mock_response
+        )
+        mock_ingestion_client.__aenter__ = mocker.AsyncMock(
+            return_value=mock_ingestion_client
+        )
         mock_ingestion_client.__aexit__ = mocker.AsyncMock()
 
-        mocker.patch("app.grpc_clients.IngestionClient", return_value=mock_ingestion_client)
+        mocker.patch(
+            "app.grpc_clients.IngestionClient", return_value=mock_ingestion_client
+        )
 
         response = client.get(
-            "/api/v1/admin/ingestion/status/test-job-123",
-            headers=ADMIN_HEADERS
+            "/api/v1/admin/ingestion/status/test-job-123", headers=ADMIN_HEADERS
         )
 
         assert response.status_code == 200
@@ -170,8 +192,7 @@ class TestGetIngestionStatus:
 
     def test_user_role_forbidden(self, client):
         response = client.get(
-            "/api/v1/admin/ingestion/status/test-job-123",
-            headers=USER_HEADERS
+            "/api/v1/admin/ingestion/status/test-job-123", headers=USER_HEADERS
         )
 
         assert response.status_code == 403
@@ -191,11 +212,12 @@ class TestGetIngestionStatus:
         mock_ingestion_client.__aenter__ = mock_aenter
         mock_ingestion_client.__aexit__ = mock_aexit
 
-        mocker.patch("app.grpc_clients.IngestionClient", return_value=mock_ingestion_client)
+        mocker.patch(
+            "app.grpc_clients.IngestionClient", return_value=mock_ingestion_client
+        )
 
         response = client.get(
-            "/api/v1/admin/ingestion/status/nonexistent-job",
-            headers=ADMIN_HEADERS
+            "/api/v1/admin/ingestion/status/nonexistent-job", headers=ADMIN_HEADERS
         )
 
         assert response.status_code == 404
@@ -212,15 +234,20 @@ class TestCancelIngestion:
         mock_response.message = "Job test-job-123 cancelled successfully"
 
         mock_ingestion_client = mocker.MagicMock()
-        mock_ingestion_client.cancel_ingestion = mocker.AsyncMock(return_value=mock_response)
-        mock_ingestion_client.__aenter__ = mocker.AsyncMock(return_value=mock_ingestion_client)
+        mock_ingestion_client.cancel_ingestion = mocker.AsyncMock(
+            return_value=mock_response
+        )
+        mock_ingestion_client.__aenter__ = mocker.AsyncMock(
+            return_value=mock_ingestion_client
+        )
         mock_ingestion_client.__aexit__ = mocker.AsyncMock()
 
-        mocker.patch("app.grpc_clients.IngestionClient", return_value=mock_ingestion_client)
+        mocker.patch(
+            "app.grpc_clients.IngestionClient", return_value=mock_ingestion_client
+        )
 
         response = client.delete(
-            "/api/v1/admin/ingestion/cancel/test-job-123",
-            headers=ADMIN_HEADERS
+            "/api/v1/admin/ingestion/cancel/test-job-123", headers=ADMIN_HEADERS
         )
 
         assert response.status_code == 200
@@ -237,8 +264,7 @@ class TestCancelIngestion:
 
     def test_user_role_forbidden(self, client):
         response = client.delete(
-            "/api/v1/admin/ingestion/cancel/test-job-123",
-            headers=USER_HEADERS
+            "/api/v1/admin/ingestion/cancel/test-job-123", headers=USER_HEADERS
         )
 
         assert response.status_code == 403
@@ -258,11 +284,12 @@ class TestCancelIngestion:
         mock_ingestion_client.__aenter__ = mock_aenter
         mock_ingestion_client.__aexit__ = mock_aexit
 
-        mocker.patch("app.grpc_clients.IngestionClient", return_value=mock_ingestion_client)
+        mocker.patch(
+            "app.grpc_clients.IngestionClient", return_value=mock_ingestion_client
+        )
 
         response = client.delete(
-            "/api/v1/admin/ingestion/cancel/nonexistent-job",
-            headers=ADMIN_HEADERS
+            "/api/v1/admin/ingestion/cancel/nonexistent-job", headers=ADMIN_HEADERS
         )
 
         assert response.status_code == 404

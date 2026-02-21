@@ -1,5 +1,5 @@
-import pytest
 import grpc
+import pytest
 
 
 class MockRpcError(grpc.RpcError):
@@ -29,11 +29,13 @@ def test_health_endpoint(client):
 
 def test_deep_health_endpoint_when_services_healthy(client, mocker):
     mock_stub = mocker.MagicMock()
-    mock_stub.GetIngestionStatus = mocker.AsyncMock()
+    mock_stub.GetDataCoverage = mocker.AsyncMock()
 
     mock_ingestion_client = mocker.MagicMock()
     mock_ingestion_client.stub = mock_stub
-    mock_ingestion_client.__aenter__ = mocker.AsyncMock(return_value=mock_ingestion_client)
+    mock_ingestion_client.__aenter__ = mocker.AsyncMock(
+        return_value=mock_ingestion_client
+    )
     mock_ingestion_client.__aexit__ = mocker.AsyncMock()
 
     mocker.patch("app.grpc_clients.IngestionClient", return_value=mock_ingestion_client)
@@ -64,7 +66,7 @@ def test_deep_health_endpoint_when_service_unhealthy(client, mocker):
         pass
 
     mock_stub = mocker.MagicMock()
-    mock_stub.GetIngestionStatus = mock_get_status
+    mock_stub.GetDataCoverage = mock_get_status
 
     mock_ingestion_client = mocker.MagicMock()
     mock_ingestion_client.stub = mock_stub

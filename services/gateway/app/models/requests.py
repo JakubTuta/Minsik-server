@@ -1,19 +1,24 @@
-import pydantic
 import typing
+
+import pydantic
 
 
 class TriggerIngestionRequest(pydantic.BaseModel):
-    total_books: int = pydantic.Field(gt=0, description="Number of books to ingest (must be greater than 0)")
-    source: str = pydantic.Field(default="both", pattern="^(open_library|google_books|both)$", description="Data source for ingestion")
-    language: str = pydantic.Field(default="en", min_length=2, max_length=10, description="Language code for books")
+    total_books: int = pydantic.Field(
+        gt=0, description="Number of books to ingest (must be greater than 0)"
+    )
+    source: str = pydantic.Field(
+        default="both",
+        pattern="^(open_library|google_books|both)$",
+        description="Data source for ingestion",
+    )
+    language: str = pydantic.Field(
+        default="en", min_length=2, max_length=10, description="Language code for books"
+    )
 
     model_config = pydantic.ConfigDict(
         json_schema_extra={
-            "example": {
-                "total_books": 100,
-                "source": "both",
-                "language": "en"
-            }
+            "example": {"total_books": 100, "source": "both", "language": "en"}
         }
     )
 
@@ -36,7 +41,7 @@ class TriggerIngestionResponse(pydantic.BaseModel):
                 "processed": 98,
                 "successful": 95,
                 "failed": 3,
-                "error_message": None
+                "error_message": None,
             }
         }
     )
@@ -58,7 +63,7 @@ class DataCoverageResponse(pydantic.BaseModel):
                 "db_series_count": 342,
                 "ol_english_total": 10000000,
                 "coverage_percent": 0.12,
-                "cached": False
+                "cached": False,
             }
         }
     )
@@ -67,8 +72,14 @@ class DataCoverageResponse(pydantic.BaseModel):
 class SearchBookRequest(pydantic.BaseModel):
     title: str = pydantic.Field(min_length=1, description="Book title to search for")
     author: str = pydantic.Field(default="", description="Author name (optional)")
-    source: str = pydantic.Field(default="both", pattern="^(open_library|google_books|both)$", description="Data source for search")
-    limit: int = pydantic.Field(default=10, ge=1, le=40, description="Maximum number of results to return")
+    source: str = pydantic.Field(
+        default="both",
+        pattern="^(open_library|google_books|both)$",
+        description="Data source for search",
+    )
+    limit: int = pydantic.Field(
+        default=10, ge=1, le=40, description="Maximum number of results to return"
+    )
 
     model_config = pydantic.ConfigDict(
         json_schema_extra={
@@ -76,7 +87,7 @@ class SearchBookRequest(pydantic.BaseModel):
                 "title": "1984",
                 "author": "George Orwell",
                 "source": "both",
-                "limit": 10
+                "limit": 10,
             }
         }
     )
@@ -112,7 +123,7 @@ class BookResult(pydantic.BaseModel):
                 "genres": ["Fiction", "Dystopia", "Classics"],
                 "open_library_id": "OL468431W",
                 "google_books_id": "",
-                "source": "open_library"
+                "source": "open_library",
             }
         }
     )
@@ -140,12 +151,29 @@ class SearchBookResponse(pydantic.BaseModel):
                         "genres": ["Fiction", "Dystopia"],
                         "open_library_id": "OL468431W",
                         "google_books_id": "",
-                        "source": "open_library"
+                        "source": "open_library",
                     }
-                ]
+                ],
             }
         }
     )
+
+
+class IngestionStatusResponse(pydantic.BaseModel):
+    job_id: str
+    status: str
+    processed: int
+    total: int
+    successful: int
+    failed: int
+    error: str
+    started_at: int
+    completed_at: int
+
+
+class CancelIngestionResponse(pydantic.BaseModel):
+    success: bool
+    message: str
 
 
 class ImportDumpResponse(pydantic.BaseModel):
@@ -156,7 +184,7 @@ class ImportDumpResponse(pydantic.BaseModel):
         json_schema_extra={
             "example": {
                 "status": "started",
-                "message": "Dump import started (job_id: abc123...). Check service logs for progress."
+                "message": "Dump import started (job_id: abc123...). Check service logs for progress.",
             }
         }
     )

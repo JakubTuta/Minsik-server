@@ -29,6 +29,9 @@ message SearchResult {
   int32 view_count = 8;
   repeated string author_slugs = 9;
   string series_slug = 10;
+  string avg_rating = 11;
+  int32 rating_count = 12;
+  int32 book_count = 13;
 }
 
 message SearchResponse {

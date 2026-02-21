@@ -36,6 +36,7 @@ async def cleanup_low_quality_books(
               AND b.view_count = 0
               AND COALESCE(b.ol_rating_count, 0) = 0
               AND COALESCE(b.ol_already_read_count, 0) = 0
+              AND b.created_at < NOW() - INTERVAL '1 day'
               AND NOT EXISTS (
                   SELECT 1 FROM user_data.bookshelves bs WHERE bs.book_id = b.book_id
               )
@@ -65,6 +66,7 @@ async def cleanup_low_quality_books(
                       AND b.view_count = 0
                       AND COALESCE(b.ol_rating_count, 0) = 0
                       AND COALESCE(b.ol_already_read_count, 0) = 0
+                      AND b.created_at < NOW() - INTERVAL '1 day'
                       AND NOT EXISTS (
                           SELECT 1 FROM user_data.bookshelves bs WHERE bs.book_id = b.book_id
                       )
@@ -102,6 +104,7 @@ async def cleanup_orphan_authors(
                 SELECT COUNT(*) FROM books.book_authors ba WHERE ba.author_id = a.author_id
             ) < :min_books
             AND a.view_count = 0
+            AND a.created_at < NOW() - INTERVAL '1 day'
         """
         ),
         {"min_books": min_books},
@@ -127,6 +130,7 @@ async def cleanup_orphan_authors(
                         SELECT COUNT(*) FROM books.book_authors ba WHERE ba.author_id = a.author_id
                     ) < :min_books
                     AND a.view_count = 0
+                    AND a.created_at < NOW() - INTERVAL '1 day'
                     LIMIT :batch_size
                 )
             """
@@ -164,6 +168,7 @@ async def cleanup_orphan_series(
                         SELECT 1 FROM books.books b WHERE b.series_id = s.series_id
                     )
                     AND s.view_count = 0
+                    AND s.created_at < NOW() - INTERVAL '1 day'
                     LIMIT :batch_size
                 )
             """

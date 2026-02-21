@@ -96,6 +96,7 @@ services:
       context: .
       dockerfile: services/gateway/Dockerfile
     container_name: minsik-gateway-service-dev
+    command: sh -c "sh /app/scripts/dev-compile-protos.sh ingestion books auth user_data && exec uvicorn app.main:app --host 0.0.0.0 --port 8040 --reload --reload-dir /app/app"
     environment:
       ENV: development
       DEBUG: ${DEBUG}
@@ -125,6 +126,11 @@ services:
     ports:
       # EXPOSED for client access
       - "${GATEWAY_HTTP_PORT}:8040"
+    volumes:
+      - ./services/gateway/app:/app/app
+      - ./services/gateway/tests:/app/tests
+      - ./proto:/app/proto_src:ro
+      - ./scripts:/app/scripts:ro
     depends_on:
       - ingestion-service
       - books-service
@@ -143,6 +149,7 @@ services:
       context: .
       dockerfile: services/ingestion/Dockerfile
     container_name: minsik-ingestion-service-dev
+    command: sh -c "sh /app/scripts/dev-compile-protos.sh ingestion && exec watchfiles 'python -m app.main' /app/app"
     environment:
       ENV: development
       DEBUG: ${DEBUG}
@@ -180,6 +187,11 @@ services:
     ports:
       # EXPOSED for local access (gRPC debugging)
       - "${INGESTION_GRPC_PORT}:50054"
+    volumes:
+      - ./services/ingestion/app:/app/app
+      - ./services/ingestion/tests:/app/tests
+      - ./proto:/app/proto_src:ro
+      - ./scripts:/app/scripts:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -198,6 +210,7 @@ services:
       context: .
       dockerfile: services/books/Dockerfile
     container_name: minsik-books-service-dev
+    command: sh -c "sh /app/scripts/dev-compile-protos.sh books && exec watchfiles 'python -m app.main' /app/app"
     environment:
       ENV: development
       DEBUG: ${DEBUG}
@@ -232,6 +245,11 @@ services:
     ports:
       # EXPOSED for local access (gRPC debugging)
       - "${BOOKS_GRPC_PORT}:50055"
+    volumes:
+      - ./services/books/app:/app/app
+      - ./services/books/tests:/app/tests
+      - ./proto:/app/proto_src:ro
+      - ./scripts:/app/scripts:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -252,6 +270,7 @@ services:
       context: .
       dockerfile: services/auth/Dockerfile
     container_name: minsik-auth-service-dev
+    command: sh -c "sh /app/scripts/dev-compile-protos.sh auth && exec watchfiles 'python -m app.main' /app/app"
     environment:
       ENV: development
       DEBUG: ${DEBUG}
@@ -272,6 +291,11 @@ services:
     ports:
       # EXPOSED for local access (gRPC debugging)
       - "${AUTH_GRPC_PORT}:50051"
+    volumes:
+      - ./services/auth/app:/app/app
+      - ./services/auth/tests:/app/tests
+      - ./proto:/app/proto_src:ro
+      - ./scripts:/app/scripts:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -288,6 +312,7 @@ services:
       context: .
       dockerfile: services/user_data/Dockerfile
     container_name: minsik-user-data-service-dev
+    command: sh -c "sh /app/scripts/dev-compile-protos.sh user_data && exec watchfiles 'python -m app.main' /app/app"
     environment:
       ENV: development
       DEBUG: ${DEBUG}
@@ -309,6 +334,11 @@ services:
     ports:
       # EXPOSED for local access (gRPC debugging)
       - "${USER_DATA_GRPC_PORT}:50053"
+    volumes:
+      - ./services/user_data/app:/app/app
+      - ./services/user_data/tests:/app/tests
+      - ./proto:/app/proto_src:ro
+      - ./scripts:/app/scripts:ro
     depends_on:
       postgres:
         condition: service_healthy
@@ -327,7 +357,12 @@ services:
       context: .
       dockerfile: services/ingestion/Dockerfile
     container_name: minsik-rq-worker-dev
-    command: rq worker ingestion --url redis://:${REDIS_PASSWORD}@${REDIS_HOST}:${REDIS_PORT}/${REDIS_DB}
+    command: sh -c "sh /app/scripts/dev-compile-protos.sh ingestion && exec rq worker ingestion --url redis://:${REDIS_PASSWORD}@${REDIS_HOST}:${REDIS_PORT}/${REDIS_DB}"
+    volumes:
+      - ./services/ingestion/app:/app/app
+      - ./services/ingestion/tests:/app/tests
+      - ./proto:/app/proto_src:ro
+      - ./scripts:/app/scripts:ro
     environment:
       ENV: development
       DEBUG: ${DEBUG}

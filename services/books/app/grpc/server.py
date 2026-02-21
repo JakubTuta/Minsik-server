@@ -45,6 +45,13 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                             view_count=result["view_count"],
                             author_slugs=result["author_slugs"],
                             series_slug=result["series_slug"],
+                            avg_rating=(
+                                str(result["avg_rating"])
+                                if result.get("avg_rating") is not None
+                                else ""
+                            ),
+                            rating_count=result.get("rating_count", 0),
+                            book_count=result.get("book_count", 0),
                         )
                     )
 

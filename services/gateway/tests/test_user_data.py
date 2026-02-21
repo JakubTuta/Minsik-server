@@ -1,9 +1,10 @@
 import datetime
-import pytest
-import grpc
-import jwt
+
 import app.config
 import app.grpc_clients
+import grpc
+import jwt
+import pytest
 
 
 class MockRpcError(grpc.RpcError):
@@ -23,9 +24,14 @@ def make_token(user_id: int = 1, role: str = "user") -> str:
     payload = {
         "sub": str(user_id),
         "role": role,
-        "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=15)
+        "exp": datetime.datetime.now(datetime.timezone.utc)
+        + datetime.timedelta(minutes=15),
     }
-    return jwt.encode(payload, app.config.settings.jwt_secret_key, algorithm=app.config.settings.jwt_algorithm)
+    return jwt.encode(
+        payload,
+        app.config.settings.jwt_secret_key,
+        algorithm=app.config.settings.jwt_algorithm,
+    )
 
 
 USER_HEADERS = {"Authorization": f"Bearer {make_token()}"}
@@ -36,10 +42,20 @@ def mock_user_data_client(mocker):
     mock_client = mocker.MagicMock()
     for method in [
         "get_user_book_info",
-        "upsert_bookshelf", "delete_bookshelf", "get_user_bookshelves", "get_public_bookshelves",
-        "toggle_favourite", "get_user_favourites",
-        "upsert_rating", "delete_rating", "get_user_ratings",
-        "get_book_comments", "create_comment", "update_comment", "delete_comment", "get_user_comments",
+        "upsert_bookshelf",
+        "delete_bookshelf",
+        "get_user_bookshelves",
+        "get_public_bookshelves",
+        "toggle_favourite",
+        "get_user_favourites",
+        "upsert_rating",
+        "delete_rating",
+        "get_user_ratings",
+        "get_book_comments",
+        "create_comment",
+        "update_comment",
+        "delete_comment",
+        "get_user_comments",
     ]:
         setattr(mock_client, method, mocker.AsyncMock())
     mocker.patch.object(app.grpc_clients, "user_data_client", mock_client)
@@ -58,6 +74,10 @@ def _bookshelf(mocker):
     b.is_favorite = False
     b.created_at = "2026-01-01T00:00:00"
     b.updated_at = "2026-01-01T00:00:00"
+    b.book_author_names = []
+    b.book_author_slugs = []
+    b.book_series_name = ""
+    b.book_series_slug = ""
     return b
 
 
@@ -89,6 +109,10 @@ def _rating(mocker):
     r.has_humor = False
     r.created_at = "2026-01-01T00:00:00"
     r.updated_at = "2026-01-01T00:00:00"
+    r.book_author_names = []
+    r.book_author_slugs = []
+    r.book_series_name = ""
+    r.book_series_slug = ""
     return r
 
 
@@ -103,6 +127,15 @@ def _comment(mocker):
     c.is_spoiler = False
     c.created_at = "2026-01-01T00:00:00"
     c.updated_at = "2026-01-01T00:00:00"
+    c.book_title = "The Hobbit"
+    c.book_cover_url = ""
+    c.book_author_names = []
+    c.book_author_slugs = []
+    c.book_series_name = ""
+    c.book_series_slug = ""
+    c.comment_created_at = "2026-01-01T00:00:00"
+    c.comment_updated_at = "2026-01-01T00:00:00"
+    c.has_rating = False
     return c
 
 
@@ -167,21 +200,23 @@ class TestBookshelfEndpoints:
         resp = client.put(
             "/api/v1/users/me/bookshelves/the-hobbit",
             json={"status": "reading"},
-            headers=USER_HEADERS
+            headers=USER_HEADERS,
         )
         assert resp.status_code == 200
         assert resp.json()["success"] is True
         assert resp.json()["data"]["bookshelf"]["status"] == "reading"
 
     def test_upsert_requires_auth(self, client, mock_user_data_client):
-        resp = client.put("/api/v1/users/me/bookshelves/the-hobbit", json={"status": "reading"})
+        resp = client.put(
+            "/api/v1/users/me/bookshelves/the-hobbit", json={"status": "reading"}
+        )
         assert resp.status_code == 401
 
     def test_upsert_invalid_status_rejected(self, client, mock_user_data_client):
         resp = client.put(
             "/api/v1/users/me/bookshelves/the-hobbit",
             json={"status": "bad_value"},
-            headers=USER_HEADERS
+            headers=USER_HEADERS,
         )
         assert resp.status_code == 422
 
@@ -192,7 +227,7 @@ class TestBookshelfEndpoints:
         resp = client.put(
             "/api/v1/users/me/bookshelves/unknown",
             json={"status": "reading"},
-            headers=USER_HEADERS
+            headers=USER_HEADERS,
         )
         assert resp.status_code == 404
 
@@ -209,7 +244,9 @@ class TestBookshelfEndpoints:
     def test_get_bookshelves_requires_auth(self, client, mock_user_data_client):
         assert client.get("/api/v1/users/me/bookshelves").status_code == 401
 
-    def test_get_bookshelves_status_filter_forwarded(self, client, mock_user_data_client, mocker):
+    def test_get_bookshelves_status_filter_forwarded(
+        self, client, mock_user_data_client, mocker
+    ):
         resp_obj = mocker.MagicMock()
         resp_obj.bookshelves = []
         resp_obj.total_count = 0
@@ -222,24 +259,35 @@ class TestBookshelfEndpoints:
         mock_user_data_client.get_user_bookshelves.side_effect = MockRpcError(
             grpc.StatusCode.INTERNAL, "error"
         )
-        assert client.get("/api/v1/users/me/bookshelves", headers=USER_HEADERS).status_code == 500
+        assert (
+            client.get("/api/v1/users/me/bookshelves", headers=USER_HEADERS).status_code
+            == 500
+        )
 
     def test_delete_bookshelf_success(self, client, mock_user_data_client, mocker):
         mock_user_data_client.delete_bookshelf.return_value = mocker.MagicMock()
-        assert client.delete(
-            "/api/v1/users/me/bookshelves/the-hobbit", headers=USER_HEADERS
-        ).status_code == 204
+        assert (
+            client.delete(
+                "/api/v1/users/me/bookshelves/the-hobbit", headers=USER_HEADERS
+            ).status_code
+            == 204
+        )
 
     def test_delete_bookshelf_requires_auth(self, client, mock_user_data_client):
-        assert client.delete("/api/v1/users/me/bookshelves/the-hobbit").status_code == 401
+        assert (
+            client.delete("/api/v1/users/me/bookshelves/the-hobbit").status_code == 401
+        )
 
     def test_delete_bookshelf_not_found(self, client, mock_user_data_client):
         mock_user_data_client.delete_bookshelf.side_effect = MockRpcError(
             grpc.StatusCode.NOT_FOUND, "not found"
         )
-        assert client.delete(
-            "/api/v1/users/me/bookshelves/unknown", headers=USER_HEADERS
-        ).status_code == 404
+        assert (
+            client.delete(
+                "/api/v1/users/me/bookshelves/unknown", headers=USER_HEADERS
+            ).status_code
+            == 404
+        )
 
 
 class TestFavouriteEndpoints:
@@ -274,14 +322,22 @@ class TestFavouriteEndpoints:
         mock_user_data_client.toggle_favourite.side_effect = MockRpcError(
             grpc.StatusCode.NOT_FOUND, "not found"
         )
-        assert client.post("/api/v1/books/unknown/favourite", headers=USER_HEADERS).status_code == 404
+        assert (
+            client.post(
+                "/api/v1/books/unknown/favourite", headers=USER_HEADERS
+            ).status_code
+            == 404
+        )
 
     def test_get_favourites_success(self, client, mock_user_data_client, mocker):
         resp_obj = mocker.MagicMock()
         resp_obj.bookshelves = []
         resp_obj.total_count = 0
         mock_user_data_client.get_user_favourites.return_value = resp_obj
-        assert client.get("/api/v1/users/me/favourites", headers=USER_HEADERS).status_code == 200
+        assert (
+            client.get("/api/v1/users/me/favourites", headers=USER_HEADERS).status_code
+            == 200
+        )
 
     def test_get_favourites_requires_auth(self, client, mock_user_data_client):
         assert client.get("/api/v1/users/me/favourites").status_code == 401
@@ -295,46 +351,70 @@ class TestRatingEndpoints:
         resp = client.post(
             "/api/v1/books/the-hobbit/rate",
             json={"overall_rating": 4.5, "review_text": "Great!"},
-            headers=USER_HEADERS
+            headers=USER_HEADERS,
         )
         assert resp.status_code == 201
         assert resp.json()["data"]["rating"]["overall_rating"] == 4.5
 
     def test_upsert_requires_auth(self, client, mock_user_data_client):
-        assert client.post("/api/v1/books/the-hobbit/rate", json={"overall_rating": 4.0}).status_code == 401
+        assert (
+            client.post(
+                "/api/v1/books/the-hobbit/rate", json={"overall_rating": 4.0}
+            ).status_code
+            == 401
+        )
 
-    def test_upsert_missing_overall_rating_rejected(self, client, mock_user_data_client):
-        assert client.post(
-            "/api/v1/books/the-hobbit/rate", json={}, headers=USER_HEADERS
-        ).status_code == 422
+    def test_upsert_missing_overall_rating_rejected(
+        self, client, mock_user_data_client
+    ):
+        assert (
+            client.post(
+                "/api/v1/books/the-hobbit/rate", json={}, headers=USER_HEADERS
+            ).status_code
+            == 422
+        )
 
     def test_upsert_out_of_range_rejected(self, client, mock_user_data_client):
-        assert client.post(
-            "/api/v1/books/the-hobbit/rate",
-            json={"overall_rating": 6.0},
-            headers=USER_HEADERS
-        ).status_code == 422
+        assert (
+            client.post(
+                "/api/v1/books/the-hobbit/rate",
+                json={"overall_rating": 6.0},
+                headers=USER_HEADERS,
+            ).status_code
+            == 422
+        )
 
     def test_upsert_below_range_rejected(self, client, mock_user_data_client):
-        assert client.post(
-            "/api/v1/books/the-hobbit/rate",
-            json={"overall_rating": 0.5},
-            headers=USER_HEADERS
-        ).status_code == 422
+        assert (
+            client.post(
+                "/api/v1/books/the-hobbit/rate",
+                json={"overall_rating": 0.4},
+                headers=USER_HEADERS,
+            ).status_code
+            == 422
+        )
 
     def test_upsert_book_not_found(self, client, mock_user_data_client):
         mock_user_data_client.upsert_rating.side_effect = MockRpcError(
             grpc.StatusCode.NOT_FOUND, "not found"
         )
-        assert client.post(
-            "/api/v1/books/unknown/rate",
-            json={"overall_rating": 4.0},
-            headers=USER_HEADERS
-        ).status_code == 404
+        assert (
+            client.post(
+                "/api/v1/books/unknown/rate",
+                json={"overall_rating": 4.0},
+                headers=USER_HEADERS,
+            ).status_code
+            == 404
+        )
 
     def test_delete_success(self, client, mock_user_data_client, mocker):
         mock_user_data_client.delete_rating.return_value = mocker.MagicMock()
-        assert client.delete("/api/v1/books/the-hobbit/rate", headers=USER_HEADERS).status_code == 204
+        assert (
+            client.delete(
+                "/api/v1/books/the-hobbit/rate", headers=USER_HEADERS
+            ).status_code
+            == 204
+        )
 
     def test_delete_requires_auth(self, client, mock_user_data_client):
         assert client.delete("/api/v1/books/the-hobbit/rate").status_code == 401
@@ -343,7 +423,12 @@ class TestRatingEndpoints:
         mock_user_data_client.delete_rating.side_effect = MockRpcError(
             grpc.StatusCode.NOT_FOUND, "not found"
         )
-        assert client.delete("/api/v1/books/the-hobbit/rate", headers=USER_HEADERS).status_code == 404
+        assert (
+            client.delete(
+                "/api/v1/books/the-hobbit/rate", headers=USER_HEADERS
+            ).status_code
+            == 404
+        )
 
     def test_get_ratings_success(self, client, mock_user_data_client, mocker):
         resp_obj = mocker.MagicMock()
@@ -369,7 +454,9 @@ class TestCommentEndpoints:
         assert resp.status_code == 200
         assert resp.json()["data"]["total_count"] == 1
 
-    def test_get_book_comments_no_auth_needed(self, client, mock_user_data_client, mocker):
+    def test_get_book_comments_no_auth_needed(
+        self, client, mock_user_data_client, mocker
+    ):
         resp_obj = mocker.MagicMock()
         resp_obj.comments = []
         resp_obj.total_count = 0
@@ -377,7 +464,9 @@ class TestCommentEndpoints:
         mock_user_data_client.get_book_comments.return_value = resp_obj
         assert client.get("/api/v1/books/the-hobbit/comments").status_code == 200
 
-    def test_get_book_comments_include_spoilers_forwarded(self, client, mock_user_data_client, mocker):
+    def test_get_book_comments_include_spoilers_forwarded(
+        self, client, mock_user_data_client, mocker
+    ):
         resp_obj = mocker.MagicMock()
         resp_obj.comments = []
         resp_obj.total_count = 0
@@ -394,59 +483,77 @@ class TestCommentEndpoints:
         resp = client.post(
             "/api/v1/books/the-hobbit/comments",
             json={"body": "Loved it!", "is_spoiler": False},
-            headers=USER_HEADERS
+            headers=USER_HEADERS,
         )
         assert resp.status_code == 201
         assert resp.json()["data"]["comment"]["body"] == "Loved it!"
         assert resp.json()["data"]["comment"]["username"] == "testuser"
 
     def test_create_comment_requires_auth(self, client, mock_user_data_client):
-        assert client.post(
-            "/api/v1/books/the-hobbit/comments", json={"body": "Hi"}
-        ).status_code == 401
+        assert (
+            client.post(
+                "/api/v1/books/the-hobbit/comments", json={"body": "Hi"}
+            ).status_code
+            == 401
+        )
 
     def test_create_comment_empty_body_rejected(self, client, mock_user_data_client):
-        assert client.post(
-            "/api/v1/books/the-hobbit/comments",
-            json={"body": ""},
-            headers=USER_HEADERS
-        ).status_code == 422
+        assert (
+            client.post(
+                "/api/v1/books/the-hobbit/comments",
+                json={"body": ""},
+                headers=USER_HEADERS,
+            ).status_code
+            == 422
+        )
 
     def test_update_comment_success(self, client, mock_user_data_client, mocker):
         resp_obj = mocker.MagicMock()
         resp_obj.comment = _comment(mocker)
         mock_user_data_client.update_comment.return_value = resp_obj
-        assert client.put(
-            "/api/v1/books/the-hobbit/comments/1",
-            json={"body": "Updated", "is_spoiler": False},
-            headers=USER_HEADERS
-        ).status_code == 200
+        assert (
+            client.put(
+                "/api/v1/books/the-hobbit/comments/1",
+                json={"body": "Updated", "is_spoiler": False},
+                headers=USER_HEADERS,
+            ).status_code
+            == 200
+        )
 
     def test_update_comment_permission_denied(self, client, mock_user_data_client):
         mock_user_data_client.update_comment.side_effect = MockRpcError(
             grpc.StatusCode.PERMISSION_DENIED, "not the owner"
         )
-        assert client.put(
-            "/api/v1/books/the-hobbit/comments/1",
-            json={"body": "X", "is_spoiler": False},
-            headers=USER_HEADERS
-        ).status_code == 403
+        assert (
+            client.put(
+                "/api/v1/books/the-hobbit/comments/1",
+                json={"body": "X", "is_spoiler": False},
+                headers=USER_HEADERS,
+            ).status_code
+            == 403
+        )
 
     def test_update_comment_not_found(self, client, mock_user_data_client):
         mock_user_data_client.update_comment.side_effect = MockRpcError(
             grpc.StatusCode.NOT_FOUND, "not found"
         )
-        assert client.put(
-            "/api/v1/books/the-hobbit/comments/999",
-            json={"body": "X", "is_spoiler": False},
-            headers=USER_HEADERS
-        ).status_code == 404
+        assert (
+            client.put(
+                "/api/v1/books/the-hobbit/comments/999",
+                json={"body": "X", "is_spoiler": False},
+                headers=USER_HEADERS,
+            ).status_code
+            == 404
+        )
 
     def test_delete_comment_success(self, client, mock_user_data_client, mocker):
         mock_user_data_client.delete_comment.return_value = mocker.MagicMock()
-        assert client.delete(
-            "/api/v1/books/the-hobbit/comments/1", headers=USER_HEADERS
-        ).status_code == 204
+        assert (
+            client.delete(
+                "/api/v1/books/the-hobbit/comments/1", headers=USER_HEADERS
+            ).status_code
+            == 204
+        )
 
     def test_delete_comment_requires_auth(self, client, mock_user_data_client):
         assert client.delete("/api/v1/books/the-hobbit/comments/1").status_code == 401
@@ -456,14 +563,19 @@ class TestCommentEndpoints:
         resp_obj.comments = []
         resp_obj.total_count = 0
         mock_user_data_client.get_user_comments.return_value = resp_obj
-        assert client.get("/api/v1/users/me/comments", headers=USER_HEADERS).status_code == 200
+        assert (
+            client.get("/api/v1/users/me/comments", headers=USER_HEADERS).status_code
+            == 200
+        )
 
     def test_get_user_comments_requires_auth(self, client, mock_user_data_client):
         assert client.get("/api/v1/users/me/comments").status_code == 401
 
 
 class TestPublicBookshelfEndpoints:
-    def test_get_public_bookshelves_success(self, client, mock_user_data_client, mocker):
+    def test_get_public_bookshelves_success(
+        self, client, mock_user_data_client, mocker
+    ):
         resp_obj = mocker.MagicMock()
         resp_obj.bookshelves = [_bookshelf(mocker)]
         resp_obj.total_count = 1
@@ -475,12 +587,16 @@ class TestPublicBookshelfEndpoints:
         assert len(data["items"]) == 1
         assert data["items"][0]["book_slug"] == "the-hobbit"
 
-    def test_get_public_bookshelves_with_filters(self, client, mock_user_data_client, mocker):
+    def test_get_public_bookshelves_with_filters(
+        self, client, mock_user_data_client, mocker
+    ):
         resp_obj = mocker.MagicMock()
         resp_obj.bookshelves = []
         resp_obj.total_count = 0
         mock_user_data_client.get_public_bookshelves.return_value = resp_obj
-        client.get("/api/v1/users/alice/bookshelves?status=reading&sort_by=book_title&order=asc")
+        client.get(
+            "/api/v1/users/alice/bookshelves?status=reading&sort_by=book_title&order=asc"
+        )
         _, kwargs = mock_user_data_client.get_public_bookshelves.call_args
         assert kwargs["username"] == "alice"
         assert kwargs["status_filter"] == "reading"

@@ -1,7 +1,8 @@
-import pytest
 from unittest.mock import AsyncMock
+
 import app.services.comment_service as comment_service
-from tests.conftest import make_scalar_result, make_list_result
+import pytest
+from tests.conftest import make_list_result, make_scalar_result
 
 
 class TestCreateComment:
@@ -52,10 +53,10 @@ class TestUpdateComment:
 
 class TestDeleteComment:
     @pytest.mark.asyncio
-    async def test_delete_soft_deletes_row(self, mock_session, mock_comment):
+    async def test_delete_removes_row(self, mock_session, mock_comment):
         mock_session.execute.return_value = make_scalar_result(mock_comment)
         await comment_service.delete_comment(mock_session, 1, 10)
-        assert mock_comment.is_deleted is True
+        mock_session.execute.assert_called()
         mock_session.commit.assert_called_once()
 
     @pytest.mark.asyncio

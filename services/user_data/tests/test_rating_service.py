@@ -1,7 +1,8 @@
-import pytest
 from unittest.mock import MagicMock
+
 import app.services.rating_service as rating_service
-from tests.conftest import make_scalar_result, make_list_result
+import pytest
+from tests.conftest import make_list_result, make_scalar_result
 
 
 class TestUpsertRating:
@@ -30,7 +31,7 @@ class TestUpsertRating:
     async def test_upsert_calls_update_book_stats(self, mock_session, mock_rating):
         mock_session.execute.return_value = make_scalar_result(mock_rating)
         await rating_service.upsert_rating(mock_session, 10, 100, 4.5, {}, None)
-        assert mock_session.execute.call_count == 2
+        assert mock_session.execute.call_count == 3
 
 
 class TestDeleteRating:
@@ -38,7 +39,7 @@ class TestDeleteRating:
     async def test_delete_success(self, mock_session):
         returning_result = MagicMock()
         returning_result.scalar_one_or_none.return_value = 1
-        mock_session.execute.side_effect = [returning_result, MagicMock()]
+        mock_session.execute.side_effect = [returning_result, MagicMock(), MagicMock()]
         await rating_service.delete_rating(mock_session, 10, 100)
         mock_session.commit.assert_called_once()
 

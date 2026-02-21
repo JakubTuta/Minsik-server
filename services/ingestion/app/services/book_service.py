@@ -36,6 +36,7 @@ async def insert_books_batch(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     books_data: List[Dict[str, Any]],
     commit: bool = True,
+    author_id_map: Optional[Dict[str, int]] = None,
 ) -> Dict[str, int]:
     if not books_data:
         return {"successful": 0, "failed": 0, "updated": 0}
@@ -64,7 +65,10 @@ async def insert_books_batch(
 
         dedup_cache = _build_dedup_cache(cleaned_books)
 
-        author_id_map = await _bulk_insert_authors(session, cleaned_books, dedup_cache)
+        if author_id_map is None:
+            author_id_map = await _bulk_insert_authors(
+                session, cleaned_books, dedup_cache
+            )
         genre_id_map = await _bulk_insert_genres(session, cleaned_books, dedup_cache)
         series_id_map = await _bulk_insert_series(session, cleaned_books, dedup_cache)
 
@@ -91,7 +95,10 @@ async def insert_books_batch(
         return {"successful": successful, "failed": failed, "updated": updated}
 
     except Exception as e:
-        logger.error(f"Error in insert_books_batch: {str(e)}")
+        logger.error(
+            f"Error in insert_books_batch ({type(e).__name__}): {e}",
+            exc_info=True,
+        )
         await session.rollback()
         raise
 
@@ -117,7 +124,11 @@ def _validate_and_clean_book(book_data: Dict[str, Any]) -> Optional[Dict[str, An
         series_name = series_data.get("name")
         series_id = None
         series_position = series_data.get("position")
+        if isinstance(series_position, (int, float)) and series_position > 999.99:
+            series_position = None
         title = app.utils.format_title_with_series(title, series_name)
+
+    title = title[:500]
 
     formats = book_data.get("formats", [])
     formats = [fmt.lower() if isinstance(fmt, str) else fmt for fmt in formats]
@@ -125,6 +136,12 @@ def _validate_and_clean_book(book_data: Dict[str, Any]) -> Optional[Dict[str, An
     isbn = book_data.get("isbn", [])
     if not isinstance(isbn, list):
         isbn = []
+
+    primary_cover_url = book_data.get("primary_cover_url")
+    if isinstance(primary_cover_url, str):
+        primary_cover_url = primary_cover_url[:1000]
+    else:
+        primary_cover_url = None
 
     publisher = book_data.get("publisher")
     if isinstance(publisher, str):
@@ -146,7 +163,7 @@ def _validate_and_clean_book(book_data: Dict[str, Any]) -> Optional[Dict[str, An
         "slug": slug,
         "description": description,
         "original_publication_year": book_data.get("original_publication_year"),
-        "primary_cover_url": book_data.get("primary_cover_url"),
+        "primary_cover_url": primary_cover_url,
         "open_library_id": book_data.get("open_library_id"),
         "google_books_id": book_data.get("google_books_id"),
         "series_data": series_data,
@@ -174,8 +191,8 @@ def _build_dedup_cache(cleaned_books: List[Dict[str, Any]]) -> Dict[str, Any]:
         for genre_data in book.get("genres", []):
             genre_name = genre_data.get("name", "")
             if isinstance(genre_name, str):
-                genre_name = genre_name.lower()
-            genre_slug = app.utils.slugify(genre_name)
+                genre_name = genre_name.lower()[:100]
+            genre_slug = app.utils.slugify(genre_name)[:150]
             if genre_slug and genre_slug not in cache["genres"]:
                 cache["genres"][genre_slug] = {"name": genre_name, "slug": genre_slug}
 
@@ -230,16 +247,12 @@ async def _bulk_insert_authors(
         },
     )
 
-    await session.execute(stmt)
-
-    author_slugs = list(dedup_cache["authors"].keys())
-    query = sqlalchemy.select(app.models.author.Author).where(
-        app.models.author.Author.slug.in_(author_slugs)
+    stmt = stmt.returning(
+        app.models.author.Author.slug,
+        app.models.author.Author.author_id,
     )
-    result = await session.execute(query)
-    author_id_map = {row.slug: row.author_id for row in result}
-
-    return author_id_map
+    result = await session.execute(stmt)
+    return {row.slug: row.author_id for row in result}
 
 
 async def _bulk_insert_genres(
@@ -253,14 +266,15 @@ async def _bulk_insert_genres(
     insert_data = list(dedup_cache["genres"].values())
 
     stmt = postgresql_insert(app.models.genre.Genre).values(insert_data)
-    stmt = stmt.on_conflict_do_update(index_elements=["slug"], set_={})
+    stmt = stmt.on_conflict_do_nothing(index_elements=["slug"])
 
     await session.execute(stmt)
 
     genre_slugs = list(dedup_cache["genres"].keys())
-    query = sqlalchemy.select(app.models.genre.Genre).where(
-        app.models.genre.Genre.slug.in_(genre_slugs)
-    )
+    query = sqlalchemy.select(
+        app.models.genre.Genre.slug,
+        app.models.genre.Genre.genre_id,
+    ).where(app.models.genre.Genre.slug.in_(genre_slugs))
     result = await session.execute(query)
     genre_id_map = {row.slug: row.genre_id for row in result}
 
@@ -290,16 +304,12 @@ async def _bulk_insert_series(
         index_elements=["slug"], set_={"description": stmt.excluded.description}
     )
 
-    await session.execute(stmt)
-
-    series_slugs = list(dedup_cache["series"].keys())
-    query = sqlalchemy.select(app.models.series.Series).where(
-        app.models.series.Series.slug.in_(series_slugs)
+    stmt = stmt.returning(
+        app.models.series.Series.slug,
+        app.models.series.Series.series_id,
     )
-    result = await session.execute(query)
-    series_id_map = {row.slug: row.series_id for row in result}
-
-    return series_id_map
+    result = await session.execute(stmt)
+    return {row.slug: row.series_id for row in result}
 
 
 async def _bulk_insert_books(
@@ -308,8 +318,13 @@ async def _bulk_insert_books(
     dedup_cache: Dict[str, Any],
     series_id_map: Dict[str, int],
 ) -> Dict[str, Any]:
+    seen_slugs: dict[str, int] = {}
+    for idx, book in enumerate(cleaned_books):
+        key = (book["language"], book["slug"])
+        seen_slugs[key] = idx
+    cleaned_books = [cleaned_books[i] for i in sorted(seen_slugs.values())]
+
     insert_data = []
-    upsert_data = []
 
     for book in cleaned_books:
         series_id = None
@@ -339,7 +354,6 @@ async def _bulk_insert_books(
         }
 
         insert_data.append(book_entry)
-        upsert_data.append(book_entry)
 
     stmt = postgresql_insert(app.models.book.Book).values(insert_data)
     stmt = stmt.on_conflict_do_update(
@@ -352,17 +366,20 @@ async def _bulk_insert_books(
             "publisher": stmt.excluded.publisher,
             "number_of_pages": stmt.excluded.number_of_pages,
             "external_ids": stmt.excluded.external_ids,
+            "formats": stmt.excluded.formats,
+            "cover_history": sqlalchemy.func.coalesce(
+                app.models.book.Book.__table__.c.cover_history,
+                sqlalchemy.type_coerce([], sqlalchemy.dialects.postgresql.JSONB),
+            ).concat(stmt.excluded.cover_history),
         },
     )
 
-    await session.execute(stmt)
-
-    book_slugs = [book["slug"] for book in cleaned_books]
-    query = sqlalchemy.select(app.models.book.Book).where(
-        app.models.book.Book.slug.in_(book_slugs)
+    stmt = stmt.returning(
+        app.models.book.Book.slug,
+        app.models.book.Book.book_id,
     )
-    result = await session.execute(query)
-    rows = result.scalars().all()
+    result = await session.execute(stmt)
+    rows = result.all()
 
     book_id_map = {row.slug: row.book_id for row in rows}
     inserted_count = len(rows)
@@ -400,8 +417,8 @@ async def _bulk_insert_relationships(
         for genre_data in book.get("genres", []):
             genre_name = genre_data.get("name", "")
             if isinstance(genre_name, str):
-                genre_name = genre_name.lower()
-            genre_slug = app.utils.slugify(genre_name)
+                genre_name = genre_name.lower()[:100]
+            genre_slug = app.utils.slugify(genre_name)[:150]
             genre_id = genre_id_map.get(genre_slug)
             if genre_id:
                 book_genres_data.append({"book_id": book_id, "genre_id": genre_id})

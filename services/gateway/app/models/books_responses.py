@@ -41,6 +41,9 @@ class SearchResultSchema(pydantic.BaseModel):
     view_count: int
     author_slugs: typing.List[str]
     series_slug: typing.Optional[str] = None
+    avg_rating: typing.Optional[str] = None
+    rating_count: int = 0
+    book_count: int = 0
 
 
 class SearchResultsData(pydantic.BaseModel):

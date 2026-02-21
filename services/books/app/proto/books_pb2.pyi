@@ -19,7 +19,7 @@ class SearchRequest(_message.Message):
     def __init__(self, query: _Optional[str] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., type_filter: _Optional[str] = ...) -> None: ...
 
 class SearchResult(_message.Message):
-    __slots__ = ("type", "id", "title", "slug", "cover_url", "authors", "relevance_score", "view_count", "author_slugs", "series_slug")
+    __slots__ = ("type", "id", "title", "slug", "cover_url", "authors", "relevance_score", "view_count", "author_slugs", "series_slug", "avg_rating", "rating_count", "book_count")
     TYPE_FIELD_NUMBER: _ClassVar[int]
     ID_FIELD_NUMBER: _ClassVar[int]
     TITLE_FIELD_NUMBER: _ClassVar[int]
@@ -30,6 +30,9 @@ class SearchResult(_message.Message):
     VIEW_COUNT_FIELD_NUMBER: _ClassVar[int]
     AUTHOR_SLUGS_FIELD_NUMBER: _ClassVar[int]
     SERIES_SLUG_FIELD_NUMBER: _ClassVar[int]
+    AVG_RATING_FIELD_NUMBER: _ClassVar[int]
+    RATING_COUNT_FIELD_NUMBER: _ClassVar[int]
+    BOOK_COUNT_FIELD_NUMBER: _ClassVar[int]
     type: str
     id: int
     title: str
@@ -40,7 +43,10 @@ class SearchResult(_message.Message):
     view_count: int
     author_slugs: _containers.RepeatedScalarFieldContainer[str]
     series_slug: str
-    def __init__(self, type: _Optional[str] = ..., id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., cover_url: _Optional[str] = ..., authors: _Optional[_Iterable[str]] = ..., relevance_score: _Optional[float] = ..., view_count: _Optional[int] = ..., author_slugs: _Optional[_Iterable[str]] = ..., series_slug: _Optional[str] = ...) -> None: ...
+    avg_rating: str
+    rating_count: int
+    book_count: int
+    def __init__(self, type: _Optional[str] = ..., id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., cover_url: _Optional[str] = ..., authors: _Optional[_Iterable[str]] = ..., relevance_score: _Optional[float] = ..., view_count: _Optional[int] = ..., author_slugs: _Optional[_Iterable[str]] = ..., series_slug: _Optional[str] = ..., avg_rating: _Optional[str] = ..., rating_count: _Optional[int] = ..., book_count: _Optional[int] = ...) -> None: ...
 
 class SearchResponse(_message.Message):
     __slots__ = ("results", "total_count")
