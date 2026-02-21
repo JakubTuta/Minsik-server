@@ -581,105 +581,148 @@ async def process_authors_dump(file_path: str) -> int:
 # Phase 2: Wikidata enrichment
 # ---------------------------------------------------------------------------
 
-_WIKIDATA_NATIONALITY_PROP = "P27"
-_WIKIDATA_BIRTHPLACE_PROP = "P19"
+_WIKIDATA_SPARQL_URL = "https://query.wikidata.org/sparql"
+_WIKIDATA_SPARQL_BATCH = 200
+_WIKIDATA_REQUEST_DELAY = 1.5
+_WIKIDATA_MAX_RETRIES = 3
+_WIKIDATA_LOG_INTERVAL = 100
 
 
-def _extract_wikidata_label(claims: dict, prop: str) -> typing.Optional[str]:
-    claim_list = claims.get(prop, [])
-    if not claim_list:
-        return None
-    for claim in claim_list:
-        mainsnak = claim.get("mainsnak", {})
-        datavalue = mainsnak.get("datavalue", {})
-        value = datavalue.get("value", {})
-        label = value.get("label")
-        if label and isinstance(label, str):
-            return label[:200]
-    return None
-
-
-def _extract_wikipedia_url_from_sitelinks(entity: dict) -> typing.Optional[str]:
-    sitelinks = entity.get("sitelinks", {})
-    enwiki = sitelinks.get("enwiki", {})
-    title = enwiki.get("title")
-    if title:
-        return f"https://en.wikipedia.org/wiki/{title.replace(' ', '_')}"
-    return None
-
-
-async def process_wikidata_dump(file_path: str) -> int:
-    updated_count = 0
-    last_committed = 0
-    batch_size = app.config.settings.dump_batch_size
-    commit_interval = app.config.settings.dump_commit_interval
-
+async def process_wikidata_enrichment() -> int:
     async with app.models.AsyncSessionLocal() as session:
-        try:
-            updates: list[dict] = []
+        result = await session.execute(
+            sqlalchemy.text(
+                "SELECT wikidata_id FROM books.authors "
+                "WHERE wikidata_id IS NOT NULL "
+                "AND (nationality IS NULL OR birth_place IS NULL)"
+            )
+        )
+        wikidata_ids = [row.wikidata_id for row in result]
 
-            with gzip.open(file_path, "rt", encoding="utf-8") as f:
-                for line in f:
-                    try:
-                        parts = line.rstrip("\n").split("\t", 1)
-                        if len(parts) != 2:
-                            continue
+    if not wikidata_ids:
+        logger.info("[dump] No authors need Wikidata enrichment")
+        return 0
 
-                        wikidata_id = parts[0].strip()
-                        entity = json.loads(parts[1])
+    logger.info(f"[dump] Found {len(wikidata_ids)} authors needing Wikidata enrichment")
 
-                        claims = entity.get("claims", {})
-                        nationality = _extract_wikidata_label(
-                            claims, _WIKIDATA_NATIONALITY_PROP
+    updated_count = 0
+    batch_count = 0
+    timeout = httpx.Timeout(connect=30, read=90, write=30, pool=60)
+    headers = {
+        "User-Agent": "MinsikBot/1.0 (book-catalog; https://github.com/minsik)",
+        "Accept": "application/json",
+    }
+
+    async with httpx.AsyncClient(timeout=timeout, headers=headers) as client:
+        async with app.models.AsyncSessionLocal() as session:
+            for i in range(0, len(wikidata_ids), _WIKIDATA_SPARQL_BATCH):
+                batch_ids = wikidata_ids[i : i + _WIKIDATA_SPARQL_BATCH]
+                batch_count += 1
+
+                try:
+                    enrichment = await _fetch_wikidata_sparql_batch(client, batch_ids)
+                    if enrichment:
+                        updated_count += await _flush_wikidata_updates(
+                            session, enrichment
                         )
-                        birth_place = _extract_wikidata_label(
-                            claims, _WIKIDATA_BIRTHPLACE_PROP
-                        )
-                        wikipedia_url = _extract_wikipedia_url_from_sitelinks(entity)
+                except Exception as e:
+                    logger.debug(f"Error fetching Wikidata batch: {e}")
 
-                        if not nationality and not birth_place and not wikipedia_url:
-                            continue
+                if batch_count % _WIKIDATA_LOG_INTERVAL == 0:
+                    await session.commit()
+                    logger.info(
+                        f"[dump] Wikidata enrichment: "
+                        f"{i + len(batch_ids)}/{len(wikidata_ids)}, "
+                        f"updated: {updated_count}"
+                    )
 
-                        updates.append(
-                            {
-                                "wikidata_id": wikidata_id,
-                                "nationality": nationality,
-                                "birth_place": birth_place,
-                                "wikipedia_url": wikipedia_url,
-                            }
-                        )
-
-                        if len(updates) >= batch_size:
-                            updated_count += await _flush_wikidata_updates(
-                                session, updates
-                            )
-                            updates = []
-                            if updated_count - last_committed >= commit_interval:
-                                await session.commit()
-                                last_committed = updated_count
-                                logger.info(
-                                    f"[dump] Wikidata enriched: {updated_count} authors"
-                                )
-
-                    except json.JSONDecodeError:
-                        continue
-                    except Exception as e:
-                        logger.debug(f"Error parsing wikidata entry: {e}")
-                        continue
-
-            if updates:
-                updated_count += await _flush_wikidata_updates(session, updates)
+                await asyncio.sleep(_WIKIDATA_REQUEST_DELAY)
 
             await session.commit()
-            logger.info(
-                f"[dump] Phase 2 complete: {updated_count} authors enriched via Wikidata"
-            )
-            return updated_count
 
-        except Exception as e:
-            await session.rollback()
-            logger.error(f"[dump] Error in process_wikidata_dump: {e}")
-            raise
+    logger.info(
+        f"[dump] Phase 2 complete: {updated_count} authors enriched via Wikidata"
+    )
+    return updated_count
+
+
+async def _fetch_wikidata_sparql_batch(
+    client: httpx.AsyncClient,
+    wikidata_ids: list[str],
+) -> list[dict]:
+    values_str = " ".join(f"wd:{wid}" for wid in wikidata_ids)
+    query = (
+        "SELECT ?item ?nationalityLabel ?birthPlaceLabel ?article WHERE { "
+        f"VALUES ?item {{ {values_str} }} "
+        "OPTIONAL { ?item wdt:P27 ?nationality } "
+        "OPTIONAL { ?item wdt:P19 ?birthPlace } "
+        "OPTIONAL { "
+        "?article schema:about ?item ; "
+        "schema:isPartOf <https://en.wikipedia.org/> . "
+        "} "
+        'SERVICE wikibase:label { bd:serviceParam wikibase:language "en" . } '
+        "}"
+    )
+
+    for attempt in range(1, _WIKIDATA_MAX_RETRIES + 1):
+        try:
+            response = await client.get(
+                _WIKIDATA_SPARQL_URL,
+                params={"query": query, "format": "json"},
+            )
+            response.raise_for_status()
+            data = response.json()
+            break
+        except (
+            httpx.ReadTimeout,
+            httpx.ConnectTimeout,
+            httpx.HTTPStatusError,
+            httpx.ConnectError,
+        ) as e:
+            if attempt == _WIKIDATA_MAX_RETRIES:
+                logger.debug(
+                    f"Wikidata SPARQL failed after {_WIKIDATA_MAX_RETRIES} "
+                    f"attempts: {e}"
+                )
+                return []
+            await asyncio.sleep(attempt * 3)
+
+    enrichment_map: dict[str, dict] = {}
+    for binding in data.get("results", {}).get("bindings", []):
+        item_uri = binding.get("item", {}).get("value", "")
+        wikidata_id = item_uri.rsplit("/", 1)[-1]
+        if not wikidata_id:
+            continue
+
+        if wikidata_id not in enrichment_map:
+            enrichment_map[wikidata_id] = {
+                "wikidata_id": wikidata_id,
+                "nationality": None,
+                "birth_place": None,
+                "wikipedia_url": None,
+            }
+
+        nat_label = binding.get("nationalityLabel", {}).get("value")
+        bp_label = binding.get("birthPlaceLabel", {}).get("value")
+        article_url = binding.get("article", {}).get("value")
+
+        entry = enrichment_map[wikidata_id]
+        if nat_label and not _is_wikidata_qid(nat_label) and not entry["nationality"]:
+            entry["nationality"] = nat_label[:200]
+        if bp_label and not _is_wikidata_qid(bp_label) and not entry["birth_place"]:
+            entry["birth_place"] = bp_label[:500]
+        if article_url and not entry["wikipedia_url"]:
+            entry["wikipedia_url"] = article_url[:1000]
+
+    return [
+        v
+        for v in enrichment_map.values()
+        if v["nationality"] or v["birth_place"] or v["wikipedia_url"]
+    ]
+
+
+def _is_wikidata_qid(value: str) -> bool:
+    return len(value) >= 2 and value[0] == "Q" and value[1:].isdigit()
 
 
 async def _flush_wikidata_updates(
@@ -1612,14 +1655,8 @@ async def run_import_dump(job_id: str, redis_client: redis.Redis) -> None:
         # --- Phase 2: Wikidata ---
         if 2 not in completed:
             if app.config.settings.dump_wikidata_enabled:
-                _set_status("Phase 2/6: downloading wikidata dump")
-                await download_file(
-                    f"{base_url}/ol_dump_wikidata_latest.txt.gz",
-                    str(phase_files[2]),
-                )
-
-                _set_status("Phase 2/6: processing wikidata enrichment")
-                wikidata_count = await process_wikidata_dump(str(phase_files[2]))
+                _set_status("Phase 2/6: enriching authors via Wikidata API")
+                wikidata_count = await process_wikidata_enrichment()
                 _finish_phase(2, {"count": wikidata_count})
             else:
                 logger.info("[dump] Phase 2 skipped (wikidata disabled)")

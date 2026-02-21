@@ -47,6 +47,15 @@ CREATE TABLE books.books (
 
     primary_cover_url VARCHAR(1000),
 
+    -- Edition metadata (from OpenLibrary dump)
+    isbn JSONB NOT NULL DEFAULT '[]',        -- List of ISBNs (ISBN-10 and ISBN-13)
+    publisher VARCHAR(500),                  -- Edition publisher
+    number_of_pages INTEGER,                 -- Page count
+
+    -- External identifier map
+    -- Example: {"goodreads": "123", "librarything": "456"}
+    external_ids JSONB NOT NULL DEFAULT '{}',
+
     -- Denormalized statistics
     rating_count INT NOT NULL DEFAULT 0,
     avg_rating DECIMAL(3,2),                 -- Average overall rating (0.00-5.00)
@@ -65,6 +74,13 @@ CREATE TABLE books.books (
     --   "plot_complexity"     - 1: simple, straightforward    5: complex, multi-layered
     --   "humor"               - 1: serious, no humor          5: very funny, comedic
     sub_rating_stats JSONB NOT NULL DEFAULT '{}',
+
+    -- OpenLibrary community statistics
+    ol_rating_count INT NOT NULL DEFAULT 0,
+    ol_avg_rating DECIMAL(3,2),              -- OpenLibrary average rating
+    ol_want_to_read_count INT NOT NULL DEFAULT 0,
+    ol_currently_reading_count INT NOT NULL DEFAULT 0,
+    ol_already_read_count INT NOT NULL DEFAULT 0,
 
     view_count INT NOT NULL DEFAULT 0,       -- Two-tier: Redis -> PostgreSQL
     last_viewed_at TIMESTAMP,
@@ -86,6 +102,10 @@ CREATE INDEX idx_books_language ON books.books(language);
 CREATE UNIQUE INDEX idx_books_language_slug ON books.books(language, slug);
 CREATE INDEX idx_books_rating_count ON books.books(rating_count DESC);
 CREATE INDEX idx_books_view_count ON books.books(view_count DESC);
+CREATE INDEX idx_books_open_library_id ON books.books(open_library_id);
+CREATE INDEX idx_books_isbn ON books.books USING gin(isbn);
+CREATE INDEX idx_books_ol_rating_count ON books.books(ol_rating_count DESC);
+CREATE INDEX idx_books_ol_already_read_count ON books.books(ol_already_read_count DESC);
 
 COMMENT ON TABLE books.books IS 'Main book catalog. One entry per language (English Neuromancer != Spanish Neuromancer)';
 COMMENT ON COLUMN books.books.language IS 'ISO 639-1 language code. Each translation is a separate book entry';
@@ -108,6 +128,12 @@ CREATE TABLE books.authors (
     nationality VARCHAR(200),
     photo_url VARCHAR(1000),
 
+    -- Wikidata enrichment (from Phase 2 of dump pipeline)
+    wikidata_id VARCHAR(50),                      -- Wikidata entity ID (e.g., Q42)
+    wikipedia_url VARCHAR(1000),                  -- English Wikipedia URL
+    remote_ids JSONB NOT NULL DEFAULT '{}',       -- Third-party IDs (goodreads, librarything, etc.)
+    alternate_names JSONB NOT NULL DEFAULT '[]',  -- Known aliases and alternate spellings
+
     view_count INT NOT NULL DEFAULT 0,
     last_viewed_at TIMESTAMP,
 
@@ -121,6 +147,8 @@ CREATE TABLE books.authors (
 CREATE UNIQUE INDEX idx_authors_slug ON books.authors(slug);
 CREATE INDEX idx_authors_name ON books.authors(name);
 CREATE INDEX idx_authors_view_count ON books.authors(view_count DESC);
+CREATE INDEX idx_authors_open_library_id ON books.authors(open_library_id);
+CREATE INDEX idx_authors_wikidata_id ON books.authors(wikidata_id);
 
 COMMENT ON TABLE books.authors IS 'Author catalog. Authors are language-agnostic (same author for all translations)';
 

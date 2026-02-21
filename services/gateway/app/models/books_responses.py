@@ -177,6 +177,11 @@ class SeriesDetailData(pydantic.BaseModel):
     last_viewed_at: typing.Optional[str] = None
     created_at: str
     updated_at: str
+    avg_rating: typing.Optional[str] = None
+    rating_count: int = 0
+    ol_avg_rating: typing.Optional[str] = None
+    ol_rating_count: int = 0
+    total_views: int = 0
 
 
 class SeriesDetailResponse(pydantic.BaseModel):

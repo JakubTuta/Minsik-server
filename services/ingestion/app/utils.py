@@ -73,6 +73,8 @@ def clean_description(description: typing.Optional[str]) -> typing.Optional[str]
 
     description = re.sub(r"\[\d+\]\s*", "", description)
 
+    description = re.sub(r"\(\[Source\][^)]*\)", "", description)
+
     description = re.sub(r"\*\*([^*]+)\*\*", r"\1", description)
 
     description = re.sub(r"__([^_]+)__", r"\1", description)
@@ -112,6 +114,8 @@ def clean_description(description: typing.Optional[str]) -> typing.Optional[str]
     description = re.sub(r"\n{3,}", "\n\n", description)
 
     description = re.sub(r"[ \t]{2,}", " ", description)
+
+    description = description.strip().rstrip(":")
 
     description = description.strip()
 

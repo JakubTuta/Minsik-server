@@ -9,8 +9,7 @@ from app.workers.dump_importer import (
     _extract_ol_lang,
     _extract_remote_ids,
     _extract_text_value,
-    _extract_wikidata_label,
-    _extract_wikipedia_url_from_sitelinks,
+    _is_wikidata_qid,
     _parse_free_date,
     _parse_series_string,
     _score_edition,
@@ -216,43 +215,24 @@ class TestScoreEdition:
         assert _score_edition(edition) == 0
 
 
-class TestExtractWikidataLabel:
-    def test_valid_claim(self):
-        claims = {
-            "P27": [{"mainsnak": {"datavalue": {"value": {"label": "United States"}}}}]
-        }
-        assert _extract_wikidata_label(claims, "P27") == "United States"
+class TestIsWikidataQid:
+    def test_valid_qid(self):
+        assert _is_wikidata_qid("Q42") is True
 
-    def test_missing_property(self):
-        assert _extract_wikidata_label({}, "P27") is None
+    def test_large_qid(self):
+        assert _is_wikidata_qid("Q188987") is True
 
-    def test_empty_claims(self):
-        assert _extract_wikidata_label({"P27": []}, "P27") is None
+    def test_label_not_qid(self):
+        assert _is_wikidata_qid("United States") is False
 
-    def test_truncates_long_label(self):
-        claims = {"P27": [{"mainsnak": {"datavalue": {"value": {"label": "A" * 300}}}}]}
-        result = _extract_wikidata_label(claims, "P27")
-        assert result is not None
-        assert len(result) == 200
+    def test_empty_string(self):
+        assert _is_wikidata_qid("") is False
 
+    def test_q_only(self):
+        assert _is_wikidata_qid("Q") is False
 
-class TestExtractWikipediaUrl:
-    def test_valid_sitelinks(self):
-        entity = {"sitelinks": {"enwiki": {"title": "William Gibson"}}}
-        result = _extract_wikipedia_url_from_sitelinks(entity)
-        assert result == "https://en.wikipedia.org/wiki/William_Gibson"
-
-    def test_title_with_spaces(self):
-        entity = {"sitelinks": {"enwiki": {"title": "J. R. R. Tolkien"}}}
-        result = _extract_wikipedia_url_from_sitelinks(entity)
-        assert result == "https://en.wikipedia.org/wiki/J._R._R._Tolkien"
-
-    def test_no_enwiki(self):
-        entity = {"sitelinks": {"frwiki": {"title": "Something"}}}
-        assert _extract_wikipedia_url_from_sitelinks(entity) is None
-
-    def test_no_sitelinks(self):
-        assert _extract_wikipedia_url_from_sitelinks({}) is None
+    def test_property_id(self):
+        assert _is_wikidata_qid("P27") is False
 
 
 class TestLanguageMapping:

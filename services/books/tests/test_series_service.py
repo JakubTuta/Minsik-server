@@ -1,7 +1,8 @@
-import pytest
 from unittest.mock import AsyncMock, MagicMock, patch
-from sqlalchemy.ext.asyncio import AsyncSession
+
 import app.services.series_service as series_service
+import pytest
+from sqlalchemy.ext.asyncio import AsyncSession
 
 
 @pytest.fixture
@@ -53,13 +54,16 @@ class TestSeriesService:
             "series_id": 1,
             "name": "Harry Potter",
             "slug": "harry-potter",
-            "total_books": 7
+            "total_books": 7,
         }
 
-        with patch('app.cache.get_cached', return_value=cached_series), \
-             patch('app.cache.increment_view_count') as mock_track:
+        with patch("app.cache.get_cached", return_value=cached_series), patch(
+            "app.cache.increment_view_count"
+        ) as mock_track:
 
-            result = await series_service.get_series_by_slug(mock_session, "harry-potter")
+            result = await series_service.get_series_by_slug(
+                mock_session, "harry-potter"
+            )
 
             assert result == cached_series
             mock_track.assert_called_once_with("series", 1)
@@ -69,21 +73,32 @@ class TestSeriesService:
         mock_result = MagicMock()
         mock_result.scalar_one_or_none.return_value = mock_series
 
-        mock_count_result = MagicMock()
-        mock_count_result.scalar.return_value = 7
+        mock_stats_row = MagicMock()
+        mock_stats_row.total_books = 7
+        mock_stats_row.rating_count = 1000
+        mock_stats_row.avg_rating = 4.5
+        mock_stats_row.ol_rating_count = 500
+        mock_stats_row.ol_avg_rating = 4.2
+        mock_stats_row.total_views = 50000
+        mock_stats_result = MagicMock()
+        mock_stats_result.first.return_value = mock_stats_row
 
-        mock_session.execute.side_effect = [mock_result, mock_count_result]
+        mock_session.execute.side_effect = [mock_result, mock_stats_result]
 
-        with patch('app.cache.get_cached', return_value=None), \
-             patch('app.cache.set_cached') as mock_set_cache, \
-             patch('app.cache.increment_view_count'):
+        with patch("app.cache.get_cached", return_value=None), patch(
+            "app.cache.set_cached"
+        ) as mock_set_cache, patch("app.cache.increment_view_count"):
 
-            result = await series_service.get_series_by_slug(mock_session, "harry-potter")
+            result = await series_service.get_series_by_slug(
+                mock_session, "harry-potter"
+            )
 
             assert result is not None
             assert result["name"] == "Harry Potter"
             assert result["slug"] == "harry-potter"
             assert result["total_books"] == 7
+            assert result["rating_count"] == 1000
+            assert result["ol_rating_count"] == 500
             mock_set_cache.assert_called_once()
 
     @pytest.mark.asyncio
@@ -92,8 +107,10 @@ class TestSeriesService:
         mock_result.scalar_one_or_none.return_value = None
         mock_session.execute.return_value = mock_result
 
-        with patch('app.cache.get_cached', return_value=None):
-            result = await series_service.get_series_by_slug(mock_session, "nonexistent")
+        with patch("app.cache.get_cached", return_value=None):
+            result = await series_service.get_series_by_slug(
+                mock_session, "nonexistent"
+            )
 
             assert result is None
 
@@ -101,10 +118,10 @@ class TestSeriesService:
     async def test_get_series_books_cache_hit(self, mock_session):
         cached_data = {
             "books": [{"book_id": 1, "title": "Book 1", "series_position": "1.0"}],
-            "total": 7
+            "total": 7,
         }
 
-        with patch('app.cache.get_cached', return_value=cached_data):
+        with patch("app.cache.get_cached", return_value=cached_data):
             books, total = await series_service.get_series_books(
                 mock_session, "harry-potter", 10, 0
             )
@@ -113,7 +130,9 @@ class TestSeriesService:
             assert total == 7
 
     @pytest.mark.asyncio
-    async def test_get_series_books_cache_miss(self, mock_session, mock_series, mock_book):
+    async def test_get_series_books_cache_miss(
+        self, mock_session, mock_series, mock_book
+    ):
         mock_series_result = MagicMock()
         mock_series_result.scalar_one_or_none.return_value = mock_series
 
@@ -126,11 +145,12 @@ class TestSeriesService:
         mock_session.execute.side_effect = [
             mock_series_result,
             mock_books_result,
-            mock_count_result
+            mock_count_result,
         ]
 
-        with patch('app.cache.get_cached', return_value=None), \
-             patch('app.cache.set_cached') as mock_set_cache:
+        with patch("app.cache.get_cached", return_value=None), patch(
+            "app.cache.set_cached"
+        ) as mock_set_cache:
 
             books, total = await series_service.get_series_books(
                 mock_session, "harry-potter", 10, 0
@@ -148,7 +168,7 @@ class TestSeriesService:
         mock_result.scalar_one_or_none.return_value = None
         mock_session.execute.return_value = mock_result
 
-        with patch('app.cache.get_cached', return_value=None):
+        with patch("app.cache.get_cached", return_value=None):
             books, total = await series_service.get_series_books(
                 mock_session, "nonexistent", 10, 0
             )
@@ -157,7 +177,9 @@ class TestSeriesService:
             assert total == 0
 
     @pytest.mark.asyncio
-    async def test_get_series_books_with_pagination(self, mock_session, mock_series, mock_book):
+    async def test_get_series_books_with_pagination(
+        self, mock_session, mock_series, mock_book
+    ):
         mock_series_result = MagicMock()
         mock_series_result.scalar_one_or_none.return_value = mock_series
 
@@ -170,11 +192,12 @@ class TestSeriesService:
         mock_session.execute.side_effect = [
             mock_series_result,
             mock_books_result,
-            mock_count_result
+            mock_count_result,
         ]
 
-        with patch('app.cache.get_cached', return_value=None), \
-             patch('app.cache.set_cached'):
+        with patch("app.cache.get_cached", return_value=None), patch(
+            "app.cache.set_cached"
+        ):
 
             books, total = await series_service.get_series_books(
                 mock_session, "harry-potter", 5, 2
@@ -184,7 +207,15 @@ class TestSeriesService:
             assert total == 7
 
     def test_series_to_dict(self, mock_series):
-        result = series_service._series_to_dict(mock_series, 7)
+        stats = MagicMock()
+        stats.total_books = 7
+        stats.rating_count = 1000
+        stats.avg_rating = 4.5
+        stats.ol_rating_count = 500
+        stats.ol_avg_rating = 4.2
+        stats.total_views = 50000
+
+        result = series_service._series_to_dict(mock_series, stats)
 
         assert result["series_id"] == 1
         assert result["name"] == "Harry Potter"
@@ -192,3 +223,7 @@ class TestSeriesService:
         assert result["description"] == "A magical series"
         assert result["total_books"] == 7
         assert result["view_count"] == 5000
+        assert result["rating_count"] == 1000
+        assert result["avg_rating"] == "4.5"
+        assert result["ol_rating_count"] == 500
+        assert result["total_views"] == 50000

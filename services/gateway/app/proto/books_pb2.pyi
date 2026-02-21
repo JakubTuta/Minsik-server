@@ -326,7 +326,7 @@ class GetSeriesRequest(_message.Message):
     def __init__(self, slug: _Optional[str] = ...) -> None: ...
 
 class SeriesDetail(_message.Message):
-    __slots__ = ("series_id", "name", "slug", "description", "total_books", "view_count", "last_viewed_at", "created_at", "updated_at")
+    __slots__ = ("series_id", "name", "slug", "description", "total_books", "view_count", "last_viewed_at", "created_at", "updated_at", "avg_rating", "rating_count", "ol_avg_rating", "ol_rating_count", "total_views")
     SERIES_ID_FIELD_NUMBER: _ClassVar[int]
     NAME_FIELD_NUMBER: _ClassVar[int]
     SLUG_FIELD_NUMBER: _ClassVar[int]
@@ -336,6 +336,11 @@ class SeriesDetail(_message.Message):
     LAST_VIEWED_AT_FIELD_NUMBER: _ClassVar[int]
     CREATED_AT_FIELD_NUMBER: _ClassVar[int]
     UPDATED_AT_FIELD_NUMBER: _ClassVar[int]
+    AVG_RATING_FIELD_NUMBER: _ClassVar[int]
+    RATING_COUNT_FIELD_NUMBER: _ClassVar[int]
+    OL_AVG_RATING_FIELD_NUMBER: _ClassVar[int]
+    OL_RATING_COUNT_FIELD_NUMBER: _ClassVar[int]
+    TOTAL_VIEWS_FIELD_NUMBER: _ClassVar[int]
     series_id: int
     name: str
     slug: str
@@ -345,7 +350,12 @@ class SeriesDetail(_message.Message):
     last_viewed_at: str
     created_at: str
     updated_at: str
-    def __init__(self, series_id: _Optional[int] = ..., name: _Optional[str] = ..., slug: _Optional[str] = ..., description: _Optional[str] = ..., total_books: _Optional[int] = ..., view_count: _Optional[int] = ..., last_viewed_at: _Optional[str] = ..., created_at: _Optional[str] = ..., updated_at: _Optional[str] = ...) -> None: ...
+    avg_rating: str
+    rating_count: int
+    ol_avg_rating: str
+    ol_rating_count: int
+    total_views: int
+    def __init__(self, series_id: _Optional[int] = ..., name: _Optional[str] = ..., slug: _Optional[str] = ..., description: _Optional[str] = ..., total_books: _Optional[int] = ..., view_count: _Optional[int] = ..., last_viewed_at: _Optional[str] = ..., created_at: _Optional[str] = ..., updated_at: _Optional[str] = ..., avg_rating: _Optional[str] = ..., rating_count: _Optional[int] = ..., ol_avg_rating: _Optional[str] = ..., ol_rating_count: _Optional[int] = ..., total_views: _Optional[int] = ...) -> None: ...
 
 class SeriesDetailResponse(_message.Message):
     __slots__ = ("series",)

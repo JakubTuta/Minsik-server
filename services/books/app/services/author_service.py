@@ -36,20 +36,10 @@ async def get_author_by_slug(
     if not author:
         return None
 
-    books_count_stmt = (
-        select(func.count())
-        .select_from(app.models.book_author.BookAuthor)
-        .filter(app.models.book_author.BookAuthor.author_id == author.author_id)
-    )
-    books_count_result = await session.execute(books_count_stmt)
-    books_count = books_count_result.scalar() or 0
-
     book_categories = await _get_author_book_categories(session, author.author_id)
     books_aggregates = await _get_author_books_aggregates(session, author.author_id)
 
-    author_data = _author_to_dict(
-        author, books_count, book_categories, books_aggregates
-    )
+    author_data = _author_to_dict(author, book_categories, books_aggregates)
 
     await app.cache.set_cached(
         cache_key, author_data, app.config.settings.cache_author_detail_ttl
@@ -163,7 +153,10 @@ async def _get_author_books_aggregates(
 ) -> typing.Dict[str, typing.Any]:
     stmt = (
         select(
-            func.avg(app.models.book.Book.avg_rating).label("avg_rating"),
+            func.count().label("books_count"),
+            func.sum(
+                app.models.book.Book.avg_rating * app.models.book.Book.rating_count
+            ).label("weighted_rating_sum"),
             func.sum(app.models.book.Book.rating_count).label("total_ratings"),
             func.sum(app.models.book.Book.view_count).label("total_views"),
         )
@@ -175,16 +168,24 @@ async def _get_author_books_aggregates(
     result = await session.execute(stmt)
     row = result.first()
 
+    total_ratings = int(row.total_ratings) if row.total_ratings else 0
+    weighted_rating_sum = (
+        float(row.weighted_rating_sum) if row.weighted_rating_sum else 0.0
+    )
+    avg_rating = (
+        round(weighted_rating_sum / total_ratings, 2) if total_ratings > 0 else 0.0
+    )
+
     return {
-        "avg_rating": float(row.avg_rating) if row.avg_rating else 0.0,
-        "total_ratings": int(row.total_ratings) if row.total_ratings else 0,
+        "books_count": int(row.books_count) if row.books_count else 0,
+        "avg_rating": avg_rating,
+        "total_ratings": total_ratings,
         "total_views": int(row.total_views) if row.total_views else 0,
     }
 
 
 def _author_to_dict(
     author: app.models.author.Author,
-    books_count: int,
     book_categories: typing.List[str],
     books_aggregates: typing.Dict[str, typing.Any],
 ) -> typing.Dict[str, typing.Any]:
@@ -192,26 +193,26 @@ def _author_to_dict(
         "author_id": author.author_id,
         "name": author.name,
         "slug": author.slug,
-        "bio": author.bio or "",
-        "birth_date": author.birth_date.isoformat() if author.birth_date else "",
-        "death_date": author.death_date.isoformat() if author.death_date else "",
-        "birth_place": author.birth_place or "",
-        "nationality": author.nationality or "",
-        "photo_url": author.photo_url or "",
+        "bio": author.bio or None,
+        "birth_date": author.birth_date.isoformat() if author.birth_date else None,
+        "death_date": author.death_date.isoformat() if author.death_date else None,
+        "birth_place": author.birth_place or None,
+        "nationality": author.nationality or None,
+        "photo_url": author.photo_url or None,
         "view_count": author.view_count or 0,
         "last_viewed_at": (
-            author.last_viewed_at.isoformat() if author.last_viewed_at else ""
+            author.last_viewed_at.isoformat() if author.last_viewed_at else None
         ),
-        "books_count": books_count,
+        "books_count": books_aggregates["books_count"],
         "book_categories": book_categories,
         "books_avg_rating": str(books_aggregates["avg_rating"]),
         "books_total_ratings": books_aggregates["total_ratings"],
         "books_total_views": books_aggregates["total_views"],
-        "open_library_id": author.open_library_id or "",
+        "open_library_id": author.open_library_id or None,
         "created_at": author.created_at.isoformat() if author.created_at else "",
         "updated_at": author.updated_at.isoformat() if author.updated_at else "",
-        "wikidata_id": author.wikidata_id or "",
-        "wikipedia_url": author.wikipedia_url or "",
+        "wikidata_id": author.wikidata_id or None,
+        "wikipedia_url": author.wikipedia_url or None,
         "remote_ids": author.remote_ids or {},
         "alternate_names": author.alternate_names or [],
     }
