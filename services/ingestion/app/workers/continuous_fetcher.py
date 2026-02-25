@@ -9,20 +9,22 @@ import redis
 
 logger = logging.getLogger(__name__)
 
-redis_client = redis.Redis(
-    host=app.config.settings.redis_host,
-    port=app.config.settings.redis_port,
-    db=app.config.settings.redis_db,
-    password=(
-        app.config.settings.redis_password
-        if app.config.settings.redis_password
-        else None
-    ),
-    decode_responses=True,
-)
-
 _OL_OFFSET_KEY = "ingestion_ol_offset"
 _GB_OFFSET_KEY = "ingestion_gb_offset"
+
+
+def _create_redis_client() -> redis.Redis:
+    return redis.Redis(
+        host=app.config.settings.redis_host,
+        port=app.config.settings.redis_port,
+        db=app.config.settings.redis_db,
+        password=(
+            app.config.settings.redis_password
+            if app.config.settings.redis_password
+            else None
+        ),
+        decode_responses=True,
+    )
 
 
 async def run_continuous_ol_fetch(shutdown_event: asyncio.Event) -> None:
@@ -36,8 +38,15 @@ async def run_continuous_ol_fetch(shutdown_event: asyncio.Event) -> None:
         if shutdown_event.is_set() or not app.config.settings.continuous_fetch_enabled:
             break
 
+        try:
+            redis_client = _create_redis_client()
+        except Exception as e:
+            logger.error(f"Failed to connect to Redis for OL fetch: {e}")
+            continue
+
         if redis_client.get("dump_import_running"):
             logger.info("Skipping OL fetch cycle: dump import in progress")
+            redis_client.close()
             continue
 
         try:
@@ -59,6 +68,11 @@ async def run_continuous_ol_fetch(shutdown_event: asyncio.Event) -> None:
 
         except Exception as e:
             logger.error(f"Continuous OL fetch failed: {str(e)}")
+        finally:
+            try:
+                redis_client.close()
+            except Exception:
+                pass
 
     logger.info("Continuous Open Library fetch task stopped")
 
@@ -74,8 +88,15 @@ async def run_continuous_gb_fetch(shutdown_event: asyncio.Event) -> None:
         if shutdown_event.is_set() or not app.config.settings.continuous_fetch_enabled:
             break
 
+        try:
+            redis_client = _create_redis_client()
+        except Exception as e:
+            logger.error(f"Failed to connect to Redis for GB fetch: {e}")
+            continue
+
         if redis_client.get("dump_import_running"):
             logger.info("Skipping GB fetch cycle: dump import in progress")
+            redis_client.close()
             continue
 
         try:
@@ -97,5 +118,10 @@ async def run_continuous_gb_fetch(shutdown_event: asyncio.Event) -> None:
 
         except Exception as e:
             logger.error(f"Continuous GB fetch failed: {str(e)}")
+        finally:
+            try:
+                redis_client.close()
+            except Exception:
+                pass
 
     logger.info("Continuous Google Books fetch task stopped")

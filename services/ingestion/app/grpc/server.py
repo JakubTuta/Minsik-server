@@ -11,7 +11,7 @@ import app.models
 import app.proto.ingestion_pb2 as ingestion_pb2
 import app.proto.ingestion_pb2_grpc as ingestion_pb2_grpc
 import app.services.book_service
-import app.workers.dump_importer
+import app.workers.dump
 import app.workers.ingestion_worker
 import grpc
 import httpx
@@ -275,12 +275,12 @@ class IngestionService(ingestion_pb2_grpc.IngestionServiceServicer):
                     message="Dump import is already in progress",
                 )
 
-            saved_state = app.workers.dump_importer._get_job_state(redis_client)
+            saved_state = app.workers.dump.get_job_state(redis_client)
             if saved_state and len(saved_state.get("completed_phases", [])) < 6:
                 job_id = saved_state["job_id"]
                 completed = saved_state["completed_phases"]
                 asyncio.create_task(
-                    app.workers.dump_importer.run_import_dump(job_id, redis_client)
+                    app.workers.dump.run_import_dump(job_id, redis_client)
                 )
                 return ingestion_pb2.ImportDumpResponse(
                     status="resuming",
@@ -291,9 +291,7 @@ class IngestionService(ingestion_pb2_grpc.IngestionServiceServicer):
                 )
 
             job_id = str(uuid.uuid4())
-            asyncio.create_task(
-                app.workers.dump_importer.run_import_dump(job_id, redis_client)
-            )
+            asyncio.create_task(app.workers.dump.run_import_dump(job_id, redis_client))
 
             return ingestion_pb2.ImportDumpResponse(
                 status="started",

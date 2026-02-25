@@ -3,6 +3,7 @@ import typing
 from datetime import datetime
 
 import app.config
+import app.utils
 from app.fetchers.base import BaseFetcher
 from app.utils import slugify
 
@@ -251,8 +252,12 @@ class OpenLibraryFetcher(BaseFetcher):
     ) -> typing.Optional[str]:
         description = work_data.get("description")
         if isinstance(description, dict):
-            return description.get("value")
-        return description
+            raw = description.get("value")
+        else:
+            raw = description
+        if raw:
+            return app.utils.clean_description(raw)
+        return None
 
     def _extract_publication_year(
         self, work_data: typing.Dict[str, typing.Any]
@@ -339,9 +344,29 @@ class OpenLibraryFetcher(BaseFetcher):
         for edition in editions_data["entries"]:
             series_list = edition.get("series")
             if series_list and len(series_list) > 0:
-                parsed = self._parse_series_string(series_list[0])
-                if parsed:
-                    return parsed
+                series_str = series_list[0]
+                if not series_str or not isinstance(series_str, str):
+                    continue
+                series_str = series_str.strip()
+                if "#" in series_str:
+                    parts = series_str.split("#")
+                    name = parts[0].strip().rstrip(",").strip()
+                    position_str = parts[1].strip()
+                    position = None
+                    try:
+                        if "." in position_str:
+                            position = float(position_str)
+                        else:
+                            position = float(position_str.split()[0])
+                    except (ValueError, IndexError):
+                        position = None
+                    return {"name": name, "slug": slugify(name), "position": position}
+                else:
+                    return {
+                        "name": series_str,
+                        "slug": slugify(series_str),
+                        "position": None,
+                    }
         return None
 
     def _extract_best_edition_metadata(
@@ -417,39 +442,3 @@ class OpenLibraryFetcher(BaseFetcher):
                     result["external_ids"] = ext_ids
 
         return result
-
-    def _parse_series_string(
-        self, series_str: str
-    ) -> typing.Optional[typing.Dict[str, typing.Any]]:
-        try:
-            if not series_str or not isinstance(series_str, str):
-                return None
-
-            series_str = series_str.strip()
-
-            if "#" in series_str:
-                parts = series_str.split("#")
-                name = parts[0].strip().rstrip(",").strip()
-
-                position_str = parts[1].strip()
-                position = None
-
-                try:
-                    if "." in position_str:
-                        position = float(position_str)
-                    else:
-                        position = float(position_str.split()[0])
-                except (ValueError, IndexError):
-                    position = None
-
-                return {"name": name, "slug": slugify(name), "position": position}
-            else:
-                return {
-                    "name": series_str,
-                    "slug": slugify(series_str),
-                    "position": None,
-                }
-
-        except Exception as e:
-            logger.error(f"Error parsing series string '{series_str}': {str(e)}")
-            return None

@@ -3,6 +3,7 @@ import typing
 from typing import Any, Dict, List, Optional
 
 import app.config
+import app.models
 import app.models.author
 import app.models.book
 import app.models.book_author
@@ -17,26 +18,13 @@ from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 logger = logging.getLogger(__name__)
 
 
-async def get_db_session() -> sqlalchemy.ext.asyncio.AsyncSession:
-    engine = sqlalchemy.ext.asyncio.create_async_engine(
-        app.config.settings.database_url,
-        pool_size=app.config.settings.db_pool_size,
-        max_overflow=app.config.settings.db_max_overflow,
-        echo=False,
-    )
-
-    async_session = sqlalchemy.ext.asyncio.async_sessionmaker(
-        engine, class_=sqlalchemy.ext.asyncio.AsyncSession, expire_on_commit=False
-    )
-
-    return async_session()
-
-
 async def insert_books_batch(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     books_data: List[Dict[str, Any]],
     commit: bool = True,
     author_id_map: Optional[Dict[str, int]] = None,
+    genre_id_cache: Optional[Dict[str, int]] = None,
+    series_id_cache: Optional[Dict[str, int]] = None,
 ) -> Dict[str, int]:
     if not books_data:
         return {"successful": 0, "failed": 0, "updated": 0}
@@ -69,8 +57,12 @@ async def insert_books_batch(
             author_id_map = await _bulk_insert_authors(
                 session, cleaned_books, dedup_cache
             )
-        genre_id_map = await _bulk_insert_genres(session, cleaned_books, dedup_cache)
-        series_id_map = await _bulk_insert_series(session, cleaned_books, dedup_cache)
+        genre_id_map = await _bulk_insert_genres(
+            session, cleaned_books, dedup_cache, genre_id_cache
+        )
+        series_id_map = await _bulk_insert_series(
+            session, cleaned_books, dedup_cache, series_id_cache
+        )
 
         book_results = await _bulk_insert_books(
             session, cleaned_books, dedup_cache, series_id_map
@@ -235,13 +227,49 @@ async def _bulk_insert_authors(
     stmt = stmt.on_conflict_do_update(
         index_elements=["slug"],
         set_={
-            "bio": stmt.excluded.bio,
-            "birth_date": stmt.excluded.birth_date,
-            "death_date": stmt.excluded.death_date,
-            "photo_url": stmt.excluded.photo_url,
+            "bio": sqlalchemy.case(
+                (
+                    app.models.author.Author.bio.is_(None),
+                    stmt.excluded.bio,
+                ),
+                else_=app.models.author.Author.bio,
+            ),
+            "birth_date": sqlalchemy.case(
+                (
+                    app.models.author.Author.birth_date.is_(None),
+                    stmt.excluded.birth_date,
+                ),
+                else_=app.models.author.Author.birth_date,
+            ),
+            "death_date": sqlalchemy.case(
+                (
+                    app.models.author.Author.death_date.is_(None),
+                    stmt.excluded.death_date,
+                ),
+                else_=app.models.author.Author.death_date,
+            ),
+            "photo_url": sqlalchemy.case(
+                (
+                    app.models.author.Author.photo_url.is_(None),
+                    stmt.excluded.photo_url,
+                ),
+                else_=app.models.author.Author.photo_url,
+            ),
             "open_library_id": stmt.excluded.open_library_id,
-            "wikidata_id": stmt.excluded.wikidata_id,
-            "wikipedia_url": stmt.excluded.wikipedia_url,
+            "wikidata_id": sqlalchemy.case(
+                (
+                    app.models.author.Author.wikidata_id.is_(None),
+                    stmt.excluded.wikidata_id,
+                ),
+                else_=app.models.author.Author.wikidata_id,
+            ),
+            "wikipedia_url": sqlalchemy.case(
+                (
+                    app.models.author.Author.wikipedia_url.is_(None),
+                    stmt.excluded.wikipedia_url,
+                ),
+                else_=app.models.author.Author.wikipedia_url,
+            ),
             "remote_ids": stmt.excluded.remote_ids,
             "alternate_names": stmt.excluded.alternate_names,
         },
@@ -259,57 +287,70 @@ async def _bulk_insert_genres(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     cleaned_books: List[Dict[str, Any]],
     dedup_cache: Dict[str, Any],
+    genre_id_cache: Optional[Dict[str, int]] = None,
 ) -> Dict[str, int]:
     if not dedup_cache["genres"]:
-        return {}
+        return genre_id_cache or {}
 
-    insert_data = list(dedup_cache["genres"].values())
+    if genre_id_cache is None:
+        genre_id_cache = {}
 
-    stmt = postgresql_insert(app.models.genre.Genre).values(insert_data)
-    stmt = stmt.on_conflict_do_nothing(index_elements=["slug"])
+    new_slugs = [s for s in dedup_cache["genres"] if s not in genre_id_cache]
+    if new_slugs:
+        insert_data = [dedup_cache["genres"][s] for s in new_slugs]
+        stmt = postgresql_insert(app.models.genre.Genre).values(insert_data)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["slug"],
+            set_={"name": stmt.excluded.name},
+        )
+        stmt = stmt.returning(
+            app.models.genre.Genre.slug,
+            app.models.genre.Genre.genre_id,
+        )
+        result = await session.execute(stmt)
+        for row in result:
+            genre_id_cache[row.slug] = row.genre_id
 
-    await session.execute(stmt)
-
-    genre_slugs = list(dedup_cache["genres"].keys())
-    query = sqlalchemy.select(
-        app.models.genre.Genre.slug,
-        app.models.genre.Genre.genre_id,
-    ).where(app.models.genre.Genre.slug.in_(genre_slugs))
-    result = await session.execute(query)
-    genre_id_map = {row.slug: row.genre_id for row in result}
-
-    return genre_id_map
+    return {s: genre_id_cache[s] for s in dedup_cache["genres"] if s in genre_id_cache}
 
 
 async def _bulk_insert_series(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     cleaned_books: List[Dict[str, Any]],
     dedup_cache: Dict[str, Any],
+    series_id_cache: Optional[Dict[str, int]] = None,
 ) -> Dict[str, int]:
     if not dedup_cache["series"]:
-        return {}
+        return series_id_cache or {}
 
-    insert_data = []
-    for series_slug, series_data in dedup_cache["series"].items():
-        insert_data.append(
+    if series_id_cache is None:
+        series_id_cache = {}
+
+    new_slugs = [s for s in dedup_cache["series"] if s not in series_id_cache]
+    if new_slugs:
+        insert_data = [
             {
-                "name": series_data.get("name"),
-                "slug": series_slug,
-                "description": series_data.get("description"),
+                "name": dedup_cache["series"][s].get("name"),
+                "slug": s,
+                "description": dedup_cache["series"][s].get("description"),
             }
+            for s in new_slugs
+        ]
+        stmt = postgresql_insert(app.models.series.Series).values(insert_data)
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["slug"], set_={"description": stmt.excluded.description}
         )
+        stmt = stmt.returning(
+            app.models.series.Series.slug,
+            app.models.series.Series.series_id,
+        )
+        result = await session.execute(stmt)
+        for row in result:
+            series_id_cache[row.slug] = row.series_id
 
-    stmt = postgresql_insert(app.models.series.Series).values(insert_data)
-    stmt = stmt.on_conflict_do_update(
-        index_elements=["slug"], set_={"description": stmt.excluded.description}
-    )
-
-    stmt = stmt.returning(
-        app.models.series.Series.slug,
-        app.models.series.Series.series_id,
-    )
-    result = await session.execute(stmt)
-    return {row.slug: row.series_id for row in result}
+    return {
+        s: series_id_cache[s] for s in dedup_cache["series"] if s in series_id_cache
+    }
 
 
 async def _bulk_insert_books(
@@ -439,15 +480,12 @@ async def _bulk_insert_relationships(
 
 
 async def insert_books(books_data: List[Dict[str, Any]]) -> Dict[str, int]:
-    session = await get_db_session()
-
-    try:
-        return await insert_books_batch(session, books_data, commit=True)
-    except Exception as e:
-        logger.error(f"Error in insert_books: {str(e)}")
-        raise
-    finally:
-        await session.close()
+    async with app.models.AsyncSessionLocal() as session:
+        try:
+            return await insert_books_batch(session, books_data, commit=True)
+        except Exception as e:
+            logger.error(f"Error in insert_books: {str(e)}")
+            raise
 
 
 async def process_single_book(

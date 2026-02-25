@@ -2,18 +2,29 @@ import datetime
 import typing
 
 import pytest
-from app.workers.dump_importer import (
-    _OL_LANG_TO_ISO,
-    _extract_cover_url,
-    _extract_description,
-    _extract_ol_lang,
-    _extract_remote_ids,
-    _extract_text_value,
-    _is_wikidata_qid,
-    _parse_free_date,
-    _parse_series_string,
-    _score_edition,
+from app.workers.dump.parsers import (
+    OL_LANG_TO_ISO,
+    extract_cover_url,
+    extract_description,
+    extract_ol_lang,
+    extract_remote_ids,
+    extract_text_value,
+    is_wikidata_qid,
+    parse_free_date,
+    parse_series_string,
+    score_edition,
 )
+
+_OL_LANG_TO_ISO = OL_LANG_TO_ISO
+_extract_cover_url = extract_cover_url
+_extract_description = extract_description
+_extract_ol_lang = extract_ol_lang
+_extract_remote_ids = extract_remote_ids
+_extract_text_value = extract_text_value
+_is_wikidata_qid = is_wikidata_qid
+_parse_free_date = parse_free_date
+_parse_series_string = parse_series_string
+_score_edition = score_edition
 
 
 class TestExtractTextValue:

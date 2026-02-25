@@ -1,17 +1,18 @@
-import typing
+import asyncio
 import logging
 import time
-import asyncio
-import grpc
-import sqlalchemy
-import app.database
+import typing
+
 import app.cache
+import app.database
 import app.proto.user_data_pb2
 import app.proto.user_data_pb2_grpc
 import app.services.bookshelf_service
-import app.services.rating_service
 import app.services.comment_service
+import app.services.rating_service
 import app.services.stats_service
+import grpc
+import sqlalchemy
 
 logger = logging.getLogger(__name__)
 
@@ -64,52 +65,55 @@ class _TtlCache:
 _book_comments_cache = _TtlCache(ttl_seconds=120)
 
 
-async def _resolve_user(
-    session,
-    username: str
-) -> int:
-    result = await session.execute(sqlalchemy.text(
-        "SELECT user_id FROM auth.users WHERE username = :username AND is_active = TRUE"
-    ), {"username": username})
+async def _resolve_user(session, username: str) -> int:
+    result = await session.execute(
+        sqlalchemy.text(
+            "SELECT user_id FROM auth.users WHERE username = :username AND is_active = TRUE"
+        ),
+        {"username": username},
+    )
     row = result.fetchone()
     if row is None:
         raise ValueError("user_not_found")
     return row.user_id
 
 
-async def _resolve_book(
-    session,
-    book_slug: str
-) -> typing.Tuple[int, str, str]:
-    result = await session.execute(sqlalchemy.text(
-        "SELECT book_id, title, primary_cover_url FROM books.books WHERE slug = :slug"
-    ), {"slug": book_slug})
+async def _resolve_book(session, book_slug: str) -> typing.Tuple[int, str, str]:
+    result = await session.execute(
+        sqlalchemy.text(
+            "SELECT book_id, title, primary_cover_url FROM books.books WHERE slug = :slug"
+        ),
+        {"slug": book_slug},
+    )
     row = result.fetchone()
     if row is None:
         raise ValueError("book_not_found")
     return row.book_id, row.title or "", row.primary_cover_url or ""
 
 
-async def _resolve_book_meta(
-    session,
-    book_slug: str
-) -> typing.Dict[str, typing.Any]:
-    result = await session.execute(sqlalchemy.text(
-        "SELECT b.book_id, b.title, b.primary_cover_url, s.name AS series_name, s.slug AS series_slug "
-        "FROM books.books b "
-        "LEFT JOIN books.series s ON s.series_id = b.series_id "
-        "WHERE b.slug = :slug"
-    ), {"slug": book_slug})
+async def _resolve_book_meta(session, book_slug: str) -> typing.Dict[str, typing.Any]:
+    result = await session.execute(
+        sqlalchemy.text(
+            "SELECT b.book_id, b.title, b.primary_cover_url, s.name AS series_name, s.slug AS series_slug "
+            "FROM books.books b "
+            "LEFT JOIN books.series s ON s.series_id = b.series_id "
+            "WHERE b.slug = :slug"
+        ),
+        {"slug": book_slug},
+    )
     row = result.fetchone()
     if row is None:
         raise ValueError("book_not_found")
 
-    authors_result = await session.execute(sqlalchemy.text(
-        "SELECT a.name, a.slug FROM books.book_authors ba "
-        "JOIN books.authors a ON a.author_id = ba.author_id "
-        "WHERE ba.book_id = :book_id "
-        "ORDER BY ba.book_id"
-    ), {"book_id": row.book_id})
+    authors_result = await session.execute(
+        sqlalchemy.text(
+            "SELECT a.name, a.slug FROM books.book_authors ba "
+            "JOIN books.authors a ON a.author_id = ba.author_id "
+            "WHERE ba.book_id = :book_id "
+            "ORDER BY ba.book_id"
+        ),
+        {"book_id": row.book_id},
+    )
     authors = authors_result.fetchall()
 
     return {
@@ -119,14 +123,15 @@ async def _resolve_book_meta(
         "series_name": row.series_name or "",
         "series_slug": row.series_slug or "",
         "author_names": [a.name for a in authors],
-        "author_slugs": [a.slug for a in authors]
+        "author_slugs": [a.slug for a in authors],
     }
 
 
 async def _resolve_username(session, user_id: int) -> str:
-    result = await session.execute(sqlalchemy.text(
-        "SELECT username FROM auth.users WHERE user_id = :user_id"
-    ), {"user_id": user_id})
+    result = await session.execute(
+        sqlalchemy.text("SELECT username FROM auth.users WHERE user_id = :user_id"),
+        {"user_id": user_id},
+    )
     row = result.fetchone()
     return row.username if row else ""
 
@@ -139,7 +144,7 @@ def _bookshelf_to_proto(
     author_names: typing.List[str] = None,
     author_slugs: typing.List[str] = None,
     series_name: str = "",
-    series_slug: str = ""
+    series_slug: str = "",
 ) -> app.proto.user_data_pb2.Bookshelf:
     if author_names is None:
         author_names = []
@@ -159,7 +164,7 @@ def _bookshelf_to_proto(
         book_author_names=author_names,
         book_author_slugs=author_slugs,
         book_series_name=series_name,
-        book_series_slug=series_slug
+        book_series_slug=series_slug,
     )
 
 
@@ -171,7 +176,7 @@ def _rating_to_proto(
     author_names: typing.List[str] = None,
     author_slugs: typing.List[str] = None,
     series_name: str = "",
-    series_slug: str = ""
+    series_slug: str = "",
 ) -> app.proto.user_data_pb2.Rating:
     if author_names is None:
         author_names = []
@@ -188,17 +193,33 @@ def _rating_to_proto(
         review_text=rating.review_text or "",
         pacing=float(rating.pacing) if rating.pacing is not None else 0.0,
         has_pacing=rating.pacing is not None,
-        emotional_impact=float(rating.emotional_impact) if rating.emotional_impact is not None else 0.0,
+        emotional_impact=(
+            float(rating.emotional_impact)
+            if rating.emotional_impact is not None
+            else 0.0
+        ),
         has_emotional_impact=rating.emotional_impact is not None,
-        intellectual_depth=float(rating.intellectual_depth) if rating.intellectual_depth is not None else 0.0,
+        intellectual_depth=(
+            float(rating.intellectual_depth)
+            if rating.intellectual_depth is not None
+            else 0.0
+        ),
         has_intellectual_depth=rating.intellectual_depth is not None,
-        writing_quality=float(rating.writing_quality) if rating.writing_quality is not None else 0.0,
+        writing_quality=(
+            float(rating.writing_quality) if rating.writing_quality is not None else 0.0
+        ),
         has_writing_quality=rating.writing_quality is not None,
-        rereadability=float(rating.rereadability) if rating.rereadability is not None else 0.0,
+        rereadability=(
+            float(rating.rereadability) if rating.rereadability is not None else 0.0
+        ),
         has_rereadability=rating.rereadability is not None,
-        readability=float(rating.readability) if rating.readability is not None else 0.0,
+        readability=(
+            float(rating.readability) if rating.readability is not None else 0.0
+        ),
         has_readability=rating.readability is not None,
-        plot_complexity=float(rating.plot_complexity) if rating.plot_complexity is not None else 0.0,
+        plot_complexity=(
+            float(rating.plot_complexity) if rating.plot_complexity is not None else 0.0
+        ),
         has_plot_complexity=rating.plot_complexity is not None,
         humor=float(rating.humor) if rating.humor is not None else 0.0,
         has_humor=rating.humor is not None,
@@ -207,7 +228,7 @@ def _rating_to_proto(
         book_author_names=author_names,
         book_author_slugs=author_slugs,
         book_series_name=series_name,
-        book_series_slug=series_slug
+        book_series_slug=series_slug,
     )
 
 
@@ -220,7 +241,7 @@ def _comment_to_proto(
     author_slugs: typing.List[str] = None,
     series_name: str = "",
     series_slug: str = "",
-    cover_url: str = ""
+    cover_url: str = "",
 ) -> app.proto.user_data_pb2.Comment:
     if author_names is None:
         author_names = []
@@ -241,13 +262,12 @@ def _comment_to_proto(
         book_author_slugs=author_slugs,
         book_series_name=series_name,
         book_series_slug=series_slug,
-        book_cover_url=cover_url
+        book_cover_url=cover_url,
     )
 
 
 def _row_to_comment_with_rating(
-    row,
-    book_slug: str
+    row, book_slug: str
 ) -> app.proto.user_data_pb2.BookCommentWithRating:
     has_rating = row.overall_rating is not None
     return app.proto.user_data_pb2.BookCommentWithRating(
@@ -264,17 +284,27 @@ def _row_to_comment_with_rating(
         review_text=row.review_text or "" if has_rating else "",
         pacing=float(row.pacing) if row.pacing is not None else 0.0,
         has_pacing=row.pacing is not None,
-        emotional_impact=float(row.emotional_impact) if row.emotional_impact is not None else 0.0,
+        emotional_impact=(
+            float(row.emotional_impact) if row.emotional_impact is not None else 0.0
+        ),
         has_emotional_impact=row.emotional_impact is not None,
-        intellectual_depth=float(row.intellectual_depth) if row.intellectual_depth is not None else 0.0,
+        intellectual_depth=(
+            float(row.intellectual_depth) if row.intellectual_depth is not None else 0.0
+        ),
         has_intellectual_depth=row.intellectual_depth is not None,
-        writing_quality=float(row.writing_quality) if row.writing_quality is not None else 0.0,
+        writing_quality=(
+            float(row.writing_quality) if row.writing_quality is not None else 0.0
+        ),
         has_writing_quality=row.writing_quality is not None,
-        rereadability=float(row.rereadability) if row.rereadability is not None else 0.0,
+        rereadability=(
+            float(row.rereadability) if row.rereadability is not None else 0.0
+        ),
         has_rereadability=row.rereadability is not None,
         readability=float(row.readability) if row.readability is not None else 0.0,
         has_readability=row.readability is not None,
-        plot_complexity=float(row.plot_complexity) if row.plot_complexity is not None else 0.0,
+        plot_complexity=(
+            float(row.plot_complexity) if row.plot_complexity is not None else 0.0
+        ),
         has_plot_complexity=row.plot_complexity is not None,
         humor=float(row.humor) if row.humor is not None else 0.0,
         has_humor=row.humor is not None,
@@ -285,13 +315,21 @@ def _row_to_comment_with_rating(
 async def _handle_error(error: Exception, context: grpc.aio.ServicerContext) -> None:
     error_key = str(error)
     if error_key in _NOT_FOUND_ERRORS:
-        await context.abort(grpc.StatusCode.NOT_FOUND, f"Resource not found: {error_key}")
+        await context.abort(
+            grpc.StatusCode.NOT_FOUND, f"Resource not found: {error_key}"
+        )
     elif error_key in _PERMISSION_ERRORS:
-        await context.abort(grpc.StatusCode.PERMISSION_DENIED, f"Permission denied: {error_key}")
+        await context.abort(
+            grpc.StatusCode.PERMISSION_DENIED, f"Permission denied: {error_key}"
+        )
     elif error_key in _ALREADY_EXISTS_ERRORS:
-        await context.abort(grpc.StatusCode.ALREADY_EXISTS, f"Resource already exists: {error_key}")
+        await context.abort(
+            grpc.StatusCode.ALREADY_EXISTS, f"Resource already exists: {error_key}"
+        )
     else:
-        await context.abort(grpc.StatusCode.INVALID_ARGUMENT, f"Invalid argument: {error_key}")
+        await context.abort(
+            grpc.StatusCode.INVALID_ARGUMENT, f"Invalid argument: {error_key}"
+        )
 
 
 class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
@@ -299,7 +337,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
     async def GetBookshelf(
         self,
         request: app.proto.user_data_pb2.GetBookshelfRequest,
-        context: grpc.aio.ServicerContext
+        context: grpc.aio.ServicerContext,
     ) -> app.proto.user_data_pb2.BookshelfResponse:
         try:
             async with app.database.async_session_maker() as session:
@@ -318,7 +356,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                         book_meta["author_names"],
                         book_meta["author_slugs"],
                         book_meta["series_name"],
-                        book_meta["series_slug"]
+                        book_meta["series_slug"],
                     )
                 )
         except ValueError as e:
@@ -332,7 +370,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
     async def UpsertBookshelf(
         self,
         request: app.proto.user_data_pb2.UpsertBookshelfRequest,
-        context: grpc.aio.ServicerContext
+        context: grpc.aio.ServicerContext,
     ) -> app.proto.user_data_pb2.BookshelfResponse:
         try:
             async with app.database.async_session_maker() as session:
@@ -349,7 +387,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                         book_meta["author_names"],
                         book_meta["author_slugs"],
                         book_meta["series_name"],
-                        book_meta["series_slug"]
+                        book_meta["series_slug"],
                     )
                 )
         except ValueError as e:
@@ -363,7 +401,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
     async def DeleteBookshelf(
         self,
         request: app.proto.user_data_pb2.DeleteBookshelfRequest,
-        context: grpc.aio.ServicerContext
+        context: grpc.aio.ServicerContext,
     ) -> app.proto.user_data_pb2.EmptyResponse:
         try:
             async with app.database.async_session_maker() as session:
@@ -383,23 +421,29 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
     async def GetUserBookshelves(
         self,
         request: app.proto.user_data_pb2.GetUserBookshelvesRequest,
-        context: grpc.aio.ServicerContext
+        context: grpc.aio.ServicerContext,
     ) -> app.proto.user_data_pb2.BookshelvesListResponse:
         try:
             async with app.database.async_session_maker() as session:
-                rows, total_count = await app.services.bookshelf_service.get_user_bookshelves(
-                    session,
-                    request.user_id,
-                    request.limit or 10,
-                    request.offset or 0,
-                    request.status_filter,
-                    request.favourites_only,
-                    request.sort_by or "created_at",
-                    request.order or "desc"
+                rows, total_count = (
+                    await app.services.bookshelf_service.get_user_bookshelves(
+                        session,
+                        request.user_id,
+                        request.limit or 10,
+                        request.offset or 0,
+                        request.status_filter,
+                        request.favourites_only,
+                        request.sort_by or "created_at",
+                        request.order or "desc",
+                    )
                 )
 
-                meta_map = await _build_book_meta_map(session, [r.book_id for r in rows])
-                authors_map = await _build_book_authors_map(session, [r.book_id for r in rows])
+                meta_map = await _build_book_meta_map(
+                    session, [r.book_id for r in rows]
+                )
+                authors_map = await _build_book_authors_map(
+                    session, [r.book_id for r in rows]
+                )
 
                 protos = [
                     _bookshelf_to_proto(
@@ -410,13 +454,12 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                         authors_map.get(r.book_id, ([], []))[0],
                         authors_map.get(r.book_id, ([], []))[1],
                         meta_map.get(r.book_id, {}).get("series_name", ""),
-                        meta_map.get(r.book_id, {}).get("series_slug", "")
+                        meta_map.get(r.book_id, {}).get("series_slug", ""),
                     )
                     for r in rows
                 ]
                 return app.proto.user_data_pb2.BookshelvesListResponse(
-                    bookshelves=protos,
-                    total_count=total_count
+                    bookshelves=protos, total_count=total_count
                 )
         except grpc.aio.AbortError:
             raise
@@ -427,23 +470,29 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
     async def GetPublicBookshelves(
         self,
         request: app.proto.user_data_pb2.GetPublicBookshelvesRequest,
-        context: grpc.aio.ServicerContext
+        context: grpc.aio.ServicerContext,
     ) -> app.proto.user_data_pb2.BookshelvesListResponse:
         try:
             async with app.database.async_session_maker() as session:
                 user_id = await _resolve_user(session, request.username)
-                rows, total_count = await app.services.bookshelf_service.get_user_bookshelves(
-                    session,
-                    user_id,
-                    request.limit or 10,
-                    request.offset or 0,
-                    request.status_filter,
-                    request.favourites_only,
-                    request.sort_by or "created_at",
-                    request.order or "desc"
+                rows, total_count = (
+                    await app.services.bookshelf_service.get_user_bookshelves(
+                        session,
+                        user_id,
+                        request.limit or 10,
+                        request.offset or 0,
+                        request.status_filter,
+                        request.favourites_only,
+                        request.sort_by or "created_at",
+                        request.order or "desc",
+                    )
                 )
-                meta_map = await _build_book_meta_map(session, [r.book_id for r in rows])
-                authors_map = await _build_book_authors_map(session, [r.book_id for r in rows])
+                meta_map = await _build_book_meta_map(
+                    session, [r.book_id for r in rows]
+                )
+                authors_map = await _build_book_authors_map(
+                    session, [r.book_id for r in rows]
+                )
                 protos = [
                     _bookshelf_to_proto(
                         r,
@@ -453,13 +502,12 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                         authors_map.get(r.book_id, ([], []))[0],
                         authors_map.get(r.book_id, ([], []))[1],
                         meta_map.get(r.book_id, {}).get("series_name", ""),
-                        meta_map.get(r.book_id, {}).get("series_slug", "")
+                        meta_map.get(r.book_id, {}).get("series_slug", ""),
                     )
                     for r in rows
                 ]
                 return app.proto.user_data_pb2.BookshelvesListResponse(
-                    bookshelves=protos,
-                    total_count=total_count
+                    bookshelves=protos, total_count=total_count
                 )
         except ValueError as e:
             await _handle_error(e, context)
@@ -472,7 +520,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
     async def GetRating(
         self,
         request: app.proto.user_data_pb2.GetRatingRequest,
-        context: grpc.aio.ServicerContext
+        context: grpc.aio.ServicerContext,
     ) -> app.proto.user_data_pb2.RatingResponse:
         try:
             async with app.database.async_session_maker() as session:
@@ -491,7 +539,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                         book_meta["author_names"],
                         book_meta["author_slugs"],
                         book_meta["series_name"],
-                        book_meta["series_slug"]
+                        book_meta["series_slug"],
                     )
                 )
         except ValueError as e:
@@ -505,7 +553,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
     async def UpsertRating(
         self,
         request: app.proto.user_data_pb2.UpsertRatingRequest,
-        context: grpc.aio.ServicerContext
+        context: grpc.aio.ServicerContext,
     ) -> app.proto.user_data_pb2.RatingResponse:
         try:
             async with app.database.async_session_maker() as session:
@@ -535,7 +583,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                     book_meta["book_id"],
                     request.overall_rating,
                     sub_ratings,
-                    request.review_text or None
+                    request.review_text or None,
                 )
                 await app.cache.delete_book_cache(request.book_slug)
                 return app.proto.user_data_pb2.RatingResponse(
@@ -547,7 +595,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                         book_meta["author_names"],
                         book_meta["author_slugs"],
                         book_meta["series_name"],
-                        book_meta["series_slug"]
+                        book_meta["series_slug"],
                     )
                 )
         except ValueError as e:
@@ -561,7 +609,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
     async def DeleteRating(
         self,
         request: app.proto.user_data_pb2.DeleteRatingRequest,
-        context: grpc.aio.ServicerContext
+        context: grpc.aio.ServicerContext,
     ) -> app.proto.user_data_pb2.EmptyResponse:
         try:
             async with app.database.async_session_maker() as session:
@@ -582,7 +630,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
     async def GetUserRatings(
         self,
         request: app.proto.user_data_pb2.GetUserRatingsRequest,
-        context: grpc.aio.ServicerContext
+        context: grpc.aio.ServicerContext,
     ) -> app.proto.user_data_pb2.RatingsListResponse:
         try:
             async with app.database.async_session_maker() as session:
@@ -594,11 +642,15 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                     request.sort_by or "created_at",
                     request.order or "desc",
                     request.min_rating,
-                    request.max_rating
+                    request.max_rating,
                 )
 
-                meta_map = await _build_book_meta_map(session, [r.book_id for r in rows])
-                authors_map = await _build_book_authors_map(session, [r.book_id for r in rows])
+                meta_map = await _build_book_meta_map(
+                    session, [r.book_id for r in rows]
+                )
+                authors_map = await _build_book_authors_map(
+                    session, [r.book_id for r in rows]
+                )
 
                 protos = [
                     _rating_to_proto(
@@ -609,13 +661,12 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                         authors_map.get(r.book_id, ([], []))[0],
                         authors_map.get(r.book_id, ([], []))[1],
                         meta_map.get(r.book_id, {}).get("series_name", ""),
-                        meta_map.get(r.book_id, {}).get("series_slug", "")
+                        meta_map.get(r.book_id, {}).get("series_slug", ""),
                     )
                     for r in rows
                 ]
                 return app.proto.user_data_pb2.RatingsListResponse(
-                    ratings=protos,
-                    total_count=total_count
+                    ratings=protos, total_count=total_count
                 )
         except grpc.aio.AbortError:
             raise
@@ -626,7 +677,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
     async def ToggleFavourite(
         self,
         request: app.proto.user_data_pb2.ToggleFavouriteRequest,
-        context: grpc.aio.ServicerContext
+        context: grpc.aio.ServicerContext,
     ) -> app.proto.user_data_pb2.FavouriteResponse:
         try:
             async with app.database.async_session_maker() as session:
@@ -637,7 +688,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 return app.proto.user_data_pb2.FavouriteResponse(
                     is_favorite=bookshelf.is_favorite,
                     book_id=bookshelf.book_id,
-                    book_slug=request.book_slug
+                    book_slug=request.book_slug,
                 )
         except ValueError as e:
             await _handle_error(e, context)
@@ -650,23 +701,29 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
     async def GetUserFavourites(
         self,
         request: app.proto.user_data_pb2.GetUserFavouritesRequest,
-        context: grpc.aio.ServicerContext
+        context: grpc.aio.ServicerContext,
     ) -> app.proto.user_data_pb2.BookshelvesListResponse:
         try:
             async with app.database.async_session_maker() as session:
-                rows, total_count = await app.services.bookshelf_service.get_user_bookshelves(
-                    session,
-                    request.user_id,
-                    request.limit or 10,
-                    request.offset or 0,
-                    status_filter="",
-                    favourites_only=True,
-                    sort_by="created_at",
-                    order="desc"
+                rows, total_count = (
+                    await app.services.bookshelf_service.get_user_bookshelves(
+                        session,
+                        request.user_id,
+                        request.limit or 10,
+                        request.offset or 0,
+                        status_filter="",
+                        favourites_only=True,
+                        sort_by="created_at",
+                        order="desc",
+                    )
                 )
 
-                meta_map = await _build_book_meta_map(session, [r.book_id for r in rows])
-                authors_map = await _build_book_authors_map(session, [r.book_id for r in rows])
+                meta_map = await _build_book_meta_map(
+                    session, [r.book_id for r in rows]
+                )
+                authors_map = await _build_book_authors_map(
+                    session, [r.book_id for r in rows]
+                )
 
                 protos = [
                     _bookshelf_to_proto(
@@ -677,13 +734,12 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                         authors_map.get(r.book_id, ([], []))[0],
                         authors_map.get(r.book_id, ([], []))[1],
                         meta_map.get(r.book_id, {}).get("series_name", ""),
-                        meta_map.get(r.book_id, {}).get("series_slug", "")
+                        meta_map.get(r.book_id, {}).get("series_slug", ""),
                     )
                     for r in rows
                 ]
                 return app.proto.user_data_pb2.BookshelvesListResponse(
-                    bookshelves=protos,
-                    total_count=total_count
+                    bookshelves=protos, total_count=total_count
                 )
         except grpc.aio.AbortError:
             raise
@@ -694,13 +750,17 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
     async def CreateComment(
         self,
         request: app.proto.user_data_pb2.CreateCommentRequest,
-        context: grpc.aio.ServicerContext
+        context: grpc.aio.ServicerContext,
     ) -> app.proto.user_data_pb2.CommentResponse:
         try:
             async with app.database.async_session_maker() as session:
                 book_meta = await _resolve_book_meta(session, request.book_slug)
                 comment = await app.services.comment_service.create_comment(
-                    session, request.user_id, book_meta["book_id"], request.body, request.is_spoiler
+                    session,
+                    request.user_id,
+                    book_meta["book_id"],
+                    request.body,
+                    request.is_spoiler,
                 )
                 await _book_comments_cache.invalidate_by_book(book_meta["book_id"])
                 username = await _resolve_username(session, request.user_id)
@@ -714,7 +774,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                         book_meta["author_slugs"],
                         book_meta["series_name"],
                         book_meta["series_slug"],
-                        book_meta["cover_url"]
+                        book_meta["cover_url"],
                     )
                 )
         except ValueError as e:
@@ -728,12 +788,16 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
     async def UpdateComment(
         self,
         request: app.proto.user_data_pb2.UpdateCommentRequest,
-        context: grpc.aio.ServicerContext
+        context: grpc.aio.ServicerContext,
     ) -> app.proto.user_data_pb2.CommentResponse:
         try:
             async with app.database.async_session_maker() as session:
                 comment = await app.services.comment_service.update_comment(
-                    session, request.comment_id, request.user_id, request.body, request.is_spoiler
+                    session,
+                    request.comment_id,
+                    request.user_id,
+                    request.body,
+                    request.is_spoiler,
                 )
                 meta_map = await _build_book_meta_map(session, [comment.book_id])
                 authors_map = await _build_book_authors_map(session, [comment.book_id])
@@ -749,7 +813,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                         authors_map.get(comment.book_id, ([], []))[1],
                         meta_map.get(comment.book_id, {}).get("series_name", ""),
                         meta_map.get(comment.book_id, {}).get("series_slug", ""),
-                        meta_map.get(comment.book_id, {}).get("cover_url", "")
+                        meta_map.get(comment.book_id, {}).get("cover_url", ""),
                     )
                 )
         except ValueError as e:
@@ -763,7 +827,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
     async def DeleteComment(
         self,
         request: app.proto.user_data_pb2.DeleteCommentRequest,
-        context: grpc.aio.ServicerContext
+        context: grpc.aio.ServicerContext,
     ) -> app.proto.user_data_pb2.EmptyResponse:
         try:
             async with app.database.async_session_maker() as session:
@@ -771,7 +835,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                     sqlalchemy.text(
                         "SELECT book_id FROM user_data.comments WHERE comment_id = :id"
                     ),
-                    {"id": request.comment_id}
+                    {"id": request.comment_id},
                 )
                 book_id_row = book_id_result.fetchone()
                 await app.services.comment_service.delete_comment(
@@ -791,34 +855,50 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
     async def GetUserComments(
         self,
         request: app.proto.user_data_pb2.GetUserCommentsRequest,
-        context: grpc.aio.ServicerContext
+        context: grpc.aio.ServicerContext,
     ) -> app.proto.user_data_pb2.CommentsListResponse:
         try:
             async with app.database.async_session_maker() as session:
                 filter_book_id: typing.Optional[int] = None
                 filter_book_meta: typing.Dict[str, typing.Any] = {}
                 if request.book_slug:
-                    filter_book_meta = await _resolve_book_meta(session, request.book_slug)
+                    filter_book_meta = await _resolve_book_meta(
+                        session, request.book_slug
+                    )
                     filter_book_id = filter_book_meta["book_id"]
 
-                rows, total_count = await app.services.comment_service.get_user_comments(
-                    session,
-                    request.user_id,
-                    request.limit or 10,
-                    request.offset or 0,
-                    request.sort_by or "created_at",
-                    request.order or "desc",
-                    filter_book_id
+                rows, total_count = (
+                    await app.services.comment_service.get_user_comments(
+                        session,
+                        request.user_id,
+                        request.limit or 10,
+                        request.offset or 0,
+                        request.sort_by or "created_at",
+                        request.order or "desc",
+                        filter_book_id,
+                    )
                 )
 
                 if filter_book_meta:
                     meta_map = {r.book_id: filter_book_meta for r in rows}
-                    authors_map = {r.book_id: (filter_book_meta["author_names"], filter_book_meta["author_slugs"]) for r in rows}
+                    authors_map = {
+                        r.book_id: (
+                            filter_book_meta["author_names"],
+                            filter_book_meta["author_slugs"],
+                        )
+                        for r in rows
+                    }
                 else:
-                    meta_map = await _build_book_meta_map(session, [r.book_id for r in rows])
-                    authors_map = await _build_book_authors_map(session, [r.book_id for r in rows])
+                    meta_map = await _build_book_meta_map(
+                        session, [r.book_id for r in rows]
+                    )
+                    authors_map = await _build_book_authors_map(
+                        session, [r.book_id for r in rows]
+                    )
 
-                username = await _resolve_username(session, request.user_id) if rows else ""
+                username = (
+                    await _resolve_username(session, request.user_id) if rows else ""
+                )
                 protos = [
                     _comment_to_proto(
                         r,
@@ -829,13 +909,12 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                         authors_map.get(r.book_id, ([], []))[1],
                         meta_map.get(r.book_id, {}).get("series_name", ""),
                         meta_map.get(r.book_id, {}).get("series_slug", ""),
-                        meta_map.get(r.book_id, {}).get("cover_url", "")
+                        meta_map.get(r.book_id, {}).get("cover_url", ""),
                     )
                     for r in rows
                 ]
                 return app.proto.user_data_pb2.CommentsListResponse(
-                    comments=protos,
-                    total_count=total_count
+                    comments=protos, total_count=total_count
                 )
         except ValueError as e:
             await _handle_error(e, context)
@@ -848,21 +927,32 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
     async def GetUserBookInfo(
         self,
         request: app.proto.user_data_pb2.GetUserBookInfoRequest,
-        context: grpc.aio.ServicerContext
+        context: grpc.aio.ServicerContext,
     ) -> app.proto.user_data_pb2.UserBookInfoResponse:
         try:
             async with app.database.async_session_maker() as session:
                 book_meta = await _resolve_book_meta(session, request.book_slug)
 
-                bookshelf = await app.services.bookshelf_service.get_bookshelf(
-                    session, request.user_id, book_meta["book_id"]
-                )
-                rating = await app.services.rating_service.get_rating(
-                    session, request.user_id, book_meta["book_id"]
-                )
-                comment = await app.services.comment_service.get_comment_for_book(
-                    session, request.user_id, book_meta["book_id"]
-                )
+                try:
+                    bookshelf = await app.services.bookshelf_service.get_bookshelf(
+                        session, request.user_id, book_meta["book_id"]
+                    )
+                except ValueError:
+                    bookshelf = None
+
+                try:
+                    rating = await app.services.rating_service.get_rating(
+                        session, request.user_id, book_meta["book_id"]
+                    )
+                except ValueError:
+                    rating = None
+
+                try:
+                    comment = await app.services.comment_service.get_comment_for_book(
+                        session, request.user_id, book_meta["book_id"]
+                    )
+                except ValueError:
+                    comment = None
 
                 kwargs: typing.Dict[str, typing.Any] = {}
                 if bookshelf is not None:
@@ -874,7 +964,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                         book_meta["author_names"],
                         book_meta["author_slugs"],
                         book_meta["series_name"],
-                        book_meta["series_slug"]
+                        book_meta["series_slug"],
                     )
                 if rating is not None:
                     kwargs["rating"] = _rating_to_proto(
@@ -885,7 +975,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                         book_meta["author_names"],
                         book_meta["author_slugs"],
                         book_meta["series_name"],
-                        book_meta["series_slug"]
+                        book_meta["series_slug"],
                     )
                 if comment is not None:
                     username = await _resolve_username(session, request.user_id)
@@ -898,7 +988,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                         book_meta["author_slugs"],
                         book_meta["series_name"],
                         book_meta["series_slug"],
-                        book_meta["cover_url"]
+                        book_meta["cover_url"],
                     )
 
                 return app.proto.user_data_pb2.UserBookInfoResponse(**kwargs)
@@ -913,7 +1003,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
     async def GetBookComments(
         self,
         request: app.proto.user_data_pb2.GetBookCommentsRequest,
-        context: grpc.aio.ServicerContext
+        context: grpc.aio.ServicerContext,
     ) -> app.proto.user_data_pb2.BookCommentsResponse:
         try:
             limit = request.limit or 10
@@ -925,12 +1015,17 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
 
             async with app.database.async_session_maker() as session:
                 book_result = await session.execute(
-                    sqlalchemy.text("SELECT book_id FROM books.books WHERE slug = :slug"),
-                    {"slug": request.book_slug}
+                    sqlalchemy.text(
+                        "SELECT book_id FROM books.books WHERE slug = :slug"
+                    ),
+                    {"slug": request.book_slug},
                 )
                 book_row = book_result.fetchone()
                 if book_row is None:
-                    await context.abort(grpc.StatusCode.NOT_FOUND, f"Book not found: {request.book_slug}")
+                    await context.abort(
+                        grpc.StatusCode.NOT_FOUND,
+                        f"Book not found: {request.book_slug}",
+                    )
                     return
                 book_id = book_row.book_id
 
@@ -940,7 +1035,9 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 if cached is None:
                     where = "c.book_id = :book_id AND c.is_deleted = FALSE"
                     params: typing.Dict[str, typing.Any] = {
-                        "book_id": book_id, "limit": limit, "offset": offset
+                        "book_id": book_id,
+                        "limit": limit,
+                        "offset": offset,
                     }
                     if not include_spoilers:
                         where += " AND c.is_spoiler = FALSE"
@@ -949,12 +1046,13 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                         sqlalchemy.text(
                             f"SELECT COUNT(*) FROM user_data.comments c WHERE {where}"
                         ),
-                        params
+                        params,
                     )
                     total_count = count_result.scalar_one()
 
                     rows_result = await session.execute(
-                        sqlalchemy.text(f"""
+                        sqlalchemy.text(
+                            f"""
                             SELECT c.comment_id, c.user_id, c.book_id, c.body, c.is_spoiler,
                                    c.created_at, c.updated_at,
                                    r.overall_rating, r.review_text, r.pacing, r.emotional_impact,
@@ -968,20 +1066,24 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                             WHERE {where}
                             ORDER BY {sort_col} {order_dir} NULLS LAST, c.created_at DESC
                             LIMIT :limit OFFSET :offset
-                        """),
-                        params
+                        """
+                        ),
+                        params,
                     )
                     rows = rows_result.fetchall()
                     cached = (total_count, rows)
                     await _book_comments_cache.set(cache_key, cached)
 
                 total_count, rows = cached
-                comments = [_row_to_comment_with_rating(row, request.book_slug) for row in rows]
+                comments = [
+                    _row_to_comment_with_rating(row, request.book_slug) for row in rows
+                ]
 
                 my_entry = None
                 if request.requesting_user_id:
                     my_row_result = await session.execute(
-                        sqlalchemy.text("""
+                        sqlalchemy.text(
+                            """
                             SELECT c.comment_id, c.user_id, c.book_id, c.body, c.is_spoiler,
                                    c.created_at, c.updated_at,
                                    r.overall_rating, r.review_text, r.pacing, r.emotional_impact,
@@ -994,16 +1096,19 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                             LEFT JOIN auth.users a ON a.user_id = c.user_id
                             WHERE c.user_id = :user_id AND c.book_id = :book_id
                               AND c.is_deleted = FALSE
-                        """),
-                        {"user_id": request.requesting_user_id, "book_id": book_id}
+                        """
+                        ),
+                        {"user_id": request.requesting_user_id, "book_id": book_id},
                     )
                     my_row = my_row_result.fetchone()
                     if my_row:
-                        my_entry = _row_to_comment_with_rating(my_row, request.book_slug)
+                        my_entry = _row_to_comment_with_rating(
+                            my_row, request.book_slug
+                        )
 
                 kwargs: typing.Dict[str, typing.Any] = {
                     "comments": comments,
-                    "total_count": total_count
+                    "total_count": total_count,
                 }
                 if my_entry is not None:
                     kwargs["my_entry"] = my_entry
@@ -1012,17 +1117,21 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
             raise
         except Exception as e:
             logger.error(f"Error in GetBookComments: {e}")
-            await context.abort(grpc.StatusCode.INTERNAL, f"Get book comments failed: {e}")
+            await context.abort(
+                grpc.StatusCode.INTERNAL, f"Get book comments failed: {e}"
+            )
 
     async def GetPublicProfileStats(
         self,
         request: app.proto.user_data_pb2.GetPublicProfileStatsRequest,
-        context: grpc.aio.ServicerContext
+        context: grpc.aio.ServicerContext,
     ) -> app.proto.user_data_pb2.ProfileStatsResponse:
         try:
             async with app.database.async_session_maker() as session:
                 user_id = await _resolve_user(session, request.username)
-                stats = await app.services.stats_service.get_user_stats(session, user_id)
+                stats = await app.services.stats_service.get_user_stats(
+                    session, user_id
+                )
                 if stats is None:
                     return app.proto.user_data_pb2.ProfileStatsResponse(
                         stats=app.proto.user_data_pb2.ProfileStats()
@@ -1035,7 +1144,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                         abandoned_count=stats.abandoned_count,
                         favourites_count=stats.favourites_count,
                         ratings_count=stats.ratings_count,
-                        comments_count=stats.comments_count
+                        comments_count=stats.comments_count,
                     )
                 )
         except ValueError as e:
@@ -1049,18 +1158,26 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
     async def DeleteUserData(
         self,
         request: app.proto.user_data_pb2.DeleteUserDataRequest,
-        context: grpc.aio.ServicerContext
+        context: grpc.aio.ServicerContext,
     ) -> app.proto.user_data_pb2.EmptyResponse:
         try:
             async with app.database.async_session_maker() as session:
-                comment_book_ids = await app.services.comment_service.delete_user_comments(
+                comment_book_ids = (
+                    await app.services.comment_service.delete_user_comments(
+                        session, request.user_id
+                    )
+                )
+                await app.services.rating_service.delete_user_ratings(
                     session, request.user_id
                 )
-                await app.services.rating_service.delete_user_ratings(session, request.user_id)
-                await app.services.bookshelf_service.delete_user_bookshelves(session, request.user_id)
+                await app.services.bookshelf_service.delete_user_bookshelves(
+                    session, request.user_id
+                )
                 await session.execute(
-                    sqlalchemy.text("DELETE FROM user_data.user_stats WHERE user_id = :user_id"),
-                    {"user_id": request.user_id}
+                    sqlalchemy.text(
+                        "DELETE FROM user_data.user_stats WHERE user_id = :user_id"
+                    ),
+                    {"user_id": request.user_id},
                 )
                 await session.commit()
 
@@ -1072,12 +1189,13 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
             raise
         except Exception as e:
             logger.error(f"Error in DeleteUserData: {e}")
-            await context.abort(grpc.StatusCode.INTERNAL, f"Delete user data failed: {e}")
+            await context.abort(
+                grpc.StatusCode.INTERNAL, f"Delete user data failed: {e}"
+            )
 
 
 async def _build_book_meta_map(
-    session,
-    book_ids: typing.List[int]
+    session, book_ids: typing.List[int]
 ) -> typing.Dict[int, typing.Dict[str, typing.Any]]:
     if not book_ids:
         return {}
@@ -1090,7 +1208,7 @@ async def _build_book_meta_map(
             "LEFT JOIN books.series s ON s.series_id = b.series_id "
             "WHERE b.book_id = ANY(:ids)"
         ),
-        {"ids": unique_ids}
+        {"ids": unique_ids},
     )
     return {
         row.book_id: {
@@ -1098,15 +1216,14 @@ async def _build_book_meta_map(
             "title": row.title or "",
             "cover_url": row.primary_cover_url or "",
             "series_name": row.series_name or "",
-            "series_slug": row.series_slug or ""
+            "series_slug": row.series_slug or "",
         }
         for row in result.fetchall()
     }
 
 
 async def _build_book_authors_map(
-    session,
-    book_ids: typing.List[int]
+    session, book_ids: typing.List[int]
 ) -> typing.Dict[int, typing.Tuple[typing.List[str], typing.List[str]]]:
     if not book_ids:
         return {}
@@ -1119,7 +1236,7 @@ async def _build_book_authors_map(
             "WHERE ba.book_id = ANY(:ids) "
             "ORDER BY ba.book_id"
         ),
-        {"ids": unique_ids}
+        {"ids": unique_ids},
     )
     authors_map: typing.Dict[int, typing.Tuple[typing.List[str], typing.List[str]]] = {}
     for row in result.fetchall():
@@ -1131,42 +1248,46 @@ async def _build_book_authors_map(
 
 
 async def _build_book_slug_map(
-    session,
-    book_ids: typing.List[int]
+    session, book_ids: typing.List[int]
 ) -> typing.Dict[int, str]:
     if not book_ids:
         return {}
     unique_ids = list(set(book_ids))
     result = await session.execute(
-        sqlalchemy.text("SELECT book_id, slug FROM books.books WHERE book_id = ANY(:ids)"),
-        {"ids": unique_ids}
+        sqlalchemy.text(
+            "SELECT book_id, slug FROM books.books WHERE book_id = ANY(:ids)"
+        ),
+        {"ids": unique_ids},
     )
     return {row.book_id: row.slug for row in result.fetchall()}
 
 
 async def _build_book_title_map(
-    session,
-    book_ids: typing.List[int]
+    session, book_ids: typing.List[int]
 ) -> typing.Dict[int, str]:
     if not book_ids:
         return {}
     unique_ids = list(set(book_ids))
     result = await session.execute(
-        sqlalchemy.text("SELECT book_id, title FROM books.books WHERE book_id = ANY(:ids)"),
-        {"ids": unique_ids}
+        sqlalchemy.text(
+            "SELECT book_id, title FROM books.books WHERE book_id = ANY(:ids)"
+        ),
+        {"ids": unique_ids},
     )
     return {row.book_id: (row.title or "") for row in result.fetchall()}
 
 
 async def _build_book_cover_map(
-    session,
-    book_ids: typing.List[int]
+    session, book_ids: typing.List[int]
 ) -> typing.Dict[int, str]:
     if not book_ids:
         return {}
     unique_ids = list(set(book_ids))
     result = await session.execute(
-        sqlalchemy.text("SELECT book_id, primary_cover_url FROM books.books WHERE book_id = ANY(:ids)"),
-        {"ids": unique_ids}
+        sqlalchemy.text(
+            "SELECT book_id, primary_cover_url FROM books.books WHERE book_id = ANY(:ids)"
+        ),
+        {"ids": unique_ids},
     )
+    return {row.book_id: (row.primary_cover_url or "") for row in result.fetchall()}
     return {row.book_id: (row.primary_cover_url or "") for row in result.fetchall()}

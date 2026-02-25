@@ -44,7 +44,7 @@ async def fetch_wikipedia_description(
                 "titles": page_title,
                 "prop": "extracts",
                 "exintro": True,
-                "exsentences": 3,
+                "exsentences": 5,
                 "explaintext": True,
                 "format": "json",
             },
@@ -66,6 +66,31 @@ async def fetch_wikipedia_description(
         return None
 
 
+async def _run_wikipedia_enrichment(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    entity_ids: list,
+    search_terms: list[str],
+    update_sql: str,
+    id_param: str,
+    min_length: int,
+) -> int:
+    updated = 0
+    async with httpx.AsyncClient(
+        timeout=10.0, headers={"User-Agent": "Minsik/1.0 (contact@minsik.app)"}
+    ) as client:
+        for entity_id, search_term in zip(entity_ids, search_terms):
+            description = await fetch_wikipedia_description(search_term, client)
+            if description and len(description) >= min_length:
+                await session.execute(
+                    sqlalchemy.text(update_sql),
+                    {"desc": description, id_param: entity_id},
+                )
+                updated += 1
+    if updated > 0:
+        await session.commit()
+    return updated
+
+
 async def enrich_books(
     session: sqlalchemy.ext.asyncio.AsyncSession, batch_size: int, min_length: int
 ) -> int:
@@ -83,38 +108,26 @@ async def enrich_books(
         {"min_len": min_length, "limit": batch_size},
     )
     rows = result.fetchall()
-
     if not rows:
         return 0
 
-    updated = 0
-    async with httpx.AsyncClient(
-        timeout=10.0, headers={"User-Agent": "Minsik/1.0 (contact@minsik.app)"}
-    ) as client:
-        for row in rows:
-            book_id = row.book_id
-            title = row.title
-            author_name = row.author_name
-
-            search_term = (
-                f"{title} {author_name} novel" if author_name else f"{title} novel"
-            )
-            description = await fetch_wikipedia_description(search_term, client)
-
-            if description and len(description) >= min_length:
-                await session.execute(
-                    sqlalchemy.text(
-                        "UPDATE books.books SET description = :desc, updated_at = NOW() "
-                        "WHERE book_id = :book_id"
-                    ),
-                    {"desc": description, "book_id": book_id},
-                )
-                updated += 1
-
-    if updated > 0:
-        await session.commit()
-
-    return updated
+    entity_ids = [row.book_id for row in rows]
+    search_terms = [
+        (
+            f"{row.title} {row.author_name} novel"
+            if row.author_name
+            else f"{row.title} novel"
+        )
+        for row in rows
+    ]
+    return await _run_wikipedia_enrichment(
+        session,
+        entity_ids,
+        search_terms,
+        "UPDATE books.books SET description = :desc, updated_at = NOW() WHERE book_id = :book_id",
+        "book_id",
+        min_length,
+    )
 
 
 async def enrich_authors(
@@ -130,34 +143,19 @@ async def enrich_authors(
         {"min_len": min_length, "limit": batch_size},
     )
     rows = result.fetchall()
-
     if not rows:
         return 0
 
-    updated = 0
-    async with httpx.AsyncClient(
-        timeout=10.0, headers={"User-Agent": "Minsik/1.0 (contact@minsik.app)"}
-    ) as client:
-        for row in rows:
-            author_id = row.author_id
-            name = row.name
-
-            description = await fetch_wikipedia_description(f"{name} author", client)
-
-            if description and len(description) >= min_length:
-                await session.execute(
-                    sqlalchemy.text(
-                        "UPDATE books.authors SET bio = :bio, updated_at = NOW() "
-                        "WHERE author_id = :author_id"
-                    ),
-                    {"bio": description, "author_id": author_id},
-                )
-                updated += 1
-
-    if updated > 0:
-        await session.commit()
-
-    return updated
+    entity_ids = [row.author_id for row in rows]
+    search_terms = [f"{row.name} author" for row in rows]
+    return await _run_wikipedia_enrichment(
+        session,
+        entity_ids,
+        search_terms,
+        "UPDATE books.authors SET bio = :desc, updated_at = NOW() WHERE author_id = :author_id",
+        "author_id",
+        min_length,
+    )
 
 
 async def enrich_series(
@@ -173,36 +171,19 @@ async def enrich_series(
         {"min_len": min_length, "limit": batch_size},
     )
     rows = result.fetchall()
-
     if not rows:
         return 0
 
-    updated = 0
-    async with httpx.AsyncClient(
-        timeout=10.0, headers={"User-Agent": "Minsik/1.0 (contact@minsik.app)"}
-    ) as client:
-        for row in rows:
-            series_id = row.series_id
-            name = row.name
-
-            description = await fetch_wikipedia_description(
-                f"{name} book series", client
-            )
-
-            if description and len(description) >= min_length:
-                await session.execute(
-                    sqlalchemy.text(
-                        "UPDATE books.series SET description = :desc, updated_at = NOW() "
-                        "WHERE series_id = :series_id"
-                    ),
-                    {"desc": description, "series_id": series_id},
-                )
-                updated += 1
-
-    if updated > 0:
-        await session.commit()
-
-    return updated
+    entity_ids = [row.series_id for row in rows]
+    search_terms = [f"{row.name} book series" for row in rows]
+    return await _run_wikipedia_enrichment(
+        session,
+        entity_ids,
+        search_terms,
+        "UPDATE books.series SET description = :desc, updated_at = NOW() WHERE series_id = :series_id",
+        "series_id",
+        min_length,
+    )
 
 
 async def run_description_enrichment_loop(shutdown_event: asyncio.Event) -> None:
@@ -220,6 +201,25 @@ async def run_description_enrichment_loop(shutdown_event: asyncio.Event) -> None
             or not app.config.settings.description_enrich_enabled
         ):
             break
+
+        try:
+            import redis as _redis
+
+            _rc = _redis.Redis(
+                host=app.config.settings.redis_host,
+                port=app.config.settings.redis_port,
+                db=app.config.settings.redis_db,
+                password=(
+                    app.config.settings.redis_password
+                    if app.config.settings.redis_password
+                    else None
+                ),
+            )
+            if _rc.get("dump_import_running"):
+                logger.info("Skipping description enrichment: dump import in progress")
+                continue
+        except Exception:
+            pass
 
         try:
             batch_size = app.config.settings.description_enrich_batch_size

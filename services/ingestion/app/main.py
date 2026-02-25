@@ -27,13 +27,13 @@ async def run_migrations():
 
     alembic_ini = os.path.join(os.path.dirname(__file__), "..", "alembic.ini")
 
-    # Skip migrations if alembic.ini doesn't exist
     if not os.path.exists(alembic_ini):
         logger.debug("No alembic.ini found, skipping migrations")
         return
 
     try:
-        result = subprocess.run(
+        result = await asyncio.to_thread(
+            subprocess.run,
             ["alembic", "upgrade", "head"],
             cwd=os.path.dirname(alembic_ini),
             capture_output=True,
@@ -71,9 +71,9 @@ async def clear_stale_import_flag():
             r.delete("dump_import_running")
             logger.info("Cleared stale dump_import_running flag from previous run")
 
-        from app.workers import dump_importer
+        from app.workers import dump
 
-        state = dump_importer._get_job_state(r)
+        state = dump.get_job_state(r)
         if state and len(state.get("completed_phases", [])) < 6:
             logger.info(
                 f"Resumable dump job detected (job_id: {state['job_id']}), "
