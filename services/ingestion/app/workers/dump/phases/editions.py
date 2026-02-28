@@ -290,15 +290,44 @@ async def _flush_edition_updates(
         else:
             new_lang_updates.append(update)
 
+    series_name_to_id: dict[str, int] = {}
+    unique_series: dict[str, dict] = {}
+    for u in existing_updates + new_lang_updates:
+        series = u.get("series")
+        if series and series.get("name"):
+            slug = app.utils.slugify(series["name"])
+            if slug and slug not in unique_series:
+                unique_series[slug] = {"name": series["name"][:500], "slug": slug}
+
+    if unique_series:
+        stmt = postgresql_insert(app.models.Series).values(list(unique_series.values()))
+        stmt = stmt.on_conflict_do_update(
+            index_elements=["slug"],
+            set_={"name": stmt.excluded.name},
+        )
+        stmt = stmt.returning(app.models.Series.slug, app.models.Series.series_id)
+        result = await session.execute(stmt)
+        for row in result:
+            series_name_to_id[row.slug] = row.series_id
+
     batch_size = 500
     for i in range(0, len(existing_updates), batch_size):
         sub = existing_updates[i : i + batch_size]
         values_parts: list[str] = []
         params: dict[str, typing.Any] = {}
         for k, u in enumerate(sub):
+            series = u.get("series")
+            series_id = None
+            series_pos = None
+            if series and series.get("name"):
+                series_slug = app.utils.slugify(series["name"])
+                series_id = series_name_to_id.get(series_slug)
+                series_pos = series.get("position")
+
             values_parts.append(
                 f"(:bid_{k}::bigint, :isbn_{k}::jsonb, :pages_{k}::int, "
-                f":pub_{k}, :ext_{k}::jsonb, :cover_{k}, :desc_{k}, :fmt_{k}::jsonb)"
+                f":pub_{k}, :ext_{k}::jsonb, :cover_{k}, :desc_{k}, :fmt_{k}::jsonb, "
+                f":sid_{k}::bigint, :spos_{k}::numeric)"
             )
             params[f"bid_{k}"] = u["book_id"]
             params[f"isbn_{k}"] = json.dumps(u["isbn"]) if u["isbn"] else None
@@ -312,6 +341,8 @@ async def _flush_edition_updates(
             params[f"fmt_{k}"] = (
                 json.dumps([u["physical_format"]]) if u["physical_format"] else None
             )
+            params[f"sid_{k}"] = series_id
+            params[f"spos_{k}"] = series_pos
 
         try:
             await session.execute(
@@ -326,9 +357,13 @@ async def _flush_edition_updates(
                     "description = COALESCE(b.description, v.descr), "
                     "formats = CASE "
                     "WHEN v.fmt IS NOT NULL AND NOT b.formats @> v.fmt "
-                    "THEN b.formats || v.fmt ELSE b.formats END "
+                    "THEN b.formats || v.fmt ELSE b.formats END, "
+                    "series_id = CASE WHEN b.series_id IS NULL AND v.sid IS NOT NULL "
+                    "THEN v.sid ELSE b.series_id END, "
+                    "series_position = CASE WHEN b.series_position IS NULL "
+                    "AND v.spos IS NOT NULL THEN v.spos ELSE b.series_position END "
                     f"FROM (VALUES {', '.join(values_parts)}) "
-                    "AS v(bid, isbn, pages, pub, ext, cover, descr, fmt) "
+                    "AS v(bid, isbn, pages, pub, ext, cover, descr, fmt, sid, spos) "
                     "WHERE b.book_id = v.bid"
                 ),
                 params,
@@ -338,7 +373,7 @@ async def _flush_edition_updates(
 
     for update in new_lang_updates:
         try:
-            await _insert_new_language_row(session, update)
+            await _insert_new_language_row(session, update, series_name_to_id)
         except Exception as e:
             logger.debug(f"Error inserting new language row: {e}")
 
@@ -346,6 +381,7 @@ async def _flush_edition_updates(
 async def _insert_new_language_row(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     update: dict,
+    series_name_to_id: dict[str, int],
 ) -> None:
     source_id = update["source_book_id"]
     lang = update["lang_code"]
@@ -372,7 +408,16 @@ async def _insert_new_language_row(
     publisher = update["publisher"]
     if isinstance(publisher, str):
         publisher = publisher[:500]
-    series_position = source.series_position
+
+    edition_series = update.get("series")
+    if edition_series and edition_series.get("name"):
+        series_slug = app.utils.slugify(edition_series["name"])
+        series_id = series_name_to_id.get(series_slug)
+        series_position = edition_series.get("position")
+    else:
+        series_id = source.series_id
+        series_position = source.series_position
+
     if isinstance(series_position, (int, float)) and series_position > 999.99:
         series_position = None
 
@@ -389,7 +434,7 @@ async def _insert_new_language_row(
         "number_of_pages": update["number_of_pages"],
         "external_ids": update["external_ids"] or {},
         "formats": ([update["physical_format"]] if update["physical_format"] else []),
-        "series_id": source.series_id,
+        "series_id": series_id,
         "series_position": series_position,
     }
 

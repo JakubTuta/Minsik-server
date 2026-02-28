@@ -57,8 +57,8 @@ class Settings(BaseSettings):
     dump_reading_log_enabled: bool = Field(default=True)
     dump_wikidata_enabled: bool = Field(default=True)
     dump_edition_flush_interval: int = Field(default=5_000_000)
-    dump_work_min_quality_score: int = Field(default=2)
-    dump_author_min_quality_score: int = Field(default=1)
+    dump_work_min_quality_score: int = Field(default=3)
+    dump_author_min_quality_score: int = Field(default=2)
 
     cleanup_enabled: bool = Field(default=True)
     cleanup_interval_hours: int = Field(default=12)

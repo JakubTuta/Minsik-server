@@ -70,10 +70,13 @@ async def process_authors_dump(file_path: str) -> int:
                         ][:20]
 
                         ol_id = author_data.get("key", "").replace("/authors/", "")
+                        slug = app.utils.slugify(name)
+                        if not slug:
+                            continue
 
                         author_entry = {
                             "name": name,
-                            "slug": app.utils.slugify(name),
+                            "slug": slug,
                             "bio": bio,
                             "birth_date": parsers.parse_free_date(
                                 author_data.get("birth_date")

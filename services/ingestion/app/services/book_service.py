@@ -12,6 +12,7 @@ import app.models.genre
 import app.models.series
 import app.utils
 import sqlalchemy
+import sqlalchemy.exc
 import sqlalchemy.ext.asyncio
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 
@@ -223,6 +224,8 @@ async def _bulk_insert_authors(
             }
         )
 
+    insert_data.sort(key=lambda r: r["slug"])
+
     stmt = postgresql_insert(app.models.author.Author).values(insert_data)
     stmt = stmt.on_conflict_do_update(
         index_elements=["slug"],
@@ -298,6 +301,7 @@ async def _bulk_insert_genres(
     new_slugs = [s for s in dedup_cache["genres"] if s not in genre_id_cache]
     if new_slugs:
         insert_data = [dedup_cache["genres"][s] for s in new_slugs]
+        insert_data.sort(key=lambda r: r["slug"])
         stmt = postgresql_insert(app.models.genre.Genre).values(insert_data)
         stmt = stmt.on_conflict_do_update(
             index_elements=["slug"],
@@ -336,6 +340,7 @@ async def _bulk_insert_series(
             }
             for s in new_slugs
         ]
+        insert_data.sort(key=lambda r: r["slug"])
         stmt = postgresql_insert(app.models.series.Series).values(insert_data)
         stmt = stmt.on_conflict_do_update(
             index_elements=["slug"], set_={"description": stmt.excluded.description}

@@ -1,4 +1,5 @@
 import asyncio
+import ctypes
 import gc
 import logging
 
@@ -6,12 +7,22 @@ import app.config
 import app.models
 import app.utils
 import sqlalchemy
+import sqlalchemy.exc
 import sqlalchemy.ext.asyncio
 from app.workers.dump import parsers
 
 logger = logging.getLogger(__name__)
 
-_SESSION_RECYCLE_AFTER_COMMITS = 5
+_SESSION_RECYCLE_AFTER_COMMITS = 2
+_DEADLOCK_MAX_RETRIES = 3
+_DEADLOCK_RETRY_DELAY = 2.0
+
+
+def _trim_heap() -> None:
+    try:
+        ctypes.cdll.LoadLibrary("libc.so.6").malloc_trim(0)
+    except Exception:
+        pass
 
 
 async def _open_session() -> sqlalchemy.ext.asyncio.AsyncSession:
@@ -121,6 +132,10 @@ async def process_works_dump(file_path: str) -> int:
                     cover_url = parsers.extract_cover_url(work_data.get("covers"))
                     work_ol_id = work_data.get("key", "").replace("/works/", "")
 
+                    if not authors_list:
+                        failed += 1
+                        continue
+
                     work_entry = {
                         "title": title,
                         "language": "en",
@@ -149,34 +164,53 @@ async def process_works_dump(file_path: str) -> int:
                     failed += 1
 
             if books_to_insert:
-                try:
-                    prebuilt_author_id_map = {
-                        slug: aid for aid, _name, slug in author_lookup.values()
-                    }
-                    result = await book_service.insert_books_batch(
-                        session,
-                        books_to_insert,
-                        commit=False,
-                        author_id_map=prebuilt_author_id_map,
-                        genre_id_cache=genre_id_cache,
-                        series_id_cache=series_id_cache,
-                    )
-                    successful += result["successful"]
-                    failed += result["failed"]
-                except Exception as e:
-                    logger.error(f"[dump] Error batch inserting works: {e}")
-                    await session.rollback()
-                    failed += len(books_to_insert)
-                    continue
+                retries = 0
+                while True:
+                    try:
+                        prebuilt_author_id_map = {
+                            slug: aid for aid, _name, slug in author_lookup.values()
+                        }
+                        result = await book_service.insert_books_batch(
+                            session,
+                            books_to_insert,
+                            commit=False,
+                            author_id_map=prebuilt_author_id_map,
+                            genre_id_cache=genre_id_cache,
+                            series_id_cache=series_id_cache,
+                        )
+                        successful += result["successful"]
+                        failed += result["failed"]
+                        break
+                    except sqlalchemy.exc.DBAPIError as e:
+                        is_deadlock = "deadlock" in str(e).lower()
+                        if is_deadlock and retries < _DEADLOCK_MAX_RETRIES:
+                            retries += 1
+                            logger.warning(
+                                f"[dump] Deadlock on genre/author upsert, "
+                                f"retry {retries}/{_DEADLOCK_MAX_RETRIES}"
+                            )
+                            await asyncio.sleep(_DEADLOCK_RETRY_DELAY * retries)
+                            continue
+                        logger.error(f"[dump] Error batch inserting works: {e}")
+                        failed += len(books_to_insert)
+                        break
+                    except Exception as e:
+                        logger.error(f"[dump] Error batch inserting works: {e}")
+                        failed += len(books_to_insert)
+                        break
 
             if total_count - last_committed >= commit_interval:
                 await session.commit()
                 commits_since_recycle += 1
                 last_committed = total_count
+                gc.collect()
 
                 if commits_since_recycle >= _SESSION_RECYCLE_AFTER_COMMITS:
                     await session.close()
+                    genre_id_cache.clear()
+                    series_id_cache.clear()
                     gc.collect()
+                    _trim_heap()
                     session = await _open_session()
                     commits_since_recycle = 0
                 else:

@@ -215,7 +215,9 @@ async def run_description_enrichment_loop(shutdown_event: asyncio.Event) -> None
                     else None
                 ),
             )
-            if _rc.get("dump_import_running"):
+            dump_running = bool(_rc.get("dump_import_running"))
+            _rc.close()
+            if dump_running:
                 logger.info("Skipping description enrichment: dump import in progress")
                 continue
         except Exception:

@@ -79,7 +79,7 @@ async def run_import_dump(job_id: str, redis_client: redis.Redis) -> None:
 
     try:
         try:
-            redis_client.set("dump_import_running", 1, ex=86400)
+            redis_client.set("dump_import_running", 1)
         except Exception:
             pass
 
