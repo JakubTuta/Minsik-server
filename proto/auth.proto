@@ -10,6 +10,7 @@ service AuthService {
   rpc GetCurrentUser(GetCurrentUserRequest) returns (UserResponse);
   rpc UpdateProfile(UpdateProfileRequest) returns (UserResponse);
   rpc DeleteAccount(DeleteAccountRequest) returns (EmptyResponse);
+  rpc GoogleAuth(GoogleAuthRequest) returns (AuthResponse);
 }
 
 message RegisterRequest {
@@ -54,6 +55,11 @@ message UpdateProfileRequest {
 
 message DeleteAccountRequest {
   int64 user_id = 1;
+}
+
+message GoogleAuthRequest {
+  string code = 1;
+  string redirect_uri = 2;
 }
 
 message User {

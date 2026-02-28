@@ -27,6 +27,11 @@ class Settings(BaseSettings):
     max_failed_login_attempts: int = Field(default=5)
     lockout_duration_minutes: int = Field(default=30)
 
+    google_client_id: str = Field(default="")
+    google_client_secret: str = Field(default="")
+    google_token_url: str = Field(default="https://oauth2.googleapis.com/token")
+    google_userinfo_url: str = Field(default="https://www.googleapis.com/oauth2/v3/userinfo")
+
     class Config:
         env_file = ".env"
         case_sensitive = False

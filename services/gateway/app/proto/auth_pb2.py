@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\nauth.proto\x12\x07\x61uth.v1\"D\n\x0fRegisterRequest\x12\r\n\x05\x65mail\x18\x01 \x01(\t\x12\x10\n\x08username\x18\x02 \x01(\t\x12\x10\n\x08password\x18\x03 \x01(\t\"/\n\x0cLoginRequest\x12\r\n\x05\x65mail\x18\x01 \x01(\t\x12\x10\n\x08password\x18\x02 \x01(\t\"&\n\rLogoutRequest\x12\x15\n\rrefresh_token\x18\x01 \x01(\t\",\n\x13RefreshTokenRequest\x12\x15\n\rrefresh_token\x18\x01 \x01(\t\",\n\x14ValidateTokenRequest\x12\x14\n\x0c\x61\x63\x63\x65ss_token\x18\x01 \x01(\t\"E\n\x15ValidateTokenResponse\x12\r\n\x05valid\x18\x01 \x01(\x08\x12\x0f\n\x07user_id\x18\x02 \x01(\x03\x12\x0c\n\x04role\x18\x03 \x01(\t\"(\n\x15GetCurrentUserRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\x03\"^\n\x14UpdateProfileRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\x03\x12\x14\n\x0c\x64isplay_name\x18\x02 \x01(\t\x12\x0b\n\x03\x62io\x18\x03 \x01(\t\x12\x12\n\navatar_url\x18\x04 \x01(\t\"\'\n\x14\x44\x65leteAccountRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\x03\"\xa4\x01\n\x04User\x12\x0f\n\x07user_id\x18\x01 \x01(\x03\x12\r\n\x05\x65mail\x18\x02 \x01(\t\x12\x10\n\x08username\x18\x03 \x01(\t\x12\x14\n\x0c\x64isplay_name\x18\x04 \x01(\t\x12\x12\n\navatar_url\x18\x05 \x01(\t\x12\x0b\n\x03\x62io\x18\x06 \x01(\t\x12\x0c\n\x04role\x18\x07 \x01(\t\x12\x11\n\tis_active\x18\x08 \x01(\x08\x12\x12\n\ncreated_at\x18\t \x01(\t\"l\n\x0c\x41uthResponse\x12\x14\n\x0c\x61\x63\x63\x65ss_token\x18\x01 \x01(\t\x12\x15\n\rrefresh_token\x18\x02 \x01(\t\x12\x12\n\ntoken_type\x18\x03 \x01(\t\x12\x1b\n\x04user\x18\x04 \x01(\x0b\x32\r.auth.v1.User\"+\n\x0cUserResponse\x12\x1b\n\x04user\x18\x01 \x01(\x0b\x32\r.auth.v1.User\"\x0f\n\rEmptyResponse2\xa8\x04\n\x0b\x41uthService\x12;\n\x08Register\x12\x18.auth.v1.RegisterRequest\x1a\x15.auth.v1.AuthResponse\x12\x35\n\x05Login\x12\x15.auth.v1.LoginRequest\x1a\x15.auth.v1.AuthResponse\x12\x38\n\x06Logout\x12\x16.auth.v1.LogoutRequest\x1a\x16.auth.v1.EmptyResponse\x12\x43\n\x0cRefreshToken\x12\x1c.auth.v1.RefreshTokenRequest\x1a\x15.auth.v1.AuthResponse\x12N\n\rValidateToken\x12\x1d.auth.v1.ValidateTokenRequest\x1a\x1e.auth.v1.ValidateTokenResponse\x12G\n\x0eGetCurrentUser\x12\x1e.auth.v1.GetCurrentUserRequest\x1a\x15.auth.v1.UserResponse\x12\x45\n\rUpdateProfile\x12\x1d.auth.v1.UpdateProfileRequest\x1a\x15.auth.v1.UserResponse\x12\x46\n\rDeleteAccount\x12\x1d.auth.v1.DeleteAccountRequest\x1a\x16.auth.v1.EmptyResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\nauth.proto\x12\x07\x61uth.v1\"D\n\x0fRegisterRequest\x12\r\n\x05\x65mail\x18\x01 \x01(\t\x12\x10\n\x08username\x18\x02 \x01(\t\x12\x10\n\x08password\x18\x03 \x01(\t\"/\n\x0cLoginRequest\x12\r\n\x05\x65mail\x18\x01 \x01(\t\x12\x10\n\x08password\x18\x02 \x01(\t\"&\n\rLogoutRequest\x12\x15\n\rrefresh_token\x18\x01 \x01(\t\",\n\x13RefreshTokenRequest\x12\x15\n\rrefresh_token\x18\x01 \x01(\t\",\n\x14ValidateTokenRequest\x12\x14\n\x0c\x61\x63\x63\x65ss_token\x18\x01 \x01(\t\"E\n\x15ValidateTokenResponse\x12\r\n\x05valid\x18\x01 \x01(\x08\x12\x0f\n\x07user_id\x18\x02 \x01(\x03\x12\x0c\n\x04role\x18\x03 \x01(\t\"(\n\x15GetCurrentUserRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\x03\"^\n\x14UpdateProfileRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\x03\x12\x14\n\x0c\x64isplay_name\x18\x02 \x01(\t\x12\x0b\n\x03\x62io\x18\x03 \x01(\t\x12\x12\n\navatar_url\x18\x04 \x01(\t\"\'\n\x14\x44\x65leteAccountRequest\x12\x0f\n\x07user_id\x18\x01 \x01(\x03\"7\n\x11GoogleAuthRequest\x12\x0c\n\x04\x63ode\x18\x01 \x01(\t\x12\x14\n\x0credirect_uri\x18\x02 \x01(\t\"\xa4\x01\n\x04User\x12\x0f\n\x07user_id\x18\x01 \x01(\x03\x12\r\n\x05\x65mail\x18\x02 \x01(\t\x12\x10\n\x08username\x18\x03 \x01(\t\x12\x14\n\x0c\x64isplay_name\x18\x04 \x01(\t\x12\x12\n\navatar_url\x18\x05 \x01(\t\x12\x0b\n\x03\x62io\x18\x06 \x01(\t\x12\x0c\n\x04role\x18\x07 \x01(\t\x12\x11\n\tis_active\x18\x08 \x01(\x08\x12\x12\n\ncreated_at\x18\t \x01(\t\"l\n\x0c\x41uthResponse\x12\x14\n\x0c\x61\x63\x63\x65ss_token\x18\x01 \x01(\t\x12\x15\n\rrefresh_token\x18\x02 \x01(\t\x12\x12\n\ntoken_type\x18\x03 \x01(\t\x12\x1b\n\x04user\x18\x04 \x01(\x0b\x32\r.auth.v1.User\"+\n\x0cUserResponse\x12\x1b\n\x04user\x18\x01 \x01(\x0b\x32\r.auth.v1.User\"\x0f\n\rEmptyResponse2\xe9\x04\n\x0b\x41uthService\x12;\n\x08Register\x12\x18.auth.v1.RegisterRequest\x1a\x15.auth.v1.AuthResponse\x12\x35\n\x05Login\x12\x15.auth.v1.LoginRequest\x1a\x15.auth.v1.AuthResponse\x12\x38\n\x06Logout\x12\x16.auth.v1.LogoutRequest\x1a\x16.auth.v1.EmptyResponse\x12\x43\n\x0cRefreshToken\x12\x1c.auth.v1.RefreshTokenRequest\x1a\x15.auth.v1.AuthResponse\x12N\n\rValidateToken\x12\x1d.auth.v1.ValidateTokenRequest\x1a\x1e.auth.v1.ValidateTokenResponse\x12G\n\x0eGetCurrentUser\x12\x1e.auth.v1.GetCurrentUserRequest\x1a\x15.auth.v1.UserResponse\x12\x45\n\rUpdateProfile\x12\x1d.auth.v1.UpdateProfileRequest\x1a\x15.auth.v1.UserResponse\x12\x46\n\rDeleteAccount\x12\x1d.auth.v1.DeleteAccountRequest\x1a\x16.auth.v1.EmptyResponse\x12?\n\nGoogleAuth\x12\x1a.auth.v1.GoogleAuthRequest\x1a\x15.auth.v1.AuthResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -49,14 +49,16 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_UPDATEPROFILEREQUEST']._serialized_end=481
   _globals['_DELETEACCOUNTREQUEST']._serialized_start=483
   _globals['_DELETEACCOUNTREQUEST']._serialized_end=522
-  _globals['_USER']._serialized_start=525
-  _globals['_USER']._serialized_end=689
-  _globals['_AUTHRESPONSE']._serialized_start=691
-  _globals['_AUTHRESPONSE']._serialized_end=799
-  _globals['_USERRESPONSE']._serialized_start=801
-  _globals['_USERRESPONSE']._serialized_end=844
-  _globals['_EMPTYRESPONSE']._serialized_start=846
-  _globals['_EMPTYRESPONSE']._serialized_end=861
-  _globals['_AUTHSERVICE']._serialized_start=864
-  _globals['_AUTHSERVICE']._serialized_end=1416
+  _globals['_GOOGLEAUTHREQUEST']._serialized_start=524
+  _globals['_GOOGLEAUTHREQUEST']._serialized_end=579
+  _globals['_USER']._serialized_start=582
+  _globals['_USER']._serialized_end=746
+  _globals['_AUTHRESPONSE']._serialized_start=748
+  _globals['_AUTHRESPONSE']._serialized_end=856
+  _globals['_USERRESPONSE']._serialized_start=858
+  _globals['_USERRESPONSE']._serialized_end=901
+  _globals['_EMPTYRESPONSE']._serialized_start=903
+  _globals['_EMPTYRESPONSE']._serialized_end=918
+  _globals['_AUTHSERVICE']._serialized_start=921
+  _globals['_AUTHSERVICE']._serialized_end=1538
 # @@protoc_insertion_point(module_scope)

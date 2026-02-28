@@ -25,6 +25,7 @@ def mock_auth_client(mocker):
     mock_client.refresh_token = mocker.AsyncMock()
     mock_client.get_current_user = mocker.AsyncMock()
     mock_client.update_profile = mocker.AsyncMock()
+    mock_client.google_auth = mocker.AsyncMock()
     mocker.patch.object(app.grpc_clients, "auth_client", mock_client)
     return mock_client
 

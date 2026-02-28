@@ -155,5 +155,17 @@ class AuthClient:
             logger.error(f"gRPC error deleting account: {e.code()} - {e.details()}")
             raise
 
+    async def google_auth(self, code: str, redirect_uri: str) -> auth_pb2.AuthResponse:
+        request = auth_pb2.GoogleAuthRequest(code=code, redirect_uri=redirect_uri)
+
+        try:
+            return await self.stub.GoogleAuth(
+                request,
+                timeout=app.config.settings.grpc_timeout
+            )
+        except grpc.RpcError as e:
+            logger.error(f"gRPC error in google_auth: {e.code()} - {e.details()}")
+            raise
+
 
 auth_client = AuthClient()

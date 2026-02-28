@@ -695,3 +695,87 @@ class TestUpdateProfileEndpoint:
         )
 
         assert response.status_code == 422
+
+
+class TestGoogleAuthEndpoint:
+    def test_google_auth_success(self, client, mock_auth_client, mocker):
+        mock_auth_client.google_auth.return_value = make_mock_auth_response(mocker)
+
+        response = client.post(
+            "/api/v1/auth/google",
+            json={"code": "4/0AY0e-g7abc", "redirect_uri": "http://localhost:3000/callback"}
+        )
+
+        assert response.status_code == 200
+        data = response.json()
+        assert data["success"] is True
+        assert data["data"]["access_token"] == "test_access_token"
+        assert data["data"]["refresh_token"] == "test_refresh_token"
+        assert data["data"]["user"]["email"] == "user@example.com"
+
+    def test_google_auth_passes_code_and_redirect_uri(self, client, mock_auth_client, mocker):
+        mock_auth_client.google_auth.return_value = make_mock_auth_response(mocker)
+
+        client.post(
+            "/api/v1/auth/google",
+            json={"code": "mycode", "redirect_uri": "http://localhost:3000/cb"}
+        )
+
+        mock_auth_client.google_auth.assert_called_once_with(
+            code="mycode",
+            redirect_uri="http://localhost:3000/cb"
+        )
+
+    def test_google_auth_inactive_account_returns_403(self, client, mock_auth_client):
+        mock_auth_client.google_auth.side_effect = MockRpcError(
+            grpc.StatusCode.PERMISSION_DENIED, "Google auth failed: account_inactive"
+        )
+
+        response = client.post(
+            "/api/v1/auth/google",
+            json={"code": "code", "redirect_uri": "http://localhost:3000/cb"}
+        )
+
+        assert response.status_code == 403
+        data = response.json()
+        assert data["success"] is False
+        assert data["error"]["code"] == "PERMISSION_DENIED"
+
+    def test_google_auth_internal_error_returns_500(self, client, mock_auth_client):
+        mock_auth_client.google_auth.side_effect = MockRpcError(
+            grpc.StatusCode.INTERNAL, "Google auth failed: google_token_exchange_failed"
+        )
+
+        response = client.post(
+            "/api/v1/auth/google",
+            json={"code": "bad_code", "redirect_uri": "http://localhost:3000/cb"}
+        )
+
+        assert response.status_code == 500
+        data = response.json()
+        assert data["success"] is False
+        assert data["error"]["code"] == "GOOGLE_AUTH_FAILED"
+
+    def test_google_auth_missing_code_returns_422(self, client):
+        response = client.post(
+            "/api/v1/auth/google",
+            json={"redirect_uri": "http://localhost:3000/cb"}
+        )
+
+        assert response.status_code == 422
+
+    def test_google_auth_missing_redirect_uri_returns_422(self, client):
+        response = client.post(
+            "/api/v1/auth/google",
+            json={"code": "mycode"}
+        )
+
+        assert response.status_code == 422
+
+    def test_google_auth_empty_code_returns_422(self, client):
+        response = client.post(
+            "/api/v1/auth/google",
+            json={"code": "", "redirect_uri": "http://localhost:3000/cb"}
+        )
+
+        assert response.status_code == 422

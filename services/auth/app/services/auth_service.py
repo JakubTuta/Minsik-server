@@ -60,7 +60,7 @@ async def login(
     if user.locked_until and user.locked_until > datetime.datetime.utcnow():
         raise PermissionError("account_locked")
 
-    if not app.utils.verify_password(password, user.password_hash):
+    if not user.password_hash or not app.utils.verify_password(password, user.password_hash):
         user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
         if user.failed_login_attempts >= app.config.settings.max_failed_login_attempts:
             user.locked_until = datetime.datetime.utcnow() + datetime.timedelta(

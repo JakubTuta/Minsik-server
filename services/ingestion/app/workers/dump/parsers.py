@@ -212,8 +212,6 @@ def score_work(book_data: dict) -> int:
         score += 1
     if book_data.get("primary_cover_url"):
         score += 1
-    if book_data.get("original_publication_year"):
-        score += 1
     if book_data.get("genres"):
         score += 1
     return score

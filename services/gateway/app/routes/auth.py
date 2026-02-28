@@ -618,3 +618,69 @@ async def delete_account(
             message="An unexpected error occurred",
             status_code=500
         )
+
+
+@router.post(
+    "/auth/google",
+    response_model=app.models.auth_responses.AuthResponse,
+    summary="Sign in with Google",
+    description="""
+    Exchange a Google OAuth authorization code for Minsik JWT tokens.
+
+    The client must first redirect the user to Google's OAuth consent page and obtain an
+    authorization `code`. Send that `code` together with the `redirect_uri` that was used
+    to generate it.
+
+    If the Google account email matches an existing Minsik account, the accounts are linked
+    automatically and the existing user is returned.
+
+    Returns JWT access token, refresh token, and user profile on success.
+    """,
+    responses={
+        200: {"description": "Google sign-in successful"},
+        403: {"description": "Account is inactive"},
+        500: {"description": "Google OAuth configuration error or upstream failure"}
+    }
+)
+@limiter.limit(app.middleware.rate_limit.get_admin_limit())
+async def google_auth(
+    request: fastapi.Request,
+    body: app.models.auth_responses.GoogleAuthRequest
+):
+    try:
+        response = await app.grpc_clients.auth_client.google_auth(
+            code=body.code,
+            redirect_uri=body.redirect_uri
+        )
+        return app.utils.responses.success_response(
+            _auth_response_to_dict(response),
+            status_code=200
+        )
+    except grpc.RpcError as e:
+        logger.error(f"gRPC error during google_auth: {e.code()} - {e.details()}")
+        if e.code() == grpc.StatusCode.PERMISSION_DENIED:
+            return app.utils.responses.error_response(
+                code="PERMISSION_DENIED",
+                message="Account is inactive",
+                status_code=403
+            )
+        if e.code() == grpc.StatusCode.INTERNAL:
+            return app.utils.responses.error_response(
+                code="GOOGLE_AUTH_FAILED",
+                message="Google authentication failed",
+                details={"grpc_code": e.code().name},
+                status_code=500
+            )
+        return app.utils.responses.error_response(
+            code="INTERNAL_ERROR",
+            message="Google authentication failed",
+            details={"grpc_code": e.code().name},
+            status_code=500
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error during google_auth: {e}")
+        return app.utils.responses.error_response(
+            code="INTERNAL_ERROR",
+            message="An unexpected error occurred",
+            status_code=500
+        )

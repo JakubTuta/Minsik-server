@@ -6,6 +6,7 @@ import app.proto.auth_pb2
 import app.proto.auth_pb2_grpc
 import app.database
 import app.services.auth_service
+import app.services.google_auth_service
 import app.services.token_service
 
 logger = logging.getLogger(__name__)
@@ -220,3 +221,32 @@ class AuthServicer(app.proto.auth_pb2_grpc.AuthServiceServicer):
         except Exception as e:
             logger.error(f"Error in DeleteAccount: {str(e)}")
             await context.abort(grpc.StatusCode.INTERNAL, f"Delete account failed: {str(e)}")
+
+    async def GoogleAuth(
+        self,
+        request: app.proto.auth_pb2.GoogleAuthRequest,
+        context: grpc.aio.ServicerContext
+    ) -> app.proto.auth_pb2.AuthResponse:
+        try:
+            async with app.database.async_session_maker() as session:
+                user = await app.services.google_auth_service.authenticate_with_google(
+                    session, request.code, request.redirect_uri
+                )
+                access_token, raw_refresh_token = await app.services.auth_service.issue_tokens_for_user(
+                    session, user
+                )
+                return app.proto.auth_pb2.AuthResponse(
+                    access_token=access_token,
+                    refresh_token=raw_refresh_token,
+                    token_type="Bearer",
+                    user=_build_user_message(user)
+                )
+        except PermissionError as e:
+            await context.abort(grpc.StatusCode.PERMISSION_DENIED, f"Google auth failed: {str(e)}")
+        except ValueError as e:
+            await context.abort(grpc.StatusCode.INTERNAL, f"Google auth failed: {str(e)}")
+        except grpc.aio.AbortError:
+            raise
+        except Exception as e:
+            logger.error(f"Error in GoogleAuth: {str(e)}")
+            await context.abort(grpc.StatusCode.INTERNAL, f"Google auth failed: {str(e)}")

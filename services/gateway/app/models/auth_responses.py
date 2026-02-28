@@ -117,3 +117,17 @@ class UpdateProfileRequest(pydantic.BaseModel):
             }
         }
     )
+
+
+class GoogleAuthRequest(pydantic.BaseModel):
+    code: str = pydantic.Field(min_length=1)
+    redirect_uri: str = pydantic.Field(min_length=1)
+
+    model_config = pydantic.ConfigDict(
+        json_schema_extra={
+            "example": {
+                "code": "4/0AY0e-g7...",
+                "redirect_uri": "http://localhost:3000/auth/callback"
+            }
+        }
+    )

@@ -75,6 +75,14 @@ class DeleteAccountRequest(_message.Message):
     user_id: int
     def __init__(self, user_id: _Optional[int] = ...) -> None: ...
 
+class GoogleAuthRequest(_message.Message):
+    __slots__ = ("code", "redirect_uri")
+    CODE_FIELD_NUMBER: _ClassVar[int]
+    REDIRECT_URI_FIELD_NUMBER: _ClassVar[int]
+    code: str
+    redirect_uri: str
+    def __init__(self, code: _Optional[str] = ..., redirect_uri: _Optional[str] = ...) -> None: ...
+
 class User(_message.Message):
     __slots__ = ("user_id", "email", "username", "display_name", "avatar_url", "bio", "role", "is_active", "created_at")
     USER_ID_FIELD_NUMBER: _ClassVar[int]
