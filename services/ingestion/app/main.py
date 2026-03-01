@@ -21,40 +21,8 @@ logger = logging.getLogger(__name__)
 shutdown_event = asyncio.Event()
 
 
-async def run_migrations():
-    import os
-    import subprocess
-
-    alembic_ini = os.path.join(os.path.dirname(__file__), "..", "alembic.ini")
-
-    if not os.path.exists(alembic_ini):
-        logger.debug("No alembic.ini found, skipping migrations")
-        return
-
-    try:
-        result = await asyncio.to_thread(
-            subprocess.run,
-            ["alembic", "upgrade", "head"],
-            cwd=os.path.dirname(alembic_ini),
-            capture_output=True,
-            text=True,
-            timeout=300,
-        )
-
-        if result.returncode != 0:
-            logger.warning(f"Migration error: {result.stderr}")
-        else:
-            logger.info("Database migrations completed successfully")
-    except subprocess.TimeoutExpired:
-        logger.warning("Migration timeout (exceeded 300 seconds)")
-    except Exception as e:
-        logger.warning(f"Migration error (service will continue): {str(e)}")
-
-
-async def init_db():
-    logger.info("Running database migrations")
-    await run_migrations()
-    logger.info("Database migrations completed successfully")
+async def init_db() -> None:
+    logger.info("Database initialization complete (migrations handled by db-migrator)")
 
 
 async def clear_stale_import_flag() -> bool:

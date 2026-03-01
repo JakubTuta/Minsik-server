@@ -155,6 +155,7 @@ def _validate_and_clean_book(book_data: Dict[str, Any]) -> Optional[Dict[str, An
         "language": language,
         "slug": slug,
         "description": description,
+        "first_sentence": book_data.get("first_sentence"),
         "original_publication_year": book_data.get("original_publication_year"),
         "primary_cover_url": primary_cover_url,
         "open_library_id": book_data.get("open_library_id"),
@@ -383,6 +384,7 @@ async def _bulk_insert_books(
             "language": book["language"],
             "slug": book["slug"],
             "description": book["description"],
+            "first_sentence": book.get("first_sentence"),
             "original_publication_year": book["original_publication_year"],
             "primary_cover_url": book["primary_cover_url"],
             "open_library_id": book["open_library_id"],
@@ -406,6 +408,13 @@ async def _bulk_insert_books(
         index_elements=["language", "slug"],
         set_={
             "description": stmt.excluded.description,
+            "first_sentence": sqlalchemy.case(
+                (
+                    app.models.book.Book.first_sentence.is_(None),
+                    stmt.excluded.first_sentence,
+                ),
+                else_=app.models.book.Book.first_sentence,
+            ),
             "open_library_id": stmt.excluded.open_library_id,
             "google_books_id": stmt.excluded.google_books_id,
             "isbn": stmt.excluded.isbn,

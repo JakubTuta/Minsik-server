@@ -139,6 +139,9 @@ async def process_editions_dump(
                         series_data = parsers.parse_series_string(
                             edition_data.get("series")
                         )
+                        first_sentence = parsers.extract_description(
+                            edition_data.get("first_sentence")
+                        )
 
                         score = parsers.score_edition(edition_data)
 
@@ -155,6 +158,7 @@ async def process_editions_dump(
                                 "external_ids": ext_ids,
                                 "cover_url": cover_url,
                                 "description": description,
+                                "first_sentence": first_sentence,
                                 "series": series_data,
                                 "_score": score,
                             }
@@ -262,6 +266,7 @@ async def _flush_best_editions_chunk(
                     "external_ids": ed["external_ids"],
                     "cover_url": ed["cover_url"],
                     "description": ed["description"],
+                    "first_sentence": ed.get("first_sentence"),
                     "physical_format": ed["physical_format"],
                     "series": ed["series"],
                 }
@@ -280,6 +285,7 @@ async def _flush_best_editions_chunk(
                     "external_ids": ed["external_ids"],
                     "cover_url": ed["cover_url"],
                     "description": ed["description"],
+                    "first_sentence": ed.get("first_sentence"),
                     "physical_format": ed["physical_format"],
                     "series": ed["series"],
                 }
@@ -346,7 +352,7 @@ async def _flush_edition_updates(
 
             values_parts.append(
                 f"(CAST(:bid_{k} AS bigint), CAST(:isbn_{k} AS jsonb), CAST(:pages_{k} AS int), "
-                f":pub_{k}, CAST(:ext_{k} AS jsonb), :cover_{k}, :desc_{k}, CAST(:fmt_{k} AS jsonb), "
+                f":pub_{k}, CAST(:ext_{k} AS jsonb), :cover_{k}, :desc_{k}, :fsen_{k}, CAST(:fmt_{k} AS jsonb), "
                 f"CAST(:sid_{k} AS bigint), CAST(:spos_{k} AS numeric))"
             )
             params[f"bid_{k}"] = u["book_id"]
@@ -358,6 +364,7 @@ async def _flush_edition_updates(
             )
             params[f"cover_{k}"] = u["cover_url"][:1000] if u["cover_url"] else None
             params[f"desc_{k}"] = u["description"]
+            params[f"fsen_{k}"] = u.get("first_sentence")
             params[f"fmt_{k}"] = (
                 json.dumps([u["physical_format"]]) if u["physical_format"] else None
             )
@@ -374,6 +381,7 @@ async def _flush_edition_updates(
                 "THEN v.ext ELSE b.external_ids END, "
                 "primary_cover_url = COALESCE(b.primary_cover_url, v.cover), "
                 "description = COALESCE(b.description, v.descr), "
+                "first_sentence = COALESCE(b.first_sentence, v.fsen), "
                 "formats = CASE "
                 "WHEN v.fmt IS NOT NULL AND NOT b.formats @> v.fmt "
                 "THEN b.formats || v.fmt ELSE b.formats END, "
@@ -382,7 +390,7 @@ async def _flush_edition_updates(
                 "series_position = CASE WHEN b.series_position IS NULL "
                 "AND v.spos IS NOT NULL THEN v.spos ELSE b.series_position END "
                 f"FROM (VALUES {', '.join(values_parts)}) "
-                "AS v(bid, isbn, pages, pub, ext, cover, descr, fmt, sid, spos) "
+                "AS v(bid, isbn, pages, pub, ext, cover, descr, fsen, fmt, sid, spos) "
                 "WHERE b.book_id = v.bid"
             ),
             params,
@@ -443,6 +451,7 @@ async def _insert_new_language_row(
         "language": lang,
         "slug": slug,
         "description": update["description"] or source.description,
+        "first_sentence": update.get("first_sentence"),
         "original_publication_year": source.original_publication_year,
         "primary_cover_url": cover_url,
         "open_library_id": work_ol_id,

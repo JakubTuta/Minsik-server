@@ -110,6 +110,7 @@ services:
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.17.4
     container_name: minsik-elasticsearch
+    env_file: .env
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
@@ -145,11 +146,37 @@ services:
         max-file: "2"
 
   # ============================================================================
+  # DB Migrator - Production (runs all migrations before services start)
+  # ============================================================================
+  db-migrator:
+    image: europe-central2-docker.pkg.dev/minsik-486117/server/db-migrator:latest
+    container_name: minsik-db-migrator
+    env_file: .env
+    environment:
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+    depends_on:
+      postgres:
+        condition: service_healthy
+    networks:
+      - minsik-internal
+    restart: "no"
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # ============================================================================
   # Gateway Service - Production Configuration
   # ============================================================================
   gateway-service:
     image: europe-central2-docker.pkg.dev/minsik-486117/server/gateway-service:latest
     container_name: minsik-gateway-service
+    env_file: .env
     environment:
       ENV: production
       DEBUG: false
@@ -209,6 +236,7 @@ services:
   ingestion-service:
     image: europe-central2-docker.pkg.dev/minsik-486117/server/ingestion-service:latest
     container_name: minsik-ingestion-service
+    env_file: .env
     environment:
       ENV: production
       DEBUG: false
@@ -245,6 +273,8 @@ services:
       DUMP_WIKIDATA_ENABLED: ${DUMP_WIKIDATA_ENABLED}
     # NO EXPOSED PORTS - internal network only (security)
     depends_on:
+      db-migrator:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -272,6 +302,7 @@ services:
   books-service:
     image: europe-central2-docker.pkg.dev/minsik-486117/server/books-service:latest
     container_name: minsik-books-service
+    env_file: .env
     environment:
       ENV: production
       DEBUG: false
@@ -305,6 +336,8 @@ services:
       ES_REINDEX_BATCH_SIZE: ${ES_REINDEX_BATCH_SIZE}
     # NO EXPOSED PORTS - internal network only (security)
     depends_on:
+      db-migrator:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -334,6 +367,7 @@ services:
   auth-service:
     image: europe-central2-docker.pkg.dev/minsik-486117/server/auth-service:latest
     container_name: minsik-auth-service
+    env_file: .env
     environment:
       ENV: production
       DEBUG: false
@@ -353,6 +387,8 @@ services:
       JWT_REFRESH_TOKEN_EXPIRE_DAYS: ${JWT_REFRESH_TOKEN_EXPIRE_DAYS}
     # NO EXPOSED PORTS - internal network only (security)
     depends_on:
+      db-migrator:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
     deploy:
@@ -378,6 +414,7 @@ services:
   user-data-service:
     image: europe-central2-docker.pkg.dev/minsik-486117/server/user-data-service:latest
     container_name: minsik-user-data-service
+    env_file: .env
     environment:
       ENV: production
       DEBUG: false
@@ -398,6 +435,8 @@ services:
       USER_DATA_GRPC_PORT: ${USER_DATA_GRPC_PORT}
     # NO EXPOSED PORTS - internal network only (security)
     depends_on:
+      db-migrator:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -425,6 +464,7 @@ services:
   recommendation-service:
     image: europe-central2-docker.pkg.dev/minsik-486117/server/recommendation-service:latest
     container_name: minsik-recommendation-service
+    env_file: .env
     environment:
       ENV: production
       DEBUG: false
@@ -449,6 +489,8 @@ services:
       HOME_AUTHOR_CATEGORIES: ${HOME_AUTHOR_CATEGORIES}
     # NO EXPOSED PORTS - internal network only (security)
     depends_on:
+      db-migrator:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:
@@ -500,6 +542,8 @@ services:
       GOOGLE_BOOKS_API_KEY: ${GOOGLE_BOOKS_API_KEY}
       REQUEST_TIMEOUT: ${REQUEST_TIMEOUT}
     depends_on:
+      db-migrator:
+        condition: service_completed_successfully
       postgres:
         condition: service_healthy
       redis:

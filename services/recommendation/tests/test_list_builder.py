@@ -1,8 +1,20 @@
-import pytest
+from contextlib import asynccontextmanager
 from unittest.mock import AsyncMock, MagicMock, patch
 
 import app.services.list_builder as list_builder
-from tests.conftest import make_book_row, make_author_row, make_execute_result
+import pytest
+from tests.conftest import make_author_row, make_book_row, make_execute_result
+
+
+def make_session_maker(mock_session):
+    @asynccontextmanager
+    async def _session_context():
+        yield mock_session
+
+    def _session_maker():
+        return _session_context()
+
+    return _session_maker
 
 
 class TestCategoryRegistry:
@@ -74,7 +86,10 @@ class TestRowToBookItem:
 class TestBuildMostRead:
     @pytest.mark.asyncio
     async def test_returns_book_items(self, mock_session):
-        rows = [make_book_row(book_id=1, score=9000), make_book_row(book_id=2, score=5000)]
+        rows = [
+            make_book_row(book_id=1, score=9000),
+            make_book_row(book_id=2, score=5000),
+        ]
         mock_session.execute.return_value = make_execute_result(rows)
 
         result = await list_builder._build_most_read(mock_session, 50)
@@ -146,7 +161,7 @@ class TestRefreshAll:
             with patch("app.config.settings") as mock_settings:
                 mock_settings.list_default_size = 50
                 mock_settings.cache_recommendation_ttl = 86400
-                await list_builder.refresh_all(mock_session)
+                await list_builder.refresh_all(make_session_maker(mock_session))
 
         assert mock_set.call_count == 19
 
@@ -167,7 +182,7 @@ class TestRefreshAll:
             with patch("app.config.settings") as mock_settings:
                 mock_settings.list_default_size = 50
                 mock_settings.cache_recommendation_ttl = 86400
-                await list_builder.refresh_all(mock_session)
+                await list_builder.refresh_all(make_session_maker(mock_session))
 
     @pytest.mark.asyncio
     async def test_cache_key_format(self, mock_session):
@@ -183,7 +198,7 @@ class TestRefreshAll:
             with patch("app.config.settings") as mock_settings:
                 mock_settings.list_default_size = 50
                 mock_settings.cache_recommendation_ttl = 86400
-                await list_builder.refresh_all(mock_session)
+                await list_builder.refresh_all(make_session_maker(mock_session))
 
         assert all(k.startswith("rec:") for k in cached_keys)
 
@@ -202,7 +217,7 @@ class TestRefreshAll:
             with patch("app.config.settings") as mock_settings:
                 mock_settings.list_default_size = 50
                 mock_settings.cache_recommendation_ttl = 86400
-                await list_builder.refresh_all(mock_session)
+                await list_builder.refresh_all(make_session_maker(mock_session))
 
         most_read = payloads.get("rec:most_read")
         assert most_read is not None
@@ -225,7 +240,7 @@ class TestRefreshAll:
             with patch("app.config.settings") as mock_settings:
                 mock_settings.list_default_size = 50
                 mock_settings.cache_recommendation_ttl = 86400
-                await list_builder.refresh_all(mock_session)
+                await list_builder.refresh_all(make_session_maker(mock_session))
 
         top_authors = payloads.get("rec:top_authors")
         assert top_authors is not None

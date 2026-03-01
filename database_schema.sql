@@ -32,6 +32,7 @@ CREATE TABLE books.books (
     slug VARCHAR(600) NOT NULL,              -- URL-friendly: "neuromancer", "1984-george-orwell"
 
     description TEXT,
+    first_sentence TEXT,              -- Opening line of the book (from OL works/editions dump)
     original_publication_year INT,
 
     -- Format availability (JSONB array of strings)

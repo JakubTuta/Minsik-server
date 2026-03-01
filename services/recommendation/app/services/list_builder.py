@@ -1,11 +1,10 @@
 import logging
 import typing
 
-import sqlalchemy
-import sqlalchemy.ext.asyncio
-
 import app.cache
 import app.config
+import sqlalchemy
+import sqlalchemy.ext.asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -46,104 +45,164 @@ def _row_to_book_item(row: typing.Any, score: float) -> typing.Dict[str, typing.
     }
 
 
-async def _build_most_read(session: sqlalchemy.ext.asyncio.AsyncSession, limit: int) -> typing.List[typing.Dict]:
-    result = await session.execute(sqlalchemy.text(f"""
+async def _build_most_read(
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+) -> typing.List[typing.Dict]:
+    result = await session.execute(
+        sqlalchemy.text(
+            f"""
         SELECT {_BOOK_FIELDS}, b.ol_already_read_count AS score
         FROM books.books b {_BOOK_JOINS}
         WHERE {_BOOK_BASE_WHERE}
         {_BOOK_GROUP_BY}
         ORDER BY b.ol_already_read_count DESC NULLS LAST
         LIMIT :limit
-    """), {"limit": limit})
+    """
+        ),
+        {"limit": limit},
+    )
     return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
-async def _build_most_wanted(session: sqlalchemy.ext.asyncio.AsyncSession, limit: int) -> typing.List[typing.Dict]:
-    result = await session.execute(sqlalchemy.text(f"""
+async def _build_most_wanted(
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+) -> typing.List[typing.Dict]:
+    result = await session.execute(
+        sqlalchemy.text(
+            f"""
         SELECT {_BOOK_FIELDS}, b.ol_want_to_read_count AS score
         FROM books.books b {_BOOK_JOINS}
         WHERE {_BOOK_BASE_WHERE}
         {_BOOK_GROUP_BY}
         ORDER BY b.ol_want_to_read_count DESC NULLS LAST
         LIMIT :limit
-    """), {"limit": limit})
+    """
+        ),
+        {"limit": limit},
+    )
     return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
-async def _build_trending_reads(session: sqlalchemy.ext.asyncio.AsyncSession, limit: int) -> typing.List[typing.Dict]:
-    result = await session.execute(sqlalchemy.text(f"""
+async def _build_trending_reads(
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+) -> typing.List[typing.Dict]:
+    result = await session.execute(
+        sqlalchemy.text(
+            f"""
         SELECT {_BOOK_FIELDS}, b.ol_currently_reading_count AS score
         FROM books.books b {_BOOK_JOINS}
         WHERE {_BOOK_BASE_WHERE}
         {_BOOK_GROUP_BY}
         ORDER BY b.ol_currently_reading_count DESC NULLS LAST
         LIMIT :limit
-    """), {"limit": limit})
+    """
+        ),
+        {"limit": limit},
+    )
     return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
-async def _build_most_viewed(session: sqlalchemy.ext.asyncio.AsyncSession, limit: int) -> typing.List[typing.Dict]:
-    result = await session.execute(sqlalchemy.text(f"""
+async def _build_most_viewed(
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+) -> typing.List[typing.Dict]:
+    result = await session.execute(
+        sqlalchemy.text(
+            f"""
         SELECT {_BOOK_FIELDS}, b.view_count AS score
         FROM books.books b {_BOOK_JOINS}
         WHERE {_BOOK_BASE_WHERE}
         {_BOOK_GROUP_BY}
         ORDER BY b.view_count DESC NULLS LAST
         LIMIT :limit
-    """), {"limit": limit})
+    """
+        ),
+        {"limit": limit},
+    )
     return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
-async def _build_highest_rated(session: sqlalchemy.ext.asyncio.AsyncSession, limit: int) -> typing.List[typing.Dict]:
-    result = await session.execute(sqlalchemy.text(f"""
+async def _build_highest_rated(
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+) -> typing.List[typing.Dict]:
+    result = await session.execute(
+        sqlalchemy.text(
+            f"""
         SELECT {_BOOK_FIELDS}, b.avg_rating AS score
         FROM books.books b {_BOOK_JOINS}
         WHERE {_BOOK_BASE_WHERE} AND b.rating_count >= 3
         {_BOOK_GROUP_BY}
         ORDER BY b.avg_rating DESC NULLS LAST
         LIMIT :limit
-    """), {"limit": limit})
+    """
+        ),
+        {"limit": limit},
+    )
     return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
-async def _build_community_top_rated(session: sqlalchemy.ext.asyncio.AsyncSession, limit: int) -> typing.List[typing.Dict]:
-    result = await session.execute(sqlalchemy.text(f"""
+async def _build_community_top_rated(
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+) -> typing.List[typing.Dict]:
+    result = await session.execute(
+        sqlalchemy.text(
+            f"""
         SELECT {_BOOK_FIELDS}, b.ol_avg_rating AS score
         FROM books.books b {_BOOK_JOINS}
         WHERE {_BOOK_BASE_WHERE} AND b.ol_rating_count >= 20
         {_BOOK_GROUP_BY}
         ORDER BY b.ol_avg_rating DESC NULLS LAST
         LIMIT :limit
-    """), {"limit": limit})
+    """
+        ),
+        {"limit": limit},
+    )
     return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
-async def _build_most_rated(session: sqlalchemy.ext.asyncio.AsyncSession, limit: int) -> typing.List[typing.Dict]:
-    result = await session.execute(sqlalchemy.text(f"""
+async def _build_most_rated(
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+) -> typing.List[typing.Dict]:
+    result = await session.execute(
+        sqlalchemy.text(
+            f"""
         SELECT {_BOOK_FIELDS}, b.rating_count AS score
         FROM books.books b {_BOOK_JOINS}
         WHERE {_BOOK_BASE_WHERE}
         {_BOOK_GROUP_BY}
         ORDER BY b.rating_count DESC NULLS LAST
         LIMIT :limit
-    """), {"limit": limit})
+    """
+        ),
+        {"limit": limit},
+    )
     return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
-async def _build_recently_added(session: sqlalchemy.ext.asyncio.AsyncSession, limit: int) -> typing.List[typing.Dict]:
-    result = await session.execute(sqlalchemy.text(f"""
+async def _build_recently_added(
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+) -> typing.List[typing.Dict]:
+    result = await session.execute(
+        sqlalchemy.text(
+            f"""
         SELECT {_BOOK_FIELDS}, EXTRACT(EPOCH FROM b.created_at) AS score
         FROM books.books b {_BOOK_JOINS}
         WHERE {_BOOK_BASE_WHERE}
         {_BOOK_GROUP_BY}
         ORDER BY b.created_at DESC
         LIMIT :limit
-    """), {"limit": limit})
+    """
+        ),
+        {"limit": limit},
+    )
     return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
-async def _build_classics(session: sqlalchemy.ext.asyncio.AsyncSession, limit: int) -> typing.List[typing.Dict]:
-    result = await session.execute(sqlalchemy.text(f"""
+async def _build_classics(
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+) -> typing.List[typing.Dict]:
+    result = await session.execute(
+        sqlalchemy.text(
+            f"""
         SELECT {_BOOK_FIELDS}, b.ol_already_read_count AS score
         FROM books.books b {_BOOK_JOINS}
         WHERE {_BOOK_BASE_WHERE}
@@ -152,12 +211,19 @@ async def _build_classics(session: sqlalchemy.ext.asyncio.AsyncSession, limit: i
         {_BOOK_GROUP_BY}
         ORDER BY b.ol_already_read_count DESC NULLS LAST, b.avg_rating DESC NULLS LAST
         LIMIT :limit
-    """), {"limit": limit})
+    """
+        ),
+        {"limit": limit},
+    )
     return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
-async def _build_user_favorites(session: sqlalchemy.ext.asyncio.AsyncSession, limit: int) -> typing.List[typing.Dict]:
-    result = await session.execute(sqlalchemy.text(f"""
+async def _build_user_favorites(
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+) -> typing.List[typing.Dict]:
+    result = await session.execute(
+        sqlalchemy.text(
+            f"""
         SELECT {_BOOK_FIELDS}, COUNT(*) AS score
         FROM user_data.bookshelves bs
         JOIN books.books b ON bs.book_id = b.book_id
@@ -166,12 +232,19 @@ async def _build_user_favorites(session: sqlalchemy.ext.asyncio.AsyncSession, li
         {_BOOK_GROUP_BY}
         ORDER BY COUNT(*) DESC
         LIMIT :limit
-    """), {"limit": limit})
+    """
+        ),
+        {"limit": limit},
+    )
     return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
-async def _build_recently_finished(session: sqlalchemy.ext.asyncio.AsyncSession, limit: int) -> typing.List[typing.Dict]:
-    result = await session.execute(sqlalchemy.text(f"""
+async def _build_recently_finished(
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+) -> typing.List[typing.Dict]:
+    result = await session.execute(
+        sqlalchemy.text(
+            f"""
         SELECT DISTINCT ON (b.book_id) {_BOOK_FIELDS}, EXTRACT(EPOCH FROM MAX(bs.updated_at)) AS score
         FROM user_data.bookshelves bs
         JOIN books.books b ON bs.book_id = b.book_id
@@ -180,12 +253,19 @@ async def _build_recently_finished(session: sqlalchemy.ext.asyncio.AsyncSession,
         {_BOOK_GROUP_BY}
         ORDER BY b.book_id, MAX(bs.updated_at) DESC
         LIMIT :limit
-    """), {"limit": limit})
+    """
+        ),
+        {"limit": limit},
+    )
     return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
-async def _build_currently_reading(session: sqlalchemy.ext.asyncio.AsyncSession, limit: int) -> typing.List[typing.Dict]:
-    result = await session.execute(sqlalchemy.text(f"""
+async def _build_currently_reading(
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+) -> typing.List[typing.Dict]:
+    result = await session.execute(
+        sqlalchemy.text(
+            f"""
         SELECT {_BOOK_FIELDS}, COUNT(*) AS score
         FROM user_data.bookshelves bs
         JOIN books.books b ON bs.book_id = b.book_id
@@ -194,7 +274,10 @@ async def _build_currently_reading(session: sqlalchemy.ext.asyncio.AsyncSession,
         {_BOOK_GROUP_BY}
         ORDER BY COUNT(*) DESC
         LIMIT :limit
-    """), {"limit": limit})
+    """
+        ),
+        {"limit": limit},
+    )
     return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
@@ -212,33 +295,57 @@ def _build_sub_rating_query(dimension: str) -> str:
     """
 
 
-async def _build_best_writing(session: sqlalchemy.ext.asyncio.AsyncSession, limit: int) -> typing.List[typing.Dict]:
-    result = await session.execute(sqlalchemy.text(_build_sub_rating_query("writing_quality")), {"limit": limit})
+async def _build_best_writing(
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+) -> typing.List[typing.Dict]:
+    result = await session.execute(
+        sqlalchemy.text(_build_sub_rating_query("writing_quality")), {"limit": limit}
+    )
     return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
-async def _build_most_emotional(session: sqlalchemy.ext.asyncio.AsyncSession, limit: int) -> typing.List[typing.Dict]:
-    result = await session.execute(sqlalchemy.text(_build_sub_rating_query("emotional_impact")), {"limit": limit})
+async def _build_most_emotional(
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+) -> typing.List[typing.Dict]:
+    result = await session.execute(
+        sqlalchemy.text(_build_sub_rating_query("emotional_impact")), {"limit": limit}
+    )
     return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
-async def _build_funniest(session: sqlalchemy.ext.asyncio.AsyncSession, limit: int) -> typing.List[typing.Dict]:
-    result = await session.execute(sqlalchemy.text(_build_sub_rating_query("humor")), {"limit": limit})
+async def _build_funniest(
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+) -> typing.List[typing.Dict]:
+    result = await session.execute(
+        sqlalchemy.text(_build_sub_rating_query("humor")), {"limit": limit}
+    )
     return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
-async def _build_most_thought_provoking(session: sqlalchemy.ext.asyncio.AsyncSession, limit: int) -> typing.List[typing.Dict]:
-    result = await session.execute(sqlalchemy.text(_build_sub_rating_query("intellectual_depth")), {"limit": limit})
+async def _build_most_thought_provoking(
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+) -> typing.List[typing.Dict]:
+    result = await session.execute(
+        sqlalchemy.text(_build_sub_rating_query("intellectual_depth")), {"limit": limit}
+    )
     return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
-async def _build_most_rereadable(session: sqlalchemy.ext.asyncio.AsyncSession, limit: int) -> typing.List[typing.Dict]:
-    result = await session.execute(sqlalchemy.text(_build_sub_rating_query("rereadability")), {"limit": limit})
+async def _build_most_rereadable(
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+) -> typing.List[typing.Dict]:
+    result = await session.execute(
+        sqlalchemy.text(_build_sub_rating_query("rereadability")), {"limit": limit}
+    )
     return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
-async def _build_top_authors(session: sqlalchemy.ext.asyncio.AsyncSession, limit: int) -> typing.List[typing.Dict]:
-    result = await session.execute(sqlalchemy.text("""
+async def _build_top_authors(
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+) -> typing.List[typing.Dict]:
+    result = await session.execute(
+        sqlalchemy.text(
+            """
         SELECT
             a.author_id,
             a.name,
@@ -252,7 +359,10 @@ async def _build_top_authors(session: sqlalchemy.ext.asyncio.AsyncSession, limit
         GROUP BY a.author_id
         ORDER BY score DESC
         LIMIT :limit
-    """), {"limit": limit})
+    """
+        ),
+        {"limit": limit},
+    )
     return [
         {
             "author_id": row.author_id,
@@ -266,8 +376,12 @@ async def _build_top_authors(session: sqlalchemy.ext.asyncio.AsyncSession, limit
     ]
 
 
-async def _build_popular_authors(session: sqlalchemy.ext.asyncio.AsyncSession, limit: int) -> typing.List[typing.Dict]:
-    result = await session.execute(sqlalchemy.text("""
+async def _build_popular_authors(
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+) -> typing.List[typing.Dict]:
+    result = await session.execute(
+        sqlalchemy.text(
+            """
         SELECT
             a.author_id,
             a.name,
@@ -281,7 +395,10 @@ async def _build_popular_authors(session: sqlalchemy.ext.asyncio.AsyncSession, l
         GROUP BY a.author_id
         ORDER BY a.view_count DESC NULLS LAST
         LIMIT :limit
-    """), {"limit": limit})
+    """
+        ),
+        {"limit": limit},
+    )
     return [
         {
             "author_id": row.author_id,
@@ -296,31 +413,126 @@ async def _build_popular_authors(session: sqlalchemy.ext.asyncio.AsyncSession, l
 
 
 CATEGORIES: typing.List[typing.Dict[str, typing.Any]] = [
-    {"key": "most_read", "display_name": "Most Read Books", "item_type": "book", "build_fn": _build_most_read},
-    {"key": "most_wanted", "display_name": "Most Wanted Books", "item_type": "book", "build_fn": _build_most_wanted},
-    {"key": "trending_reads", "display_name": "Trending Right Now", "item_type": "book", "build_fn": _build_trending_reads},
-    {"key": "most_viewed", "display_name": "Most Popular", "item_type": "book", "build_fn": _build_most_viewed},
-    {"key": "highest_rated", "display_name": "Highest Rated", "item_type": "book", "build_fn": _build_highest_rated},
-    {"key": "community_top_rated", "display_name": "Community Favorites", "item_type": "book", "build_fn": _build_community_top_rated},
-    {"key": "most_rated", "display_name": "Most Reviewed", "item_type": "book", "build_fn": _build_most_rated},
-    {"key": "recently_added", "display_name": "Recently Added", "item_type": "book", "build_fn": _build_recently_added},
-    {"key": "classics", "display_name": "Classic Books", "item_type": "book", "build_fn": _build_classics},
-    {"key": "user_favorites", "display_name": "User Favorites", "item_type": "book", "build_fn": _build_user_favorites},
-    {"key": "recently_finished", "display_name": "Recently Finished", "item_type": "book", "build_fn": _build_recently_finished},
-    {"key": "currently_reading", "display_name": "Currently Being Read", "item_type": "book", "build_fn": _build_currently_reading},
-    {"key": "best_writing", "display_name": "Best Writing", "item_type": "book", "build_fn": _build_best_writing},
-    {"key": "most_emotional", "display_name": "Most Emotional", "item_type": "book", "build_fn": _build_most_emotional},
-    {"key": "funniest", "display_name": "Funniest Books", "item_type": "book", "build_fn": _build_funniest},
-    {"key": "most_thought_provoking", "display_name": "Most Thought-Provoking", "item_type": "book", "build_fn": _build_most_thought_provoking},
-    {"key": "most_rereadable", "display_name": "Most Rereadable", "item_type": "book", "build_fn": _build_most_rereadable},
-    {"key": "top_authors", "display_name": "Most Read Authors", "item_type": "author", "build_fn": _build_top_authors},
-    {"key": "popular_authors", "display_name": "Popular Authors", "item_type": "author", "build_fn": _build_popular_authors},
+    {
+        "key": "most_read",
+        "display_name": "Most Read Books",
+        "item_type": "book",
+        "build_fn": _build_most_read,
+    },
+    {
+        "key": "most_wanted",
+        "display_name": "Most Wanted Books",
+        "item_type": "book",
+        "build_fn": _build_most_wanted,
+    },
+    {
+        "key": "trending_reads",
+        "display_name": "Trending Right Now",
+        "item_type": "book",
+        "build_fn": _build_trending_reads,
+    },
+    {
+        "key": "most_viewed",
+        "display_name": "Most Popular",
+        "item_type": "book",
+        "build_fn": _build_most_viewed,
+    },
+    {
+        "key": "highest_rated",
+        "display_name": "Highest Rated",
+        "item_type": "book",
+        "build_fn": _build_highest_rated,
+    },
+    {
+        "key": "community_top_rated",
+        "display_name": "Community Favorites",
+        "item_type": "book",
+        "build_fn": _build_community_top_rated,
+    },
+    {
+        "key": "most_rated",
+        "display_name": "Most Reviewed",
+        "item_type": "book",
+        "build_fn": _build_most_rated,
+    },
+    {
+        "key": "recently_added",
+        "display_name": "Recently Added",
+        "item_type": "book",
+        "build_fn": _build_recently_added,
+    },
+    {
+        "key": "classics",
+        "display_name": "Classic Books",
+        "item_type": "book",
+        "build_fn": _build_classics,
+    },
+    {
+        "key": "user_favorites",
+        "display_name": "User Favorites",
+        "item_type": "book",
+        "build_fn": _build_user_favorites,
+    },
+    {
+        "key": "recently_finished",
+        "display_name": "Recently Finished",
+        "item_type": "book",
+        "build_fn": _build_recently_finished,
+    },
+    {
+        "key": "currently_reading",
+        "display_name": "Currently Being Read",
+        "item_type": "book",
+        "build_fn": _build_currently_reading,
+    },
+    {
+        "key": "best_writing",
+        "display_name": "Best Writing",
+        "item_type": "book",
+        "build_fn": _build_best_writing,
+    },
+    {
+        "key": "most_emotional",
+        "display_name": "Most Emotional",
+        "item_type": "book",
+        "build_fn": _build_most_emotional,
+    },
+    {
+        "key": "funniest",
+        "display_name": "Funniest Books",
+        "item_type": "book",
+        "build_fn": _build_funniest,
+    },
+    {
+        "key": "most_thought_provoking",
+        "display_name": "Most Thought-Provoking",
+        "item_type": "book",
+        "build_fn": _build_most_thought_provoking,
+    },
+    {
+        "key": "most_rereadable",
+        "display_name": "Most Rereadable",
+        "item_type": "book",
+        "build_fn": _build_most_rereadable,
+    },
+    {
+        "key": "top_authors",
+        "display_name": "Most Read Authors",
+        "item_type": "author",
+        "build_fn": _build_top_authors,
+    },
+    {
+        "key": "popular_authors",
+        "display_name": "Popular Authors",
+        "item_type": "author",
+        "build_fn": _build_popular_authors,
+    },
 ]
 
 CATEGORY_KEYS: typing.Set[str] = {c["key"] for c in CATEGORIES}
 
 
-async def refresh_all(session: sqlalchemy.ext.asyncio.AsyncSession) -> None:
+async def refresh_all(session_maker: sqlalchemy.orm.sessionmaker) -> None:
     settings = app.config.settings
     logger.info("[rec] Starting recommendation list refresh")
 
@@ -328,7 +540,8 @@ async def refresh_all(session: sqlalchemy.ext.asyncio.AsyncSession) -> None:
         key = category["key"]
         item_type = category["item_type"]
         try:
-            items = await category["build_fn"](session, settings.list_default_size)
+            async with session_maker() as session:
+                items = await category["build_fn"](session, settings.list_default_size)
             items_key = "book_items" if item_type == "book" else "author_items"
             payload = {
                 "category": key,

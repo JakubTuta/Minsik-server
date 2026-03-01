@@ -73,6 +73,7 @@ def _book_to_dict(book: app.models.book.Book) -> typing.Dict[str, typing.Any]:
         "title": book.title,
         "slug": book.slug,
         "description": book.description or "",
+        "first_sentence": book.first_sentence or "",
         "language": book.language,
         "original_publication_year": book.original_publication_year or 0,
         "formats": book.formats or [],

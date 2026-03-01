@@ -16,6 +16,7 @@ param(
     [string]$Password,
     [switch]$Deploy,
     [string]$Environment = "dev",
+    [switch]$Migrate,
     [switch]$Test,
     [string]$TestService,
     [switch]$Logs,
@@ -65,6 +66,8 @@ COMMANDS:
     -Deploy                        Start dev environment (docker-compose up)
       -Environment prod              Build and push images to GAR (production)
 
+    -Migrate                       Run database migrations manually (docker run --rm db-migrator)
+
     -Logs                          View service logs
       -LogService <service>          Specific service name
 
@@ -83,6 +86,7 @@ EXAMPLES:
   .\scripts.ps1 -CreateAdmin -Email admin@minsik.com -Password securepass123
   .\scripts.ps1 -Deploy
   .\scripts.ps1 -Deploy -Environment prod
+  .\scripts.ps1 -Migrate
   .\scripts.ps1 -Logs -LogService books-service
   .\scripts.ps1 -Test -TestService books
   .\scripts.ps1 -Clean
@@ -253,7 +257,8 @@ function Build-And-Push-Images {
         @{ Name = "Ingestion Service";      Dockerfile = "services/ingestion/Dockerfile";      ImageName = "ingestion-service" },
         @{ Name = "Books Service";          Dockerfile = "services/books/Dockerfile";          ImageName = "books-service" },
         @{ Name = "User Data Service";      Dockerfile = "services/user_data/Dockerfile";      ImageName = "user-data-service" },
-        @{ Name = "Recommendation Service"; Dockerfile = "services/recommendation/Dockerfile"; ImageName = "recommendation-service" }
+        @{ Name = "Recommendation Service"; Dockerfile = "services/recommendation/Dockerfile"; ImageName = "recommendation-service" },
+        @{ Name = "DB Migrator";            Dockerfile = "services/db_migrator/Dockerfile";  ImageName = "db-migrator" }
     )
 
     Write-Step "Building and pushing images to Google Artifact Registry..."
@@ -299,6 +304,23 @@ function Build-And-Push-Images {
     return $true
 }
 
+function Run-Migrations {
+    Write-Step "Running database migrations..."
+
+    if (-not (Test-Path ".env")) {
+        Write-Warning-Message ".env file not found"
+        return
+    }
+
+    & docker-compose --env-file .env.example run --rm db-migrator
+
+    if ($LASTEXITCODE -eq 0) {
+        Write-Success "Database migrations completed successfully!"
+    } else {
+        Write-Error-Message "Database migrations failed (exit code $LASTEXITCODE)"
+    }
+}
+
 function Deploy-Services {
     param(
         [string]$Environment = "dev"
@@ -307,16 +329,11 @@ function Deploy-Services {
     if ($Environment -eq "dev") {
         Write-Step "Starting development environment..."
 
-        if (-not (Test-Path ".env")) {
-            Write-Warning-Message ".env file not found, copying from .env.example..."
-            Copy-Item ".env.example" ".env"
-        }
-
-        & docker-compose up -d --build
+        & docker-compose --env-file .env.example up -d --build
 
         if ($LASTEXITCODE -eq 0) {
             Write-Success "Development environment started!"
-            & docker-compose ps
+            & docker-compose --env-file .env.example ps
         } else {
             Write-Error-Message "Failed to start development environment"
         }
@@ -337,9 +354,9 @@ function Show-Logs {
     Write-Step "Viewing logs..."
 
     if ($Service) {
-        & docker-compose logs -f $Service
+        & docker-compose --env-file .env.example logs -f $Service
     } else {
-        & docker-compose logs -f
+        & docker-compose --env-file .env.example logs -f
     }
 }
 
@@ -415,7 +432,7 @@ function Clean-All {
         return
     }
 
-    & docker-compose down -v
+    & docker-compose --env-file .env.example down -v
     & docker volume prune -f
 
     Write-Success "Cleanup complete!"
@@ -434,6 +451,7 @@ if ($Help)         { Show-Help }
 if ($CompileProto) { Compile-Proto }
 if ($CreateAdmin)  { Create-Admin-User -Email $Email -Password $Password }
 if ($Deploy)       { Deploy-Services -Environment $Environment }
+if ($Migrate)      { Run-Migrations }
 if ($Logs)         { Show-Logs -Service $LogService }
 if ($Test)         { Run-Tests -Service $TestService }
 if ($Clean)        { Clean-All }

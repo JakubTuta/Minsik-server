@@ -140,6 +140,9 @@ async def process_works_dump(file_path: str) -> int:
                         "title": title,
                         "language": "en",
                         "description": description,
+                        "first_sentence": parsers.extract_description(
+                            work_data.get("first_sentence")
+                        ),
                         "original_publication_year": pub_year,
                         "primary_cover_url": cover_url,
                         "open_library_id": work_ol_id,

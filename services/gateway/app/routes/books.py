@@ -196,6 +196,7 @@ async def get_book(
                 "ol_want_to_read_count": book.ol_want_to_read_count,
                 "ol_currently_reading_count": book.ol_currently_reading_count,
                 "ol_already_read_count": book.ol_already_read_count,
+                "first_sentence": book.first_sentence or None,
             },
             "error": None,
         }

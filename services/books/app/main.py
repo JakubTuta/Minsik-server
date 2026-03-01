@@ -60,7 +60,7 @@ async def reindex_all_to_es() -> None:
 
     raw_ts = await app.cache.redis_client.get(ES_LAST_SYNC_KEY)
     if raw_ts:
-        last_sync = datetime.datetime.fromisoformat(raw_ts)
+        last_sync = datetime.datetime.fromisoformat(raw_ts).replace(tzinfo=None)
     else:
         last_sync = datetime.datetime(1970, 1, 1)
 
@@ -234,7 +234,7 @@ async def reindex_all_to_es() -> None:
             await _bulk_index(es, batch)
             series_indexed += len(batch)
 
-    now_ts = datetime.datetime.utcnow().isoformat()
+    now_ts = datetime.datetime.now(datetime.UTC).replace(tzinfo=None).isoformat()
     await app.cache.redis_client.set(ES_LAST_SYNC_KEY, now_ts)
 
     logger.info(

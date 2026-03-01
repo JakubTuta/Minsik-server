@@ -157,6 +157,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                         "ol_currently_reading_count", 0
                     ),
                     ol_already_read_count=book.get("ol_already_read_count", 0),
+                    first_sentence=book.get("first_sentence", ""),
                 )
 
                 return app.proto.books_pb2.BookDetailResponse(book=book_detail)

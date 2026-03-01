@@ -74,6 +74,7 @@ class BookDetailData(pydantic.BaseModel):
     title: str
     slug: str
     description: typing.Optional[str] = None
+    first_sentence: typing.Optional[str] = None
     language: str
     original_publication_year: typing.Optional[int] = None
     formats: typing.List[str]

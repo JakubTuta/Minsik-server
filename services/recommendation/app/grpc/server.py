@@ -1,12 +1,11 @@
 import logging
 
-import grpc
-
 import app.db
 import app.proto.recommendation_pb2 as recommendation_pb2
 import app.proto.recommendation_pb2_grpc as recommendation_pb2_grpc
 import app.services.list_builder
 import app.services.list_provider
+import grpc
 
 logger = logging.getLogger(__name__)
 
@@ -64,15 +63,21 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
     ) -> recommendation_pb2.RecommendationListResponse:
         try:
             if request.category not in app.services.list_builder.CATEGORY_KEYS:
-                await context.abort(grpc.StatusCode.NOT_FOUND, f"Unknown category: {request.category}")
+                await context.abort(
+                    grpc.StatusCode.NOT_FOUND, f"Unknown category: {request.category}"
+                )
                 return
 
             limit = request.limit if request.limit > 0 else 20
             offset = request.offset if request.offset >= 0 else 0
 
-            data = await app.services.list_provider.get_list(request.category, limit, offset)
+            data = await app.services.list_provider.get_list(
+                request.category, limit, offset
+            )
             if data is None:
-                await context.abort(grpc.StatusCode.UNAVAILABLE, "Recommendations not yet generated")
+                await context.abort(
+                    grpc.StatusCode.UNAVAILABLE, "Recommendations not yet generated"
+                )
                 return
 
             return _dict_to_list_response(data)
@@ -88,8 +93,12 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
         context: grpc.aio.ServicerContext,
     ) -> recommendation_pb2.HomePageResponse:
         try:
-            items_per_category = request.items_per_category if request.items_per_category > 0 else 20
-            categories = await app.services.list_provider.get_home_page(items_per_category)
+            items_per_category = (
+                request.items_per_category if request.items_per_category > 0 else 20
+            )
+            categories = await app.services.list_provider.get_home_page(
+                items_per_category
+            )
             response = recommendation_pb2.HomePageResponse()
             for data in categories:
                 response.categories.append(_dict_to_list_response(data))
@@ -129,8 +138,7 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
         context: grpc.aio.ServicerContext,
     ) -> recommendation_pb2.RefreshRecommendationsResponse:
         try:
-            async with app.db.async_session_maker() as session:
-                await app.services.list_builder.refresh_all(session)
+            await app.services.list_builder.refresh_all(app.db.async_session_maker)
             return recommendation_pb2.RefreshRecommendationsResponse(
                 success=True,
                 message="Recommendation lists refreshed successfully",
