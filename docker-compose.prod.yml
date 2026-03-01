@@ -165,6 +165,8 @@ services:
       AUTH_GRPC_PORT: ${AUTH_GRPC_PORT}
       USER_DATA_SERVICE_HOST: ${USER_DATA_SERVICE_HOST}
       USER_DATA_GRPC_PORT: ${USER_DATA_GRPC_PORT}
+      RECOMMENDATION_SERVICE_HOST: ${RECOMMENDATION_SERVICE_HOST}
+      RECOMMENDATION_GRPC_PORT: ${RECOMMENDATION_GRPC_PORT}
       GRPC_KEEPALIVE_TIME_MS: ${GRPC_KEEPALIVE_TIME_MS}
       GRPC_KEEPALIVE_TIMEOUT_MS: ${GRPC_KEEPALIVE_TIMEOUT_MS}
       GRPC_TIMEOUT: ${GRPC_TIMEOUT}
@@ -183,6 +185,7 @@ services:
       - books-service
       - auth-service
       - user-data-service
+      - recommendation-service
     deploy:
       resources:
         limits:
@@ -393,6 +396,57 @@ services:
       REDIS_MAX_CONNECTIONS: ${USER_DATA_REDIS_MAX_CONNECTIONS}
       USER_DATA_SERVICE_HOST: 0.0.0.0
       USER_DATA_GRPC_PORT: ${USER_DATA_GRPC_PORT}
+    # NO EXPOSED PORTS - internal network only (security)
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    deploy:
+      resources:
+        limits:
+          cpus: "0.5"
+          memory: 384M
+        reservations:
+          cpus: "0.25"
+          memory: 192M
+    networks:
+      - minsik-internal
+    restart: unless-stopped
+    logging:
+      driver: "json-file"
+      options:
+        max-size: "5m"
+        max-file: "2"
+
+  # ============================================================================
+  # Recommendation Service - Production Configuration
+  # ============================================================================
+  recommendation-service:
+    image: europe-central2-docker.pkg.dev/minsik-486117/server/recommendation-service:latest
+    container_name: minsik-recommendation-service
+    environment:
+      ENV: production
+      DEBUG: false
+      LOG_LEVEL: ${LOG_LEVEL}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_POOL_SIZE: ${DB_POOL_SIZE}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_DB: ${REDIS_DB}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_MAX_CONNECTIONS: ${REDIS_MAX_CONNECTIONS}
+      RECOMMENDATION_SERVICE_HOST: 0.0.0.0
+      RECOMMENDATION_GRPC_PORT: ${RECOMMENDATION_GRPC_PORT}
+      LIST_DEFAULT_SIZE: ${LIST_DEFAULT_SIZE}
+      CACHE_RECOMMENDATION_TTL: ${CACHE_RECOMMENDATION_TTL}
+      HOME_BOOK_CATEGORIES: ${HOME_BOOK_CATEGORIES}
+      HOME_AUTHOR_CATEGORIES: ${HOME_AUTHOR_CATEGORIES}
     # NO EXPOSED PORTS - internal network only (security)
     depends_on:
       postgres:

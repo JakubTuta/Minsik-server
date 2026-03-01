@@ -364,30 +364,29 @@ async def _flush_edition_updates(
             params[f"sid_{k}"] = series_id
             params[f"spos_{k}"] = series_pos
 
-        try:
-            await session.execute(
-                sqlalchemy.text(
-                    "UPDATE books.books AS b SET "
-                    "isbn = CASE WHEN v.isbn IS NOT NULL THEN v.isbn ELSE b.isbn END, "
-                    "number_of_pages = COALESCE(b.number_of_pages, v.pages), "
-                    "publisher = COALESCE(b.publisher, v.pub), "
-                    "external_ids = CASE WHEN v.ext IS NOT NULL "
-                    "THEN v.ext ELSE b.external_ids END, "
-                    "primary_cover_url = COALESCE(b.primary_cover_url, v.cover), "
-                    "description = COALESCE(b.description, v.descr), "
-                    "formats = CASE "
-                    "WHEN v.fmt IS NOT NULL AND NOT b.formats @> v.fmt "
-                    "THEN b.formats || v.fmt ELSE b.formats END, "
-                    "series_id = CASE WHEN b.series_id IS NULL AND v.sid IS NOT NULL "
-                    "THEN v.sid ELSE b.series_id END, "
-                    "series_position = CASE WHEN b.series_position IS NULL "
-                    "AND v.spos IS NOT NULL THEN v.spos ELSE b.series_position END "
-                    f"FROM (VALUES {', '.join(values_parts)}) "
-                    "AS v(bid, isbn, pages, pub, ext, cover, descr, fmt, sid, spos) "
-                    "WHERE b.book_id = v.bid"
-                ),
-                params,
-            )
+        await session.execute(
+            sqlalchemy.text(
+                "UPDATE books.books AS b SET "
+                "isbn = CASE WHEN v.isbn IS NOT NULL THEN v.isbn ELSE b.isbn END, "
+                "number_of_pages = COALESCE(b.number_of_pages, v.pages), "
+                "publisher = COALESCE(b.publisher, v.pub), "
+                "external_ids = CASE WHEN v.ext IS NOT NULL "
+                "THEN v.ext ELSE b.external_ids END, "
+                "primary_cover_url = COALESCE(b.primary_cover_url, v.cover), "
+                "description = COALESCE(b.description, v.descr), "
+                "formats = CASE "
+                "WHEN v.fmt IS NOT NULL AND NOT b.formats @> v.fmt "
+                "THEN b.formats || v.fmt ELSE b.formats END, "
+                "series_id = CASE WHEN b.series_id IS NULL AND v.sid IS NOT NULL "
+                "THEN v.sid ELSE b.series_id END, "
+                "series_position = CASE WHEN b.series_position IS NULL "
+                "AND v.spos IS NOT NULL THEN v.spos ELSE b.series_position END "
+                f"FROM (VALUES {', '.join(values_parts)}) "
+                "AS v(bid, isbn, pages, pub, ext, cover, descr, fmt, sid, spos) "
+                "WHERE b.book_id = v.bid"
+            ),
+            params,
+        )
 
     for update in new_lang_updates:
         try:

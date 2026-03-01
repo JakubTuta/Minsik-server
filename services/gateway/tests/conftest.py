@@ -40,3 +40,15 @@ def mock_books_client(mocker):
         setattr(mock_client, method, mocker.AsyncMock())
     mocker.patch.object(app.grpc_clients, "books_client", mock_client)
     return mock_client
+
+
+@pytest.fixture
+def mock_recommendation_client(mocker):
+    mock_client = mocker.MagicMock()
+    for method in [
+        "get_recommendation_list", "get_home_page",
+        "get_available_categories", "refresh_recommendations",
+    ]:
+        setattr(mock_client, method, mocker.AsyncMock())
+    mocker.patch.object(app.grpc_clients, "recommendation_client", mock_client)
+    return mock_client

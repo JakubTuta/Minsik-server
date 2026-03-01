@@ -12,6 +12,7 @@ import app.routes.admin
 import app.routes.auth
 import app.routes.books
 import app.routes.health
+import app.routes.recommendations
 import app.routes.user_data
 import fastapi
 import uvicorn
@@ -24,6 +25,8 @@ admin_router = app.routes.admin.router
 auth_router = app.routes.auth.router
 books_router = app.routes.books.router
 user_data_router = app.routes.user_data.router
+recommendations_router = app.routes.recommendations.router
+recommendations_admin_router = app.routes.recommendations.admin_router
 grpc_clients_module = app.grpc_clients
 limiter = rate_limit_middleware.limiter
 
@@ -43,11 +46,13 @@ async def lifespan(app: fastapi.FastAPI):
     await grpc_clients_module.books_client.connect()
     await grpc_clients_module.auth_client.connect()
     await grpc_clients_module.user_data_client.connect()
+    await grpc_clients_module.recommendation_client.connect()
     logger.info("Gateway service started successfully")
 
     yield
 
     logger.info("Shutting down Gateway service...")
+    await grpc_clients_module.recommendation_client.close()
     await grpc_clients_module.user_data_client.close()
     await grpc_clients_module.auth_client.close()
     await grpc_clients_module.books_client.close()
@@ -112,6 +117,8 @@ app.include_router(admin_router)
 app.include_router(auth_router)
 app.include_router(books_router)
 app.include_router(user_data_router)
+app.include_router(recommendations_router)
+app.include_router(recommendations_admin_router)
 
 
 def handle_shutdown(signum, frame):

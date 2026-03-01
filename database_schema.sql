@@ -396,9 +396,19 @@ COMMENT ON TABLE user_data.comments IS 'Public book reviews. One comment per use
 -- ============================================================================
 
 -- user_data.reading_profiles - Reading DNA (planned, not yet implemented)
--- recommendations.book_similarities - Pre-computed similarities (planned)
--- recommendations.user_recommendations - Pre-computed recommendations (planned)
--- recommendations.book_influences - Book lineage graph (planned)
+
+-- ============================================================================
+-- RECOMMENDATIONS SCHEMA - Non-personalized recommendation lists
+-- ============================================================================
+-- Phase 1: Read-only service — no tables in this schema.
+-- All data is read from books.* and user_data.* schemas, aggregated by a
+-- 24-hour background job, and stored in Redis with 24h TTL.
+-- Redis key format: rec:{category_key}  (e.g. rec:most_read)
+--
+-- Phase 2+ (planned):
+-- recommendations.book_similarities - Pre-computed content-based similarities
+-- recommendations.user_recommendations - Personalized per-user recommendations
+-- recommendations.book_influences - Book lineage graph
 
 -- ============================================================================
 -- SEARCH

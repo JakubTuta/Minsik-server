@@ -72,7 +72,7 @@ COMMANDS:
 
   Testing:
     -Test                          Run tests
-      -TestService <service>         Specific service (gateway/ingestion/books/auth/user-data)
+      -TestService <service>         Specific service (gateway/ingestion/books/auth/user-data/recommendation)
 
   Help:
     -Help                          Show this help message
@@ -134,6 +134,10 @@ function Compile-Proto {
         @{
             Source = "proto/auth.proto"
             Destinations = @("services/auth/app/proto", "services/gateway/app/proto")
+        },
+        @{
+            Source = "proto/recommendation.proto"
+            Destinations = @("services/recommendation/app/proto", "services/gateway/app/proto")
         }
     )
 
@@ -244,11 +248,12 @@ function Build-And-Push-Images {
     $GAR_REGISTRY = "europe-central2-docker.pkg.dev/minsik-486117/server"
 
     $services = @(
-        @{ Name = "Auth Service";      Dockerfile = "services/auth/Dockerfile";       ImageName = "auth-service" },
-        @{ Name = "Gateway Service";   Dockerfile = "services/gateway/Dockerfile";    ImageName = "gateway-service" },
-        @{ Name = "Ingestion Service"; Dockerfile = "services/ingestion/Dockerfile";  ImageName = "ingestion-service" },
-        @{ Name = "Books Service";     Dockerfile = "services/books/Dockerfile";      ImageName = "books-service" },
-        @{ Name = "User Data Service"; Dockerfile = "services/user_data/Dockerfile";  ImageName = "user-data-service" }
+        @{ Name = "Auth Service";           Dockerfile = "services/auth/Dockerfile";           ImageName = "auth-service" },
+        @{ Name = "Gateway Service";        Dockerfile = "services/gateway/Dockerfile";        ImageName = "gateway-service" },
+        @{ Name = "Ingestion Service";      Dockerfile = "services/ingestion/Dockerfile";      ImageName = "ingestion-service" },
+        @{ Name = "Books Service";          Dockerfile = "services/books/Dockerfile";          ImageName = "books-service" },
+        @{ Name = "User Data Service";      Dockerfile = "services/user_data/Dockerfile";      ImageName = "user-data-service" },
+        @{ Name = "Recommendation Service"; Dockerfile = "services/recommendation/Dockerfile"; ImageName = "recommendation-service" }
     )
 
     Write-Step "Building and pushing images to Google Artifact Registry..."
@@ -346,11 +351,12 @@ function Run-Tests {
     Write-Step "Running tests..."
 
     $serviceMap = @{
-        "gateway"   = "gateway-service"
-        "ingestion" = "ingestion-service"
-        "books"     = "books-service"
-        "auth"      = "auth-service"
-        "user-data" = "user-data-service"
+        "gateway"        = "gateway-service"
+        "ingestion"      = "ingestion-service"
+        "books"          = "books-service"
+        "auth"           = "auth-service"
+        "user-data"      = "user-data-service"
+        "recommendation" = "recommendation-service"
     }
 
     if ($Service -and $Service -ne "all") {
@@ -371,7 +377,7 @@ function Run-Tests {
         }
 
     } else {
-        $services = @("gateway", "ingestion", "books", "auth", "user-data")
+        $services = @("gateway", "ingestion", "books", "auth", "user-data", "recommendation")
         $totalPassed = 0
         $totalFailed = 0
 

@@ -96,7 +96,7 @@ services:
       context: .
       dockerfile: services/gateway/Dockerfile
     container_name: minsik-gateway-service-dev
-    command: sh -c "sh /app/scripts/dev-compile-protos.sh ingestion books auth user_data && exec uvicorn app.main:app --host 0.0.0.0 --port 8040 --reload --reload-dir /app/app"
+    command: sh -c "sh /app/scripts/dev-compile-protos.sh ingestion books auth user_data recommendation && exec uvicorn app.main:app --host 0.0.0.0 --port 8040 --reload --reload-dir /app/app"
     environment:
       ENV: development
       DEBUG: ${DEBUG}
@@ -119,6 +119,8 @@ services:
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
       JWT_ALGORITHM: ${JWT_ALGORITHM}
       JWT_ACCESS_TOKEN_EXPIRE_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRE_MINUTES}
+      RECOMMENDATION_SERVICE_HOST: ${RECOMMENDATION_SERVICE_HOST}
+      RECOMMENDATION_GRPC_PORT: ${RECOMMENDATION_GRPC_PORT}
       CORS_ORIGINS: "*"
       CORS_ALLOW_CREDENTIALS: "true"
       CORS_ALLOW_METHODS: "*"
@@ -136,6 +138,7 @@ services:
       - books-service
       - auth-service
       - user-data-service
+      - recommendation-service
     networks:
       - minsik-network
     restart: unless-stopped
@@ -339,6 +342,55 @@ services:
     volumes:
       - ./services/user_data/app:/app/app
       - ./services/user_data/tests:/app/tests
+      - ./proto:/app/proto_src:ro
+      - ./scripts:/app/scripts:ro
+    depends_on:
+      postgres:
+        condition: service_healthy
+      redis:
+        condition: service_healthy
+    networks:
+      - minsik-network
+    restart: unless-stopped
+    # No resource limits in development
+
+  # ============================================================================
+  # Recommendation Service - Development Configuration
+  # ============================================================================
+  recommendation-service:
+    build:
+      context: .
+      dockerfile: services/recommendation/Dockerfile
+    container_name: minsik-recommendation-service-dev
+    command: sh -c "sh /app/scripts/dev-compile-protos.sh recommendation && exec watchfiles 'python -m app.main' /app/app"
+    environment:
+      ENV: development
+      DEBUG: ${DEBUG}
+      LOG_LEVEL: ${LOG_LEVEL}
+      DB_HOST: ${DB_HOST}
+      DB_PORT: ${DB_PORT}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      DB_POOL_SIZE: ${DB_POOL_SIZE}
+      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PORT: ${REDIS_PORT}
+      REDIS_DB: ${REDIS_DB}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      REDIS_MAX_CONNECTIONS: ${REDIS_MAX_CONNECTIONS}
+      RECOMMENDATION_SERVICE_HOST: ${RECOMMENDATION_SERVICE_HOST}
+      RECOMMENDATION_GRPC_PORT: ${RECOMMENDATION_GRPC_PORT}
+      LIST_DEFAULT_SIZE: ${LIST_DEFAULT_SIZE}
+      CACHE_RECOMMENDATION_TTL: ${CACHE_RECOMMENDATION_TTL}
+      HOME_BOOK_CATEGORIES: ${HOME_BOOK_CATEGORIES}
+      HOME_AUTHOR_CATEGORIES: ${HOME_AUTHOR_CATEGORIES}
+    ports:
+      # EXPOSED for local access (gRPC debugging)
+      - "${RECOMMENDATION_GRPC_PORT}:50056"
+    volumes:
+      - ./services/recommendation/app:/app/app
+      - ./services/recommendation/tests:/app/tests
       - ./proto:/app/proto_src:ro
       - ./scripts:/app/scripts:ro
     depends_on:

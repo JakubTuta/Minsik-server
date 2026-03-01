@@ -1,0 +1,74 @@
+syntax = "proto3";
+
+package recommendation.v1;
+
+service RecommendationService {
+  rpc GetRecommendationList(GetRecommendationListRequest) returns (RecommendationListResponse);
+  rpc GetHomePage(GetHomePageRequest) returns (HomePageResponse);
+  rpc GetAvailableCategories(GetAvailableCategoriesRequest) returns (AvailableCategoriesResponse);
+  rpc RefreshRecommendations(RefreshRecommendationsRequest) returns (RefreshRecommendationsResponse);
+}
+
+message GetRecommendationListRequest {
+  string category = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message RecommendationListResponse {
+  string category = 1;
+  string display_name = 2;
+  string item_type = 3;
+  repeated RecommendationBookItem book_items = 4;
+  repeated RecommendationAuthorItem author_items = 5;
+  int32 total = 6;
+}
+
+message RecommendationBookItem {
+  int64 book_id = 1;
+  string title = 2;
+  string slug = 3;
+  string language = 4;
+  string primary_cover_url = 5;
+  repeated string author_names = 6;
+  repeated string author_slugs = 7;
+  string avg_rating = 8;
+  int32 rating_count = 9;
+  double score = 10;
+}
+
+message RecommendationAuthorItem {
+  int64 author_id = 1;
+  string name = 2;
+  string slug = 3;
+  string photo_url = 4;
+  int32 book_count = 5;
+  double score = 6;
+}
+
+message GetHomePageRequest {
+  int32 items_per_category = 1;
+}
+
+message HomePageResponse {
+  repeated RecommendationListResponse categories = 1;
+}
+
+message GetAvailableCategoriesRequest {}
+
+message AvailableCategoriesResponse {
+  repeated CategoryInfo categories = 1;
+}
+
+message CategoryInfo {
+  string category = 1;
+  string display_name = 2;
+  string item_type = 3;
+}
+
+message RefreshRecommendationsRequest {}
+
+message RefreshRecommendationsResponse {
+  bool success = 1;
+  string message = 2;
+}
