@@ -62,7 +62,7 @@ async def process_ratings_dump(file_path: str) -> int:
                     params: dict[str, typing.Any] = {}
                     for k, p in enumerate(sub):
                         values_parts.append(
-                            f"(:bid_{k}::bigint, :cnt_{k}::int, :avg_{k}::numeric)"
+                            f"(CAST(:bid_{k} AS bigint), CAST(:cnt_{k} AS int), CAST(:avg_{k} AS numeric))"
                         )
                         params[f"bid_{k}"] = p["bid"]
                         params[f"cnt_{k}"] = p["cnt"]

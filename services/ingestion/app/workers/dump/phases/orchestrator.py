@@ -1,3 +1,4 @@
+import ctypes
 import datetime
 import gc
 import logging
@@ -17,6 +18,13 @@ from app.workers.dump.phases import (
 )
 
 logger = logging.getLogger(__name__)
+
+
+def _trim_heap() -> None:
+    try:
+        ctypes.cdll.LoadLibrary("libc.so.6").malloc_trim(0)
+    except Exception:
+        pass
 
 
 async def run_import_dump(job_id: str, redis_client: redis.Redis) -> None:
@@ -68,6 +76,7 @@ async def run_import_dump(job_id: str, redis_client: redis.Redis) -> None:
         saved_state["phase_results"] = phase_results
         job_state.save_job_state(redis_client, saved_state)
         gc.collect()
+        _trim_heap()
 
     if completed:
         logger.info(
@@ -124,11 +133,17 @@ async def run_import_dump(job_id: str, redis_client: redis.Redis) -> None:
                 async with app.models.AsyncSessionLocal() as session:
                     known_works_filter = await parsers.build_known_works_filter(session)
 
+                gc.collect()
+                _trim_heap()
+
                 _set_status("Phase 4/6: downloading editions dump")
                 await downloader.download_file(
                     f"{base_url}/ol_dump_editions_latest.txt.gz",
                     str(phase_files[4]),
                 )
+                gc.collect()
+                _trim_heap()
+
                 _set_status("Phase 4/6: processing editions")
                 editions_stats = await editions.process_editions_dump(
                     str(phase_files[4]), known_works_filter

@@ -1,4 +1,5 @@
 import asyncio
+import ctypes
 import gc
 import json
 import logging
@@ -15,13 +16,26 @@ from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 logger = logging.getLogger(__name__)
 
 
+def _trim_heap() -> None:
+    try:
+        ctypes.cdll.LoadLibrary("libc.so.6").malloc_trim(0)
+    except Exception:
+        pass
+
+
+async def _open_session() -> sqlalchemy.ext.asyncio.AsyncSession:
+    session = app.models.AsyncSessionLocal()
+    await session.execute(sqlalchemy.text("SET synchronous_commit = off"))
+    return session
+
+
 async def process_editions_dump(
     file_path: str,
     known_works_filter: bytearray,
 ) -> dict[str, int]:
     from app.workers.dump import downloader
 
-    queue: asyncio.Queue = asyncio.Queue(maxsize=100)
+    queue: asyncio.Queue = asyncio.Queue(maxsize=5)
     parse_task = asyncio.create_task(
         downloader.stream_parse_dump(
             file_path,
@@ -42,7 +56,8 @@ async def process_editions_dump(
 
     best_editions: dict[str, dict] = {}
 
-    async with app.models.AsyncSessionLocal() as session:
+    session = await _open_session()
+    try:
         try:
             while True:
                 batch = await queue.get()
@@ -161,6 +176,9 @@ async def process_editions_dump(
                     best_editions.clear()
                     last_flushed = total_processed
                     gc.collect()
+                    await session.close()
+                    session = await _open_session()
+                    _trim_heap()
                     logger.info(
                         f"[dump] Editions chunk flushed at {total_processed}, "
                         f"enriched so far: {enriched}, "
@@ -202,6 +220,8 @@ async def process_editions_dump(
             raise
         finally:
             await parse_task
+    finally:
+        await session.close()
 
 
 async def _flush_best_editions_chunk(
@@ -325,9 +345,9 @@ async def _flush_edition_updates(
                 series_pos = series.get("position")
 
             values_parts.append(
-                f"(:bid_{k}::bigint, :isbn_{k}::jsonb, :pages_{k}::int, "
-                f":pub_{k}, :ext_{k}::jsonb, :cover_{k}, :desc_{k}, :fmt_{k}::jsonb, "
-                f":sid_{k}::bigint, :spos_{k}::numeric)"
+                f"(CAST(:bid_{k} AS bigint), CAST(:isbn_{k} AS jsonb), CAST(:pages_{k} AS int), "
+                f":pub_{k}, CAST(:ext_{k} AS jsonb), :cover_{k}, :desc_{k}, CAST(:fmt_{k} AS jsonb), "
+                f"CAST(:sid_{k} AS bigint), CAST(:spos_{k} AS numeric))"
             )
             params[f"bid_{k}"] = u["book_id"]
             params[f"isbn_{k}"] = json.dumps(u["isbn"]) if u["isbn"] else None
@@ -368,8 +388,6 @@ async def _flush_edition_updates(
                 ),
                 params,
             )
-        except Exception as e:
-            logger.debug(f"Error batch updating editions: {e}")
 
     for update in new_lang_updates:
         try:

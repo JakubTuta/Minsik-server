@@ -69,8 +69,8 @@ async def process_reading_log_dump(file_path: str) -> int:
                     params: dict[str, typing.Any] = {}
                     for k, p in enumerate(sub):
                         values_parts.append(
-                            f"(:bid_{k}::bigint, :want_{k}::int, "
-                            f":reading_{k}::int, :read_{k}::int)"
+                            f"(CAST(:bid_{k} AS bigint), CAST(:want_{k} AS int), "
+                            f"CAST(:reading_{k} AS int), CAST(:read_{k} AS int))"
                         )
                         params[f"bid_{k}"] = p["bid"]
                         params[f"want_{k}"] = p["want"]

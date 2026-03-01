@@ -2,6 +2,7 @@ import asyncio
 import gzip
 import json
 import logging
+import os
 import typing
 
 import httpx
@@ -14,8 +15,19 @@ _DOWNLOAD_CONNECT_TIMEOUT = 60
 _DOWNLOAD_LOG_EVERY_MB = 100
 
 
+async def _get_remote_size(url: str, timeout: httpx.Timeout) -> typing.Optional[int]:
+    try:
+        async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
+            response = await client.head(url)
+            content_length = response.headers.get("content-length")
+            if content_length:
+                return int(content_length)
+    except Exception:
+        pass
+    return None
+
+
 async def download_file(url: str, dest_path: str) -> None:
-    logger.info(f"[dump] Downloading {url}")
     timeout = httpx.Timeout(
         connect=_DOWNLOAD_CONNECT_TIMEOUT,
         read=_DOWNLOAD_READ_TIMEOUT,
@@ -23,9 +35,42 @@ async def download_file(url: str, dest_path: str) -> None:
         pool=60.0,
     )
 
-    downloaded = 0
+    local_size = os.path.getsize(dest_path) if os.path.exists(dest_path) else 0
+
+    if local_size > 0:
+        remote_size = await _get_remote_size(url, timeout)
+        if remote_size is not None:
+            if local_size == remote_size:
+                logger.info(
+                    f"[dump] Skipping download, file already complete: {dest_path} "
+                    f"({local_size / (1024 * 1024):.0f} MB)"
+                )
+                return
+            elif local_size > remote_size:
+                logger.warning(
+                    f"[dump] Local file larger than remote ({local_size} > {remote_size}), "
+                    f"deleting and re-downloading: {dest_path}"
+                )
+                os.remove(dest_path)
+                local_size = 0
+            else:
+                logger.info(
+                    f"[dump] Resuming download from {local_size / (1024 * 1024):.0f} MB "
+                    f"of {remote_size / (1024 * 1024):.0f} MB total: {url}"
+                )
+        else:
+            logger.warning(
+                f"[dump] Cannot verify remote size for {url}, "
+                f"re-downloading to be safe"
+            )
+            os.remove(dest_path)
+            local_size = 0
+
+    logger.info(f"[dump] Downloading {url}")
+
+    downloaded = local_size
     total_size: typing.Optional[int] = None
-    last_logged_mb = 0
+    last_logged_mb = downloaded / (1024 * 1024)
 
     for attempt in range(1, _DOWNLOAD_MAX_RETRIES + 1):
         headers: dict[str, str] = {}
@@ -34,10 +79,11 @@ async def download_file(url: str, dest_path: str) -> None:
         if downloaded > 0:
             headers["Range"] = f"bytes={downloaded}-"
             file_mode = "ab"
-            logger.info(
-                f"[dump] Resuming download from {downloaded / (1024 * 1024):.0f} MB "
-                f"(attempt {attempt}/{_DOWNLOAD_MAX_RETRIES})"
-            )
+            if attempt > 1:
+                logger.info(
+                    f"[dump] Resuming download from {downloaded / (1024 * 1024):.0f} MB "
+                    f"(attempt {attempt}/{_DOWNLOAD_MAX_RETRIES})"
+                )
 
         try:
             async with httpx.AsyncClient(

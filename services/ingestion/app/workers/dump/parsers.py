@@ -240,15 +240,15 @@ def score_edition(edition: dict) -> int:
 async def build_known_works_filter(
     session: sqlalchemy.ext.asyncio.AsyncSession,
 ) -> bytearray:
-    result = await session.execute(
+    filter_array = bytearray(_KNOWN_WORKS_MAX_ID // 8 + 1)
+    count = 0
+    result = await session.stream(
         sqlalchemy.text(
             "SELECT open_library_id FROM books.books "
             "WHERE open_library_id IS NOT NULL"
         )
     )
-    filter_array = bytearray(_KNOWN_WORKS_MAX_ID // 8 + 1)
-    count = 0
-    for row in result:
+    async for row in result:
         num = ol_id_to_int(row.open_library_id)
         if num is not None and num < _KNOWN_WORKS_MAX_ID:
             filter_array[num // 8] |= 1 << (num % 8)
