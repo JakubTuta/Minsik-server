@@ -3,8 +3,10 @@ import gzip
 import json
 import logging
 import os
+import random
 import typing
 
+import app.config
 import httpx
 
 logger = logging.getLogger(__name__)
@@ -177,6 +179,8 @@ async def stream_parse_dump(
 ) -> None:
     loop = asyncio.get_running_loop()
 
+    is_dev = app.config.settings.env == "development"
+
     def _sync_reader() -> None:
         with gzip.open(file_path, "rt", encoding="utf-8") as f:
             batch: list[dict] = []
@@ -186,6 +190,8 @@ async def stream_parse_dump(
                     if len(parts) != 5:
                         continue
                     if parts[0] != record_type:
+                        continue
+                    if is_dev and random.random() >= 0.1:
                         continue
 
                     data = json.loads(parts[4])
