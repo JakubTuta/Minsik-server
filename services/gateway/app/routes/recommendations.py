@@ -18,85 +18,43 @@ admin_router = fastapi.APIRouter(prefix="/api/v1/admin", tags=["Admin"])
 limiter = app.middleware.rate_limit.limiter
 
 
-def _section_to_dict(section) -> dict:
-    item_type = section.item_type
+def _to_section_dict(key: str, item) -> dict:
+    item_type = item.item_type
     result = {
-        "section_key": section.section_key,
-        "display_name": section.display_name,
+        "key": key,
+        "display_name": item.display_name,
         "item_type": item_type,
-        "total": section.total,
+        "total": item.total,
     }
     if item_type == "book":
         result["book_items"] = [
             {
-                "book_id": item.book_id,
-                "title": item.title,
-                "slug": item.slug,
-                "language": item.language,
-                "primary_cover_url": item.primary_cover_url or None,
-                "author_names": list(item.author_names),
-                "author_slugs": list(item.author_slugs),
-                "avg_rating": item.avg_rating or None,
-                "rating_count": item.rating_count,
-                "score": item.score,
+                "book_id": i.book_id,
+                "title": i.title,
+                "slug": i.slug,
+                "language": i.language,
+                "primary_cover_url": i.primary_cover_url or None,
+                "author_names": list(i.author_names),
+                "author_slugs": list(i.author_slugs),
+                "avg_rating": i.avg_rating or None,
+                "rating_count": i.rating_count,
+                "score": i.score,
             }
-            for item in section.book_items
+            for i in item.book_items
         ]
     else:
         result["author_items"] = [
             {
-                "author_id": item.author_id,
-                "name": item.name,
-                "slug": item.slug,
-                "photo_url": item.photo_url or None,
-                "book_count": item.book_count,
-                "score": item.score,
+                "author_id": i.author_id,
+                "name": i.name,
+                "slug": i.slug,
+                "photo_url": i.photo_url or None,
+                "book_count": i.book_count,
+                "score": i.score,
             }
-            for item in section.author_items
+            for i in item.author_items
         ]
     return result
-
-
-def _list_response_to_dict(response) -> dict:
-    item_type = response.item_type
-    items_key = "book_items" if item_type == "book" else "author_items"
-
-    if item_type == "book":
-        items = [
-            {
-                "book_id": item.book_id,
-                "title": item.title,
-                "slug": item.slug,
-                "language": item.language,
-                "primary_cover_url": item.primary_cover_url or None,
-                "author_names": list(item.author_names),
-                "author_slugs": list(item.author_slugs),
-                "avg_rating": item.avg_rating or None,
-                "rating_count": item.rating_count,
-                "score": item.score,
-            }
-            for item in response.book_items
-        ]
-    else:
-        items = [
-            {
-                "author_id": item.author_id,
-                "name": item.name,
-                "slug": item.slug,
-                "photo_url": item.photo_url or None,
-                "book_count": item.book_count,
-                "score": item.score,
-            }
-            for item in response.author_items
-        ]
-
-    return {
-        "category": response.category,
-        "display_name": response.display_name,
-        "item_type": item_type,
-        items_key: items,
-        "total": response.total,
-    }
 
 
 @router.get(
@@ -104,13 +62,13 @@ def _list_response_to_dict(response) -> dict:
     response_model=app.models.recommendation_responses.HomePageResponse,
     summary="Get home page recommendations",
     description="""
-    Returns multiple pre-computed recommendation lists for the home page.
+    Returns multiple pre-computed recommendation sections for the home page.
 
-    Each category entry includes ranked items (books or authors) up to
-    `items_per_category` per category. Lists are built by a background job
+    Each section includes ranked items (books or authors) up to
+    `items_per_category` per section. Lists are built by a background job
     every 24 hours and served from Redis cache.
 
-    The set of returned categories is configured via `HOME_BOOK_CATEGORIES`
+    The set of returned sections is configured via `HOME_BOOK_CATEGORIES`
     and `HOME_AUTHOR_CATEGORIES` environment variables.
 
     **Item types:**
@@ -127,14 +85,14 @@ def _list_response_to_dict(response) -> dict:
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
 async def get_home_page(
     request: fastapi.Request,
-    items_per_category: int = Query(20, ge=1, le=100, description="Number of items to return per category"),
+    items_per_category: int = Query(20, ge=1, le=100, description="Number of items to return per section"),
 ):
     try:
         response = await app.grpc_clients.recommendation_client.get_home_page(
             items_per_category=items_per_category
         )
-        categories = [_list_response_to_dict(cat) for cat in response.categories]
-        return app.utils.responses.success_response({"categories": categories})
+        sections = [_to_section_dict(cat.category, cat) for cat in response.categories]
+        return app.utils.responses.success_response({"sections": sections})
     except grpc.RpcError as e:
         logger.error(f"gRPC error in get_home_page: {e.code()} - {e.details()}")
         if e.code() == grpc.StatusCode.UNAVAILABLE:
@@ -156,10 +114,10 @@ async def get_home_page(
     response_model=app.models.recommendation_responses.AvailableCategoriesResponse,
     summary="Get available recommendation categories",
     description="""
-    Returns the static list of all 19 recommendation categories defined in the service.
+    Returns the static list of all recommendation categories defined in the service.
 
     Each entry includes:
-    - `category`: The key used in other endpoints (e.g. `most_read`)
+    - `key`: The identifier used in other endpoints (e.g. `most_read`)
     - `display_name`: Human-readable label (e.g. `Most Read Books`)
     - `item_type`: Either `book` or `author`
 
@@ -175,7 +133,7 @@ async def get_available_categories(request: fastapi.Request):
         response = await app.grpc_clients.recommendation_client.get_available_categories()
         categories = [
             {
-                "category": cat.category,
+                "key": cat.category,
                 "display_name": cat.display_name,
                 "item_type": cat.item_type,
             }
@@ -196,25 +154,25 @@ async def get_available_categories(request: fastapi.Request):
 
 @router.get(
     "/recommendations/{category}",
-    response_model=app.models.recommendation_responses.RecommendationListResponse,
-    summary="Get a single recommendation list",
+    response_model=app.models.recommendation_responses.RecommendationSectionResponse,
+    summary="Get a single recommendation section",
     description="""
-    Returns a paginated recommendation list for the given category key.
+    Returns a paginated recommendation section for the given category key.
 
     **Available category keys** (see `/recommendations/categories` for display names):
 
-    Book lists: `most_read`, `most_wanted`, `trending_reads`, `most_viewed`,
+    Book sections: `most_read`, `most_wanted`, `trending_reads`, `most_viewed`,
     `highest_rated`, `community_top_rated`, `most_rated`, `recently_added`,
     `classics`, `user_favorites`, `recently_finished`, `currently_reading`,
     `best_writing`, `most_emotional`, `funniest`, `most_thought_provoking`,
     `most_rereadable`
 
-    Author lists: `top_authors`, `popular_authors`
+    Author sections: `top_authors`, `popular_authors`
 
     **Pagination:** `total` reflects the full cached list size (before pagination).
 
     **Score field:** The `score` value represents the ranking signal used to order
-    the list (e.g. `ol_already_read_count` for `most_read`, `avg_rating` for
+    the section (e.g. `ol_already_read_count` for `most_read`, `avg_rating` for
     `highest_rated`, sub-rating average for `best_writing`).
     """,
     responses={
@@ -234,7 +192,7 @@ async def get_recommendation_list(
         response = await app.grpc_clients.recommendation_client.get_recommendation_list(
             category=category, limit=limit, offset=offset
         )
-        return app.utils.responses.success_response(_list_response_to_dict(response))
+        return app.utils.responses.success_response(_to_section_dict(response.category, response))
     except grpc.RpcError as e:
         logger.error(f"gRPC error in get_recommendation_list: {e.code()} - {e.details()}")
         if e.code() == grpc.StatusCode.NOT_FOUND:
@@ -246,7 +204,7 @@ async def get_recommendation_list(
                 "UNAVAILABLE", "Recommendations not yet available", status_code=503
             )
         return app.utils.responses.error_response(
-            "INTERNAL_ERROR", "Failed to fetch recommendation list", status_code=500
+            "INTERNAL_ERROR", "Failed to fetch recommendation section", status_code=500
         )
     except Exception as e:
         logger.error(f"Unexpected error in get_recommendation_list: {str(e)}")
@@ -287,7 +245,7 @@ async def get_book_recommendations(
         response = await app.grpc_clients.recommendation_client.get_book_recommendations(
             book_id=book_id, limit_per_section=limit_per_section
         )
-        sections = [_section_to_dict(s) for s in response.sections]
+        sections = [_to_section_dict(s.section_key, s) for s in response.sections]
         return app.utils.responses.success_response({"book_id": response.book_id, "sections": sections})
     except grpc.RpcError as e:
         logger.error(f"gRPC error in get_book_recommendations: {e.code()} - {e.details()}")
@@ -333,7 +291,7 @@ async def get_author_recommendations(
         response = await app.grpc_clients.recommendation_client.get_author_recommendations(
             author_id=author_id, limit_per_section=limit_per_section
         )
-        sections = [_section_to_dict(s) for s in response.sections]
+        sections = [_to_section_dict(s.section_key, s) for s in response.sections]
         return app.utils.responses.success_response({"author_id": response.author_id, "sections": sections})
     except grpc.RpcError as e:
         logger.error(f"gRPC error in get_author_recommendations: {e.code()} - {e.details()}")
@@ -356,7 +314,7 @@ async def get_author_recommendations(
     response_model=app.models.recommendation_responses.RefreshRecommendationsResponse,
     summary="Refresh recommendation lists",
     description="""
-    Triggers an immediate synchronous refresh of all 19 recommendation lists.
+    Triggers an immediate synchronous refresh of all recommendation sections.
 
     Runs all SQL queries, builds the ranked lists, and writes them to Redis
     with a 24h TTL. This replaces the next scheduled background run.

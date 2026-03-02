@@ -117,8 +117,7 @@ def _validate_and_clean_book(book_data: Dict[str, Any]) -> Optional[Dict[str, An
         series_name = series_data.get("name")
         series_id = None
         series_position = series_data.get("position")
-        if isinstance(series_position, (int, float)) and series_position > 999.99:
-            series_position = None
+        series_position = app.utils.clamp_series_position(series_position)
         title = app.utils.format_title_with_series(title, series_name)
 
     title = title[:500]

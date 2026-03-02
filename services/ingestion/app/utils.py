@@ -138,3 +138,15 @@ def format_title_with_series(title: str, series_name: typing.Optional[str]) -> s
         return title
 
     return f"{series_name}: {title}"
+
+
+def clamp_series_position(value: typing.Any) -> typing.Optional[float]:
+    if value is None:
+        return None
+    try:
+        numeric = float(value)
+    except (TypeError, ValueError):
+        return None
+    if numeric < 0 or numeric > 999.99:
+        return None
+    return numeric

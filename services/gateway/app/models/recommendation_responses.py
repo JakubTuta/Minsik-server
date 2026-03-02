@@ -26,23 +26,23 @@ class RecommendationAuthorItemSchema(pydantic.BaseModel):
     score: float
 
 
-class RecommendationListData(pydantic.BaseModel):
-    category: str = pydantic.Field(description="Category key (e.g. 'most_read')")
-    display_name: str = pydantic.Field(description="Human-readable category name")
+class RecommendationSectionData(pydantic.BaseModel):
+    key: str = pydantic.Field(description="Section key (e.g. 'most_read', 'more_by_author')")
+    display_name: str = pydantic.Field(description="Human-readable label")
     item_type: str = pydantic.Field(description="'book' or 'author'")
     book_items: typing.Optional[typing.List[RecommendationBookItemSchema]] = None
     author_items: typing.Optional[typing.List[RecommendationAuthorItemSchema]] = None
     total: int = pydantic.Field(description="Total items in the full cached list (before pagination)")
 
 
-class RecommendationListResponse(pydantic.BaseModel):
+class RecommendationSectionResponse(pydantic.BaseModel):
     success: bool = True
-    data: RecommendationListData
+    data: RecommendationSectionData
     error: typing.Optional[app.models.responses.ErrorDetail] = None
 
 
 class HomePageData(pydantic.BaseModel):
-    categories: typing.List[RecommendationListData]
+    sections: typing.List[RecommendationSectionData]
 
 
 class HomePageResponse(pydantic.BaseModel):
@@ -52,7 +52,7 @@ class HomePageResponse(pydantic.BaseModel):
 
 
 class CategoryInfoSchema(pydantic.BaseModel):
-    category: str
+    key: str
     display_name: str
     item_type: str
 
@@ -76,15 +76,6 @@ class RefreshRecommendationsResponse(pydantic.BaseModel):
     success: bool = True
     data: RefreshRecommendationsData
     error: typing.Optional[app.models.responses.ErrorDetail] = None
-
-
-class RecommendationSectionData(pydantic.BaseModel):
-    section_key: str
-    display_name: str
-    item_type: str
-    book_items: typing.Optional[typing.List[RecommendationBookItemSchema]] = None
-    author_items: typing.Optional[typing.List[RecommendationAuthorItemSchema]] = None
-    total: int
 
 
 class BookRecommendationsData(pydantic.BaseModel):

@@ -348,7 +348,7 @@ async def _flush_edition_updates(
             if series and series.get("name"):
                 series_slug = app.utils.slugify(series["name"])
                 series_id = series_name_to_id.get(series_slug)
-                series_pos = series.get("position")
+                series_pos = app.utils.clamp_series_position(series.get("position"))
 
             values_parts.append(
                 f"(CAST(:bid_{k} AS bigint), CAST(:isbn_{k} AS jsonb), CAST(:pages_{k} AS int), "
@@ -443,8 +443,7 @@ async def _insert_new_language_row(
         series_id = source.series_id
         series_position = source.series_position
 
-    if isinstance(series_position, (int, float)) and series_position > 999.99:
-        series_position = None
+    series_position = app.utils.clamp_series_position(series_position)
 
     insert_data = {
         "title": title,
