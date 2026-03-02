@@ -151,6 +151,23 @@ async def download_file(url: str, dest_path: str) -> None:
             )
             await asyncio.sleep(wait_seconds)
 
+        except httpx.HTTPStatusError as e:
+            if e.response.status_code < 500:
+                raise
+
+            if attempt == _DOWNLOAD_MAX_RETRIES:
+                logger.error(
+                    f"[dump] Download failed after {_DOWNLOAD_MAX_RETRIES} attempts: {e}"
+                )
+                raise
+
+            wait_seconds = min(60 * (2 ** (attempt - 1)), 600)
+            logger.warning(
+                f"[dump] Server returned {e.response.status_code}, "
+                f"retrying in {wait_seconds}s (attempt {attempt}/{_DOWNLOAD_MAX_RETRIES})"
+            )
+            await asyncio.sleep(wait_seconds)
+
 
 async def stream_parse_dump(
     file_path: str,

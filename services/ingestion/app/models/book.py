@@ -50,6 +50,7 @@ class Book(Base):
     language = Column(String(10), nullable=False)
     slug = Column(String(600), nullable=False)
     description = Column(Text)
+    first_sentence = Column(Text)
     original_publication_year = Column(Integer)
 
     formats = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
