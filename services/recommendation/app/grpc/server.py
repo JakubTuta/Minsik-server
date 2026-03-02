@@ -3,6 +3,7 @@ import logging
 import app.db
 import app.proto.recommendation_pb2 as recommendation_pb2
 import app.proto.recommendation_pb2_grpc as recommendation_pb2_grpc
+import app.services.contextual_provider
 import app.services.list_builder
 import app.services.list_provider
 import grpc
@@ -34,6 +35,23 @@ def _dict_to_author_item(item: dict) -> recommendation_pb2.RecommendationAuthorI
         book_count=item["book_count"],
         score=item["score"],
     )
+
+
+def _dict_to_section(section: dict) -> recommendation_pb2.RecommendationSection:
+    item_type = section.get("item_type", "book")
+    proto_section = recommendation_pb2.RecommendationSection(
+        section_key=section["section_key"],
+        display_name=section["display_name"],
+        item_type=item_type,
+        total=section["total"],
+    )
+    if item_type == "book":
+        for item in section.get("book_items", []):
+            proto_section.book_items.append(_dict_to_book_item(item))
+    else:
+        for item in section.get("author_items", []):
+            proto_section.author_items.append(_dict_to_author_item(item))
+    return proto_section
 
 
 def _dict_to_list_response(data: dict) -> recommendation_pb2.RecommendationListResponse:
@@ -148,3 +166,55 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
         except Exception as e:
             logger.error(f"Error in RefreshRecommendations: {str(e)}")
             await context.abort(grpc.StatusCode.INTERNAL, f"Refresh failed: {str(e)}")
+
+    async def GetBookRecommendations(
+        self,
+        request: recommendation_pb2.GetBookRecommendationsRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> recommendation_pb2.BookRecommendationsResponse:
+        try:
+            limit = request.limit_per_section if request.limit_per_section > 0 else 15
+            sections = await app.services.contextual_provider.get_book_recommendations(
+                request.book_id, limit
+            )
+            if sections is None:
+                await context.abort(
+                    grpc.StatusCode.NOT_FOUND,
+                    f"Book with ID {request.book_id} not found",
+                )
+                return
+            response = recommendation_pb2.BookRecommendationsResponse(book_id=request.book_id)
+            for section in sections:
+                response.sections.append(_dict_to_section(section))
+            return response
+        except grpc.aio.AbortError:
+            raise
+        except Exception as e:
+            logger.error(f"Error in GetBookRecommendations: {str(e)}")
+            await context.abort(grpc.StatusCode.INTERNAL, f"Internal error: {str(e)}")
+
+    async def GetAuthorRecommendations(
+        self,
+        request: recommendation_pb2.GetAuthorRecommendationsRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> recommendation_pb2.AuthorRecommendationsResponse:
+        try:
+            limit = request.limit_per_section if request.limit_per_section > 0 else 15
+            sections = await app.services.contextual_provider.get_author_recommendations(
+                request.author_id, limit
+            )
+            if sections is None:
+                await context.abort(
+                    grpc.StatusCode.NOT_FOUND,
+                    f"Author with ID {request.author_id} not found",
+                )
+                return
+            response = recommendation_pb2.AuthorRecommendationsResponse(author_id=request.author_id)
+            for section in sections:
+                response.sections.append(_dict_to_section(section))
+            return response
+        except grpc.aio.AbortError:
+            raise
+        except Exception as e:
+            logger.error(f"Error in GetAuthorRecommendations: {str(e)}")
+            await context.abort(grpc.StatusCode.INTERNAL, f"Internal error: {str(e)}")

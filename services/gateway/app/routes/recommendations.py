@@ -18,6 +18,45 @@ admin_router = fastapi.APIRouter(prefix="/api/v1/admin", tags=["Admin"])
 limiter = app.middleware.rate_limit.limiter
 
 
+def _section_to_dict(section) -> dict:
+    item_type = section.item_type
+    result = {
+        "section_key": section.section_key,
+        "display_name": section.display_name,
+        "item_type": item_type,
+        "total": section.total,
+    }
+    if item_type == "book":
+        result["book_items"] = [
+            {
+                "book_id": item.book_id,
+                "title": item.title,
+                "slug": item.slug,
+                "language": item.language,
+                "primary_cover_url": item.primary_cover_url or None,
+                "author_names": list(item.author_names),
+                "author_slugs": list(item.author_slugs),
+                "avg_rating": item.avg_rating or None,
+                "rating_count": item.rating_count,
+                "score": item.score,
+            }
+            for item in section.book_items
+        ]
+    else:
+        result["author_items"] = [
+            {
+                "author_id": item.author_id,
+                "name": item.name,
+                "slug": item.slug,
+                "photo_url": item.photo_url or None,
+                "book_count": item.book_count,
+                "score": item.score,
+            }
+            for item in section.author_items
+        ]
+    return result
+
+
 def _list_response_to_dict(response) -> dict:
     item_type = response.item_type
     items_key = "book_items" if item_type == "book" else "author_items"
@@ -211,6 +250,102 @@ async def get_recommendation_list(
         )
     except Exception as e:
         logger.error(f"Unexpected error in get_recommendation_list: {str(e)}")
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
+        )
+
+
+@router.get(
+    "/recommendations/book/{book_id}",
+    response_model=app.models.recommendation_responses.BookRecommendationsResponse,
+    summary="Get recommendations for a book",
+    description="""
+    Returns contextual recommendation sections for a specific book.
+
+    Possible sections (only non-empty sections are returned):
+    - `more_by_author` — Other books by the same author(s)
+    - `more_from_series` — Other books in the same series (if applicable)
+    - `similar_by_genre` — Books with the most genre overlap
+    - `readers_also_enjoyed` — Books co-read by users who read this book
+    - `similar_{dimension}` — Books scoring similarly in a prominent sub-rating dimension
+      (e.g. `similar_humor`, `similar_writing_quality`)
+
+    Results are computed on first request and cached for 1 hour.
+    """,
+    responses={
+        404: {"description": "Book not found"},
+        500: {"description": "Internal server error"},
+    },
+)
+@limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
+async def get_book_recommendations(
+    request: fastapi.Request,
+    book_id: int = fastapi.Path(..., description="Book ID"),
+    limit_per_section: int = Query(15, ge=1, le=50, description="Number of items per recommendation section"),
+):
+    try:
+        response = await app.grpc_clients.recommendation_client.get_book_recommendations(
+            book_id=book_id, limit_per_section=limit_per_section
+        )
+        sections = [_section_to_dict(s) for s in response.sections]
+        return app.utils.responses.success_response({"book_id": response.book_id, "sections": sections})
+    except grpc.RpcError as e:
+        logger.error(f"gRPC error in get_book_recommendations: {e.code()} - {e.details()}")
+        if e.code() == grpc.StatusCode.NOT_FOUND:
+            return app.utils.responses.error_response(
+                "NOT_FOUND", f"Book with ID {book_id} not found", status_code=404
+            )
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "Failed to fetch book recommendations", status_code=500
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error in get_book_recommendations: {str(e)}")
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
+        )
+
+
+@router.get(
+    "/recommendations/author/{author_id}",
+    response_model=app.models.recommendation_responses.AuthorRecommendationsResponse,
+    summary="Get recommendations for an author",
+    description="""
+    Returns contextual recommendation sections for a specific author.
+
+    Possible sections (only non-empty sections are returned):
+    - `similar_authors` — Authors with the most genre overlap
+    - `fans_also_read` — Authors co-read by fans of this author
+
+    Results are computed on first request and cached for 1 hour.
+    """,
+    responses={
+        404: {"description": "Author not found"},
+        500: {"description": "Internal server error"},
+    },
+)
+@limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
+async def get_author_recommendations(
+    request: fastapi.Request,
+    author_id: int = fastapi.Path(..., description="Author ID"),
+    limit_per_section: int = Query(15, ge=1, le=50, description="Number of items per recommendation section"),
+):
+    try:
+        response = await app.grpc_clients.recommendation_client.get_author_recommendations(
+            author_id=author_id, limit_per_section=limit_per_section
+        )
+        sections = [_section_to_dict(s) for s in response.sections]
+        return app.utils.responses.success_response({"author_id": response.author_id, "sections": sections})
+    except grpc.RpcError as e:
+        logger.error(f"gRPC error in get_author_recommendations: {e.code()} - {e.details()}")
+        if e.code() == grpc.StatusCode.NOT_FOUND:
+            return app.utils.responses.error_response(
+                "NOT_FOUND", f"Author with ID {author_id} not found", status_code=404
+            )
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "Failed to fetch author recommendations", status_code=500
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error in get_author_recommendations: {str(e)}")
         return app.utils.responses.error_response(
             "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
         )

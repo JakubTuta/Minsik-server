@@ -115,3 +115,51 @@ class RefreshRecommendationsResponse(_message.Message):
     success: bool
     message: str
     def __init__(self, success: bool = ..., message: _Optional[str] = ...) -> None: ...
+
+class GetBookRecommendationsRequest(_message.Message):
+    __slots__ = ("book_id", "limit_per_section")
+    BOOK_ID_FIELD_NUMBER: _ClassVar[int]
+    LIMIT_PER_SECTION_FIELD_NUMBER: _ClassVar[int]
+    book_id: int
+    limit_per_section: int
+    def __init__(self, book_id: _Optional[int] = ..., limit_per_section: _Optional[int] = ...) -> None: ...
+
+class GetAuthorRecommendationsRequest(_message.Message):
+    __slots__ = ("author_id", "limit_per_section")
+    AUTHOR_ID_FIELD_NUMBER: _ClassVar[int]
+    LIMIT_PER_SECTION_FIELD_NUMBER: _ClassVar[int]
+    author_id: int
+    limit_per_section: int
+    def __init__(self, author_id: _Optional[int] = ..., limit_per_section: _Optional[int] = ...) -> None: ...
+
+class RecommendationSection(_message.Message):
+    __slots__ = ("section_key", "display_name", "item_type", "book_items", "author_items", "total")
+    SECTION_KEY_FIELD_NUMBER: _ClassVar[int]
+    DISPLAY_NAME_FIELD_NUMBER: _ClassVar[int]
+    ITEM_TYPE_FIELD_NUMBER: _ClassVar[int]
+    BOOK_ITEMS_FIELD_NUMBER: _ClassVar[int]
+    AUTHOR_ITEMS_FIELD_NUMBER: _ClassVar[int]
+    TOTAL_FIELD_NUMBER: _ClassVar[int]
+    section_key: str
+    display_name: str
+    item_type: str
+    book_items: _containers.RepeatedCompositeFieldContainer[RecommendationBookItem]
+    author_items: _containers.RepeatedCompositeFieldContainer[RecommendationAuthorItem]
+    total: int
+    def __init__(self, section_key: _Optional[str] = ..., display_name: _Optional[str] = ..., item_type: _Optional[str] = ..., book_items: _Optional[_Iterable[_Union[RecommendationBookItem, _Mapping]]] = ..., author_items: _Optional[_Iterable[_Union[RecommendationAuthorItem, _Mapping]]] = ..., total: _Optional[int] = ...) -> None: ...
+
+class BookRecommendationsResponse(_message.Message):
+    __slots__ = ("book_id", "sections")
+    BOOK_ID_FIELD_NUMBER: _ClassVar[int]
+    SECTIONS_FIELD_NUMBER: _ClassVar[int]
+    book_id: int
+    sections: _containers.RepeatedCompositeFieldContainer[RecommendationSection]
+    def __init__(self, book_id: _Optional[int] = ..., sections: _Optional[_Iterable[_Union[RecommendationSection, _Mapping]]] = ...) -> None: ...
+
+class AuthorRecommendationsResponse(_message.Message):
+    __slots__ = ("author_id", "sections")
+    AUTHOR_ID_FIELD_NUMBER: _ClassVar[int]
+    SECTIONS_FIELD_NUMBER: _ClassVar[int]
+    author_id: int
+    sections: _containers.RepeatedCompositeFieldContainer[RecommendationSection]
+    def __init__(self, author_id: _Optional[int] = ..., sections: _Optional[_Iterable[_Union[RecommendationSection, _Mapping]]] = ...) -> None: ...

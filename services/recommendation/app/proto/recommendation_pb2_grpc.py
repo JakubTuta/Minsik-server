@@ -54,6 +54,16 @@ class RecommendationServiceStub(object):
                 request_serializer=recommendation__pb2.RefreshRecommendationsRequest.SerializeToString,
                 response_deserializer=recommendation__pb2.RefreshRecommendationsResponse.FromString,
                 _registered_method=True)
+        self.GetBookRecommendations = channel.unary_unary(
+                '/recommendation.v1.RecommendationService/GetBookRecommendations',
+                request_serializer=recommendation__pb2.GetBookRecommendationsRequest.SerializeToString,
+                response_deserializer=recommendation__pb2.BookRecommendationsResponse.FromString,
+                _registered_method=True)
+        self.GetAuthorRecommendations = channel.unary_unary(
+                '/recommendation.v1.RecommendationService/GetAuthorRecommendations',
+                request_serializer=recommendation__pb2.GetAuthorRecommendationsRequest.SerializeToString,
+                response_deserializer=recommendation__pb2.AuthorRecommendationsResponse.FromString,
+                _registered_method=True)
 
 
 class RecommendationServiceServicer(object):
@@ -83,6 +93,18 @@ class RecommendationServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetBookRecommendations(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetAuthorRecommendations(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_RecommendationServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -105,6 +127,16 @@ def add_RecommendationServiceServicer_to_server(servicer, server):
                     servicer.RefreshRecommendations,
                     request_deserializer=recommendation__pb2.RefreshRecommendationsRequest.FromString,
                     response_serializer=recommendation__pb2.RefreshRecommendationsResponse.SerializeToString,
+            ),
+            'GetBookRecommendations': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetBookRecommendations,
+                    request_deserializer=recommendation__pb2.GetBookRecommendationsRequest.FromString,
+                    response_serializer=recommendation__pb2.BookRecommendationsResponse.SerializeToString,
+            ),
+            'GetAuthorRecommendations': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetAuthorRecommendations,
+                    request_deserializer=recommendation__pb2.GetAuthorRecommendationsRequest.FromString,
+                    response_serializer=recommendation__pb2.AuthorRecommendationsResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -215,6 +247,60 @@ class RecommendationService(object):
             '/recommendation.v1.RecommendationService/RefreshRecommendations',
             recommendation__pb2.RefreshRecommendationsRequest.SerializeToString,
             recommendation__pb2.RefreshRecommendationsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetBookRecommendations(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/recommendation.v1.RecommendationService/GetBookRecommendations',
+            recommendation__pb2.GetBookRecommendationsRequest.SerializeToString,
+            recommendation__pb2.BookRecommendationsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetAuthorRecommendations(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/recommendation.v1.RecommendationService/GetAuthorRecommendations',
+            recommendation__pb2.GetAuthorRecommendationsRequest.SerializeToString,
+            recommendation__pb2.AuthorRecommendationsResponse.FromString,
             options,
             channel_credentials,
             insecure,

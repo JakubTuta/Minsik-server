@@ -76,3 +76,34 @@ class RefreshRecommendationsResponse(pydantic.BaseModel):
     success: bool = True
     data: RefreshRecommendationsData
     error: typing.Optional[app.models.responses.ErrorDetail] = None
+
+
+class RecommendationSectionData(pydantic.BaseModel):
+    section_key: str
+    display_name: str
+    item_type: str
+    book_items: typing.Optional[typing.List[RecommendationBookItemSchema]] = None
+    author_items: typing.Optional[typing.List[RecommendationAuthorItemSchema]] = None
+    total: int
+
+
+class BookRecommendationsData(pydantic.BaseModel):
+    book_id: int
+    sections: typing.List[RecommendationSectionData]
+
+
+class BookRecommendationsResponse(pydantic.BaseModel):
+    success: bool = True
+    data: BookRecommendationsData
+    error: typing.Optional[app.models.responses.ErrorDetail] = None
+
+
+class AuthorRecommendationsData(pydantic.BaseModel):
+    author_id: int
+    sections: typing.List[RecommendationSectionData]
+
+
+class AuthorRecommendationsResponse(pydantic.BaseModel):
+    success: bool = True
+    data: AuthorRecommendationsData
+    error: typing.Optional[app.models.responses.ErrorDetail] = None

@@ -88,5 +88,41 @@ class RecommendationClient:
             logger.error(f"gRPC error in refresh_recommendations: {e.code()} - {e.details()}")
             raise
 
+    async def get_book_recommendations(
+        self,
+        book_id: int,
+        limit_per_section: int = 15,
+    ) -> recommendation_pb2.BookRecommendationsResponse:
+        request = recommendation_pb2.GetBookRecommendationsRequest(
+            book_id=book_id,
+            limit_per_section=limit_per_section,
+        )
+        try:
+            return await self.stub.GetBookRecommendations(
+                request,
+                timeout=app.config.settings.grpc_timeout,
+            )
+        except grpc.RpcError as e:
+            logger.error(f"gRPC error in get_book_recommendations: {e.code()} - {e.details()}")
+            raise
+
+    async def get_author_recommendations(
+        self,
+        author_id: int,
+        limit_per_section: int = 15,
+    ) -> recommendation_pb2.AuthorRecommendationsResponse:
+        request = recommendation_pb2.GetAuthorRecommendationsRequest(
+            author_id=author_id,
+            limit_per_section=limit_per_section,
+        )
+        try:
+            return await self.stub.GetAuthorRecommendations(
+                request,
+                timeout=app.config.settings.grpc_timeout,
+            )
+        except grpc.RpcError as e:
+            logger.error(f"gRPC error in get_author_recommendations: {e.code()} - {e.details()}")
+            raise
+
 
 recommendation_client = RecommendationClient()

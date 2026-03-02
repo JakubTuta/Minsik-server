@@ -7,6 +7,8 @@ service RecommendationService {
   rpc GetHomePage(GetHomePageRequest) returns (HomePageResponse);
   rpc GetAvailableCategories(GetAvailableCategoriesRequest) returns (AvailableCategoriesResponse);
   rpc RefreshRecommendations(RefreshRecommendationsRequest) returns (RefreshRecommendationsResponse);
+  rpc GetBookRecommendations(GetBookRecommendationsRequest) returns (BookRecommendationsResponse);
+  rpc GetAuthorRecommendations(GetAuthorRecommendationsRequest) returns (AuthorRecommendationsResponse);
 }
 
 message GetRecommendationListRequest {
@@ -71,4 +73,33 @@ message RefreshRecommendationsRequest {}
 message RefreshRecommendationsResponse {
   bool success = 1;
   string message = 2;
+}
+
+message GetBookRecommendationsRequest {
+  int64 book_id = 1;
+  int32 limit_per_section = 2;
+}
+
+message GetAuthorRecommendationsRequest {
+  int64 author_id = 1;
+  int32 limit_per_section = 2;
+}
+
+message RecommendationSection {
+  string section_key = 1;
+  string display_name = 2;
+  string item_type = 3;
+  repeated RecommendationBookItem book_items = 4;
+  repeated RecommendationAuthorItem author_items = 5;
+  int32 total = 6;
+}
+
+message BookRecommendationsResponse {
+  int64 book_id = 1;
+  repeated RecommendationSection sections = 2;
+}
+
+message AuthorRecommendationsResponse {
+  int64 author_id = 1;
+  repeated RecommendationSection sections = 2;
 }
