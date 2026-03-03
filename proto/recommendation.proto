@@ -50,6 +50,7 @@ message RecommendationAuthorItem {
 
 message GetHomePageRequest {
   int32 items_per_category = 1;
+  int64 user_id = 2;
 }
 
 message HomePageResponse {
@@ -78,11 +79,13 @@ message RefreshRecommendationsResponse {
 message GetBookRecommendationsRequest {
   int64 book_id = 1;
   int32 limit_per_section = 2;
+  int64 user_id = 3;
 }
 
 message GetAuthorRecommendationsRequest {
   int64 author_id = 1;
   int32 limit_per_section = 2;
+  int64 user_id = 3;
 }
 
 message RecommendationSection {

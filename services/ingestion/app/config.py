@@ -56,7 +56,7 @@ class Settings(BaseSettings):
     dump_ratings_enabled: bool = Field(default=True)
     dump_reading_log_enabled: bool = Field(default=True)
     dump_wikidata_enabled: bool = Field(default=True)
-    dump_edition_flush_interval: int = Field(default=500_000)
+    dump_edition_flush_interval: int = Field(default=100_000)
     dump_work_min_quality_score: int = Field(default=2)
     dump_author_min_quality_score: int = Field(default=2)
 

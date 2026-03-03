@@ -27,6 +27,10 @@ class Settings(BaseSettings):
     list_default_size: int = Field(default=50)
     cache_recommendation_ttl: int = Field(default=86400)
     cache_contextual_ttl: int = Field(default=3600)
+    cache_profile_ttl: int = Field(default=86400)
+    cache_personal_ttl: int = Field(default=3600)
+    cache_personal_contextual_ttl: int = Field(default=1800)
+    personal_cold_start_threshold: int = Field(default=5)
 
     home_book_categories: str = Field(
         default="most_read,highest_rated,trending_reads,most_wanted,recently_added,user_favorites,classics,best_writing,funniest,most_emotional"

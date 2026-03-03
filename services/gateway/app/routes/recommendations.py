@@ -62,18 +62,18 @@ def _to_section_dict(key: str, item) -> dict:
     response_model=app.models.recommendation_responses.HomePageResponse,
     summary="Get home page recommendations",
     description="""
-    Returns multiple pre-computed recommendation sections for the home page.
+    Returns generic pre-computed recommendation sections for the home page.
 
-    Each section includes ranked items (books or authors) up to
-    `items_per_category` per section. Lists are built by a background job
-    every 24 hours and served from Redis cache.
-
-    The set of returned sections is configured via `HOME_BOOK_CATEGORIES`
-    and `HOME_AUTHOR_CATEGORIES` environment variables.
+    Sections are built nightly at midnight and served from Redis cache (24h TTL).
+    The set of returned sections is configured via `HOME_BOOK_CATEGORIES` and
+    `HOME_AUTHOR_CATEGORIES` environment variables.
 
     **Item types:**
     - `book`: Contains `book_items` with title, slug, cover, authors, rating, and score
     - `author`: Contains `author_items` with name, slug, photo, book count, and score
+
+    For personalized sections interleaved with these, use
+    `GET /api/v1/users/me/recommendations/home` (authentication required).
 
     Returns `503` if the cache has not been populated yet.
     """,
@@ -218,17 +218,20 @@ async def get_recommendation_list(
     response_model=app.models.recommendation_responses.BookRecommendationsResponse,
     summary="Get recommendations for a book",
     description="""
-    Returns contextual recommendation sections for a specific book.
+    Returns generic contextual recommendation sections for a specific book.
 
-    Possible sections (only non-empty sections are returned):
-    - `more_by_author` — Other books by the same author(s)
-    - `more_from_series` — Other books in the same series (if applicable)
-    - `similar_by_genre` — Books with the most genre overlap
-    - `readers_also_enjoyed` — Books co-read by users who read this book
-    - `similar_{dimension}` — Books scoring similarly in a prominent sub-rating dimension
-      (e.g. `similar_humor`, `similar_writing_quality`)
+    Sections (only non-empty sections are returned):
+    - `more_by_author` — Other books by the same author(s), ordered by avg_rating
+    - `more_from_series` — Other books in the same series ordered by series_position (if applicable)
+    - `similar_by_genre` — Books with the highest Jaccard genre overlap
+    - `readers_also_enjoyed` — Books co-read by users who read this book (500-reader cap)
+    - `similar_{dimension}` — Books scoring within 0.5 of this book's most prominent
+      sub-rating dimension (e.g. `similar_humor`, `similar_writing_quality`)
 
     Results are computed on first request and cached for 1 hour.
+
+    For the personalized `you_might_like` section and read-book filtering, use
+    `GET /api/v1/users/me/recommendations/book/{book_id}` (authentication required).
     """,
     responses={
         404: {"description": "Book not found"},
@@ -268,13 +271,16 @@ async def get_book_recommendations(
     response_model=app.models.recommendation_responses.AuthorRecommendationsResponse,
     summary="Get recommendations for an author",
     description="""
-    Returns contextual recommendation sections for a specific author.
+    Returns generic contextual recommendation sections for a specific author.
 
-    Possible sections (only non-empty sections are returned):
-    - `similar_authors` — Authors with the most genre overlap
-    - `fans_also_read` — Authors co-read by fans of this author
+    Sections (only non-empty sections are returned):
+    - `similar_authors` — Authors with the highest Jaccard genre overlap across their books
+    - `fans_also_read` — Authors co-read by fans of this author (500-reader cap)
 
     Results are computed on first request and cached for 1 hour.
+
+    For the personalized `unread_by_author` section, use
+    `GET /api/v1/users/me/recommendations/author/{author_id}` (authentication required).
     """,
     responses={
         404: {"description": "Author not found"},

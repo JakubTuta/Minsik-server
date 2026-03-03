@@ -73,10 +73,12 @@ class RecommendationAuthorItem(_message.Message):
     def __init__(self, author_id: _Optional[int] = ..., name: _Optional[str] = ..., slug: _Optional[str] = ..., photo_url: _Optional[str] = ..., book_count: _Optional[int] = ..., score: _Optional[float] = ...) -> None: ...
 
 class GetHomePageRequest(_message.Message):
-    __slots__ = ("items_per_category",)
+    __slots__ = ("items_per_category", "user_id")
     ITEMS_PER_CATEGORY_FIELD_NUMBER: _ClassVar[int]
+    USER_ID_FIELD_NUMBER: _ClassVar[int]
     items_per_category: int
-    def __init__(self, items_per_category: _Optional[int] = ...) -> None: ...
+    user_id: int
+    def __init__(self, items_per_category: _Optional[int] = ..., user_id: _Optional[int] = ...) -> None: ...
 
 class HomePageResponse(_message.Message):
     __slots__ = ("categories",)
@@ -117,20 +119,24 @@ class RefreshRecommendationsResponse(_message.Message):
     def __init__(self, success: bool = ..., message: _Optional[str] = ...) -> None: ...
 
 class GetBookRecommendationsRequest(_message.Message):
-    __slots__ = ("book_id", "limit_per_section")
+    __slots__ = ("book_id", "limit_per_section", "user_id")
     BOOK_ID_FIELD_NUMBER: _ClassVar[int]
     LIMIT_PER_SECTION_FIELD_NUMBER: _ClassVar[int]
+    USER_ID_FIELD_NUMBER: _ClassVar[int]
     book_id: int
     limit_per_section: int
-    def __init__(self, book_id: _Optional[int] = ..., limit_per_section: _Optional[int] = ...) -> None: ...
+    user_id: int
+    def __init__(self, book_id: _Optional[int] = ..., limit_per_section: _Optional[int] = ..., user_id: _Optional[int] = ...) -> None: ...
 
 class GetAuthorRecommendationsRequest(_message.Message):
-    __slots__ = ("author_id", "limit_per_section")
+    __slots__ = ("author_id", "limit_per_section", "user_id")
     AUTHOR_ID_FIELD_NUMBER: _ClassVar[int]
     LIMIT_PER_SECTION_FIELD_NUMBER: _ClassVar[int]
+    USER_ID_FIELD_NUMBER: _ClassVar[int]
     author_id: int
     limit_per_section: int
-    def __init__(self, author_id: _Optional[int] = ..., limit_per_section: _Optional[int] = ...) -> None: ...
+    user_id: int
+    def __init__(self, author_id: _Optional[int] = ..., limit_per_section: _Optional[int] = ..., user_id: _Optional[int] = ...) -> None: ...
 
 class RecommendationSection(_message.Message):
     __slots__ = ("section_key", "display_name", "item_type", "book_items", "author_items", "total")

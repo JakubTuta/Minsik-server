@@ -14,6 +14,7 @@ import app.routes.books
 import app.routes.health
 import app.routes.recommendations
 import app.routes.user_data
+import app.routes.user_recommendations
 import fastapi
 import uvicorn
 from slowapi import _rate_limit_exceeded_handler
@@ -27,6 +28,7 @@ books_router = app.routes.books.router
 user_data_router = app.routes.user_data.router
 recommendations_router = app.routes.recommendations.router
 recommendations_admin_router = app.routes.recommendations.admin_router
+user_recommendations_router = app.routes.user_recommendations.router
 grpc_clients_module = app.grpc_clients
 limiter = rate_limit_middleware.limiter
 
@@ -119,6 +121,7 @@ app.include_router(books_router)
 app.include_router(user_data_router)
 app.include_router(recommendations_router)
 app.include_router(recommendations_admin_router)
+app.include_router(user_recommendations_router)
 
 
 def handle_shutdown(signum, frame):

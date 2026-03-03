@@ -55,8 +55,12 @@ class RecommendationClient:
     async def get_home_page(
         self,
         items_per_category: int = 20,
+        user_id: int = 0,
     ) -> recommendation_pb2.HomePageResponse:
-        request = recommendation_pb2.GetHomePageRequest(items_per_category=items_per_category)
+        request = recommendation_pb2.GetHomePageRequest(
+            items_per_category=items_per_category,
+            user_id=user_id,
+        )
         try:
             return await self.stub.GetHomePage(
                 request,
@@ -92,10 +96,12 @@ class RecommendationClient:
         self,
         book_id: int,
         limit_per_section: int = 15,
+        user_id: int = 0,
     ) -> recommendation_pb2.BookRecommendationsResponse:
         request = recommendation_pb2.GetBookRecommendationsRequest(
             book_id=book_id,
             limit_per_section=limit_per_section,
+            user_id=user_id,
         )
         try:
             return await self.stub.GetBookRecommendations(
@@ -110,10 +116,12 @@ class RecommendationClient:
         self,
         author_id: int,
         limit_per_section: int = 15,
+        user_id: int = 0,
     ) -> recommendation_pb2.AuthorRecommendationsResponse:
         request = recommendation_pb2.GetAuthorRecommendationsRequest(
             author_id=author_id,
             limit_per_section=limit_per_section,
+            user_id=user_id,
         )
         try:
             return await self.stub.GetAuthorRecommendations(

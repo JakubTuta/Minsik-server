@@ -114,8 +114,9 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
             items_per_category = (
                 request.items_per_category if request.items_per_category > 0 else 20
             )
+            user_id = request.user_id if request.user_id > 0 else 0
             categories = await app.services.list_provider.get_home_page(
-                items_per_category
+                items_per_category, user_id
             )
             response = recommendation_pb2.HomePageResponse()
             for data in categories:
@@ -174,8 +175,9 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
     ) -> recommendation_pb2.BookRecommendationsResponse:
         try:
             limit = request.limit_per_section if request.limit_per_section > 0 else 15
+            user_id = request.user_id if request.user_id > 0 else 0
             sections = await app.services.contextual_provider.get_book_recommendations(
-                request.book_id, limit
+                request.book_id, limit, user_id
             )
             if sections is None:
                 await context.abort(
@@ -200,8 +202,9 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
     ) -> recommendation_pb2.AuthorRecommendationsResponse:
         try:
             limit = request.limit_per_section if request.limit_per_section > 0 else 15
+            user_id = request.user_id if request.user_id > 0 else 0
             sections = await app.services.contextual_provider.get_author_recommendations(
-                request.author_id, limit
+                request.author_id, limit, user_id
             )
             if sections is None:
                 await context.abort(

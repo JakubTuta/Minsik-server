@@ -202,6 +202,10 @@ async def process_editions_dump(
                 f"{len(best_editions)} remaining best-of candidates"
             )
 
+            del known_works_filter
+            gc.collect()
+            _trim_heap()
+
             e, n = await _flush_best_editions_chunk(session, best_editions)
             enriched += e
             new_lang_rows += n

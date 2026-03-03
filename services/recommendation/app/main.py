@@ -10,6 +10,7 @@ import app.grpc.server
 import app.proto.recommendation_pb2
 import app.proto.recommendation_pb2_grpc
 import app.services.list_builder
+import app.services.personal_refresher
 import grpc
 from apscheduler import AsyncScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -34,6 +35,15 @@ async def _midnight_refresh() -> None:
         logger.info("[rec] Midnight refresh complete")
     except Exception as e:
         logger.error(f"[rec] Midnight refresh error: {str(e)}")
+
+
+async def _personal_refresh() -> None:
+    logger.info("[rec:personal] Running 1AM personalized recommendation refresh")
+    try:
+        await app.services.personal_refresher.refresh_all_personal(app.db.async_session_maker)
+        logger.info("[rec:personal] 1AM personal refresh complete")
+    except Exception as e:
+        logger.error(f"[rec:personal] 1AM personal refresh error: {str(e)}")
 
 
 async def start_server() -> None:
@@ -75,8 +85,10 @@ async def start_server() -> None:
     scheduler = AsyncScheduler()
     await scheduler.__aenter__()
     await scheduler.add_schedule(_midnight_refresh, CronTrigger(hour=0, minute=0))
+    await scheduler.add_schedule(_personal_refresh, CronTrigger(hour=1, minute=0))
     await scheduler.start_in_background()
     logger.info("[rec] Midnight refresh scheduled (cron: '0 0 * * *')")
+    logger.info("[rec:personal] Personal refresh scheduled (cron: '0 1 * * *')")
 
     logger.info("Recommendation service is running")
 
