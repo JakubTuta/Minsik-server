@@ -110,7 +110,6 @@ async def get_series_books(
     sort_options = {
         "series_position": "b.series_position",
         "publication_year": "b.original_publication_year",
-        "view_count": "b.view_count",
         "combined_rating": "combined_rating",
         "readers_count": "total_readers",
     }

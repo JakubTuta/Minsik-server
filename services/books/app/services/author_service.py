@@ -77,11 +77,10 @@ async def get_author_books(
 
     sort_options = {
         "publication_year": "b.original_publication_year",
-        "view_count": "b.view_count",
         "combined_rating": "combined_rating",
         "readers_count": "total_readers",
     }
-    sort_col = sort_options.get(sort_by, "b.view_count")
+    sort_col = sort_options.get(sort_by, "combined_rating")
     order_dir = "DESC" if order == "desc" else "ASC"
 
     books_query = sqlalchemy.text(

@@ -331,8 +331,7 @@ async def get_author(
 
     **Sort Options (sort_by):**
     - `publication_year` - Original publication year
-    - `view_count` - View count (default)
-    - `combined_rating` - Combined weighted rating (app + OL)
+    - `combined_rating` - Combined weighted rating (app + OL) (default)
     - `readers_count` - Total readers across app and OL bookshelves
 
     **Order Options:**
@@ -345,7 +344,7 @@ async def get_author(
 
     **Examples:**
     - `/api/v1/authors/j-r-r-tolkien/books?sort_by=publication_year&order=asc`
-    - `/api/v1/authors/j-r-r-tolkien/books?sort_by=avg_rating&order=desc`
+    - `/api/v1/authors/j-r-r-tolkien/books?sort_by=combined_rating&order=desc`
     - `/api/v1/authors/j-r-r-tolkien/books?limit=10&offset=0`
     - `/api/v1/authors/j-r-r-tolkien/books?language=pl`
     """,
@@ -357,8 +356,8 @@ async def get_author_books(
     limit: int = Query(10, ge=1, le=100, description="Number of books per page"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
     sort_by: str = Query(
-        "view_count",
-        regex="^(publication_year|view_count|combined_rating|readers_count)$",
+        "combined_rating",
+        regex="^(publication_year|combined_rating|readers_count)$",
         description="Sort field",
     ),
     order: str = Query("desc", regex="^(asc|desc)$", description="Sort order"),
@@ -630,7 +629,6 @@ async def get_book_comments(
     **Sort Options (sort_by):**
     - `series_position` - Position in the series (default)
     - `publication_year` - Original publication year
-    - `view_count` - View count
     - `combined_rating` - Combined weighted rating (app + OL)
     - `readers_count` - Total readers across app and OL bookshelves
 
@@ -659,7 +657,7 @@ async def get_series_books(
     ),
     sort_by: str = Query(
         "series_position",
-        regex="^(series_position|publication_year|view_count|combined_rating|readers_count)$",
+        regex="^(series_position|publication_year|combined_rating|readers_count)$",
         description="Sort field",
     ),
     order: str = Query("asc", regex="^(asc|desc)$", description="Sort order"),
