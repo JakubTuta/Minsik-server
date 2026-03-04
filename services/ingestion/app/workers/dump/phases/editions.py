@@ -8,12 +8,69 @@ import typing
 import app.config
 import app.models
 import app.utils
+import redis
 import sqlalchemy
 import sqlalchemy.ext.asyncio
+import sqlalchemy.pool
 from app.workers.dump import parsers
 from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 
 logger = logging.getLogger(__name__)
+
+_dump_engine: sqlalchemy.ext.asyncio.AsyncEngine | None = None
+_dump_sessionmaker: sqlalchemy.ext.asyncio.async_sessionmaker | None = None
+
+_CHECKPOINT_TTL_SECONDS = 86400 * 2
+
+
+def _checkpoint_key(job_id: str) -> str:
+    return f"dump_phase4_checkpoint:{job_id}"
+
+
+def _load_checkpoint(redis_client: redis.Redis, job_id: str) -> dict:
+    try:
+        raw = redis_client.get(_checkpoint_key(job_id))
+        if raw:
+            return json.loads(raw)
+    except Exception:
+        pass
+    return {}
+
+
+def _save_checkpoint(redis_client: redis.Redis, job_id: str, data: dict) -> None:
+    try:
+        redis_client.set(
+            _checkpoint_key(job_id),
+            json.dumps(data),
+            ex=_CHECKPOINT_TTL_SECONDS,
+        )
+    except Exception:
+        pass
+
+
+def _clear_checkpoint(redis_client: redis.Redis, job_id: str) -> None:
+    try:
+        redis_client.delete(_checkpoint_key(job_id))
+    except Exception:
+        pass
+
+
+def _get_dump_sessionmaker() -> sqlalchemy.ext.asyncio.async_sessionmaker:
+    global _dump_engine, _dump_sessionmaker
+    if _dump_sessionmaker is None:
+        _dump_engine = sqlalchemy.ext.asyncio.create_async_engine(
+            app.config.settings.database_url,
+            poolclass=sqlalchemy.pool.NullPool,
+            echo=False,
+        )
+        _dump_sessionmaker = sqlalchemy.ext.asyncio.async_sessionmaker(
+            _dump_engine,
+            class_=sqlalchemy.ext.asyncio.AsyncSession,
+            expire_on_commit=False,
+            autocommit=False,
+            autoflush=False,
+        )
+    return _dump_sessionmaker
 
 
 def _trim_heap() -> None:
@@ -24,7 +81,7 @@ def _trim_heap() -> None:
 
 
 async def _open_session() -> sqlalchemy.ext.asyncio.AsyncSession:
-    session = app.models.AsyncSessionLocal()
+    session = _get_dump_sessionmaker()()
     await session.execute(sqlalchemy.text("SET synchronous_commit = off"))
     return session
 
@@ -32,8 +89,18 @@ async def _open_session() -> sqlalchemy.ext.asyncio.AsyncSession:
 async def process_editions_dump(
     file_path: str,
     known_works_filter: bytearray,
+    job_id: str,
+    redis_client: redis.Redis,
 ) -> dict[str, int]:
     from app.workers.dump import downloader
+
+    checkpoint = _load_checkpoint(redis_client, job_id)
+    checkpoint_processed = checkpoint.get("processed", 0)
+    if checkpoint_processed > 0:
+        logger.info(
+            f"[dump] Phase 4 resuming from checkpoint: "
+            f"{checkpoint_processed} editions already processed, skipping ahead"
+        )
 
     queue: asyncio.Queue = asyncio.Queue(maxsize=5)
     parse_task = asyncio.create_task(
@@ -42,15 +109,16 @@ async def process_editions_dump(
             "/type/edition",
             queue,
             app.config.settings.dump_edition_batch_size,
+            skip_records=checkpoint_processed,
         )
     )
 
-    total_processed = 0
-    enriched = 0
-    new_lang_rows = 0
-    skipped = 0
-    last_logged = 0
-    last_flushed = 0
+    total_processed = checkpoint_processed
+    enriched = checkpoint.get("enriched", 0)
+    new_lang_rows = checkpoint.get("new_lang_rows", 0)
+    skipped = checkpoint.get("skipped", 0)
+    last_logged = total_processed
+    last_flushed = total_processed
     commit_interval = app.config.settings.dump_commit_interval
     flush_interval = app.config.settings.dump_edition_flush_interval
 
@@ -179,6 +247,16 @@ async def process_editions_dump(
                     new_lang_rows += n
                     best_editions.clear()
                     last_flushed = total_processed
+                    _save_checkpoint(
+                        redis_client,
+                        job_id,
+                        {
+                            "processed": total_processed,
+                            "enriched": enriched,
+                            "new_lang_rows": new_lang_rows,
+                            "skipped": skipped,
+                        },
+                    )
                     gc.collect()
                     await session.close()
                     session = await _open_session()
@@ -211,6 +289,7 @@ async def process_editions_dump(
             new_lang_rows += n
             best_editions.clear()
 
+            _clear_checkpoint(redis_client, job_id)
             logger.info(
                 f"[dump] Phase 4 complete: {total_processed} editions scanned, "
                 f"{enriched} books enriched, {new_lang_rows} new language rows"
@@ -230,6 +309,11 @@ async def process_editions_dump(
             await parse_task
     finally:
         await session.close()
+        global _dump_engine, _dump_sessionmaker
+        if _dump_engine is not None:
+            _dump_engine.dispose()
+            _dump_engine = None
+            _dump_sessionmaker = None
 
 
 async def _flush_best_editions_chunk(

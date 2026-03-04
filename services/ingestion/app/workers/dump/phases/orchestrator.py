@@ -146,7 +146,7 @@ async def run_import_dump(job_id: str, redis_client: redis.Redis) -> None:
 
                 _set_status("Phase 4/6: processing editions")
                 editions_stats = await editions.process_editions_dump(
-                    str(phase_files[4]), known_works_filter
+                    str(phase_files[4]), known_works_filter, job_id, redis_client
                 )
                 del known_works_filter
                 _finish_phase(4, editions_stats)

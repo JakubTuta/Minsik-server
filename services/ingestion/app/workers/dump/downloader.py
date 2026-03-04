@@ -176,12 +176,14 @@ async def stream_parse_dump(
     record_type: str,
     queue: asyncio.Queue[typing.Optional[typing.List[dict]]],
     batch_size: int,
+    skip_records: int = 0,
 ) -> None:
     loop = asyncio.get_running_loop()
 
     is_dev = app.config.settings.env == "development"
 
     def _sync_reader() -> None:
+        skipped_so_far = 0
         with gzip.open(file_path, "rt", encoding="utf-8") as f:
             batch: list[dict] = []
             for line in f:
@@ -192,6 +194,9 @@ async def stream_parse_dump(
                     if parts[0] != record_type:
                         continue
                     if is_dev and random.random() >= 0.1:
+                        continue
+                    if skipped_so_far < skip_records:
+                        skipped_so_far += 1
                         continue
 
                     data = json.loads(parts[4])

@@ -1,4 +1,6 @@
 import asyncio
+import ctypes
+import gc
 import gzip
 import logging
 import typing
@@ -8,6 +10,13 @@ import sqlalchemy
 from app.workers.dump import parsers
 
 logger = logging.getLogger(__name__)
+
+
+def _trim_heap() -> None:
+    try:
+        ctypes.cdll.LoadLibrary("libc.so.6").malloc_trim(0)
+    except Exception:
+        pass
 
 
 async def process_reading_log_dump(file_path: str) -> int:
@@ -37,6 +46,8 @@ async def process_reading_log_dump(file_path: str) -> int:
 
     shelf_agg = await asyncio.to_thread(_parse_reading_log_file)
     logger.info(f"[dump] Parsed {len(shelf_agg)} works with reading log data")
+    gc.collect()
+    _trim_heap()
 
     updated = 0
     async with app.models.AsyncSessionLocal() as session:
