@@ -159,6 +159,9 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                     ),
                     ol_already_read_count=book.get("ol_already_read_count", 0),
                     first_sentence=book.get("first_sentence", ""),
+                    app_want_to_read_count=book.get("app_want_to_read_count", 0),
+                    app_reading_count=book.get("app_reading_count", 0),
+                    app_read_count=book.get("app_read_count", 0),
                 )
 
                 return app.proto.books_pb2.BookDetailResponse(book=book_detail)
@@ -201,7 +204,6 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                     book_categories=author["book_categories"],
                     books_avg_rating=author["books_avg_rating"],
                     books_total_ratings=author["books_total_ratings"],
-                    books_total_views=author["books_total_views"],
                     wikidata_id=author["wikidata_id"] or "",
                     wikipedia_url=author["wikipedia_url"] or "",
                     remote_ids=author.get("remote_ids", {}),
@@ -315,7 +317,6 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                     rating_count=series["rating_count"],
                     ol_avg_rating=series["ol_avg_rating"] or "",
                     ol_rating_count=series["ol_rating_count"],
-                    total_views=series["total_views"],
                     app_want_to_read_count=series["app_want_to_read_count"],
                     app_reading_count=series["app_reading_count"],
                     app_read_count=series["app_read_count"],

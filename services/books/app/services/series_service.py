@@ -47,7 +47,6 @@ async def get_series_by_slug(
                 THEN ROUND(SUM(b.ol_avg_rating::numeric * b.ol_rating_count) / SUM(b.ol_rating_count), 2)
                 ELSE NULL
             END as ol_avg_rating,
-            COALESCE(SUM(b.view_count), 0) as total_views,
             COALESCE(SUM(b.ol_want_to_read_count), 0) AS ol_want_to_read_count,
             COALESCE(SUM(b.ol_currently_reading_count), 0) AS ol_currently_reading_count,
             COALESCE(SUM(b.ol_already_read_count), 0) AS ol_already_read_count,
@@ -227,7 +226,7 @@ def _series_to_dict(
         "name": series.name,
         "slug": series.slug,
         "description": series.description,
-        "total_books": stats.total_books or 0,
+        "total_books": int(stats.total_books) if stats.total_books else 0,
         "view_count": series.view_count,
         "last_viewed_at": (
             series.last_viewed_at.isoformat() if series.last_viewed_at else None
@@ -235,15 +234,27 @@ def _series_to_dict(
         "created_at": series.created_at.isoformat() if series.created_at else None,
         "updated_at": series.updated_at.isoformat() if series.updated_at else None,
         "avg_rating": str(stats.avg_rating) if stats.avg_rating else None,
-        "rating_count": stats.rating_count or 0,
+        "rating_count": int(stats.rating_count) if stats.rating_count else 0,
         "ol_avg_rating": str(stats.ol_avg_rating) if stats.ol_avg_rating else None,
-        "ol_rating_count": stats.ol_rating_count or 0,
-        "ol_want_to_read_count": stats.ol_want_to_read_count or 0,
-        "ol_currently_reading_count": stats.ol_currently_reading_count or 0,
-        "ol_already_read_count": stats.ol_already_read_count or 0,
-        "app_want_to_read_count": stats.app_want_to_read_count or 0,
-        "app_reading_count": stats.app_reading_count or 0,
-        "app_read_count": stats.app_read_count or 0,
+        "ol_rating_count": int(stats.ol_rating_count) if stats.ol_rating_count else 0,
+        "ol_want_to_read_count": (
+            int(stats.ol_want_to_read_count) if stats.ol_want_to_read_count else 0
+        ),
+        "ol_currently_reading_count": (
+            int(stats.ol_currently_reading_count)
+            if stats.ol_currently_reading_count
+            else 0
+        ),
+        "ol_already_read_count": (
+            int(stats.ol_already_read_count) if stats.ol_already_read_count else 0
+        ),
+        "app_want_to_read_count": (
+            int(stats.app_want_to_read_count) if stats.app_want_to_read_count else 0
+        ),
+        "app_reading_count": (
+            int(stats.app_reading_count) if stats.app_reading_count else 0
+        ),
+        "app_read_count": int(stats.app_read_count) if stats.app_read_count else 0,
     }
 
 

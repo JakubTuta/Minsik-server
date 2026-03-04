@@ -83,6 +83,9 @@ message BookDetail {
   int32 ol_currently_reading_count = 30;
   int32 ol_already_read_count = 31;
   string first_sentence = 32;
+  int32 app_want_to_read_count = 33;
+  int32 app_reading_count = 34;
+  int32 app_read_count = 35;
 }
 
 message CoverHistory {
@@ -139,7 +142,6 @@ message AuthorDetail {
   repeated string book_categories = 16;
   string books_avg_rating = 17;
   int32 books_total_ratings = 18;
-  int32 books_total_views = 19;
   string wikidata_id = 20;
   string wikipedia_url = 21;
   map<string, string> remote_ids = 22;
@@ -214,7 +216,6 @@ message SeriesDetail {
   int32 rating_count = 11;
   string ol_avg_rating = 12;
   int32 ol_rating_count = 13;
-  int32 total_views = 14;
   int32 app_want_to_read_count = 15;
   int32 app_reading_count = 16;
   int32 app_read_count = 17;

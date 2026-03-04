@@ -235,7 +235,6 @@ async def _get_author_books_aggregates(
             COUNT(*) AS books_count,
             COALESCE(SUM(b.avg_rating::numeric * b.rating_count), 0) AS weighted_rating_sum,
             COALESCE(SUM(b.rating_count), 0) AS total_ratings,
-            COALESCE(SUM(b.view_count), 0) AS total_views,
             COALESCE(SUM(b.ol_rating_count), 0) AS ol_total_ratings,
             COALESCE(SUM(b.ol_avg_rating::numeric * b.ol_rating_count), 0) AS ol_weighted_rating_sum,
             COALESCE(SUM(b.ol_want_to_read_count), 0) AS ol_want_to_read_count,
@@ -285,7 +284,6 @@ async def _get_author_books_aggregates(
         "books_count": int(row.books_count) if row.books_count else 0,
         "avg_rating": avg_rating,
         "total_ratings": total_ratings,
-        "total_views": int(row.total_views) if row.total_views else 0,
         "ol_avg_rating": ol_avg_rating,
         "ol_total_ratings": ol_total_ratings,
         "ol_want_to_read_count": (
@@ -328,7 +326,6 @@ def _author_to_dict(
         "book_categories": book_categories,
         "books_avg_rating": str(books_aggregates["avg_rating"]),
         "books_total_ratings": books_aggregates["total_ratings"],
-        "books_total_views": books_aggregates["total_views"],
         "books_ol_avg_rating": str(books_aggregates["ol_avg_rating"]),
         "books_ol_total_ratings": books_aggregates["ol_total_ratings"],
         "app_want_to_read_count": books_aggregates["app_want_to_read_count"],

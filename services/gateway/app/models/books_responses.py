@@ -102,6 +102,9 @@ class BookDetailData(pydantic.BaseModel):
     ol_want_to_read_count: int = 0
     ol_currently_reading_count: int = 0
     ol_already_read_count: int = 0
+    app_want_to_read_count: int = 0
+    app_reading_count: int = 0
+    app_read_count: int = 0
 
 
 class BookDetailResponse(pydantic.BaseModel):
@@ -126,7 +129,6 @@ class AuthorDetailData(pydantic.BaseModel):
     book_categories: typing.List[str] = []
     books_avg_rating: float
     books_total_ratings: int
-    books_total_views: int
     books_ol_avg_rating: typing.Optional[str] = None
     books_ol_total_ratings: int = 0
     app_want_to_read_count: int = 0
@@ -198,7 +200,6 @@ class SeriesDetailData(pydantic.BaseModel):
     rating_count: int = 0
     ol_avg_rating: typing.Optional[str] = None
     ol_rating_count: int = 0
-    total_views: int = 0
     app_want_to_read_count: int = 0
     app_reading_count: int = 0
     app_read_count: int = 0
