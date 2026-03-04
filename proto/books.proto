@@ -16,6 +16,7 @@ message SearchRequest {
   int32 limit = 2;
   int32 offset = 3;
   string type_filter = 4;
+  string language = 5;
 }
 
 message SearchResult {
@@ -41,6 +42,7 @@ message SearchResponse {
 
 message GetBookRequest {
   string slug = 1;
+  string language = 2;
 }
 
 message SubRatingStat {
@@ -115,6 +117,7 @@ message BookDetailResponse {
 
 message GetAuthorRequest {
   string slug = 1;
+  string language = 2;
 }
 
 message AuthorDetail {
@@ -141,6 +144,14 @@ message AuthorDetail {
   string wikipedia_url = 21;
   map<string, string> remote_ids = 22;
   repeated string alternate_names = 23;
+  string books_ol_avg_rating = 24;
+  int32 books_ol_total_ratings = 25;
+  int32 app_want_to_read_count = 26;
+  int32 app_reading_count = 27;
+  int32 app_read_count = 28;
+  int32 ol_want_to_read_count = 29;
+  int32 ol_currently_reading_count = 30;
+  int32 ol_already_read_count = 31;
 }
 
 message AuthorDetailResponse {
@@ -153,6 +164,7 @@ message GetAuthorBooksRequest {
   int32 offset = 3;
   string sort_by = 4;
   string order = 5;
+  string language = 6;
 }
 
 message BookSummary {
@@ -168,6 +180,14 @@ message BookSummary {
   repeated GenreInfo genres = 10;
   SeriesInfo series = 11;
   string series_position = 12;
+  int32 ol_rating_count = 13;
+  string ol_avg_rating = 14;
+  int32 ol_want_to_read_count = 15;
+  int32 ol_currently_reading_count = 16;
+  int32 ol_already_read_count = 17;
+  int32 app_want_to_read_count = 18;
+  int32 app_reading_count = 19;
+  int32 app_read_count = 20;
 }
 
 message BooksListResponse {
@@ -177,6 +197,7 @@ message BooksListResponse {
 
 message GetSeriesRequest {
   string slug = 1;
+  string language = 2;
 }
 
 message SeriesDetail {
@@ -194,6 +215,12 @@ message SeriesDetail {
   string ol_avg_rating = 12;
   int32 ol_rating_count = 13;
   int32 total_views = 14;
+  int32 app_want_to_read_count = 15;
+  int32 app_reading_count = 16;
+  int32 app_read_count = 17;
+  int32 ol_want_to_read_count = 18;
+  int32 ol_currently_reading_count = 19;
+  int32 ol_already_read_count = 20;
 }
 
 message SeriesDetailResponse {
@@ -204,5 +231,8 @@ message GetSeriesBooksRequest {
   string series_slug = 1;
   int32 limit = 2;
   int32 offset = 3;
+  string language = 4;
+  string sort_by = 5;
+  string order = 6;
 }
 

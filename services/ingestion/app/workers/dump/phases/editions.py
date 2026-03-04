@@ -311,7 +311,7 @@ async def process_editions_dump(
         await session.close()
         global _dump_engine, _dump_sessionmaker
         if _dump_engine is not None:
-            _dump_engine.dispose()
+            await _dump_engine.dispose()
             _dump_engine = None
             _dump_sessionmaker = None
 

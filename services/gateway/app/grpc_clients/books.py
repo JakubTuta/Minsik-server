@@ -1,9 +1,10 @@
-import grpc
 import logging
 import typing
+
 import app.config
 import app.proto.books_pb2 as books_pb2
 import app.proto.books_pb2_grpc as books_pb2_grpc
+import grpc
 
 logger = logging.getLogger(__name__)
 
@@ -25,13 +26,18 @@ class BooksClient:
             app.config.settings.books_service_url,
             options=[
                 ("grpc.keepalive_time_ms", app.config.settings.grpc_keepalive_time_ms),
-                ("grpc.keepalive_timeout_ms", app.config.settings.grpc_keepalive_timeout_ms),
+                (
+                    "grpc.keepalive_timeout_ms",
+                    app.config.settings.grpc_keepalive_timeout_ms,
+                ),
                 ("grpc.keepalive_permit_without_calls", 0),
                 ("grpc.http2.max_pings_without_data", 0),
-            ]
+            ],
         )
         self.stub = books_pb2_grpc.BooksServiceStub(self.channel)
-        logger.info(f"Connected to books service at {app.config.settings.books_service_url}")
+        logger.info(
+            f"Connected to books service at {app.config.settings.books_service_url}"
+        )
 
     async def close(self):
         if self.channel:
@@ -43,45 +49,50 @@ class BooksClient:
         query: str,
         limit: int = 10,
         offset: int = 0,
-        type_filter: str = "both"
+        type_filter: str = "both",
+        language: str = "en",
     ) -> books_pb2.SearchResponse:
         request = books_pb2.SearchRequest(
             query=query,
             limit=limit,
             offset=offset,
-            type_filter=type_filter
+            type_filter=type_filter,
+            language=language,
         )
 
         try:
             response = await self.stub.SearchBooksAndAuthors(
-                request,
-                timeout=app.config.settings.grpc_timeout
+                request, timeout=app.config.settings.grpc_timeout
             )
             return response
         except grpc.RpcError as e:
-            logger.error(f"gRPC error searching books and authors: {e.code()} - {e.details()}")
+            logger.error(
+                f"gRPC error searching books and authors: {e.code()} - {e.details()}"
+            )
             raise
 
-    async def get_book(self, slug: str) -> books_pb2.BookDetailResponse:
-        request = books_pb2.GetBookRequest(slug=slug)
+    async def get_book(
+        self, slug: str, language: str = "en"
+    ) -> books_pb2.BookDetailResponse:
+        request = books_pb2.GetBookRequest(slug=slug, language=language)
 
         try:
             response = await self.stub.GetBook(
-                request,
-                timeout=app.config.settings.grpc_timeout
+                request, timeout=app.config.settings.grpc_timeout
             )
             return response
         except grpc.RpcError as e:
             logger.error(f"gRPC error getting book: {e.code()} - {e.details()}")
             raise
 
-    async def get_author(self, slug: str) -> books_pb2.AuthorDetailResponse:
-        request = books_pb2.GetAuthorRequest(slug=slug)
+    async def get_author(
+        self, slug: str, language: str = "en"
+    ) -> books_pb2.AuthorDetailResponse:
+        request = books_pb2.GetAuthorRequest(slug=slug, language=language)
 
         try:
             response = await self.stub.GetAuthor(
-                request,
-                timeout=app.config.settings.grpc_timeout
+                request, timeout=app.config.settings.grpc_timeout
             )
             return response
         except grpc.RpcError as e:
@@ -94,33 +105,35 @@ class BooksClient:
         limit: int = 10,
         offset: int = 0,
         sort_by: str = "view_count",
-        order: str = "desc"
+        order: str = "desc",
+        language: str = "en",
     ) -> books_pb2.BooksListResponse:
         request = books_pb2.GetAuthorBooksRequest(
             author_slug=author_slug,
             limit=limit,
             offset=offset,
             sort_by=sort_by,
-            order=order
+            order=order,
+            language=language,
         )
 
         try:
             response = await self.stub.GetAuthorBooks(
-                request,
-                timeout=app.config.settings.grpc_timeout
+                request, timeout=app.config.settings.grpc_timeout
             )
             return response
         except grpc.RpcError as e:
             logger.error(f"gRPC error getting author books: {e.code()} - {e.details()}")
             raise
 
-    async def get_series(self, slug: str) -> books_pb2.SeriesDetailResponse:
-        request = books_pb2.GetSeriesRequest(slug=slug)
+    async def get_series(
+        self, slug: str, language: str = "en"
+    ) -> books_pb2.SeriesDetailResponse:
+        request = books_pb2.GetSeriesRequest(slug=slug, language=language)
 
         try:
             response = await self.stub.GetSeries(
-                request,
-                timeout=app.config.settings.grpc_timeout
+                request, timeout=app.config.settings.grpc_timeout
             )
             return response
         except grpc.RpcError as e:
@@ -131,18 +144,23 @@ class BooksClient:
         self,
         series_slug: str,
         limit: int = 10,
-        offset: int = 0
+        offset: int = 0,
+        language: str = "en",
+        sort_by: str = "series_position",
+        order: str = "asc",
     ) -> books_pb2.BooksListResponse:
         request = books_pb2.GetSeriesBooksRequest(
             series_slug=series_slug,
             limit=limit,
-            offset=offset
+            offset=offset,
+            language=language,
+            sort_by=sort_by,
+            order=order,
         )
 
         try:
             response = await self.stub.GetSeriesBooks(
-                request,
-                timeout=app.config.settings.grpc_timeout
+                request, timeout=app.config.settings.grpc_timeout
             )
             return response
         except grpc.RpcError as e:

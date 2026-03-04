@@ -28,6 +28,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                         request.limit or 10,
                         request.offset or 0,
                         request.type_filter or "both",
+                        request.language or "en",
                     )
                 )
 
@@ -70,7 +71,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
         try:
             async with app.db.async_session_maker() as session:
                 book = await app.services.book_service.get_book_by_slug(
-                    session, request.slug
+                    session, request.slug, request.language or "en"
                 )
 
                 if not book:
@@ -173,7 +174,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
         try:
             async with app.db.async_session_maker() as session:
                 author = await app.services.author_service.get_author_by_slug(
-                    session, request.slug
+                    session, request.slug, request.language or "en"
                 )
 
                 if not author:
@@ -205,6 +206,14 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                     wikipedia_url=author["wikipedia_url"] or "",
                     remote_ids=author.get("remote_ids", {}),
                     alternate_names=author.get("alternate_names", []),
+                    books_ol_avg_rating=author["books_ol_avg_rating"],
+                    books_ol_total_ratings=author["books_ol_total_ratings"],
+                    app_want_to_read_count=author["app_want_to_read_count"],
+                    app_reading_count=author["app_reading_count"],
+                    app_read_count=author["app_read_count"],
+                    ol_want_to_read_count=author["ol_want_to_read_count"],
+                    ol_currently_reading_count=author["ol_currently_reading_count"],
+                    ol_already_read_count=author["ol_already_read_count"],
                 )
 
                 return app.proto.books_pb2.AuthorDetailResponse(author=author_detail)
@@ -228,6 +237,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                     request.offset or 0,
                     request.sort_by or "view_count",
                     request.order or "desc",
+                    request.language or "en",
                 )
 
                 book_summaries = []
@@ -253,6 +263,16 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                             avg_rating=book["avg_rating"],
                             view_count=book["view_count"],
                             genres=genres,
+                            ol_rating_count=book["ol_rating_count"],
+                            ol_avg_rating=book["ol_avg_rating"],
+                            ol_want_to_read_count=book["ol_want_to_read_count"],
+                            ol_currently_reading_count=book[
+                                "ol_currently_reading_count"
+                            ],
+                            ol_already_read_count=book["ol_already_read_count"],
+                            app_want_to_read_count=book["app_want_to_read_count"],
+                            app_reading_count=book["app_reading_count"],
+                            app_read_count=book["app_read_count"],
                         )
                     )
 
@@ -273,7 +293,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
         try:
             async with app.db.async_session_maker() as session:
                 series = await app.services.series_service.get_series_by_slug(
-                    session, request.slug
+                    session, request.slug, request.language or "en"
                 )
 
                 if not series:
@@ -296,6 +316,12 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                     ol_avg_rating=series["ol_avg_rating"] or "",
                     ol_rating_count=series["ol_rating_count"],
                     total_views=series["total_views"],
+                    app_want_to_read_count=series["app_want_to_read_count"],
+                    app_reading_count=series["app_reading_count"],
+                    app_read_count=series["app_read_count"],
+                    ol_want_to_read_count=series["ol_want_to_read_count"],
+                    ol_currently_reading_count=series["ol_currently_reading_count"],
+                    ol_already_read_count=series["ol_already_read_count"],
                 )
 
                 return app.proto.books_pb2.SeriesDetailResponse(series=series_detail)
@@ -317,6 +343,9 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                     request.series_slug,
                     request.limit or 10,
                     request.offset or 0,
+                    request.language or "en",
+                    request.sort_by or "series_position",
+                    request.order or "asc",
                 )
 
                 book_summaries = []
@@ -342,7 +371,17 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                             avg_rating=book["avg_rating"],
                             view_count=book["view_count"],
                             genres=genres,
-                            series_position=book.get("series_position", ""),
+                            series_position=book.get("series_position", "") or "",
+                            ol_rating_count=book["ol_rating_count"],
+                            ol_avg_rating=book["ol_avg_rating"],
+                            ol_want_to_read_count=book["ol_want_to_read_count"],
+                            ol_currently_reading_count=book[
+                                "ol_currently_reading_count"
+                            ],
+                            ol_already_read_count=book["ol_already_read_count"],
+                            app_want_to_read_count=book["app_want_to_read_count"],
+                            app_reading_count=book["app_reading_count"],
+                            app_read_count=book["app_read_count"],
                         )
                     )
 

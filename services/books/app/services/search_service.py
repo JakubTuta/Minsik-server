@@ -18,8 +18,9 @@ async def search_books_and_authors(
     limit: int = 10,
     offset: int = 0,
     type_filter: str = "all",
+    language: str = "en",
 ) -> typing.Tuple[typing.List[typing.Dict[str, typing.Any]], int]:
-    cache_key = f"search:{hash(query)}:type:{type_filter}:limit:{limit}:offset:{offset}"
+    cache_key = f"search:{hash(query)}:type:{type_filter}:limit:{limit}:offset:{offset}:lang:{language}"
     cached = await app.cache.get_cached(cache_key)
     if cached:
         return cached["results"], cached["total"]
@@ -28,7 +29,7 @@ async def search_books_and_authors(
     total_count = 0
 
     if type_filter in ["all", "books"]:
-        book_results, book_total = await _search_books_es(query, limit * 2, offset)
+        book_results, book_total = await _search_books_es(query, limit * 2, offset, language)
         results.extend(book_results)
         total_count += book_total
 
@@ -45,6 +46,7 @@ async def search_books_and_authors(
                     session,
                     author_result["id"],
                     app.config.settings.search_author_books_expansion,
+                    language,
                 )
                 results.extend(author_books)
 
@@ -56,7 +58,7 @@ async def search_books_and_authors(
         for series_result in series_results:
             if series_result["relevance_score"] > 0.1:
                 series_books = await _get_series_top_books(
-                    session, series_result["id"], 3
+                    session, series_result["id"], 3, language
                 )
                 results.extend(series_books)
 
@@ -118,14 +120,19 @@ def _build_function_score_query(
 
 
 async def _search_books_es(
-    query: str, limit: int, offset: int
+    query: str, limit: int, offset: int, language: str
 ) -> typing.Tuple[typing.List[typing.Dict[str, typing.Any]], int]:
     es = app.es_client.get_es()
     index = app.config.settings.es_index_books
 
-    es_query = _build_function_score_query(
-        query, ["title^3", "authors_names^2", "description", "series_name"]
-    )
+    es_query = {
+        "bool": {
+            "must": [_build_function_score_query(
+                query, ["title^3", "authors_names^2", "description", "series_name"]
+            )],
+            "filter": [{"term": {"language": language}}],
+        }
+    }
 
     response = await es.search(
         index=index,
@@ -284,7 +291,7 @@ async def _search_series_es(
 
 
 async def _get_author_top_books(
-    session: sqlalchemy.ext.asyncio.AsyncSession, author_id: int, limit: int
+    session: sqlalchemy.ext.asyncio.AsyncSession, author_id: int, limit: int, language: str
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     query = text(
         """
@@ -302,7 +309,7 @@ async def _get_author_top_books(
         JOIN books.book_authors ba ON b.book_id = ba.book_id
         LEFT JOIN books.authors a ON ba.author_id = a.author_id
         LEFT JOIN books.series s ON b.series_id = s.series_id
-        WHERE ba.author_id = :author_id
+        WHERE ba.author_id = :author_id AND b.language = :language
         GROUP BY b.book_id, b.title, b.slug, b.primary_cover_url, b.view_count, b.rating_count, b.avg_rating, b.created_at, s.slug
         ORDER BY
             COALESCE(b.view_count, 0) DESC,
@@ -312,7 +319,7 @@ async def _get_author_top_books(
     """
     )
 
-    result = await session.execute(query, {"author_id": author_id, "limit": limit})
+    result = await session.execute(query, {"author_id": author_id, "limit": limit, "language": language})
 
     books = []
     for row in result:
@@ -338,7 +345,7 @@ async def _get_author_top_books(
 
 
 async def _get_series_top_books(
-    session: sqlalchemy.ext.asyncio.AsyncSession, series_id: int, limit: int
+    session: sqlalchemy.ext.asyncio.AsyncSession, series_id: int, limit: int, language: str
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     query = text(
         """
@@ -357,7 +364,7 @@ async def _get_series_top_books(
         LEFT JOIN books.book_authors ba ON b.book_id = ba.book_id
         LEFT JOIN books.authors a ON ba.author_id = a.author_id
         LEFT JOIN books.series s ON b.series_id = s.series_id
-        WHERE b.series_id = :series_id
+        WHERE b.series_id = :series_id AND b.language = :language
         GROUP BY b.book_id, b.title, b.slug, b.primary_cover_url, b.series_position, b.view_count, b.rating_count, b.avg_rating, b.created_at, s.slug
         ORDER BY
             b.series_position ASC NULLS LAST,
@@ -366,7 +373,7 @@ async def _get_series_top_books(
     """
     )
 
-    result = await session.execute(query, {"series_id": series_id, "limit": limit})
+    result = await session.execute(query, {"series_id": series_id, "limit": limit, "language": language})
 
     books = []
     for row in result:

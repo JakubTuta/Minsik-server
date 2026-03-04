@@ -1,4 +1,3 @@
-import datetime
 import logging
 import typing
 
@@ -11,16 +10,15 @@ import app.models.book_genre
 import app.models.genre
 import sqlalchemy
 import sqlalchemy.ext.asyncio
-from sqlalchemy import func, select
-from sqlalchemy.orm import selectinload
+from sqlalchemy import select
 
 logger = logging.getLogger(__name__)
 
 
 async def get_author_by_slug(
-    session: sqlalchemy.ext.asyncio.AsyncSession, slug: str
+    session: sqlalchemy.ext.asyncio.AsyncSession, slug: str, language: str = "en"
 ) -> typing.Optional[typing.Dict[str, typing.Any]]:
-    cache_key = f"author_slug:{slug}"
+    cache_key = f"author_slug:{slug}:{language}"
     cached = await app.cache.get_cached(cache_key)
     if cached:
         await _track_author_view(cached["author_id"])
@@ -31,13 +29,17 @@ async def get_author_by_slug(
     )
 
     result = await session.execute(stmt)
-    author = result.scalar_one_or_none()
+    author = result.scalars().first()
 
     if not author:
         return None
 
-    book_categories = await _get_author_book_categories(session, author.author_id)
-    books_aggregates = await _get_author_books_aggregates(session, author.author_id)
+    book_categories = await _get_author_book_categories(
+        session, author.author_id, language
+    )
+    books_aggregates = await _get_author_books_aggregates(
+        session, author.author_id, language
+    )
 
     author_data = _author_to_dict(author, book_categories, books_aggregates)
 
@@ -57,8 +59,9 @@ async def get_author_books(
     offset: int,
     sort_by: str = "view_count",
     order: str = "desc",
+    language: str = "en",
 ) -> typing.Tuple[typing.List[typing.Dict[str, typing.Any]], int]:
-    cache_key = f"author_books:{author_slug}:limit:{limit}:offset:{offset}:sort:{sort_by}:order:{order}"
+    cache_key = f"author_books:{author_slug}:limit:{limit}:offset:{offset}:sort:{sort_by}:order:{order}:lang:{language}"
     cached = await app.cache.get_cached(cache_key)
     if cached:
         return cached["books"], cached["total"]
@@ -67,37 +70,115 @@ async def get_author_books(
         app.models.author.Author.slug == author_slug
     )
     author_result = await session.execute(author_stmt)
-    author = author_result.scalar_one_or_none()
+    author = author_result.scalars().first()
 
     if not author:
         return [], 0
 
-    sort_column = _get_sort_column(sort_by)
-    order_func = sqlalchemy.desc if order == "desc" else sqlalchemy.asc
+    sort_options = {
+        "publication_year": "b.original_publication_year",
+        "view_count": "b.view_count",
+        "combined_rating": "combined_rating",
+        "readers_count": "total_readers",
+    }
+    sort_col = sort_options.get(sort_by, "b.view_count")
+    order_dir = "DESC" if order == "desc" else "ASC"
 
-    stmt = (
-        select(app.models.book.Book)
-        .join(app.models.book_author.BookAuthor)
-        .options(selectinload(app.models.book.Book.genres))
-        .filter(app.models.book_author.BookAuthor.author_id == author.author_id)
-        .order_by(order_func(sort_column).nullslast())
-        .limit(limit)
-        .offset(offset)
+    books_query = sqlalchemy.text(
+        f"""
+        SELECT
+            b.book_id,
+            b.title,
+            b.slug,
+            b.description,
+            b.original_publication_year,
+            b.primary_cover_url,
+            b.rating_count,
+            b.avg_rating,
+            b.view_count,
+            b.ol_rating_count,
+            b.ol_avg_rating,
+            b.ol_want_to_read_count,
+            b.ol_currently_reading_count,
+            b.ol_already_read_count,
+            b.series_id,
+            b.series_position,
+            COALESCE(bs.want_to_read_count, 0) AS app_want_to_read_count,
+            COALESCE(bs.reading_count, 0) AS app_reading_count,
+            COALESCE(bs.read_count, 0) AS app_read_count,
+            CASE
+                WHEN (b.rating_count + b.ol_rating_count) > 0
+                THEN (
+                    COALESCE(b.avg_rating::numeric, 0) * b.rating_count
+                    + (COALESCE(b.ol_avg_rating::numeric, 0) / 2.0) * b.ol_rating_count
+                ) / (b.rating_count + b.ol_rating_count)
+                ELSE 0
+            END AS combined_rating,
+            (
+                b.ol_want_to_read_count + b.ol_currently_reading_count + b.ol_already_read_count
+                + COALESCE(bs.want_to_read_count, 0)
+                + COALESCE(bs.reading_count, 0)
+                + COALESCE(bs.read_count, 0)
+            ) AS total_readers,
+            COALESCE(
+                json_agg(
+                    json_build_object('genre_id', g.genre_id, 'name', g.name, 'slug', g.slug)
+                ) FILTER (WHERE g.genre_id IS NOT NULL),
+                '[]'::json
+            ) AS genres
+        FROM books.books b
+        JOIN books.book_authors ba ON b.book_id = ba.book_id
+        LEFT JOIN books.book_genres bg ON b.book_id = bg.book_id
+        LEFT JOIN books.genres g ON bg.genre_id = g.genre_id
+        LEFT JOIN (
+            SELECT
+                book_id,
+                COUNT(*) FILTER (WHERE status = 'want_to_read') AS want_to_read_count,
+                COUNT(*) FILTER (WHERE status = 'reading') AS reading_count,
+                COUNT(*) FILTER (WHERE status = 'read') AS read_count
+            FROM user_data.bookshelves
+            WHERE status != 'abandoned'
+            GROUP BY book_id
+        ) bs ON b.book_id = bs.book_id
+        WHERE ba.author_id = :author_id AND b.language = :language
+        GROUP BY
+            b.book_id, b.title, b.slug, b.description, b.original_publication_year,
+            b.primary_cover_url, b.rating_count, b.avg_rating, b.view_count,
+            b.ol_rating_count, b.ol_avg_rating, b.ol_want_to_read_count,
+            b.ol_currently_reading_count, b.ol_already_read_count,
+            b.series_id, b.series_position,
+            bs.want_to_read_count, bs.reading_count, bs.read_count
+        ORDER BY {sort_col} {order_dir} NULLS LAST
+        LIMIT :limit OFFSET :offset
+        """
     )
 
-    count_stmt = (
-        select(func.count())
-        .select_from(app.models.book_author.BookAuthor)
-        .filter(app.models.book_author.BookAuthor.author_id == author.author_id)
+    count_query = sqlalchemy.text(
+        """
+        SELECT COUNT(DISTINCT b.book_id)
+        FROM books.books b
+        JOIN books.book_authors ba ON b.book_id = ba.book_id
+        WHERE ba.author_id = :author_id AND b.language = :language
+        """
     )
 
-    result = await session.execute(stmt)
-    books = result.scalars().all()
+    books_result = await session.execute(
+        books_query,
+        {
+            "author_id": author.author_id,
+            "language": language,
+            "limit": limit,
+            "offset": offset,
+        },
+    )
+    books_rows = books_result.fetchall()
 
-    count_result = await session.execute(count_stmt)
+    count_result = await session.execute(
+        count_query, {"author_id": author.author_id, "language": language}
+    )
     total = count_result.scalar() or 0
 
-    books_data = [_book_summary_to_dict(book) for book in books]
+    books_data = [_book_row_to_dict(row) for row in books_rows]
 
     await app.cache.set_cached(
         cache_key,
@@ -115,17 +196,8 @@ async def _track_author_view(author_id: int) -> None:
         logger.error(f"Failed to track author view: {str(e)}")
 
 
-def _get_sort_column(sort_by: str):
-    sort_mapping = {
-        "publication_year": app.models.book.Book.original_publication_year,
-        "avg_rating": app.models.book.Book.avg_rating,
-        "view_count": app.models.book.Book.view_count,
-    }
-    return sort_mapping.get(sort_by, app.models.book.Book.view_count)
-
-
 async def _get_author_book_categories(
-    session: sqlalchemy.ext.asyncio.AsyncSession, author_id: int
+    session: sqlalchemy.ext.asyncio.AsyncSession, author_id: int, language: str
 ) -> typing.List[str]:
     stmt = (
         select(app.models.genre.Genre.name)
@@ -136,10 +208,17 @@ async def _get_author_book_categories(
             == app.models.book_author.BookAuthor.book_id,
         )
         .join(
+            app.models.book.Book,
+            app.models.book_genre.BookGenre.book_id == app.models.book.Book.book_id,
+        )
+        .join(
             app.models.genre.Genre,
             app.models.book_genre.BookGenre.genre_id == app.models.genre.Genre.genre_id,
         )
-        .filter(app.models.book_author.BookAuthor.author_id == author_id)
+        .filter(
+            app.models.book_author.BookAuthor.author_id == author_id,
+            app.models.book.Book.language == language,
+        )
         .distinct()
     )
 
@@ -149,23 +228,40 @@ async def _get_author_book_categories(
 
 
 async def _get_author_books_aggregates(
-    session: sqlalchemy.ext.asyncio.AsyncSession, author_id: int
+    session: sqlalchemy.ext.asyncio.AsyncSession, author_id: int, language: str
 ) -> typing.Dict[str, typing.Any]:
-    stmt = (
-        select(
-            func.count().label("books_count"),
-            func.sum(
-                app.models.book.Book.avg_rating * app.models.book.Book.rating_count
-            ).label("weighted_rating_sum"),
-            func.sum(app.models.book.Book.rating_count).label("total_ratings"),
-            func.sum(app.models.book.Book.view_count).label("total_views"),
-        )
-        .select_from(app.models.book.Book)
-        .join(app.models.book_author.BookAuthor)
-        .filter(app.models.book_author.BookAuthor.author_id == author_id)
+    stmt = sqlalchemy.text(
+        """
+        SELECT
+            COUNT(*) AS books_count,
+            COALESCE(SUM(b.avg_rating::numeric * b.rating_count), 0) AS weighted_rating_sum,
+            COALESCE(SUM(b.rating_count), 0) AS total_ratings,
+            COALESCE(SUM(b.view_count), 0) AS total_views,
+            COALESCE(SUM(b.ol_rating_count), 0) AS ol_total_ratings,
+            COALESCE(SUM(b.ol_avg_rating::numeric * b.ol_rating_count), 0) AS ol_weighted_rating_sum,
+            COALESCE(SUM(b.ol_want_to_read_count), 0) AS ol_want_to_read_count,
+            COALESCE(SUM(b.ol_currently_reading_count), 0) AS ol_currently_reading_count,
+            COALESCE(SUM(b.ol_already_read_count), 0) AS ol_already_read_count,
+            COALESCE(SUM(bs_counts.want_to_read_count), 0) AS app_want_to_read_count,
+            COALESCE(SUM(bs_counts.reading_count), 0) AS app_reading_count,
+            COALESCE(SUM(bs_counts.read_count), 0) AS app_read_count
+        FROM books.books b
+        JOIN books.book_authors ba ON b.book_id = ba.book_id
+        LEFT JOIN (
+            SELECT
+                book_id,
+                COUNT(*) FILTER (WHERE status = 'want_to_read') AS want_to_read_count,
+                COUNT(*) FILTER (WHERE status = 'reading') AS reading_count,
+                COUNT(*) FILTER (WHERE status = 'read') AS read_count
+            FROM user_data.bookshelves
+            WHERE status != 'abandoned'
+            GROUP BY book_id
+        ) bs_counts ON b.book_id = bs_counts.book_id
+        WHERE ba.author_id = :author_id AND b.language = :language
+        """
     )
 
-    result = await session.execute(stmt)
+    result = await session.execute(stmt, {"author_id": author_id, "language": language})
     row = result.first()
 
     total_ratings = int(row.total_ratings) if row.total_ratings else 0
@@ -176,11 +272,37 @@ async def _get_author_books_aggregates(
         round(weighted_rating_sum / total_ratings, 2) if total_ratings > 0 else 0.0
     )
 
+    ol_total_ratings = int(row.ol_total_ratings) if row.ol_total_ratings else 0
+    ol_weighted_rating_sum = (
+        float(row.ol_weighted_rating_sum) if row.ol_weighted_rating_sum else 0.0
+    )
+    ol_avg_rating = (
+        round(ol_weighted_rating_sum / ol_total_ratings, 2)
+        if ol_total_ratings > 0
+        else 0.0
+    )
+
     return {
         "books_count": int(row.books_count) if row.books_count else 0,
         "avg_rating": avg_rating,
         "total_ratings": total_ratings,
         "total_views": int(row.total_views) if row.total_views else 0,
+        "ol_avg_rating": ol_avg_rating,
+        "ol_total_ratings": ol_total_ratings,
+        "ol_want_to_read_count": (
+            int(row.ol_want_to_read_count) if row.ol_want_to_read_count else 0
+        ),
+        "ol_currently_reading_count": (
+            int(row.ol_currently_reading_count) if row.ol_currently_reading_count else 0
+        ),
+        "ol_already_read_count": (
+            int(row.ol_already_read_count) if row.ol_already_read_count else 0
+        ),
+        "app_want_to_read_count": (
+            int(row.app_want_to_read_count) if row.app_want_to_read_count else 0
+        ),
+        "app_reading_count": int(row.app_reading_count) if row.app_reading_count else 0,
+        "app_read_count": int(row.app_read_count) if row.app_read_count else 0,
     }
 
 
@@ -208,6 +330,14 @@ def _author_to_dict(
         "books_avg_rating": str(books_aggregates["avg_rating"]),
         "books_total_ratings": books_aggregates["total_ratings"],
         "books_total_views": books_aggregates["total_views"],
+        "books_ol_avg_rating": str(books_aggregates["ol_avg_rating"]),
+        "books_ol_total_ratings": books_aggregates["ol_total_ratings"],
+        "app_want_to_read_count": books_aggregates["app_want_to_read_count"],
+        "app_reading_count": books_aggregates["app_reading_count"],
+        "app_read_count": books_aggregates["app_read_count"],
+        "ol_want_to_read_count": books_aggregates["ol_want_to_read_count"],
+        "ol_currently_reading_count": books_aggregates["ol_currently_reading_count"],
+        "ol_already_read_count": books_aggregates["ol_already_read_count"],
         "open_library_id": author.open_library_id or None,
         "created_at": author.created_at.isoformat() if author.created_at else "",
         "updated_at": author.updated_at.isoformat() if author.updated_at else "",
@@ -218,21 +348,35 @@ def _author_to_dict(
     }
 
 
-def _book_summary_to_dict(book: app.models.book.Book) -> typing.Dict[str, typing.Any]:
+def _book_row_to_dict(row: typing.Any) -> typing.Dict[str, typing.Any]:
+    genres_raw = row.genres
+    if isinstance(genres_raw, str):
+        import json
+
+        genres_list = json.loads(genres_raw)
+    elif genres_raw is None:
+        genres_list = []
+    else:
+        genres_list = genres_raw
     return {
-        "book_id": book.book_id,
-        "title": book.title,
-        "slug": book.slug,
-        "description": book.description or "",
-        "original_publication_year": book.original_publication_year or 0,
-        "primary_cover_url": book.primary_cover_url or "",
-        "rating_count": book.rating_count or 0,
-        "avg_rating": str(book.avg_rating) if book.avg_rating else "0.00",
-        "view_count": book.view_count or 0,
-        "genres": [
-            {"genre_id": genre.genre_id, "name": genre.name, "slug": genre.slug}
-            for genre in book.genres
-        ],
+        "book_id": row.book_id,
+        "title": row.title,
+        "slug": row.slug,
+        "description": row.description or "",
+        "original_publication_year": row.original_publication_year or 0,
+        "primary_cover_url": row.primary_cover_url or "",
+        "rating_count": row.rating_count or 0,
+        "avg_rating": str(row.avg_rating) if row.avg_rating else "0.00",
+        "view_count": row.view_count or 0,
+        "ol_rating_count": row.ol_rating_count or 0,
+        "ol_avg_rating": str(row.ol_avg_rating) if row.ol_avg_rating else "0.00",
+        "ol_want_to_read_count": row.ol_want_to_read_count or 0,
+        "ol_currently_reading_count": row.ol_currently_reading_count or 0,
+        "ol_already_read_count": row.ol_already_read_count or 0,
+        "app_want_to_read_count": row.app_want_to_read_count or 0,
+        "app_reading_count": row.app_reading_count or 0,
+        "app_read_count": row.app_read_count or 0,
+        "genres": genres_list,
     }
 
 

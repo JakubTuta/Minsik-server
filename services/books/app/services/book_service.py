@@ -16,9 +16,9 @@ logger = logging.getLogger(__name__)
 
 
 async def get_book_by_slug(
-    session: sqlalchemy.ext.asyncio.AsyncSession, slug: str
+    session: sqlalchemy.ext.asyncio.AsyncSession, slug: str, language: str = "en"
 ) -> typing.Optional[typing.Dict[str, typing.Any]]:
-    cache_key = f"book_slug:{slug}"
+    cache_key = f"book_slug:{slug}:{language}"
     cached = await app.cache.get_cached(cache_key)
     if cached:
         await _track_book_view(cached["book_id"])
@@ -31,11 +31,14 @@ async def get_book_by_slug(
             selectinload(app.models.book.Book.genres),
             selectinload(app.models.book.Book.series),
         )
-        .filter(app.models.book.Book.slug == slug)
+        .filter(
+            app.models.book.Book.slug == slug,
+            app.models.book.Book.language == language,
+        )
     )
 
     result = await session.execute(stmt)
-    book = result.scalar_one_or_none()
+    book = result.scalars().first()
 
     if not book:
         return None

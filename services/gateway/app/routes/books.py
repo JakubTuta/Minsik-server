@@ -24,7 +24,7 @@ limiter = rate_limit_middleware.limiter
     description="""
     Search for books and authors by text query.
 
-    The search uses PostgreSQL full-text search with popularity ranking.
+    The search uses Elasticsearch with popularity ranking.
     When searching for an author with high relevance, their most popular books are also included.
 
     **Type Filter Options:**
@@ -33,11 +33,17 @@ limiter = rate_limit_middleware.limiter
     - `authors`: Search only authors
     - `series`: Search only series
 
+    **Language Filter (`language`):**
+    Filters book results to the specified language edition (default: `en`).
+    Author and series results are always returned regardless of language.
+    Book expansions shown under author/series results also respect this filter.
+
     **Examples:**
     - `/api/v1/search?q=lord of the rings`
     - `/api/v1/search?q=tolkien&type=authors`
     - `/api/v1/search?q=harry potter&type=series`
     - `/api/v1/search?q=python programming&limit=20&offset=0`
+    - `/api/v1/search?q=hobbit&language=pl`
     """,
 )
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
@@ -49,10 +55,13 @@ async def search_books_and_authors(
     ),
     limit: int = Query(10, ge=1, le=100, description="Number of results per page"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
+    language: str = Query(
+        "en", min_length=2, max_length=10, description="Language code (e.g. en, pl, de)"
+    ),
 ):
     try:
         response = await app.grpc_clients.books_client.search_books_and_authors(
-            query=q, limit=limit, offset=offset, type_filter=type
+            query=q, limit=limit, offset=offset, type_filter=type, language=language
         )
 
         results = []
@@ -107,6 +116,11 @@ async def search_books_and_authors(
     - Overall rating, rating count, and per-dimension rating stats (`sub_rating_stats`)
     - View count and external IDs (Open Library, Google Books)
 
+    **Language (`language`):**
+    The same slug may exist in multiple language editions (e.g. `en`, `pl`, `de`).
+    Use this parameter to select the desired edition (default: `en`).
+    Returns 404 if no edition exists for the requested language.
+
     **`sub_rating_stats`** - All 8 keys are always present (default `avg: "0"`, `count: 0`).
     Each value: `{"avg": "3.50", "count": 12}`.
 
@@ -122,15 +136,21 @@ async def search_books_and_authors(
     - `plot_complexity` - 1: simple, straightforward / 5: complex, multi-layered
     - `humor` - 1: serious, no humor / 5: very funny, comedic
 
-    **Example:** `/api/v1/books/the-lord-of-the-rings`
+    **Examples:**
+    - `/api/v1/books/the-lord-of-the-rings`
+    - `/api/v1/books/the-lord-of-the-rings?language=pl`
     """,
 )
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
 async def get_book(
-    request: fastapi.Request, slug: str = Path(..., description="Book slug")
+    request: fastapi.Request,
+    slug: str = Path(..., description="Book slug"),
+    language: str = Query(
+        "en", min_length=2, max_length=10, description="Language code (e.g. en, pl, de)"
+    ),
 ):
     try:
-        response = await app.grpc_clients.books_client.get_book(slug)
+        response = await app.grpc_clients.books_client.get_book(slug, language=language)
 
         book = response.book
 
@@ -224,16 +244,32 @@ async def get_book(
     - Birth and death dates
     - View count and book count
     - External IDs
+    - Aggregate stats: `books_count`, `books_avg_rating`, `books_total_ratings`,
+      `books_total_views`, `book_categories`
 
-    **Example:** `/api/v1/authors/j-r-r-tolkien`
+    **Language (`language`):**
+    Filters all book-derived aggregate stats to the specified language edition (default: `en`).
+    Only books in that language are counted towards `books_count`, `books_avg_rating`,
+    `books_total_ratings`, `books_total_views`, and `book_categories`.
+    The author record itself (name, bio, etc.) is always returned regardless of language.
+
+    **Examples:**
+    - `/api/v1/authors/j-r-r-tolkien`
+    - `/api/v1/authors/j-r-r-tolkien?language=pl`
     """,
 )
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
 async def get_author(
-    request: fastapi.Request, slug: str = Path(..., description="Author slug")
+    request: fastapi.Request,
+    slug: str = Path(..., description="Author slug"),
+    language: str = Query(
+        "en", min_length=2, max_length=10, description="Language code (e.g. en, pl, de)"
+    ),
 ):
     try:
-        response = await app.grpc_clients.books_client.get_author(slug)
+        response = await app.grpc_clients.books_client.get_author(
+            slug, language=language
+        )
 
         author = response.author
 
@@ -256,6 +292,14 @@ async def get_author(
                 "books_avg_rating": float(author.books_avg_rating),
                 "books_total_ratings": author.books_total_ratings,
                 "books_total_views": author.books_total_views,
+                "books_ol_avg_rating": author.books_ol_avg_rating or None,
+                "books_ol_total_ratings": author.books_ol_total_ratings,
+                "app_want_to_read_count": author.app_want_to_read_count,
+                "app_reading_count": author.app_reading_count,
+                "app_read_count": author.app_read_count,
+                "ol_want_to_read_count": author.ol_want_to_read_count,
+                "ol_currently_reading_count": author.ol_currently_reading_count,
+                "ol_already_read_count": author.ol_already_read_count,
                 "open_library_id": author.open_library_id or None,
                 "created_at": author.created_at,
                 "updated_at": author.updated_at,
@@ -287,17 +331,23 @@ async def get_author(
 
     **Sort Options (sort_by):**
     - `publication_year` - Original publication year
-    - `avg_rating` - Average rating
     - `view_count` - View count (default)
+    - `combined_rating` - Combined weighted rating (app + OL)
+    - `readers_count` - Total readers across app and OL bookshelves
 
     **Order Options:**
     - `asc` - Ascending order
     - `desc` - Descending order (default)
 
+    **Language (`language`):**
+    Filters the book list to the specified language edition (default: `en`).
+    Only books in that language are returned. `total_count` reflects the filtered count.
+
     **Examples:**
     - `/api/v1/authors/j-r-r-tolkien/books?sort_by=publication_year&order=asc`
     - `/api/v1/authors/j-r-r-tolkien/books?sort_by=avg_rating&order=desc`
     - `/api/v1/authors/j-r-r-tolkien/books?limit=10&offset=0`
+    - `/api/v1/authors/j-r-r-tolkien/books?language=pl`
     """,
 )
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
@@ -308,14 +358,22 @@ async def get_author_books(
     offset: int = Query(0, ge=0, description="Pagination offset"),
     sort_by: str = Query(
         "view_count",
-        regex="^(publication_year|avg_rating|view_count)$",
+        regex="^(publication_year|view_count|combined_rating|readers_count)$",
         description="Sort field",
     ),
     order: str = Query("desc", regex="^(asc|desc)$", description="Sort order"),
+    language: str = Query(
+        "en", min_length=2, max_length=10, description="Language code (e.g. en, pl, de)"
+    ),
 ):
     try:
         response = await app.grpc_clients.books_client.get_author_books(
-            author_slug=slug, limit=limit, offset=offset, sort_by=sort_by, order=order
+            author_slug=slug,
+            limit=limit,
+            offset=offset,
+            sort_by=sort_by,
+            order=order,
+            language=language,
         )
 
         books = []
@@ -331,6 +389,14 @@ async def get_author_books(
                     "rating_count": book.rating_count,
                     "avg_rating": book.avg_rating,
                     "view_count": book.view_count,
+                    "ol_rating_count": book.ol_rating_count,
+                    "ol_avg_rating": book.ol_avg_rating or None,
+                    "ol_want_to_read_count": book.ol_want_to_read_count,
+                    "ol_currently_reading_count": book.ol_currently_reading_count,
+                    "ol_already_read_count": book.ol_already_read_count,
+                    "app_want_to_read_count": book.app_want_to_read_count,
+                    "app_reading_count": book.app_reading_count,
+                    "app_read_count": book.app_read_count,
                     "genres": [
                         {
                             "genre_id": genre.genre_id,
@@ -369,18 +435,32 @@ async def get_author_books(
 
     Returns:
     - Series name, description
-    - Total book count
-    - View count and tracking
+    - Aggregate stats computed from books in the series: `total_books`, `avg_rating`,
+      `rating_count`, `ol_avg_rating`, `ol_rating_count`, `total_views`
 
-    **Example:** `/api/v1/series/harry-potter`
+    **Language (`language`):**
+    Filters all book-derived aggregate stats to the specified language edition (default: `en`).
+    Only books in that language are counted towards `total_books`, `avg_rating`, `rating_count`,
+    `ol_avg_rating`, `ol_rating_count`, and `total_views`.
+    The series record itself (name, description, etc.) is always returned regardless of language.
+
+    **Examples:**
+    - `/api/v1/series/harry-potter`
+    - `/api/v1/series/harry-potter?language=pl`
     """,
 )
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
 async def get_series(
-    request: fastapi.Request, slug: str = Path(..., description="Series slug")
+    request: fastapi.Request,
+    slug: str = Path(..., description="Series slug"),
+    language: str = Query(
+        "en", min_length=2, max_length=10, description="Language code (e.g. en, pl, de)"
+    ),
 ):
     try:
-        response = await app.grpc_clients.books_client.get_series(slug)
+        response = await app.grpc_clients.books_client.get_series(
+            slug, language=language
+        )
 
         series = response.series
 
@@ -401,6 +481,12 @@ async def get_series(
                 "ol_avg_rating": series.ol_avg_rating or None,
                 "ol_rating_count": series.ol_rating_count,
                 "total_views": series.total_views,
+                "app_want_to_read_count": series.app_want_to_read_count,
+                "app_reading_count": series.app_reading_count,
+                "app_read_count": series.app_read_count,
+                "ol_want_to_read_count": series.ol_want_to_read_count,
+                "ol_currently_reading_count": series.ol_currently_reading_count,
+                "ol_already_read_count": series.ol_already_read_count,
             },
             "error": None,
         }
@@ -539,13 +625,27 @@ async def get_book_comments(
     response_model=app.models.books_responses.SeriesBooksResponse,
     summary="Get series books",
     description="""
-    Get all books in a series, paginated.
+    Get all books in a series, paginated and sorted.
 
-    Books are sorted by:
-    1. Series position (ascending)
-    2. Publication date (oldest first)
+    **Sort Options (sort_by):**
+    - `series_position` - Position in the series (default)
+    - `publication_year` - Original publication year
+    - `view_count` - View count
+    - `combined_rating` - Combined weighted rating (app + OL)
+    - `readers_count` - Total readers across app and OL bookshelves
 
-    **Example:** `/api/v1/series/harry-potter/books?limit=10&offset=0`
+    **Order Options:**
+    - `asc` - Ascending order (default)
+    - `desc` - Descending order
+
+    **Language (`language`):**
+    Filters the book list to the specified language edition (default: `en`).
+    Only books in that language are returned. `total_count` reflects the filtered count.
+
+    **Examples:**
+    - `/api/v1/series/harry-potter/books?limit=10&offset=0`
+    - `/api/v1/series/harry-potter/books?language=pl`
+    - `/api/v1/series/harry-potter/books?sort_by=combined_rating&order=desc`
     """,
 )
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
@@ -554,10 +654,24 @@ async def get_series_books(
     slug: str = Path(..., description="Series slug"),
     limit: int = Query(10, ge=1, le=100, description="Number of books per page"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
+    language: str = Query(
+        "en", min_length=2, max_length=10, description="Language code (e.g. en, pl, de)"
+    ),
+    sort_by: str = Query(
+        "series_position",
+        regex="^(series_position|publication_year|view_count|combined_rating|readers_count)$",
+        description="Sort field",
+    ),
+    order: str = Query("asc", regex="^(asc|desc)$", description="Sort order"),
 ):
     try:
         response = await app.grpc_clients.books_client.get_series_books(
-            series_slug=slug, limit=limit, offset=offset
+            series_slug=slug,
+            limit=limit,
+            offset=offset,
+            language=language,
+            sort_by=sort_by,
+            order=order,
         )
 
         books = []
@@ -576,6 +690,14 @@ async def get_series_books(
                     "series_position": (
                         book.series_position if book.series_position else None
                     ),
+                    "ol_rating_count": book.ol_rating_count,
+                    "ol_avg_rating": book.ol_avg_rating or None,
+                    "ol_want_to_read_count": book.ol_want_to_read_count,
+                    "ol_currently_reading_count": book.ol_currently_reading_count,
+                    "ol_already_read_count": book.ol_already_read_count,
+                    "app_want_to_read_count": book.app_want_to_read_count,
+                    "app_reading_count": book.app_reading_count,
+                    "app_read_count": book.app_read_count,
                     "genres": [
                         {
                             "genre_id": genre.genre_id,

@@ -47,49 +47,58 @@ async def process_ratings_dump(file_path: str) -> int:
     _trim_heap()
 
     updated = 0
+    outer_batch_size = 50_000
+    work_ol_ids = list(rating_agg.keys())
     async with app.models.AsyncSessionLocal() as session:
         try:
-            work_ol_ids = list(rating_agg.keys())
-            chunk_size = 1000
-            for i in range(0, len(work_ol_ids), chunk_size):
-                chunk_ids = work_ol_ids[i : i + chunk_size]
-                book_lookup = await parsers.batch_lookup_books(session, chunk_ids)
+            for outer_start in range(0, len(work_ol_ids), outer_batch_size):
+                outer_chunk = work_ol_ids[outer_start : outer_start + outer_batch_size]
 
-                batch_params: list[dict] = []
-                for work_ol_id in chunk_ids:
-                    book_rows = book_lookup.get(work_ol_id)
-                    if not book_rows:
-                        continue
-                    agg = rating_agg[work_ol_id]
-                    avg = round(agg["total"] / agg["count"], 2)
-                    for book_id, _language in book_rows:
-                        batch_params.append(
-                            {"bid": book_id, "cnt": agg["count"], "avg": avg}
-                        )
+                chunk_size = 1000
+                for i in range(0, len(outer_chunk), chunk_size):
+                    chunk_ids = outer_chunk[i : i + chunk_size]
+                    book_lookup = await parsers.batch_lookup_books(session, chunk_ids)
 
-                for j in range(0, len(batch_params), 500):
-                    sub = batch_params[j : j + 500]
-                    values_parts: list[str] = []
-                    params: dict[str, typing.Any] = {}
-                    for k, p in enumerate(sub):
-                        values_parts.append(
-                            f"(CAST(:bid_{k} AS bigint), CAST(:cnt_{k} AS int), CAST(:avg_{k} AS numeric))"
+                    batch_params: list[dict] = []
+                    for work_ol_id in chunk_ids:
+                        book_rows = book_lookup.get(work_ol_id)
+                        if not book_rows:
+                            continue
+                        agg = rating_agg[work_ol_id]
+                        avg = round(agg["total"] / agg["count"], 2)
+                        for book_id, _language in book_rows:
+                            batch_params.append(
+                                {"bid": book_id, "cnt": agg["count"], "avg": avg}
+                            )
+
+                    for j in range(0, len(batch_params), 500):
+                        sub = batch_params[j : j + 500]
+                        values_parts: list[str] = []
+                        params: dict[str, typing.Any] = {}
+                        for k, p in enumerate(sub):
+                            values_parts.append(
+                                f"(CAST(:bid_{k} AS bigint), CAST(:cnt_{k} AS int), CAST(:avg_{k} AS numeric))"
+                            )
+                            params[f"bid_{k}"] = p["bid"]
+                            params[f"cnt_{k}"] = p["cnt"]
+                            params[f"avg_{k}"] = p["avg"]
+                        await session.execute(
+                            sqlalchemy.text(
+                                "UPDATE books.books AS b SET "
+                                "ol_rating_count = v.cnt, ol_avg_rating = v.avg "
+                                f"FROM (VALUES {', '.join(values_parts)}) "
+                                "AS v(bid, cnt, avg) "
+                                "WHERE b.book_id = v.bid"
+                            ),
+                            params,
                         )
-                        params[f"bid_{k}"] = p["bid"]
-                        params[f"cnt_{k}"] = p["cnt"]
-                        params[f"avg_{k}"] = p["avg"]
-                    await session.execute(
-                        sqlalchemy.text(
-                            "UPDATE books.books AS b SET "
-                            "ol_rating_count = v.cnt, ol_avg_rating = v.avg "
-                            f"FROM (VALUES {', '.join(values_parts)}) "
-                            "AS v(bid, cnt, avg) "
-                            "WHERE b.book_id = v.bid"
-                        ),
-                        params,
-                    )
-                updated += len(batch_params)
+                    updated += len(batch_params)
+
                 await session.commit()
+                for wid in outer_chunk:
+                    del rating_agg[wid]
+                gc.collect()
+                _trim_heap()
 
             logger.info(
                 f"[dump] Phase 5 complete: {updated} book rows updated with ratings"

@@ -127,6 +127,14 @@ class AuthorDetailData(pydantic.BaseModel):
     books_avg_rating: float
     books_total_ratings: int
     books_total_views: int
+    books_ol_avg_rating: typing.Optional[str] = None
+    books_ol_total_ratings: int = 0
+    app_want_to_read_count: int = 0
+    app_reading_count: int = 0
+    app_read_count: int = 0
+    ol_want_to_read_count: int = 0
+    ol_currently_reading_count: int = 0
+    ol_already_read_count: int = 0
     open_library_id: typing.Optional[str] = None
     created_at: str
     updated_at: str
@@ -152,6 +160,14 @@ class BookListItemSchema(pydantic.BaseModel):
     rating_count: int
     avg_rating: float
     view_count: int
+    ol_rating_count: int = 0
+    ol_avg_rating: typing.Optional[str] = None
+    ol_want_to_read_count: int = 0
+    ol_currently_reading_count: int = 0
+    ol_already_read_count: int = 0
+    app_want_to_read_count: int = 0
+    app_reading_count: int = 0
+    app_read_count: int = 0
     genres: typing.List[GenreSchema]
 
 
@@ -183,6 +199,12 @@ class SeriesDetailData(pydantic.BaseModel):
     ol_avg_rating: typing.Optional[str] = None
     ol_rating_count: int = 0
     total_views: int = 0
+    app_want_to_read_count: int = 0
+    app_reading_count: int = 0
+    app_read_count: int = 0
+    ol_want_to_read_count: int = 0
+    ol_currently_reading_count: int = 0
+    ol_already_read_count: int = 0
 
 
 class SeriesDetailResponse(pydantic.BaseModel):
@@ -202,6 +224,14 @@ class SeriesBookListItemSchema(pydantic.BaseModel):
     avg_rating: float
     view_count: int
     series_position: typing.Optional[str] = None
+    ol_rating_count: int = 0
+    ol_avg_rating: typing.Optional[str] = None
+    ol_want_to_read_count: int = 0
+    ol_currently_reading_count: int = 0
+    ol_already_read_count: int = 0
+    app_want_to_read_count: int = 0
+    app_reading_count: int = 0
+    app_read_count: int = 0
     genres: typing.List[GenreSchema]
 
 

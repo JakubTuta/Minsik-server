@@ -35,6 +35,8 @@ services:
       -c max_connections=50
       -c checkpoint_completion_target=0.9
       -c random_page_cost=1.1
+      -c dynamic_shared_memory_type=posix
+    shm_size: "512m"
     deploy:
       resources:
         limits:
@@ -341,10 +343,10 @@ services:
       resources:
         limits:
           cpus: "0.5"
-          memory: 384M
+          memory: 512M
         reservations:
           cpus: "0.25"
-          memory: 192M
+          memory: 256M
     networks:
       - minsik-internal
     restart: unless-stopped

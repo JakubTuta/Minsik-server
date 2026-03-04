@@ -90,10 +90,10 @@ async def reindex_all_to_es() -> None:
         """
         )
 
-        result = await session.execute(books_query, {"last_sync": last_sync})
+        result = await session.stream(books_query, {"last_sync": last_sync})
         batch: list = []
 
-        for row in result:
+        async for row in result:
             doc = {
                 "_index": settings.es_index_books,
                 "_id": str(row.book_id),
@@ -147,10 +147,10 @@ async def reindex_all_to_es() -> None:
         """
         )
 
-        result = await session.execute(authors_query, {"last_sync": last_sync})
+        result = await session.stream(authors_query, {"last_sync": last_sync})
         batch = []
 
-        for row in result:
+        async for row in result:
             doc = {
                 "_index": settings.es_index_authors,
                 "_id": str(row.author_id),
@@ -199,10 +199,10 @@ async def reindex_all_to_es() -> None:
         """
         )
 
-        result = await session.execute(series_query, {"last_sync": last_sync})
+        result = await session.stream(series_query, {"last_sync": last_sync})
         batch = []
 
-        for row in result:
+        async for row in result:
             doc = {
                 "_index": settings.es_index_series,
                 "_id": str(row.series_id),
@@ -247,6 +247,7 @@ async def _bulk_index(es: object, docs: list) -> None:
         await elasticsearch.helpers.async_bulk(es, docs)
     except Exception as e:
         logger.error(f"[ES] Bulk index error: {str(e)}")
+        raise
 
 
 async def reindex_periodically() -> None:
