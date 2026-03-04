@@ -143,7 +143,7 @@ async def get_series_books(
                 WHEN (b.rating_count + b.ol_rating_count) > 0
                 THEN (
                     COALESCE(b.avg_rating::numeric, 0) * b.rating_count
-                    + (COALESCE(b.ol_avg_rating::numeric, 0) / 2.0) * b.ol_rating_count
+                    + COALESCE(b.ol_avg_rating::numeric, 0) * b.ol_rating_count
                 ) / (b.rating_count + b.ol_rating_count)
                 ELSE 0
             END AS combined_rating,
