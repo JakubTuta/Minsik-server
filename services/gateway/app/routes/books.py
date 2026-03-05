@@ -819,3 +819,84 @@ async def open_case(
             status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
             detail=f"Open case failed: {e.details()}",
         )
+
+
+@router.post(
+    "/discover",
+    response_model=app.models.books_responses.DiscoverBookResponse,
+    summary="Discover a random book matching filters",
+    description="""
+    Returns a single random book that matches the provided filter criteria.
+
+    All filters are optional — omitting all filters returns any random book
+    that has a cover image.
+
+    Send previously returned `exclude_ids` to avoid getting the same book twice.
+    The response includes `matching_count` so you can show "X books match" and
+    warn when filters become too narrow.
+
+    **Filter options:**
+
+    | Filter | Values | Description |
+    |---|---|---|
+    | `language` | `en`, `pl`, … | Language of the book (default: `en`) |
+    | `genre_slugs` | `["fantasy", "sci-fi"]` | Books belonging to any of these genres |
+    | `book_length` | `short` / `medium` / `long` / `epic` | <200 / 200-400 / 400-600 / 600+ pages |
+    | `quality` | `high` / `medium` / `low` / `very_low` | Combined rating >4.0 / 3.0-4.0 / 2.0-3.0 / ≤2.0 |
+    | `moods` | see below | Sub-rating dimension filters (ANDed) |
+    | `era` | `classic` / `modern` / `contemporary` | Published before 1950 / 1950-2000 / 2000+ |
+    | `series_filter` | `standalone` / `series` | Not in a series / part of a series |
+    | `popularity` | `popular` / `hidden_gem` | >100 readers / <50 readers with rating >3.5 |
+    | `exclude_ids` | `[1, 2, 3]` (max 500) | Book IDs to exclude |
+
+    **Mood values** (based on user sub-ratings, requires avg ≥ 3.5 from at least 3 ratings):
+    `funny`, `emotional`, `intellectual`, `easy_read`, `complex`, `fast_paced`
+
+    **Combined rating formula:**
+    `(avg_rating * rating_count + ol_avg_rating * ol_rating_count) / (rating_count + ol_rating_count)`
+
+    Returns `data: null` with error code `NO_MATCHING_BOOKS` when no books match the filters.
+    """,
+)
+@limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
+async def discover_book(
+    request: fastapi.Request,
+    filters: app.models.books_responses.DiscoverBookFilters,
+):
+    try:
+        response = await app.grpc_clients.books_client.discover_book(
+            language=filters.language,
+            genre_slugs=filters.genre_slugs,
+            book_length=filters.book_length or "",
+            quality=filters.quality or "",
+            moods=filters.moods,
+            era=filters.era or "",
+            series_filter=filters.series_filter or "",
+            popularity=filters.popularity or "",
+            exclude_ids=filters.exclude_ids,
+        )
+
+        return {
+            "success": True,
+            "data": {
+                "book": _book_detail_proto_to_dict(response.book),
+                "matching_count": response.matching_count,
+            },
+            "error": None,
+        }
+    except grpc.RpcError as e:
+        logger.error(f"gRPC error discovering book: {e.code()} - {e.details()}")
+        if e.code() == grpc.StatusCode.NOT_FOUND:
+            return {
+                "success": True,
+                "data": None,
+                "error": {
+                    "code": "NO_MATCHING_BOOKS",
+                    "message": "No books match the provided filters. Try relaxing some criteria.",
+                    "details": {},
+                },
+            }
+        raise fastapi.HTTPException(
+            status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
+            detail=f"Discover book failed: {e.details()}",
+        )

@@ -13,6 +13,7 @@ service BooksService {
   rpc UpdateAuthor(UpdateAuthorRequest) returns (AuthorDetailResponse);
   rpc UpdateSeries(UpdateSeriesRequest) returns (SeriesDetailResponse);
   rpc OpenCase(OpenCaseRequest) returns (OpenCaseResponse);
+  rpc DiscoverBook(DiscoverBookRequest) returns (DiscoverBookResponse);
 }
 
 message SearchRequest {
@@ -312,4 +313,21 @@ message OpenCaseResponse {
   int32 winning_index = 2;
   CaseBookItem winner = 3;
   BookDetail winner_detail = 4;
+}
+
+message DiscoverBookRequest {
+  string language = 1;
+  repeated string genre_slugs = 2;
+  string book_length = 3;
+  string quality = 4;
+  repeated string moods = 5;
+  string era = 6;
+  string series_filter = 7;
+  string popularity = 8;
+  repeated int64 exclude_ids = 9;
+}
+
+message DiscoverBookResponse {
+  BookDetail book = 1;
+  int32 matching_count = 2;
 }

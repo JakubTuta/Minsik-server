@@ -473,6 +473,88 @@ class OpenCaseResponse(pydantic.BaseModel):
     error: typing.Optional[app.models.responses.ErrorDetail] = None
 
 
+class DiscoverBookFilters(pydantic.BaseModel):
+    language: str = pydantic.Field(
+        default="en",
+        min_length=2,
+        max_length=10,
+        description="Language code (e.g. en, pl, de). Default: en",
+    )
+    genre_slugs: typing.List[str] = pydantic.Field(
+        default_factory=list,
+        description="Filter by one or more genre slugs (e.g. ['fantasy', 'sci-fi']). Books matching any of the given genres are included.",
+    )
+    book_length: typing.Optional[str] = pydantic.Field(
+        default=None,
+        pattern="^(short|medium|long|epic)$",
+        description="Filter by page count: short (<200 pages), medium (200-400), long (400-600), epic (600+)",
+    )
+    quality: typing.Optional[str] = pydantic.Field(
+        default=None,
+        pattern="^(high|medium|low|very_low)$",
+        description="Filter by combined weighted rating: high (>4.0), medium (3.0-4.0), low (2.0-3.0), very_low (<=2.0). Combined rating = (avg_rating * rating_count + ol_avg_rating * ol_rating_count) / (rating_count + ol_rating_count)",
+    )
+    moods: typing.List[str] = pydantic.Field(
+        default_factory=list,
+        description=(
+            "Filter by sub-rating dimensions (from user sub-ratings). Multiple moods are ANDed. "
+            "Valid values: funny, emotional, intellectual, easy_read, complex, fast_paced. "
+            "Only books with at least 3 sub-ratings for that dimension and avg >= 3.5 are included."
+        ),
+    )
+    era: typing.Optional[str] = pydantic.Field(
+        default=None,
+        pattern="^(classic|modern|contemporary)$",
+        description="Filter by original publication era: classic (before 1950), modern (1950-2000), contemporary (2000+)",
+    )
+    series_filter: typing.Optional[str] = pydantic.Field(
+        default=None,
+        pattern="^(standalone|series)$",
+        description="standalone — only books not part of a series; series — only books that belong to a series; omit for any",
+    )
+    popularity: typing.Optional[str] = pydantic.Field(
+        default=None,
+        pattern="^(popular|hidden_gem)$",
+        description="popular — books with more than 100 total readers; hidden_gem — fewer than 50 readers but combined rating > 3.5",
+    )
+    exclude_ids: typing.List[int] = pydantic.Field(
+        default_factory=list,
+        max_length=500,
+        description="List of book_ids to exclude from results. Use to avoid repeating previously returned books.",
+    )
+
+    model_config = pydantic.ConfigDict(
+        json_schema_extra={
+            "example": {
+                "language": "en",
+                "genre_slugs": ["fantasy"],
+                "book_length": "medium",
+                "quality": "high",
+                "moods": ["emotional"],
+                "era": "contemporary",
+                "series_filter": "standalone",
+                "popularity": "hidden_gem",
+                "exclude_ids": [101, 202, 303],
+            }
+        }
+    )
+
+
+class DiscoverBookData(pydantic.BaseModel):
+    book: BookDetailData = pydantic.Field(
+        description="Full book details for the discovered book, identical in shape to the GET /books/{slug} response"
+    )
+    matching_count: int = pydantic.Field(
+        description="Total number of books in the database that match the provided filters. Useful for showing 'X books found' and detecting when filters are too narrow."
+    )
+
+
+class DiscoverBookResponse(pydantic.BaseModel):
+    success: bool = True
+    data: typing.Optional[DiscoverBookData] = None
+    error: typing.Optional[app.models.responses.ErrorDetail] = None
+
+
 class AdminBookUpdateData(pydantic.BaseModel):
     book_id: int
     title: str

@@ -564,3 +564,33 @@ class OpenCaseResponse(_message.Message):
     winner: CaseBookItem
     winner_detail: BookDetail
     def __init__(self, display_list: _Optional[_Iterable[_Union[CaseBookItem, _Mapping]]] = ..., winning_index: _Optional[int] = ..., winner: _Optional[_Union[CaseBookItem, _Mapping]] = ..., winner_detail: _Optional[_Union[BookDetail, _Mapping]] = ...) -> None: ...
+
+class DiscoverBookRequest(_message.Message):
+    __slots__ = ("language", "genre_slugs", "book_length", "quality", "moods", "era", "series_filter", "popularity", "exclude_ids")
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
+    GENRE_SLUGS_FIELD_NUMBER: _ClassVar[int]
+    BOOK_LENGTH_FIELD_NUMBER: _ClassVar[int]
+    QUALITY_FIELD_NUMBER: _ClassVar[int]
+    MOODS_FIELD_NUMBER: _ClassVar[int]
+    ERA_FIELD_NUMBER: _ClassVar[int]
+    SERIES_FILTER_FIELD_NUMBER: _ClassVar[int]
+    POPULARITY_FIELD_NUMBER: _ClassVar[int]
+    EXCLUDE_IDS_FIELD_NUMBER: _ClassVar[int]
+    language: str
+    genre_slugs: _containers.RepeatedScalarFieldContainer[str]
+    book_length: str
+    quality: str
+    moods: _containers.RepeatedScalarFieldContainer[str]
+    era: str
+    series_filter: str
+    popularity: str
+    exclude_ids: _containers.RepeatedScalarFieldContainer[int]
+    def __init__(self, language: _Optional[str] = ..., genre_slugs: _Optional[_Iterable[str]] = ..., book_length: _Optional[str] = ..., quality: _Optional[str] = ..., moods: _Optional[_Iterable[str]] = ..., era: _Optional[str] = ..., series_filter: _Optional[str] = ..., popularity: _Optional[str] = ..., exclude_ids: _Optional[_Iterable[int]] = ...) -> None: ...
+
+class DiscoverBookResponse(_message.Message):
+    __slots__ = ("book", "matching_count")
+    BOOK_FIELD_NUMBER: _ClassVar[int]
+    MATCHING_COUNT_FIELD_NUMBER: _ClassVar[int]
+    book: BookDetail
+    matching_count: int
+    def __init__(self, book: _Optional[_Union[BookDetail, _Mapping]] = ..., matching_count: _Optional[int] = ...) -> None: ...

@@ -224,6 +224,39 @@ class BooksClient:
             logger.error(f"gRPC error updating series: {e.code()} - {e.details()}")
             raise
 
+    async def discover_book(
+        self,
+        language: str = "en",
+        genre_slugs: typing.Optional[typing.List[str]] = None,
+        book_length: str = "",
+        quality: str = "",
+        moods: typing.Optional[typing.List[str]] = None,
+        era: str = "",
+        series_filter: str = "",
+        popularity: str = "",
+        exclude_ids: typing.Optional[typing.List[int]] = None,
+    ) -> books_pb2.DiscoverBookResponse:
+        request = books_pb2.DiscoverBookRequest(
+            language=language,
+            genre_slugs=genre_slugs or [],
+            book_length=book_length,
+            quality=quality,
+            moods=moods or [],
+            era=era,
+            series_filter=series_filter,
+            popularity=popularity,
+            exclude_ids=exclude_ids or [],
+        )
+
+        try:
+            response = await self.stub.DiscoverBook(
+                request, timeout=app.config.settings.grpc_timeout
+            )
+            return response
+        except grpc.RpcError as e:
+            logger.error(f"gRPC error discovering book: {e.code()} - {e.details()}")
+            raise
+
     async def open_case(self, language: str = "en") -> books_pb2.OpenCaseResponse:
         request = books_pb2.OpenCaseRequest(language=language)
 
