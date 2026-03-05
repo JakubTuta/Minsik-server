@@ -179,22 +179,20 @@ message BookSummary {
   string title = 2;
   string slug = 3;
   string description = 4;
-  int32 original_publication_year = 5;
-  string primary_cover_url = 6;
+  string primary_cover_url = 5;
+  repeated AuthorInfo authors = 6;
   int32 rating_count = 7;
   string avg_rating = 8;
-  int32 view_count = 9;
-  repeated GenreInfo genres = 10;
-  SeriesInfo series = 11;
-  string series_position = 12;
-  int32 ol_rating_count = 13;
-  string ol_avg_rating = 14;
-  int32 ol_want_to_read_count = 15;
-  int32 ol_currently_reading_count = 16;
-  int32 ol_already_read_count = 17;
-  int32 app_want_to_read_count = 18;
-  int32 app_reading_count = 19;
-  int32 app_read_count = 20;
+  int32 ol_rating_count = 9;
+  string ol_avg_rating = 10;
+  int32 ol_want_to_read_count = 11;
+  int32 ol_currently_reading_count = 12;
+  int32 ol_already_read_count = 13;
+  int32 app_want_to_read_count = 14;
+  int32 app_reading_count = 15;
+  int32 app_read_count = 16;
+  string series_position = 17;
+  string rarity = 18;
 }
 
 message BooksListResponse {
@@ -295,23 +293,10 @@ message OpenCaseRequest {
   string language = 1;
 }
 
-message CaseBookItem {
-  int64 book_id = 1;
-  string title = 2;
-  string slug = 3;
-  string primary_cover_url = 4;
-  repeated AuthorInfo authors = 5;
-  string rarity = 6;
-  string combined_rating = 7;
-  string avg_rating = 8;
-  int32 rating_count = 9;
-  int32 readers = 10;
-}
-
 message OpenCaseResponse {
-  repeated CaseBookItem display_list = 1;
+  repeated BookSummary display_list = 1;
   int32 winning_index = 2;
-  CaseBookItem winner = 3;
+  BookSummary winner = 3;
   BookDetail winner_detail = 4;
 }
 

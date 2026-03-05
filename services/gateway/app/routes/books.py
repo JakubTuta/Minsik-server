@@ -313,35 +313,7 @@ async def get_author_books(
 
         books = []
         for book in response.books:
-            books.append(
-                {
-                    "book_id": book.book_id,
-                    "title": book.title,
-                    "slug": book.slug,
-                    "description": book.description,
-                    "original_publication_year": book.original_publication_year,
-                    "primary_cover_url": book.primary_cover_url,
-                    "rating_count": book.rating_count,
-                    "avg_rating": book.avg_rating,
-                    "view_count": book.view_count,
-                    "ol_rating_count": book.ol_rating_count,
-                    "ol_avg_rating": book.ol_avg_rating or None,
-                    "ol_want_to_read_count": book.ol_want_to_read_count,
-                    "ol_currently_reading_count": book.ol_currently_reading_count,
-                    "ol_already_read_count": book.ol_already_read_count,
-                    "app_want_to_read_count": book.app_want_to_read_count,
-                    "app_reading_count": book.app_reading_count,
-                    "app_read_count": book.app_read_count,
-                    "genres": [
-                        {
-                            "genre_id": genre.genre_id,
-                            "name": genre.name,
-                            "slug": genre.slug,
-                        }
-                        for genre in book.genres
-                    ],
-                }
-            )
+            books.append(_book_summary_proto_to_dict(book))
 
         return {
             "success": True,
@@ -609,38 +581,7 @@ async def get_series_books(
 
         books = []
         for book in response.books:
-            books.append(
-                {
-                    "book_id": book.book_id,
-                    "title": book.title,
-                    "slug": book.slug,
-                    "description": book.description,
-                    "original_publication_year": book.original_publication_year,
-                    "primary_cover_url": book.primary_cover_url,
-                    "rating_count": book.rating_count,
-                    "avg_rating": float(book.avg_rating),
-                    "view_count": book.view_count,
-                    "series_position": (
-                        book.series_position if book.series_position else None
-                    ),
-                    "ol_rating_count": book.ol_rating_count,
-                    "ol_avg_rating": book.ol_avg_rating or None,
-                    "ol_want_to_read_count": book.ol_want_to_read_count,
-                    "ol_currently_reading_count": book.ol_currently_reading_count,
-                    "ol_already_read_count": book.ol_already_read_count,
-                    "app_want_to_read_count": book.app_want_to_read_count,
-                    "app_reading_count": book.app_reading_count,
-                    "app_read_count": book.app_read_count,
-                    "genres": [
-                        {
-                            "genre_id": genre.genre_id,
-                            "name": genre.name,
-                            "slug": genre.slug,
-                        }
-                        for genre in book.genres
-                    ],
-                }
-            )
+            books.append(_book_summary_proto_to_dict(book))
 
         return {
             "success": True,
@@ -726,26 +667,34 @@ def _book_detail_proto_to_dict(book) -> typing.Dict[str, typing.Any]:
     }
 
 
-def _case_book_item_proto_to_dict(item) -> typing.Dict[str, typing.Any]:
+def _book_summary_proto_to_dict(item) -> typing.Dict[str, typing.Any]:
     return {
         "book_id": item.book_id,
         "title": item.title,
         "slug": item.slug,
-        "primary_cover_url": item.primary_cover_url,
+        "description": item.description or None,
+        "primary_cover_url": item.primary_cover_url or None,
         "authors": [
             {
                 "author_id": a.author_id,
                 "name": a.name,
                 "slug": a.slug,
-                "photo_url": a.photo_url,
+                "photo_url": a.photo_url or None,
             }
             for a in item.authors
         ],
-        "rarity": item.rarity,
-        "combined_rating": item.combined_rating,
-        "avg_rating": item.avg_rating,
         "rating_count": item.rating_count,
-        "readers": item.readers,
+        "avg_rating": item.avg_rating or None,
+        "ol_rating_count": item.ol_rating_count,
+        "ol_avg_rating": item.ol_avg_rating or None,
+        "ol_want_to_read_count": item.ol_want_to_read_count,
+        "ol_currently_reading_count": item.ol_currently_reading_count,
+        "ol_already_read_count": item.ol_already_read_count,
+        "app_want_to_read_count": item.app_want_to_read_count,
+        "app_reading_count": item.app_reading_count,
+        "app_read_count": item.app_read_count,
+        "series_position": item.series_position or None,
+        "rarity": item.rarity or None,
     }
 
 
@@ -795,7 +744,7 @@ async def open_case(
         response = await app.grpc_clients.books_client.open_case(language=language)
 
         display_list = [
-            _case_book_item_proto_to_dict(item) for item in response.display_list
+            _book_summary_proto_to_dict(item) for item in response.display_list
         ]
 
         return {
@@ -803,7 +752,7 @@ async def open_case(
             "data": {
                 "display_list": display_list,
                 "winning_index": response.winning_index,
-                "winner": _case_book_item_proto_to_dict(response.winner),
+                "winner": _book_summary_proto_to_dict(response.winner),
                 "winner_detail": _book_detail_proto_to_dict(response.winner_detail),
             },
             "error": None,

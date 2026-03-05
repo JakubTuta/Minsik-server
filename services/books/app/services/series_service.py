@@ -125,11 +125,9 @@ async def get_series_books(
             b.title,
             b.slug,
             b.description,
-            b.original_publication_year,
             b.primary_cover_url,
             b.rating_count,
             b.avg_rating,
-            b.view_count,
             b.ol_rating_count,
             b.ol_avg_rating,
             b.ol_want_to_read_count,
@@ -153,15 +151,18 @@ async def get_series_books(
                 + COALESCE(bs.reading_count, 0)
                 + COALESCE(bs.read_count, 0)
             ) AS total_readers,
-            COALESCE(
-                json_agg(
-                    json_build_object('genre_id', g.genre_id, 'name', g.name, 'slug', g.slug)
-                ) FILTER (WHERE g.genre_id IS NOT NULL),
-                '[]'::json
-            ) AS genres
+            (
+                SELECT COALESCE(json_agg(json_build_object(
+                    'author_id', a.author_id,
+                    'name', a.name,
+                    'slug', a.slug,
+                    'photo_url', a.photo_url
+                )), '[]'::json)
+                FROM books.book_authors ba
+                JOIN books.authors a ON ba.author_id = a.author_id
+                WHERE ba.book_id = b.book_id
+            ) AS authors
         FROM books.books b
-        LEFT JOIN books.book_genres bg ON b.book_id = bg.book_id
-        LEFT JOIN books.genres g ON bg.genre_id = g.genre_id
         LEFT JOIN (
             SELECT
                 book_id,
@@ -173,12 +174,6 @@ async def get_series_books(
             GROUP BY book_id
         ) bs ON b.book_id = bs.book_id
         WHERE b.series_id = :series_id AND b.language = :language
-        GROUP BY
-            b.book_id, b.title, b.slug, b.description, b.original_publication_year,
-            b.primary_cover_url, b.rating_count, b.avg_rating, b.view_count,
-            b.ol_rating_count, b.ol_avg_rating, b.ol_want_to_read_count,
-            b.ol_currently_reading_count, b.ol_already_read_count, b.series_position,
-            bs.want_to_read_count, bs.reading_count, bs.read_count
         ORDER BY {sort_col} {order_dir} NULLS LAST{secondary_sort}
         LIMIT :limit OFFSET :offset
         """
@@ -259,25 +254,23 @@ def _series_to_dict(
 
 
 def _series_book_row_to_dict(row: typing.Any) -> typing.Dict[str, typing.Any]:
-    genres_raw = row.genres
-    if isinstance(genres_raw, str):
+    authors_raw = row.authors
+    if isinstance(authors_raw, str):
         import json
 
-        genres_list = json.loads(genres_raw)
-    elif genres_raw is None:
-        genres_list = []
+        authors_list = json.loads(authors_raw)
+    elif authors_raw is None:
+        authors_list = []
     else:
-        genres_list = genres_raw
+        authors_list = authors_raw
     return {
         "book_id": row.book_id,
         "title": row.title,
         "slug": row.slug,
         "description": row.description or "",
-        "original_publication_year": row.original_publication_year or 0,
         "primary_cover_url": row.primary_cover_url or "",
         "rating_count": row.rating_count or 0,
         "avg_rating": str(row.avg_rating) if row.avg_rating else "0.00",
-        "view_count": row.view_count or 0,
         "ol_rating_count": row.ol_rating_count or 0,
         "ol_avg_rating": str(row.ol_avg_rating) if row.ol_avg_rating else "0.00",
         "ol_want_to_read_count": row.ol_want_to_read_count or 0,
@@ -287,7 +280,7 @@ def _series_book_row_to_dict(row: typing.Any) -> typing.Dict[str, typing.Any]:
         "app_reading_count": row.app_reading_count or 0,
         "app_read_count": row.app_read_count or 0,
         "series_position": str(row.series_position) if row.series_position else None,
-        "genres": genres_list,
+        "authors": authors_list,
     }
 
 

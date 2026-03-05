@@ -27,6 +27,7 @@ _BOOK_SELECT = """
         b.book_id,
         b.title,
         b.slug,
+        b.description,
         b.primary_cover_url,
         b.rating_count,
         b.avg_rating,
@@ -41,7 +42,12 @@ _BOOK_SELECT = """
         )::numeric / (b.rating_count + b.ol_rating_count) AS combined_rating,
         b.rating_count + b.ol_rating_count AS total_rating_count,
         b.ol_want_to_read_count + b.ol_currently_reading_count + b.ol_already_read_count
-            + COALESCE(bs.minsik_readers, 0) AS total_readers,
+            + COALESCE(bs.app_want_to_read_count, 0)
+            + COALESCE(bs.app_reading_count, 0)
+            + COALESCE(bs.app_read_count, 0) AS total_readers,
+        COALESCE(bs.app_want_to_read_count, 0) AS app_want_to_read_count,
+        COALESCE(bs.app_reading_count, 0) AS app_reading_count,
+        COALESCE(bs.app_read_count, 0) AS app_read_count,
         ARRAY_AGG(a.author_id) FILTER (WHERE a.author_id IS NOT NULL) AS author_ids,
         ARRAY_AGG(a.name) FILTER (WHERE a.name IS NOT NULL) AS author_names,
         ARRAY_AGG(a.slug) FILTER (WHERE a.slug IS NOT NULL) AS author_slugs,
@@ -50,7 +56,11 @@ _BOOK_SELECT = """
     LEFT JOIN books.book_authors ba ON b.book_id = ba.book_id
     LEFT JOIN books.authors a ON ba.author_id = a.author_id
     LEFT JOIN (
-        SELECT book_id, COUNT(*) AS minsik_readers
+        SELECT
+            book_id,
+            COUNT(*) FILTER (WHERE status = 'want_to_read') AS app_want_to_read_count,
+            COUNT(*) FILTER (WHERE status = 'reading') AS app_reading_count,
+            COUNT(*) FILTER (WHERE status = 'read') AS app_read_count
         FROM user_data.bookshelves
         WHERE status != 'abandoned'
         GROUP BY book_id
@@ -58,10 +68,11 @@ _BOOK_SELECT = """
 """
 
 _BOOK_GROUP_BY = """
-    GROUP BY b.book_id, b.title, b.slug, b.primary_cover_url,
+    GROUP BY b.book_id, b.title, b.slug, b.description, b.primary_cover_url,
              b.rating_count, b.avg_rating, b.ol_rating_count, b.ol_avg_rating,
              b.ol_want_to_read_count, b.ol_currently_reading_count,
-             b.ol_already_read_count, bs.minsik_readers
+             b.ol_already_read_count, bs.app_want_to_read_count,
+             bs.app_reading_count, bs.app_read_count
 """
 
 _COMBINED_RATING_FILTER = """
@@ -80,9 +91,7 @@ async def open_case(
     session: sqlalchemy.ext.asyncio.AsyncSession, language: str
 ) -> typing.Dict[str, typing.Any]:
     tier = _pick_winning_tier()
-    winner_row = await _fetch_random_book_from_tier(
-        session, language, tier[1], tier[2]
-    )
+    winner_row = await _fetch_random_book_from_tier(session, language, tier[1], tier[2])
 
     if winner_row is None:
         winner_row = await _fallback_book(session, language, tier)
@@ -201,8 +210,11 @@ async def _build_display_list(
 
     if len(books) < needed:
         extra = await _fetch_any_rated_books(
-            session, language, needed - len(books), winner_book_id,
-            [b["book_id"] for b in books]
+            session,
+            language,
+            needed - len(books),
+            winner_book_id,
+            [b["book_id"] for b in books],
         )
         books.extend(extra)
 
@@ -310,11 +322,20 @@ def _row_to_case_item(row: typing.Any) -> typing.Dict[str, typing.Any]:
         "book_id": row.book_id,
         "title": row.title,
         "slug": row.slug,
+        "description": row.description or "",
         "primary_cover_url": row.primary_cover_url or "",
         "authors": authors,
         "rarity": _compute_rarity(combined),
-        "combined_rating": f"{combined:.2f}",
-        "avg_rating": f"{combined:.2f}",
-        "rating_count": int(row.total_rating_count) if row.total_rating_count else 0,
-        "readers": int(row.total_readers) if row.total_readers else 0,
+        "avg_rating": str(row.avg_rating) if row.avg_rating else "0.00",
+        "rating_count": row.rating_count or 0,
+        "ol_rating_count": row.ol_rating_count or 0,
+        "ol_avg_rating": str(row.ol_avg_rating) if row.ol_avg_rating else "0.00",
+        "ol_want_to_read_count": row.ol_want_to_read_count or 0,
+        "ol_currently_reading_count": row.ol_currently_reading_count or 0,
+        "ol_already_read_count": row.ol_already_read_count or 0,
+        "app_want_to_read_count": (
+            int(row.app_want_to_read_count) if row.app_want_to_read_count else 0
+        ),
+        "app_reading_count": int(row.app_reading_count) if row.app_reading_count else 0,
+        "app_read_count": int(row.app_read_count) if row.app_read_count else 0,
     }

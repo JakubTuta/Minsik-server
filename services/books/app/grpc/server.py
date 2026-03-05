@@ -97,9 +97,9 @@ def _build_book_detail_proto(
     )
 
 
-def _build_case_book_item_proto(
+def _build_book_summary_proto(
     item: typing.Dict[str, typing.Any],
-) -> app.proto.books_pb2.CaseBookItem:
+) -> app.proto.books_pb2.BookSummary:
     authors = [
         app.proto.books_pb2.AuthorInfo(
             author_id=a["author_id"],
@@ -107,19 +107,27 @@ def _build_case_book_item_proto(
             slug=a["slug"],
             photo_url=a.get("photo_url", ""),
         )
-        for a in item["authors"]
+        for a in item.get("authors", [])
     ]
-    return app.proto.books_pb2.CaseBookItem(
+    return app.proto.books_pb2.BookSummary(
         book_id=item["book_id"],
         title=item["title"],
         slug=item["slug"],
-        primary_cover_url=item["primary_cover_url"],
+        description=item.get("description", ""),
+        primary_cover_url=item.get("primary_cover_url", ""),
         authors=authors,
-        rarity=item["rarity"],
-        combined_rating=item["combined_rating"],
-        avg_rating=item["avg_rating"],
         rating_count=item["rating_count"],
-        readers=item["readers"],
+        avg_rating=item.get("avg_rating", "0.00"),
+        ol_rating_count=item.get("ol_rating_count", 0),
+        ol_avg_rating=item.get("ol_avg_rating", "0.00"),
+        ol_want_to_read_count=item.get("ol_want_to_read_count", 0),
+        ol_currently_reading_count=item.get("ol_currently_reading_count", 0),
+        ol_already_read_count=item.get("ol_already_read_count", 0),
+        app_want_to_read_count=item.get("app_want_to_read_count", 0),
+        app_reading_count=item.get("app_reading_count", 0),
+        app_read_count=item.get("app_read_count", 0),
+        series_position=item.get("series_position", "") or "",
+        rarity=item.get("rarity", "") or "",
     )
 
 
@@ -269,41 +277,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                     request.language or "en",
                 )
 
-                book_summaries = []
-                for book in books:
-                    genres = [
-                        app.proto.books_pb2.GenreInfo(
-                            genre_id=genre["genre_id"],
-                            name=genre["name"],
-                            slug=genre["slug"],
-                        )
-                        for genre in book["genres"]
-                    ]
-
-                    book_summaries.append(
-                        app.proto.books_pb2.BookSummary(
-                            book_id=book["book_id"],
-                            title=book["title"],
-                            slug=book["slug"],
-                            description=book["description"],
-                            original_publication_year=book["original_publication_year"],
-                            primary_cover_url=book["primary_cover_url"],
-                            rating_count=book["rating_count"],
-                            avg_rating=book["avg_rating"],
-                            view_count=book["view_count"],
-                            genres=genres,
-                            ol_rating_count=book["ol_rating_count"],
-                            ol_avg_rating=book["ol_avg_rating"],
-                            ol_want_to_read_count=book["ol_want_to_read_count"],
-                            ol_currently_reading_count=book[
-                                "ol_currently_reading_count"
-                            ],
-                            ol_already_read_count=book["ol_already_read_count"],
-                            app_want_to_read_count=book["app_want_to_read_count"],
-                            app_reading_count=book["app_reading_count"],
-                            app_read_count=book["app_read_count"],
-                        )
-                    )
+                book_summaries = [_build_book_summary_proto(book) for book in books]
 
                 return app.proto.books_pb2.BooksListResponse(
                     books=book_summaries, total_count=total
@@ -376,42 +350,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                     request.order or "asc",
                 )
 
-                book_summaries = []
-                for book in books:
-                    genres = [
-                        app.proto.books_pb2.GenreInfo(
-                            genre_id=genre["genre_id"],
-                            name=genre["name"],
-                            slug=genre["slug"],
-                        )
-                        for genre in book["genres"]
-                    ]
-
-                    book_summaries.append(
-                        app.proto.books_pb2.BookSummary(
-                            book_id=book["book_id"],
-                            title=book["title"],
-                            slug=book["slug"],
-                            description=book["description"],
-                            original_publication_year=book["original_publication_year"],
-                            primary_cover_url=book["primary_cover_url"],
-                            rating_count=book["rating_count"],
-                            avg_rating=book["avg_rating"],
-                            view_count=book["view_count"],
-                            genres=genres,
-                            series_position=book.get("series_position", "") or "",
-                            ol_rating_count=book["ol_rating_count"],
-                            ol_avg_rating=book["ol_avg_rating"],
-                            ol_want_to_read_count=book["ol_want_to_read_count"],
-                            ol_currently_reading_count=book[
-                                "ol_currently_reading_count"
-                            ],
-                            ol_already_read_count=book["ol_already_read_count"],
-                            app_want_to_read_count=book["app_want_to_read_count"],
-                            app_reading_count=book["app_reading_count"],
-                            app_read_count=book["app_read_count"],
-                        )
-                    )
+                book_summaries = [_build_book_summary_proto(book) for book in books]
 
                 return app.proto.books_pb2.BooksListResponse(
                     books=book_summaries, total_count=total
@@ -788,8 +727,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                 )
 
                 display_list = [
-                    _build_case_book_item_proto(item)
-                    for item in result["display_list"]
+                    _build_book_summary_proto(item) for item in result["display_list"]
                 ]
 
                 winner_detail = _build_book_detail_proto(result["winner_detail"])
@@ -797,13 +735,11 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                 return app.proto.books_pb2.OpenCaseResponse(
                     display_list=display_list,
                     winning_index=result["winning_index"],
-                    winner=_build_case_book_item_proto(result["winner"]),
+                    winner=_build_book_summary_proto(result["winner"]),
                     winner_detail=winner_detail,
                 )
         except ValueError as e:
             await context.abort(grpc.StatusCode.NOT_FOUND, str(e))
         except Exception as e:
             logger.error(f"Error in OpenCase: {str(e)}")
-            await context.abort(
-                grpc.StatusCode.INTERNAL, f"Open case failed: {str(e)}"
-            )
+            await context.abort(grpc.StatusCode.INTERNAL, f"Open case failed: {str(e)}")
