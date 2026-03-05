@@ -9,6 +9,8 @@ import app.models
 import app.workers.continuous_fetcher
 import app.workers.data_cleaner
 import app.workers.description_enricher
+from apscheduler import AsyncScheduler
+from apscheduler.triggers.cron import CronTrigger
 
 logging.basicConfig(
     level=getattr(logging, app.config.settings.log_level),
@@ -19,6 +21,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 shutdown_event = asyncio.Event()
+scheduler: AsyncScheduler = None
 
 
 async def clear_stale_import_flag() -> bool:
@@ -54,6 +57,14 @@ async def clear_stale_import_flag() -> bool:
 
 async def shutdown(signal_received=None):
     shutdown_event.set()
+    global scheduler
+    current_scheduler = scheduler
+    scheduler = None
+    if current_scheduler:
+        try:
+            await current_scheduler.__aexit__(None, None, None)
+        except BaseException:
+            pass
     await app.models.engine.dispose()
 
 
@@ -66,17 +77,47 @@ async def main():
             loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(shutdown(s)))
 
         asyncio.create_task(
-            app.workers.continuous_fetcher.run_continuous_ol_fetch(shutdown_event)
+            asyncio.sleep(0)  # yield to event loop before serve() blocks
         )
-        asyncio.create_task(
-            app.workers.continuous_fetcher.run_continuous_gb_fetch(shutdown_event)
-        )
-        asyncio.create_task(
-            app.workers.description_enricher.run_description_enrichment_loop(
-                shutdown_event
+
+        scheduler = AsyncScheduler()
+        await scheduler.__aenter__()
+
+        if app.config.settings.continuous_fetch_enabled:
+            await scheduler.add_schedule(
+                app.workers.continuous_fetcher.run_continuous_ol_fetch,
+                CronTrigger.from_crontab(app.config.settings.continuous_ol_cron),
             )
-        )
-        asyncio.create_task(app.workers.data_cleaner.run_cleanup_loop(shutdown_event))
+            await scheduler.add_schedule(
+                app.workers.continuous_fetcher.run_continuous_gb_fetch,
+                CronTrigger.from_crontab(app.config.settings.continuous_gb_cron),
+            )
+            logger.info(
+                f"[ingestion] OL fetch scheduled (cron: '{app.config.settings.continuous_ol_cron}')"
+            )
+            logger.info(
+                f"[ingestion] GB fetch scheduled (cron: '{app.config.settings.continuous_gb_cron}')"
+            )
+
+        if app.config.settings.description_enrich_enabled:
+            await scheduler.add_schedule(
+                app.workers.description_enricher.run_description_enrichment,
+                CronTrigger.from_crontab(app.config.settings.description_enrich_cron),
+            )
+            logger.info(
+                f"[ingestion] Description enrichment scheduled (cron: '{app.config.settings.description_enrich_cron}')"
+            )
+
+        if app.config.settings.cleanup_enabled:
+            await scheduler.add_schedule(
+                app.workers.data_cleaner.run_cleanup_job,
+                CronTrigger.from_crontab(app.config.settings.cleanup_cron),
+            )
+            logger.info(
+                f"[ingestion] Cleanup scheduled (cron: '{app.config.settings.cleanup_cron}')"
+            )
+
+        await scheduler.start_in_background()
 
         if should_resume:
             import redis as redis_lib

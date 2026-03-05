@@ -37,13 +37,13 @@ class Settings(BaseSettings):
     ingestion_retry_delay: int = Field(default=5)
 
     continuous_fetch_enabled: bool = Field(default=True)
-    continuous_ol_interval_hours: int = Field(default=1)
+    continuous_ol_cron: str = Field(default="0 * * * *")
     continuous_ol_books_per_run: int = Field(default=100)
-    continuous_gb_interval_hours: int = Field(default=6)
+    continuous_gb_cron: str = Field(default="0 */6 * * *")
     continuous_gb_books_per_run: int = Field(default=40)
 
     description_enrich_enabled: bool = Field(default=True)
-    description_enrich_interval_hours: int = Field(default=2)
+    description_enrich_cron: str = Field(default="30 */2 * * *")
     description_enrich_batch_size: int = Field(default=5)
     description_min_length: int = Field(default=100)
 
@@ -61,7 +61,7 @@ class Settings(BaseSettings):
     dump_author_min_quality_score: int = Field(default=2)
 
     cleanup_enabled: bool = Field(default=True)
-    cleanup_interval_hours: int = Field(default=12)
+    cleanup_cron: str = Field(default="0 3,15 * * *")
     cleanup_batch_size: int = Field(default=1000)
     cleanup_book_min_quality_score: int = Field(default=4)
     cleanup_author_min_books: int = Field(default=2)

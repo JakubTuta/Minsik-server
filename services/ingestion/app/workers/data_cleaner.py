@@ -1,9 +1,9 @@
-import asyncio
 import logging
 import typing
 
 import app.config
 import app.models
+import app.workers.scheduler
 import redis
 import sqlalchemy
 import sqlalchemy.ext.asyncio
@@ -299,51 +299,42 @@ async def run_cleanup_cycle(
     }
 
 
-async def run_cleanup_loop(shutdown_event: asyncio.Event) -> None:
-    logger.info("Data cleanup task started")
-    while not shutdown_event.is_set():
-        try:
-            await asyncio.sleep(app.config.settings.cleanup_interval_hours * 3600)
-        except asyncio.CancelledError:
-            break
+async def run_cleanup_job() -> None:
+    if not app.config.settings.cleanup_enabled:
+        return
 
-        if shutdown_event.is_set() or not app.config.settings.cleanup_enabled:
-            break
+    redis_client: typing.Optional[redis.Redis] = None
+    try:
+        redis_client = _create_redis_client()
+    except Exception as e:
+        logger.warning(f"[cleanup] Failed to connect to Redis: {e}")
 
-        redis_client: typing.Optional[redis.Redis] = None
-        try:
-            redis_client = _create_redis_client()
-        except Exception as e:
-            logger.warning(f"[cleanup] Failed to connect to Redis: {e}")
+    try:
+        if redis_client is not None and redis_client.get(_DUMP_RUNNING_KEY):
+            logger.info("Skipping cleanup cycle: dump import in progress")
+            return
 
-        try:
-            if redis_client is not None and redis_client.get(_DUMP_RUNNING_KEY):
-                logger.info("Skipping cleanup cycle: dump import in progress")
-                continue
+        def stop_check() -> bool:
+            if redis_client is None:
+                return False
+            try:
+                return bool(redis_client.get(_DUMP_RUNNING_KEY))
+            except Exception:
+                return False
 
-            def stop_check() -> bool:
-                if redis_client is None:
-                    return False
-                try:
-                    return bool(redis_client.get(_DUMP_RUNNING_KEY))
-                except Exception:
-                    return False
+        async with app.models.AsyncSessionLocal() as session:
+            stats = await run_cleanup_cycle(session, stop_check)
 
-            async with app.models.AsyncSessionLocal() as session:
-                stats = await run_cleanup_cycle(session, stop_check)
+        logger.info(
+            f"[cleanup] Cycle complete: "
+            f"{stats['books']['deleted']} books, "
+            f"{stats['authors']['deleted']} authors, "
+            f"{stats['series_deleted']} series, "
+            f"{stats['genres_deleted']} genres deleted"
+        )
 
-            logger.info(
-                f"[cleanup] Cycle complete: "
-                f"{stats['books']['deleted']} books, "
-                f"{stats['authors']['deleted']} authors, "
-                f"{stats['series_deleted']} series, "
-                f"{stats['genres_deleted']} genres deleted"
-            )
-
-        except Exception as e:
-            logger.error(f"[cleanup] Cleanup cycle failed: {str(e)}")
-        finally:
-            if redis_client is not None:
-                redis_client.close()
-
-    logger.info("Data cleanup task stopped")
+    except Exception as e:
+        logger.error(f"[cleanup] Cleanup cycle failed: {str(e)}")
+    finally:
+        if redis_client is not None:
+            redis_client.close()

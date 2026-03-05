@@ -1,4 +1,3 @@
-import asyncio
 import logging
 import typing
 
@@ -186,58 +185,44 @@ async def enrich_series(
     )
 
 
-async def run_description_enrichment_loop(shutdown_event: asyncio.Event) -> None:
-    logger.info("Description enrichment task started")
-    while not shutdown_event.is_set():
-        try:
-            await asyncio.sleep(
-                app.config.settings.description_enrich_interval_hours * 3600
-            )
-        except asyncio.CancelledError:
-            break
+async def run_description_enrichment() -> None:
+    if not app.config.settings.description_enrich_enabled:
+        return
 
-        if (
-            shutdown_event.is_set()
-            or not app.config.settings.description_enrich_enabled
-        ):
-            break
+    try:
+        import redis as _redis
 
-        try:
-            import redis as _redis
+        _rc = _redis.Redis(
+            host=app.config.settings.redis_host,
+            port=app.config.settings.redis_port,
+            db=app.config.settings.redis_db,
+            password=(
+                app.config.settings.redis_password
+                if app.config.settings.redis_password
+                else None
+            ),
+        )
+        dump_running = bool(_rc.get("dump_import_running"))
+        _rc.close()
+        if dump_running:
+            logger.info("Skipping description enrichment: dump import in progress")
+            return
+    except Exception:
+        pass
 
-            _rc = _redis.Redis(
-                host=app.config.settings.redis_host,
-                port=app.config.settings.redis_port,
-                db=app.config.settings.redis_db,
-                password=(
-                    app.config.settings.redis_password
-                    if app.config.settings.redis_password
-                    else None
-                ),
-            )
-            dump_running = bool(_rc.get("dump_import_running"))
-            _rc.close()
-            if dump_running:
-                logger.info("Skipping description enrichment: dump import in progress")
-                continue
-        except Exception:
-            pass
+    try:
+        batch_size = app.config.settings.description_enrich_batch_size
+        min_length = app.config.settings.description_min_length
 
-        try:
-            batch_size = app.config.settings.description_enrich_batch_size
-            min_length = app.config.settings.description_min_length
+        async with app.models.AsyncSessionLocal() as session:
+            books_updated = await enrich_books(session, batch_size, min_length)
+            authors_updated = await enrich_authors(session, batch_size, min_length)
+            series_updated = await enrich_series(session, batch_size, min_length)
 
-            async with app.models.AsyncSessionLocal() as session:
-                books_updated = await enrich_books(session, batch_size, min_length)
-                authors_updated = await enrich_authors(session, batch_size, min_length)
-                series_updated = await enrich_series(session, batch_size, min_length)
+        logger.info(
+            f"Description enrichment done: {books_updated} books, "
+            f"{authors_updated} authors, {series_updated} series updated"
+        )
 
-            logger.info(
-                f"Description enrichment done: {books_updated} books, "
-                f"{authors_updated} authors, {series_updated} series updated"
-            )
-
-        except Exception as e:
-            logger.error(f"Description enrichment failed: {str(e)}")
-
-    logger.info("Description enrichment task stopped")
+    except Exception as e:
+        logger.error(f"Description enrichment failed: {str(e)}")
