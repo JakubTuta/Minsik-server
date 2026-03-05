@@ -313,6 +313,6 @@ message DiscoverBookRequest {
 }
 
 message DiscoverBookResponse {
-  BookDetail book = 1;
+  BookSummary book = 1;
   int32 matching_count = 2;
 }

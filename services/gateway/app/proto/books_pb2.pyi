@@ -563,6 +563,6 @@ class DiscoverBookResponse(_message.Message):
     __slots__ = ("book", "matching_count")
     BOOK_FIELD_NUMBER: _ClassVar[int]
     MATCHING_COUNT_FIELD_NUMBER: _ClassVar[int]
-    book: BookDetail
+    book: BookSummary
     matching_count: int
-    def __init__(self, book: _Optional[_Union[BookDetail, _Mapping]] = ..., matching_count: _Optional[int] = ...) -> None: ...
+    def __init__(self, book: _Optional[_Union[BookSummary, _Mapping]] = ..., matching_count: _Optional[int] = ...) -> None: ...

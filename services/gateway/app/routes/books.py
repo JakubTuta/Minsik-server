@@ -828,7 +828,7 @@ async def discover_book(
         return {
             "success": True,
             "data": {
-                "book": _book_detail_proto_to_dict(response.book),
+                "book": _book_summary_proto_to_dict(response.book),
                 "matching_count": response.matching_count,
             },
             "error": None,

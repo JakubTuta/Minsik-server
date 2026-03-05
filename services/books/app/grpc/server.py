@@ -704,7 +704,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                     return
 
                 return app.proto.books_pb2.DiscoverBookResponse(
-                    book=_build_book_detail_proto(result["book"]),
+                    book=_build_book_summary_proto(result["book"]),
                     matching_count=result["matching_count"],
                 )
         except ValueError as e:

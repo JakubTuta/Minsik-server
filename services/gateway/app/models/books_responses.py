@@ -496,8 +496,8 @@ class DiscoverBookFilters(pydantic.BaseModel):
 
 
 class DiscoverBookData(pydantic.BaseModel):
-    book: BookDetailData = pydantic.Field(
-        description="Full book details for the discovered book, identical in shape to the GET /books/{slug} response"
+    book: BookSummarySchema = pydantic.Field(
+        description="Partial book data for the discovered book"
     )
     matching_count: int = pydantic.Field(
         description="Total number of books in the database that match the provided filters. Useful for showing 'X books found' and detecting when filters are too narrow."
