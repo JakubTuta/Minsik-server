@@ -436,3 +436,89 @@ class GetSeriesBooksRequest(_message.Message):
     sort_by: str
     order: str
     def __init__(self, series_slug: _Optional[str] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., language: _Optional[str] = ..., sort_by: _Optional[str] = ..., order: _Optional[str] = ...) -> None: ...
+
+class UpdateBookRequest(_message.Message):
+    __slots__ = ("book_id", "title", "slug", "description", "first_sentence", "language", "original_publication_year", "primary_cover_url", "formats_json", "cover_history_json", "isbn_json", "publisher", "number_of_pages", "external_ids_json", "open_library_id", "google_books_id", "series_id", "series_position")
+    BOOK_ID_FIELD_NUMBER: _ClassVar[int]
+    TITLE_FIELD_NUMBER: _ClassVar[int]
+    SLUG_FIELD_NUMBER: _ClassVar[int]
+    DESCRIPTION_FIELD_NUMBER: _ClassVar[int]
+    FIRST_SENTENCE_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
+    ORIGINAL_PUBLICATION_YEAR_FIELD_NUMBER: _ClassVar[int]
+    PRIMARY_COVER_URL_FIELD_NUMBER: _ClassVar[int]
+    FORMATS_JSON_FIELD_NUMBER: _ClassVar[int]
+    COVER_HISTORY_JSON_FIELD_NUMBER: _ClassVar[int]
+    ISBN_JSON_FIELD_NUMBER: _ClassVar[int]
+    PUBLISHER_FIELD_NUMBER: _ClassVar[int]
+    NUMBER_OF_PAGES_FIELD_NUMBER: _ClassVar[int]
+    EXTERNAL_IDS_JSON_FIELD_NUMBER: _ClassVar[int]
+    OPEN_LIBRARY_ID_FIELD_NUMBER: _ClassVar[int]
+    GOOGLE_BOOKS_ID_FIELD_NUMBER: _ClassVar[int]
+    SERIES_ID_FIELD_NUMBER: _ClassVar[int]
+    SERIES_POSITION_FIELD_NUMBER: _ClassVar[int]
+    book_id: int
+    title: str
+    slug: str
+    description: str
+    first_sentence: str
+    language: str
+    original_publication_year: int
+    primary_cover_url: str
+    formats_json: str
+    cover_history_json: str
+    isbn_json: str
+    publisher: str
+    number_of_pages: int
+    external_ids_json: str
+    open_library_id: str
+    google_books_id: str
+    series_id: int
+    series_position: str
+    def __init__(self, book_id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., description: _Optional[str] = ..., first_sentence: _Optional[str] = ..., language: _Optional[str] = ..., original_publication_year: _Optional[int] = ..., primary_cover_url: _Optional[str] = ..., formats_json: _Optional[str] = ..., cover_history_json: _Optional[str] = ..., isbn_json: _Optional[str] = ..., publisher: _Optional[str] = ..., number_of_pages: _Optional[int] = ..., external_ids_json: _Optional[str] = ..., open_library_id: _Optional[str] = ..., google_books_id: _Optional[str] = ..., series_id: _Optional[int] = ..., series_position: _Optional[str] = ...) -> None: ...
+
+class UpdateAuthorRequest(_message.Message):
+    __slots__ = ("author_id", "name", "slug", "bio", "birth_date", "death_date", "birth_place", "nationality", "photo_url", "wikidata_id", "wikipedia_url", "remote_ids_json", "alternate_names_json", "open_library_id")
+    AUTHOR_ID_FIELD_NUMBER: _ClassVar[int]
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    SLUG_FIELD_NUMBER: _ClassVar[int]
+    BIO_FIELD_NUMBER: _ClassVar[int]
+    BIRTH_DATE_FIELD_NUMBER: _ClassVar[int]
+    DEATH_DATE_FIELD_NUMBER: _ClassVar[int]
+    BIRTH_PLACE_FIELD_NUMBER: _ClassVar[int]
+    NATIONALITY_FIELD_NUMBER: _ClassVar[int]
+    PHOTO_URL_FIELD_NUMBER: _ClassVar[int]
+    WIKIDATA_ID_FIELD_NUMBER: _ClassVar[int]
+    WIKIPEDIA_URL_FIELD_NUMBER: _ClassVar[int]
+    REMOTE_IDS_JSON_FIELD_NUMBER: _ClassVar[int]
+    ALTERNATE_NAMES_JSON_FIELD_NUMBER: _ClassVar[int]
+    OPEN_LIBRARY_ID_FIELD_NUMBER: _ClassVar[int]
+    author_id: int
+    name: str
+    slug: str
+    bio: str
+    birth_date: str
+    death_date: str
+    birth_place: str
+    nationality: str
+    photo_url: str
+    wikidata_id: str
+    wikipedia_url: str
+    remote_ids_json: str
+    alternate_names_json: str
+    open_library_id: str
+    def __init__(self, author_id: _Optional[int] = ..., name: _Optional[str] = ..., slug: _Optional[str] = ..., bio: _Optional[str] = ..., birth_date: _Optional[str] = ..., death_date: _Optional[str] = ..., birth_place: _Optional[str] = ..., nationality: _Optional[str] = ..., photo_url: _Optional[str] = ..., wikidata_id: _Optional[str] = ..., wikipedia_url: _Optional[str] = ..., remote_ids_json: _Optional[str] = ..., alternate_names_json: _Optional[str] = ..., open_library_id: _Optional[str] = ...) -> None: ...
+
+class UpdateSeriesRequest(_message.Message):
+    __slots__ = ("series_id", "name", "slug", "description", "total_books")
+    SERIES_ID_FIELD_NUMBER: _ClassVar[int]
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    SLUG_FIELD_NUMBER: _ClassVar[int]
+    DESCRIPTION_FIELD_NUMBER: _ClassVar[int]
+    TOTAL_BOOKS_FIELD_NUMBER: _ClassVar[int]
+    series_id: int
+    name: str
+    slug: str
+    description: str
+    total_books: int
+    def __init__(self, series_id: _Optional[int] = ..., name: _Optional[str] = ..., slug: _Optional[str] = ..., description: _Optional[str] = ..., total_books: _Optional[int] = ...) -> None: ...

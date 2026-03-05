@@ -150,6 +150,75 @@ def _book_to_dict(book: app.models.book.Book) -> typing.Dict[str, typing.Any]:
     }
 
 
+async def update_book(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    book_id: int,
+    updates: typing.Dict[str, typing.Any],
+) -> typing.Optional[typing.Dict[str, typing.Any]]:
+    stmt = (
+        select(app.models.book.Book)
+        .options(
+            selectinload(app.models.book.Book.authors),
+            selectinload(app.models.book.Book.genres),
+            selectinload(app.models.book.Book.series),
+        )
+        .filter(app.models.book.Book.book_id == book_id)
+    )
+
+    result = await session.execute(stmt)
+    book = result.scalars().first()
+
+    if not book:
+        return None
+
+    old_cache_key = f"book_slug:{book.slug}:{book.language}"
+
+    for field, value in updates.items():
+        setattr(book, field, value)
+
+    await session.commit()
+    await session.refresh(book)
+
+    await app.cache.delete_cached(old_cache_key)
+    if "slug" in updates or "language" in updates:
+        new_cache_key = f"book_slug:{book.slug}:{book.language}"
+        await app.cache.delete_cached(new_cache_key)
+
+    book_data = _book_to_dict(book)
+
+    bookshelves_result = await session.execute(
+        sqlalchemy.text(
+            """
+            SELECT
+                COUNT(*) FILTER (WHERE status = 'want_to_read') AS app_want_to_read_count,
+                COUNT(*) FILTER (WHERE status = 'reading') AS app_reading_count,
+                COUNT(*) FILTER (WHERE status = 'read') AS app_read_count
+            FROM user_data.bookshelves
+            WHERE book_id = :book_id AND status != 'abandoned'
+            """
+        ),
+        {"book_id": book.book_id},
+    )
+    bookshelves_row = bookshelves_result.first()
+    book_data["app_want_to_read_count"] = (
+        int(bookshelves_row.app_want_to_read_count)
+        if bookshelves_row and bookshelves_row.app_want_to_read_count
+        else 0
+    )
+    book_data["app_reading_count"] = (
+        int(bookshelves_row.app_reading_count)
+        if bookshelves_row and bookshelves_row.app_reading_count
+        else 0
+    )
+    book_data["app_read_count"] = (
+        int(bookshelves_row.app_read_count)
+        if bookshelves_row and bookshelves_row.app_read_count
+        else 0
+    )
+
+    return book_data
+
+
 async def flush_view_counts_to_db(session: sqlalchemy.ext.asyncio.AsyncSession) -> None:
     try:
         pending_counts = await app.cache.get_pending_view_counts("book")

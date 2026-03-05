@@ -287,3 +287,218 @@ class BookCommentsResponse(pydantic.BaseModel):
     success: bool = True
     data: BookCommentsListData
     error: typing.Optional[app.models.responses.ErrorDetail] = None
+
+
+class AdminUpdateBookRequest(pydantic.BaseModel):
+    title: typing.Optional[str] = pydantic.Field(None, description="Book title")
+    slug: typing.Optional[str] = pydantic.Field(
+        None, description="URL slug — must be unique per language edition"
+    )
+    description: typing.Optional[str] = pydantic.Field(
+        None, description="Book synopsis / description"
+    )
+    first_sentence: typing.Optional[str] = pydantic.Field(
+        None, description="Opening sentence of the book"
+    )
+    language: typing.Optional[str] = pydantic.Field(
+        None, description="ISO language code (e.g. 'en', 'pl', 'de')"
+    )
+    original_publication_year: typing.Optional[int] = pydantic.Field(
+        None, description="Year the book was first published"
+    )
+    primary_cover_url: typing.Optional[str] = pydantic.Field(
+        None, description="URL of the primary cover image"
+    )
+    cover_history: typing.Optional[typing.List[CoverHistorySchema]] = pydantic.Field(
+        None,
+        description="Full list of cover images; each entry has url, width (px), and size label",
+    )
+    formats: typing.Optional[typing.List[str]] = pydantic.Field(
+        None, description="Available formats, e.g. ['ebook', 'paperback', 'hardcover']"
+    )
+    isbn: typing.Optional[typing.List[str]] = pydantic.Field(
+        None, description="ISBN-10 or ISBN-13 identifiers"
+    )
+    publisher: typing.Optional[str] = pydantic.Field(None, description="Publisher name")
+    number_of_pages: typing.Optional[int] = pydantic.Field(
+        None, description="Total page count"
+    )
+    external_ids: typing.Optional[typing.Dict[str, str]] = pydantic.Field(
+        None,
+        description="Map of arbitrary external identifiers (e.g. {'goodreads': '123'})",
+    )
+    open_library_id: typing.Optional[str] = pydantic.Field(
+        None, description="Open Library work ID (e.g. 'OL27448W')"
+    )
+    google_books_id: typing.Optional[str] = pydantic.Field(
+        None, description="Google Books volume ID"
+    )
+    series_id: typing.Optional[int] = pydantic.Field(
+        None,
+        description="ID of the series this book belongs to; set to null to remove the book from its series",
+    )
+    series_position: typing.Optional[str] = pydantic.Field(
+        None, description="Position within the series (e.g. '1', '2.5')"
+    )
+
+    model_config = pydantic.ConfigDict(
+        json_schema_extra={
+            "example": {
+                "title": "The Fellowship of the Ring",
+                "slug": "the-fellowship-of-the-ring",
+                "language": "en",
+                "original_publication_year": 1954,
+                "number_of_pages": 423,
+                "series_id": 12,
+                "series_position": "1",
+            }
+        }
+    )
+
+
+class AdminUpdateAuthorRequest(pydantic.BaseModel):
+    name: typing.Optional[str] = pydantic.Field(None, description="Author's full name")
+    slug: typing.Optional[str] = pydantic.Field(
+        None, description="URL slug — must be unique"
+    )
+    bio: typing.Optional[str] = pydantic.Field(None, description="Author biography")
+    birth_date: typing.Optional[str] = pydantic.Field(
+        None, description="Date of birth in ISO format (YYYY-MM-DD)"
+    )
+    death_date: typing.Optional[str] = pydantic.Field(
+        None, description="Date of death in ISO format (YYYY-MM-DD)"
+    )
+    birth_place: typing.Optional[str] = pydantic.Field(
+        None, description="City or country of birth"
+    )
+    nationality: typing.Optional[str] = pydantic.Field(
+        None, description="Author's nationality"
+    )
+    photo_url: typing.Optional[str] = pydantic.Field(
+        None, description="URL of the author's photo"
+    )
+    wikidata_id: typing.Optional[str] = pydantic.Field(
+        None, description="Wikidata entity ID (e.g. 'Q892')"
+    )
+    wikipedia_url: typing.Optional[str] = pydantic.Field(
+        None, description="Full Wikipedia article URL"
+    )
+    remote_ids: typing.Optional[typing.Dict[str, str]] = pydantic.Field(
+        None, description="Map of external IDs (e.g. {'goodreads': '656983'})"
+    )
+    alternate_names: typing.Optional[typing.List[str]] = pydantic.Field(
+        None, description="List of alternate names or pen names"
+    )
+    open_library_id: typing.Optional[str] = pydantic.Field(
+        None, description="Open Library author ID (e.g. 'OL26320A')"
+    )
+
+    model_config = pydantic.ConfigDict(
+        json_schema_extra={
+            "example": {
+                "name": "J.R.R. Tolkien",
+                "bio": "John Ronald Reuel Tolkien was an English author and philologist.",
+                "birth_date": "1892-01-03",
+                "death_date": "1973-09-02",
+                "nationality": "British",
+            }
+        }
+    )
+
+
+class AdminUpdateSeriesRequest(pydantic.BaseModel):
+    name: typing.Optional[str] = pydantic.Field(None, description="Series name")
+    slug: typing.Optional[str] = pydantic.Field(
+        None, description="URL slug — must be unique"
+    )
+    description: typing.Optional[str] = pydantic.Field(
+        None, description="Series description"
+    )
+    total_books: typing.Optional[int] = pydantic.Field(
+        None, description="Total number of books planned for the series"
+    )
+
+    model_config = pydantic.ConfigDict(
+        json_schema_extra={
+            "example": {
+                "name": "The Lord of the Rings",
+                "description": "An epic high-fantasy novel set in Middle-earth.",
+                "total_books": 3,
+            }
+        }
+    )
+
+
+class AdminBookUpdateData(pydantic.BaseModel):
+    book_id: int
+    title: str
+    slug: str
+    description: typing.Optional[str] = None
+    first_sentence: typing.Optional[str] = None
+    language: str
+    original_publication_year: typing.Optional[int] = None
+    primary_cover_url: typing.Optional[str] = None
+    cover_history: typing.List[CoverHistorySchema] = []
+    formats: typing.List[str] = []
+    isbn: typing.List[str] = []
+    publisher: typing.Optional[str] = None
+    number_of_pages: int = 0
+    external_ids: typing.Dict[str, str] = {}
+    open_library_id: typing.Optional[str] = None
+    google_books_id: typing.Optional[str] = None
+    series: typing.Optional[SeriesMinimalSchema] = None
+    series_position: typing.Optional[str] = None
+    rating_count: int = 0
+    avg_rating: float = 0.0
+    ol_rating_count: int = 0
+    ol_avg_rating: typing.Optional[str] = None
+    updated_at: str
+
+
+class AdminBookUpdateResponse(pydantic.BaseModel):
+    success: bool = True
+    data: typing.Optional[AdminBookUpdateData] = None
+    error: typing.Optional[app.models.responses.ErrorDetail] = None
+
+
+class AdminAuthorUpdateData(pydantic.BaseModel):
+    author_id: int
+    name: str
+    slug: str
+    bio: typing.Optional[str] = None
+    birth_date: typing.Optional[str] = None
+    death_date: typing.Optional[str] = None
+    birth_place: typing.Optional[str] = None
+    nationality: typing.Optional[str] = None
+    photo_url: typing.Optional[str] = None
+    wikidata_id: typing.Optional[str] = None
+    wikipedia_url: typing.Optional[str] = None
+    remote_ids: typing.Dict[str, str] = {}
+    alternate_names: typing.List[str] = []
+    open_library_id: typing.Optional[str] = None
+    updated_at: str
+
+
+class AdminAuthorUpdateResponse(pydantic.BaseModel):
+    success: bool = True
+    data: typing.Optional[AdminAuthorUpdateData] = None
+    error: typing.Optional[app.models.responses.ErrorDetail] = None
+
+
+class AdminSeriesUpdateData(pydantic.BaseModel):
+    series_id: int
+    name: str
+    slug: str
+    description: typing.Optional[str] = None
+    total_books: typing.Optional[int] = None
+    avg_rating: typing.Optional[str] = None
+    rating_count: int = 0
+    ol_avg_rating: typing.Optional[str] = None
+    ol_rating_count: int = 0
+    updated_at: str
+
+
+class AdminSeriesUpdateResponse(pydantic.BaseModel):
+    success: bool = True
+    data: typing.Optional[AdminSeriesUpdateData] = None
+    error: typing.Optional[app.models.responses.ErrorDetail] = None

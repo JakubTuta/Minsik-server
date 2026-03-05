@@ -9,6 +9,9 @@ service BooksService {
   rpc GetAuthorBooks(GetAuthorBooksRequest) returns (BooksListResponse);
   rpc GetSeries(GetSeriesRequest) returns (SeriesDetailResponse);
   rpc GetSeriesBooks(GetSeriesBooksRequest) returns (BooksListResponse);
+  rpc UpdateBook(UpdateBookRequest) returns (BookDetailResponse);
+  rpc UpdateAuthor(UpdateAuthorRequest) returns (AuthorDetailResponse);
+  rpc UpdateSeries(UpdateSeriesRequest) returns (SeriesDetailResponse);
 }
 
 message SearchRequest {
@@ -237,3 +240,51 @@ message GetSeriesBooksRequest {
   string order = 6;
 }
 
+// Admin update requests — only fields included in the proto3 optional set are applied.
+// Presence is detected via HasField() in the gRPC server.
+
+message UpdateBookRequest {
+  int64 book_id = 1;
+  optional string title = 2;
+  optional string slug = 3;
+  optional string description = 4;
+  optional string first_sentence = 5;
+  optional string language = 6;
+  optional int32 original_publication_year = 7;
+  optional string primary_cover_url = 8;
+  optional string formats_json = 9;
+  optional string cover_history_json = 10;
+  optional string isbn_json = 11;
+  optional string publisher = 12;
+  optional int32 number_of_pages = 13;
+  optional string external_ids_json = 14;
+  optional string open_library_id = 15;
+  optional string google_books_id = 16;
+  optional int64 series_id = 17;
+  optional string series_position = 18;
+}
+
+message UpdateAuthorRequest {
+  int64 author_id = 1;
+  optional string name = 2;
+  optional string slug = 3;
+  optional string bio = 4;
+  optional string birth_date = 5;
+  optional string death_date = 6;
+  optional string birth_place = 7;
+  optional string nationality = 8;
+  optional string photo_url = 9;
+  optional string wikidata_id = 10;
+  optional string wikipedia_url = 11;
+  optional string remote_ids_json = 12;
+  optional string alternate_names_json = 13;
+  optional string open_library_id = 14;
+}
+
+message UpdateSeriesRequest {
+  int64 series_id = 1;
+  optional string name = 2;
+  optional string slug = 3;
+  optional string description = 4;
+  optional int32 total_books = 5;
+}

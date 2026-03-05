@@ -376,6 +376,45 @@ def _book_row_to_dict(row: typing.Any) -> typing.Dict[str, typing.Any]:
     }
 
 
+async def update_author(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    author_id: int,
+    updates: typing.Dict[str, typing.Any],
+    language: str = "en",
+) -> typing.Optional[typing.Dict[str, typing.Any]]:
+    stmt = select(app.models.author.Author).filter(
+        app.models.author.Author.author_id == author_id
+    )
+
+    result = await session.execute(stmt)
+    author = result.scalars().first()
+
+    if not author:
+        return None
+
+    old_cache_key = f"author_slug:{author.slug}:{language}"
+
+    for field, value in updates.items():
+        setattr(author, field, value)
+
+    await session.commit()
+    await session.refresh(author)
+
+    await app.cache.delete_cached(old_cache_key)
+    if "slug" in updates:
+        new_cache_key = f"author_slug:{author.slug}:{language}"
+        await app.cache.delete_cached(new_cache_key)
+
+    book_categories = await _get_author_book_categories(
+        session, author.author_id, language
+    )
+    books_aggregates = await _get_author_books_aggregates(
+        session, author.author_id, language
+    )
+
+    return _author_to_dict(author, book_categories, books_aggregates)
+
+
 async def flush_view_counts_to_db(session: sqlalchemy.ext.asyncio.AsyncSession) -> None:
     try:
         pending_counts = await app.cache.get_pending_view_counts("author")

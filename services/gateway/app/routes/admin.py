@@ -1,8 +1,10 @@
 import logging
+import typing
 
 import app.grpc_clients
 import app.middleware.auth
 import app.middleware.rate_limit
+import app.models.books_responses
 import app.models.requests
 import app.models.responses
 import app.utils.responses
@@ -499,6 +501,284 @@ async def import_dump(request: fastapi.Request):
 
     except Exception as e:
         logger.error(f"Unexpected error: {str(e)}")
+        return app.utils.responses.error_response(
+            code="INTERNAL_ERROR",
+            message="An unexpected error occurred",
+            details={"error": str(e)},
+            status_code=500,
+        )
+
+
+@router.patch(
+    "/books/{book_id}",
+    response_model=app.models.books_responses.AdminBookUpdateResponse,
+    summary="Update a book",
+    description="""Partially update a book's editable fields. Only the fields included in
+    the request body are changed — omitted fields are left untouched.
+    Author/genre relationships cannot be modified through this endpoint.""",
+    dependencies=[
+        fastapi.Depends(lambda: limiter),
+        fastapi.Depends(app.middleware.auth.require_admin),
+    ],
+    responses={
+        200: {"description": "Book updated successfully"},
+        400: {"description": "No fields provided to update"},
+        404: {"description": "Book not found"},
+        **_AUTH_RESPONSES,
+        500: {"description": "Internal server error"},
+    },
+)
+@limiter.limit(app.middleware.rate_limit.get_admin_limit())
+async def update_book(
+    request: fastapi.Request,
+    book_id: int,
+    body: app.models.books_responses.AdminUpdateBookRequest,
+):
+    import json
+
+    updates = body.model_dump(exclude_unset=True)
+
+    if not updates:
+        return app.utils.responses.error_response(
+            code="NO_FIELDS",
+            message="No fields provided to update",
+            status_code=400,
+        )
+
+    proto_fields: typing.Dict[str, typing.Any] = {}
+    for field, value in updates.items():
+        if field == "formats":
+            proto_fields["formats_json"] = json.dumps(value)
+        elif field == "cover_history":
+            proto_fields["cover_history_json"] = json.dumps(value)
+        elif field == "isbn":
+            proto_fields["isbn_json"] = json.dumps(value)
+        elif field == "external_ids":
+            proto_fields["external_ids_json"] = json.dumps(value)
+        else:
+            proto_fields[field] = value
+
+    try:
+        async with app.grpc_clients.BooksClient() as client:
+            response = await client.update_book(book_id=book_id, fields=proto_fields)
+            book = response.book
+            return app.utils.responses.success_response(
+                {
+                    "book_id": book.book_id,
+                    "title": book.title,
+                    "slug": book.slug,
+                    "description": book.description,
+                    "first_sentence": book.first_sentence or None,
+                    "language": book.language,
+                    "original_publication_year": book.original_publication_year,
+                    "primary_cover_url": book.primary_cover_url,
+                    "cover_history": [
+                        {"url": c.url, "width": c.width, "size": c.size}
+                        for c in book.cover_history
+                    ],
+                    "formats": list(book.formats),
+                    "isbn": list(book.isbn),
+                    "publisher": book.publisher,
+                    "number_of_pages": book.number_of_pages,
+                    "external_ids": dict(book.external_ids),
+                    "open_library_id": book.open_library_id,
+                    "google_books_id": book.google_books_id,
+                    "series": (
+                        {
+                            "series_id": book.series.series_id,
+                            "name": book.series.name,
+                            "slug": book.series.slug,
+                            "total_books": book.series.total_books,
+                        }
+                        if book.HasField("series")
+                        else None
+                    ),
+                    "series_position": book.series_position or None,
+                    "rating_count": book.rating_count,
+                    "avg_rating": book.avg_rating,
+                    "ol_rating_count": book.ol_rating_count,
+                    "ol_avg_rating": book.ol_avg_rating,
+                    "updated_at": book.updated_at,
+                }
+            )
+    except grpc.RpcError as e:
+        logger.error(f"gRPC error updating book: {e.code()} - {e.details()}")
+        if e.code() == grpc.StatusCode.NOT_FOUND:
+            return app.utils.responses.error_response(
+                code="NOT_FOUND", message=e.details(), status_code=404
+            )
+        return app.utils.responses.error_response(
+            code="INTERNAL_ERROR",
+            message="Failed to update book",
+            details={"grpc_code": e.code().name, "grpc_details": e.details()},
+            status_code=500,
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error updating book: {str(e)}")
+        return app.utils.responses.error_response(
+            code="INTERNAL_ERROR",
+            message="An unexpected error occurred",
+            details={"error": str(e)},
+            status_code=500,
+        )
+
+
+@router.patch(
+    "/authors/{author_id}",
+    response_model=app.models.books_responses.AdminAuthorUpdateResponse,
+    summary="Update an author",
+    description="""Partially update an author's editable fields. Only the fields included
+    in the request body are changed — omitted fields are left untouched.""",
+    dependencies=[
+        fastapi.Depends(lambda: limiter),
+        fastapi.Depends(app.middleware.auth.require_admin),
+    ],
+    responses={
+        200: {"description": "Author updated successfully"},
+        400: {"description": "No fields provided to update"},
+        404: {"description": "Author not found"},
+        **_AUTH_RESPONSES,
+        500: {"description": "Internal server error"},
+    },
+)
+@limiter.limit(app.middleware.rate_limit.get_admin_limit())
+async def update_author(
+    request: fastapi.Request,
+    author_id: int,
+    body: app.models.books_responses.AdminUpdateAuthorRequest,
+):
+    import json
+
+    updates = body.model_dump(exclude_unset=True)
+
+    if not updates:
+        return app.utils.responses.error_response(
+            code="NO_FIELDS",
+            message="No fields provided to update",
+            status_code=400,
+        )
+
+    proto_fields: typing.Dict[str, typing.Any] = {}
+    for field, value in updates.items():
+        if field == "remote_ids":
+            proto_fields["remote_ids_json"] = json.dumps(value)
+        elif field == "alternate_names":
+            proto_fields["alternate_names_json"] = json.dumps(value)
+        else:
+            proto_fields[field] = value
+
+    try:
+        async with app.grpc_clients.BooksClient() as client:
+            response = await client.update_author(
+                author_id=author_id, fields=proto_fields
+            )
+            author = response.author
+            return app.utils.responses.success_response(
+                {
+                    "author_id": author.author_id,
+                    "name": author.name,
+                    "slug": author.slug,
+                    "bio": author.bio or None,
+                    "birth_date": author.birth_date or None,
+                    "death_date": author.death_date or None,
+                    "birth_place": author.birth_place or None,
+                    "nationality": author.nationality or None,
+                    "photo_url": author.photo_url or None,
+                    "wikidata_id": author.wikidata_id or None,
+                    "wikipedia_url": author.wikipedia_url or None,
+                    "remote_ids": dict(author.remote_ids),
+                    "alternate_names": list(author.alternate_names),
+                    "open_library_id": author.open_library_id or None,
+                    "updated_at": author.updated_at,
+                }
+            )
+    except grpc.RpcError as e:
+        logger.error(f"gRPC error updating author: {e.code()} - {e.details()}")
+        if e.code() == grpc.StatusCode.NOT_FOUND:
+            return app.utils.responses.error_response(
+                code="NOT_FOUND", message=e.details(), status_code=404
+            )
+        return app.utils.responses.error_response(
+            code="INTERNAL_ERROR",
+            message="Failed to update author",
+            details={"grpc_code": e.code().name, "grpc_details": e.details()},
+            status_code=500,
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error updating author: {str(e)}")
+        return app.utils.responses.error_response(
+            code="INTERNAL_ERROR",
+            message="An unexpected error occurred",
+            details={"error": str(e)},
+            status_code=500,
+        )
+
+
+@router.patch(
+    "/series/{series_id}",
+    response_model=app.models.books_responses.AdminSeriesUpdateResponse,
+    summary="Update a series",
+    description="""Partially update a series' editable fields. Only the fields included
+    in the request body are changed — omitted fields are left untouched.""",
+    dependencies=[
+        fastapi.Depends(lambda: limiter),
+        fastapi.Depends(app.middleware.auth.require_admin),
+    ],
+    responses={
+        200: {"description": "Series updated successfully"},
+        400: {"description": "No fields provided to update"},
+        404: {"description": "Series not found"},
+        **_AUTH_RESPONSES,
+        500: {"description": "Internal server error"},
+    },
+)
+@limiter.limit(app.middleware.rate_limit.get_admin_limit())
+async def update_series(
+    request: fastapi.Request,
+    series_id: int,
+    body: app.models.books_responses.AdminUpdateSeriesRequest,
+):
+    updates = body.model_dump(exclude_unset=True)
+
+    if not updates:
+        return app.utils.responses.error_response(
+            code="NO_FIELDS",
+            message="No fields provided to update",
+            status_code=400,
+        )
+
+    try:
+        async with app.grpc_clients.BooksClient() as client:
+            response = await client.update_series(series_id=series_id, fields=updates)
+            series = response.series
+            return app.utils.responses.success_response(
+                {
+                    "series_id": series.series_id,
+                    "name": series.name,
+                    "slug": series.slug,
+                    "description": series.description or None,
+                    "total_books": series.total_books,
+                    "avg_rating": series.avg_rating or None,
+                    "rating_count": series.rating_count,
+                    "ol_avg_rating": series.ol_avg_rating or None,
+                    "ol_rating_count": series.ol_rating_count,
+                    "updated_at": series.updated_at,
+                }
+            )
+    except grpc.RpcError as e:
+        logger.error(f"gRPC error updating series: {e.code()} - {e.details()}")
+        if e.code() == grpc.StatusCode.NOT_FOUND:
+            return app.utils.responses.error_response(
+                code="NOT_FOUND", message=e.details(), status_code=404
+            )
+        return app.utils.responses.error_response(
+            code="INTERNAL_ERROR",
+            message="Failed to update series",
+            details={"grpc_code": e.code().name, "grpc_details": e.details()},
+            status_code=500,
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error updating series: {str(e)}")
         return app.utils.responses.error_response(
             code="INTERNAL_ERROR",
             message="An unexpected error occurred",

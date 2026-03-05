@@ -291,6 +291,79 @@ def _series_book_row_to_dict(row: typing.Any) -> typing.Dict[str, typing.Any]:
     }
 
 
+async def update_series(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    series_id: int,
+    updates: typing.Dict[str, typing.Any],
+    language: str = "en",
+) -> typing.Optional[typing.Dict[str, typing.Any]]:
+    stmt = select(app.models.series.Series).filter(
+        app.models.series.Series.series_id == series_id
+    )
+
+    result = await session.execute(stmt)
+    series = result.scalars().first()
+
+    if not series:
+        return None
+
+    old_cache_key = f"series_slug:{series.slug}:{language}"
+
+    for field, value in updates.items():
+        setattr(series, field, value)
+
+    await session.commit()
+    await session.refresh(series)
+
+    await app.cache.delete_cached(old_cache_key)
+    if "slug" in updates:
+        new_cache_key = f"series_slug:{series.slug}:{language}"
+        await app.cache.delete_cached(new_cache_key)
+
+    stats_query = text(
+        """
+        SELECT
+            COUNT(*) as total_books,
+            COALESCE(SUM(b.rating_count), 0) as rating_count,
+            CASE
+                WHEN SUM(b.rating_count) > 0
+                THEN ROUND(SUM(b.avg_rating::numeric * b.rating_count) / SUM(b.rating_count), 2)
+                ELSE NULL
+            END as avg_rating,
+            COALESCE(SUM(b.ol_rating_count), 0) as ol_rating_count,
+            CASE
+                WHEN SUM(b.ol_rating_count) > 0
+                THEN ROUND(SUM(b.ol_avg_rating::numeric * b.ol_rating_count) / SUM(b.ol_rating_count), 2)
+                ELSE NULL
+            END as ol_avg_rating,
+            COALESCE(SUM(b.ol_want_to_read_count), 0) AS ol_want_to_read_count,
+            COALESCE(SUM(b.ol_currently_reading_count), 0) AS ol_currently_reading_count,
+            COALESCE(SUM(b.ol_already_read_count), 0) AS ol_already_read_count,
+            COALESCE(SUM(COALESCE(bs.want_to_read_count, 0)), 0) AS app_want_to_read_count,
+            COALESCE(SUM(COALESCE(bs.reading_count, 0)), 0) AS app_reading_count,
+            COALESCE(SUM(COALESCE(bs.read_count, 0)), 0) AS app_read_count
+        FROM books.books b
+        LEFT JOIN (
+            SELECT
+                book_id,
+                COUNT(*) FILTER (WHERE status = 'want_to_read') AS want_to_read_count,
+                COUNT(*) FILTER (WHERE status = 'reading') AS reading_count,
+                COUNT(*) FILTER (WHERE status = 'read') AS read_count
+            FROM user_data.bookshelves
+            WHERE status != 'abandoned'
+            GROUP BY book_id
+        ) bs ON b.book_id = bs.book_id
+        WHERE b.series_id = :series_id AND b.language = :language
+        """
+    )
+    stats_result = await session.execute(
+        stats_query, {"series_id": series.series_id, "language": language}
+    )
+    stats = stats_result.first()
+
+    return _series_to_dict(series, stats)
+
+
 async def _track_series_view(series_id: int) -> None:
     try:
         await app.cache.increment_view_count("series", series_id)

@@ -167,5 +167,62 @@ class BooksClient:
             logger.error(f"gRPC error getting series books: {e.code()} - {e.details()}")
             raise
 
+    async def update_book(
+        self,
+        book_id: int,
+        fields: typing.Dict[str, typing.Any],
+    ) -> books_pb2.BookDetailResponse:
+        request = books_pb2.UpdateBookRequest(book_id=book_id)
+
+        for field, value in fields.items():
+            setattr(request, field, value)
+
+        try:
+            response = await self.stub.UpdateBook(
+                request, timeout=app.config.settings.grpc_admin_timeout
+            )
+            return response
+        except grpc.RpcError as e:
+            logger.error(f"gRPC error updating book: {e.code()} - {e.details()}")
+            raise
+
+    async def update_author(
+        self,
+        author_id: int,
+        fields: typing.Dict[str, typing.Any],
+    ) -> books_pb2.AuthorDetailResponse:
+        request = books_pb2.UpdateAuthorRequest(author_id=author_id)
+
+        for field, value in fields.items():
+            setattr(request, field, value)
+
+        try:
+            response = await self.stub.UpdateAuthor(
+                request, timeout=app.config.settings.grpc_admin_timeout
+            )
+            return response
+        except grpc.RpcError as e:
+            logger.error(f"gRPC error updating author: {e.code()} - {e.details()}")
+            raise
+
+    async def update_series(
+        self,
+        series_id: int,
+        fields: typing.Dict[str, typing.Any],
+    ) -> books_pb2.SeriesDetailResponse:
+        request = books_pb2.UpdateSeriesRequest(series_id=series_id)
+
+        for field, value in fields.items():
+            setattr(request, field, value)
+
+        try:
+            response = await self.stub.UpdateSeries(
+                request, timeout=app.config.settings.grpc_admin_timeout
+            )
+            return response
+        except grpc.RpcError as e:
+            logger.error(f"gRPC error updating series: {e.code()} - {e.details()}")
+            raise
+
 
 books_client = BooksClient()
