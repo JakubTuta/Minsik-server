@@ -6,11 +6,120 @@ import app.proto.books_pb2
 import app.proto.books_pb2_grpc
 import app.services.author_service
 import app.services.book_service
+import app.services.case_service
 import app.services.search_service
 import app.services.series_service
 import grpc
 
 logger = logging.getLogger(__name__)
+
+
+def _build_book_detail_proto(
+    book: typing.Dict[str, typing.Any],
+) -> app.proto.books_pb2.BookDetail:
+    authors = [
+        app.proto.books_pb2.AuthorInfo(
+            author_id=author["author_id"],
+            name=author["name"],
+            slug=author["slug"],
+            photo_url=author["photo_url"],
+        )
+        for author in book["authors"]
+    ]
+    genres = [
+        app.proto.books_pb2.GenreInfo(
+            genre_id=genre["genre_id"],
+            name=genre["name"],
+            slug=genre["slug"],
+        )
+        for genre in book["genres"]
+    ]
+    cover_history = [
+        app.proto.books_pb2.CoverHistory(
+            url=cover.get("url", ""),
+            width=cover.get("width", 0),
+            size=cover.get("size", ""),
+        )
+        for cover in book["cover_history"]
+    ]
+    series_info = None
+    if book.get("series"):
+        series_info = app.proto.books_pb2.SeriesInfo(
+            series_id=book["series"]["series_id"],
+            name=book["series"]["name"],
+            slug=book["series"]["slug"],
+            total_books=book["series"].get("total_books", 0),
+        )
+    sub_rating_stats = {
+        key: app.proto.books_pb2.SubRatingStat(
+            avg=str(val.get("avg")) if val.get("avg") is not None else "",
+            count=val.get("count", 0),
+        )
+        for key, val in book.get("sub_rating_stats", {}).items()
+    }
+    return app.proto.books_pb2.BookDetail(
+        book_id=book["book_id"],
+        title=book["title"],
+        slug=book["slug"],
+        description=book["description"],
+        language=book["language"],
+        original_publication_year=book["original_publication_year"],
+        formats=book["formats"],
+        primary_cover_url=book["primary_cover_url"],
+        cover_history=cover_history,
+        rating_count=book["rating_count"],
+        avg_rating=book["avg_rating"],
+        view_count=book["view_count"],
+        last_viewed_at=book["last_viewed_at"],
+        authors=authors,
+        genres=genres,
+        open_library_id=book["open_library_id"],
+        google_books_id=book["google_books_id"],
+        created_at=book["created_at"],
+        updated_at=book["updated_at"],
+        series=series_info,
+        series_position=book.get("series_position", ""),
+        sub_rating_stats=sub_rating_stats,
+        isbn=book.get("isbn", []),
+        publisher=book.get("publisher", ""),
+        number_of_pages=book.get("number_of_pages", 0),
+        external_ids=book.get("external_ids", {}),
+        ol_rating_count=book.get("ol_rating_count", 0),
+        ol_avg_rating=book.get("ol_avg_rating", "0.00"),
+        ol_want_to_read_count=book.get("ol_want_to_read_count", 0),
+        ol_currently_reading_count=book.get("ol_currently_reading_count", 0),
+        ol_already_read_count=book.get("ol_already_read_count", 0),
+        first_sentence=book.get("first_sentence", ""),
+        app_want_to_read_count=book.get("app_want_to_read_count", 0),
+        app_reading_count=book.get("app_reading_count", 0),
+        app_read_count=book.get("app_read_count", 0),
+    )
+
+
+def _build_case_book_item_proto(
+    item: typing.Dict[str, typing.Any],
+) -> app.proto.books_pb2.CaseBookItem:
+    authors = [
+        app.proto.books_pb2.AuthorInfo(
+            author_id=a["author_id"],
+            name=a["name"],
+            slug=a["slug"],
+            photo_url=a.get("photo_url", ""),
+        )
+        for a in item["authors"]
+    ]
+    return app.proto.books_pb2.CaseBookItem(
+        book_id=item["book_id"],
+        title=item["title"],
+        slug=item["slug"],
+        primary_cover_url=item["primary_cover_url"],
+        authors=authors,
+        rarity=item["rarity"],
+        combined_rating=item["combined_rating"],
+        avg_rating=item["avg_rating"],
+        rating_count=item["rating_count"],
+        readers=item["readers"],
+    )
 
 
 class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
@@ -79,92 +188,9 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                         grpc.StatusCode.NOT_FOUND, f"Book not found: {request.slug}"
                     )
 
-                authors = [
-                    app.proto.books_pb2.AuthorInfo(
-                        author_id=author["author_id"],
-                        name=author["name"],
-                        slug=author["slug"],
-                        photo_url=author["photo_url"],
-                    )
-                    for author in book["authors"]
-                ]
-
-                genres = [
-                    app.proto.books_pb2.GenreInfo(
-                        genre_id=genre["genre_id"],
-                        name=genre["name"],
-                        slug=genre["slug"],
-                    )
-                    for genre in book["genres"]
-                ]
-
-                cover_history = [
-                    app.proto.books_pb2.CoverHistory(
-                        url=cover.get("url", ""),
-                        width=cover.get("width", 0),
-                        size=cover.get("size", ""),
-                    )
-                    for cover in book["cover_history"]
-                ]
-
-                series_info = None
-                if book.get("series"):
-                    series_info = app.proto.books_pb2.SeriesInfo(
-                        series_id=book["series"]["series_id"],
-                        name=book["series"]["name"],
-                        slug=book["series"]["slug"],
-                        total_books=book["series"].get("total_books", 0),
-                    )
-
-                sub_rating_stats = {
-                    key: app.proto.books_pb2.SubRatingStat(
-                        avg=str(val.get("avg")) if val.get("avg") is not None else "",
-                        count=val.get("count", 0),
-                    )
-                    for key, val in book.get("sub_rating_stats", {}).items()
-                }
-
-                book_detail = app.proto.books_pb2.BookDetail(
-                    book_id=book["book_id"],
-                    title=book["title"],
-                    slug=book["slug"],
-                    description=book["description"],
-                    language=book["language"],
-                    original_publication_year=book["original_publication_year"],
-                    formats=book["formats"],
-                    primary_cover_url=book["primary_cover_url"],
-                    cover_history=cover_history,
-                    rating_count=book["rating_count"],
-                    avg_rating=book["avg_rating"],
-                    view_count=book["view_count"],
-                    last_viewed_at=book["last_viewed_at"],
-                    authors=authors,
-                    genres=genres,
-                    open_library_id=book["open_library_id"],
-                    google_books_id=book["google_books_id"],
-                    created_at=book["created_at"],
-                    updated_at=book["updated_at"],
-                    series=series_info,
-                    series_position=book.get("series_position", ""),
-                    sub_rating_stats=sub_rating_stats,
-                    isbn=book.get("isbn", []),
-                    publisher=book.get("publisher", ""),
-                    number_of_pages=book.get("number_of_pages", 0),
-                    external_ids=book.get("external_ids", {}),
-                    ol_rating_count=book.get("ol_rating_count", 0),
-                    ol_avg_rating=book.get("ol_avg_rating", "0.00"),
-                    ol_want_to_read_count=book.get("ol_want_to_read_count", 0),
-                    ol_currently_reading_count=book.get(
-                        "ol_currently_reading_count", 0
-                    ),
-                    ol_already_read_count=book.get("ol_already_read_count", 0),
-                    first_sentence=book.get("first_sentence", ""),
-                    app_want_to_read_count=book.get("app_want_to_read_count", 0),
-                    app_reading_count=book.get("app_reading_count", 0),
-                    app_read_count=book.get("app_read_count", 0),
+                return app.proto.books_pb2.BookDetailResponse(
+                    book=_build_book_detail_proto(book)
                 )
-
-                return app.proto.books_pb2.BookDetailResponse(book=book_detail)
         except Exception as e:
             logger.error(f"Error in GetBook: {str(e)}")
             await context.abort(grpc.StatusCode.INTERNAL, f"Get book failed: {str(e)}")
@@ -708,4 +734,36 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
             logger.error(f"Error in UpdateSeries: {str(e)}")
             await context.abort(
                 grpc.StatusCode.INTERNAL, f"Update series failed: {str(e)}"
+            )
+
+    async def OpenCase(
+        self,
+        request: app.proto.books_pb2.OpenCaseRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> app.proto.books_pb2.OpenCaseResponse:
+        try:
+            async with app.db.async_session_maker() as session:
+                result = await app.services.case_service.open_case(
+                    session, request.language or "en"
+                )
+
+                display_list = [
+                    _build_case_book_item_proto(item)
+                    for item in result["display_list"]
+                ]
+
+                winner_detail = _build_book_detail_proto(result["winner_detail"])
+
+                return app.proto.books_pb2.OpenCaseResponse(
+                    display_list=display_list,
+                    winning_index=result["winning_index"],
+                    winner=_build_case_book_item_proto(result["winner"]),
+                    winner_detail=winner_detail,
+                )
+        except ValueError as e:
+            await context.abort(grpc.StatusCode.NOT_FOUND, str(e))
+        except Exception as e:
+            logger.error(f"Error in OpenCase: {str(e)}")
+            await context.abort(
+                grpc.StatusCode.INTERNAL, f"Open case failed: {str(e)}"
             )

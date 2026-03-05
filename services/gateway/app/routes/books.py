@@ -152,75 +152,9 @@ async def get_book(
     try:
         response = await app.grpc_clients.books_client.get_book(slug, language=language)
 
-        book = response.book
-
         return {
             "success": True,
-            "data": {
-                "book_id": book.book_id,
-                "title": book.title,
-                "slug": book.slug,
-                "description": book.description,
-                "language": book.language,
-                "original_publication_year": book.original_publication_year,
-                "formats": list(book.formats),
-                "primary_cover_url": book.primary_cover_url,
-                "cover_history": [
-                    {"url": cover.url, "width": cover.width, "size": cover.size}
-                    for cover in book.cover_history
-                ],
-                "rating_count": book.rating_count,
-                "avg_rating": book.avg_rating,
-                "sub_rating_stats": {
-                    key: {"avg": stat.avg, "count": stat.count}
-                    for key, stat in book.sub_rating_stats.items()
-                },
-                "view_count": book.view_count,
-                "last_viewed_at": book.last_viewed_at,
-                "authors": [
-                    {
-                        "author_id": author.author_id,
-                        "name": author.name,
-                        "slug": author.slug,
-                        "photo_url": author.photo_url,
-                    }
-                    for author in book.authors
-                ],
-                "genres": [
-                    {"genre_id": genre.genre_id, "name": genre.name, "slug": genre.slug}
-                    for genre in book.genres
-                ],
-                "series": (
-                    {
-                        "series_id": book.series.series_id,
-                        "name": book.series.name,
-                        "slug": book.series.slug,
-                        "total_books": book.series.total_books,
-                    }
-                    if book.HasField("series")
-                    else None
-                ),
-                "series_position": (
-                    book.series_position if book.series_position else None
-                ),
-                "open_library_id": book.open_library_id,
-                "google_books_id": book.google_books_id,
-                "created_at": book.created_at,
-                "updated_at": book.updated_at,
-                "isbn": list(book.isbn),
-                "publisher": book.publisher,
-                "number_of_pages": book.number_of_pages,
-                "external_ids": dict(book.external_ids),
-                "ol_rating_count": book.ol_rating_count,
-                "ol_avg_rating": book.ol_avg_rating,
-                "ol_want_to_read_count": book.ol_want_to_read_count,
-                "ol_currently_reading_count": book.ol_currently_reading_count,
-                "ol_already_read_count": book.ol_already_read_count,
-                "first_sentence": book.first_sentence or None,
-                "app_want_to_read_count": book.app_want_to_read_count,
-                "app_reading_count": book.app_reading_count,
-                "app_read_count": book.app_read_count,
-            },
+            "data": _book_detail_proto_to_dict(response.book),
             "error": None,
         }
     except grpc.RpcError as e:
@@ -723,4 +657,165 @@ async def get_series_books(
         raise fastapi.HTTPException(
             status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
             detail=f"Get series books failed: {e.details()}",
+        )
+
+
+def _book_detail_proto_to_dict(book) -> typing.Dict[str, typing.Any]:
+    return {
+        "book_id": book.book_id,
+        "title": book.title,
+        "slug": book.slug,
+        "description": book.description,
+        "language": book.language,
+        "original_publication_year": book.original_publication_year,
+        "formats": list(book.formats),
+        "primary_cover_url": book.primary_cover_url,
+        "cover_history": [
+            {"url": cover.url, "width": cover.width, "size": cover.size}
+            for cover in book.cover_history
+        ],
+        "rating_count": book.rating_count,
+        "avg_rating": book.avg_rating,
+        "sub_rating_stats": {
+            key: {"avg": stat.avg, "count": stat.count}
+            for key, stat in book.sub_rating_stats.items()
+        },
+        "view_count": book.view_count,
+        "last_viewed_at": book.last_viewed_at,
+        "authors": [
+            {
+                "author_id": author.author_id,
+                "name": author.name,
+                "slug": author.slug,
+                "photo_url": author.photo_url,
+            }
+            for author in book.authors
+        ],
+        "genres": [
+            {"genre_id": genre.genre_id, "name": genre.name, "slug": genre.slug}
+            for genre in book.genres
+        ],
+        "series": (
+            {
+                "series_id": book.series.series_id,
+                "name": book.series.name,
+                "slug": book.series.slug,
+                "total_books": book.series.total_books,
+            }
+            if book.HasField("series")
+            else None
+        ),
+        "series_position": book.series_position if book.series_position else None,
+        "open_library_id": book.open_library_id,
+        "google_books_id": book.google_books_id,
+        "created_at": book.created_at,
+        "updated_at": book.updated_at,
+        "isbn": list(book.isbn),
+        "publisher": book.publisher,
+        "number_of_pages": book.number_of_pages,
+        "external_ids": dict(book.external_ids),
+        "ol_rating_count": book.ol_rating_count,
+        "ol_avg_rating": book.ol_avg_rating,
+        "ol_want_to_read_count": book.ol_want_to_read_count,
+        "ol_currently_reading_count": book.ol_currently_reading_count,
+        "ol_already_read_count": book.ol_already_read_count,
+        "first_sentence": book.first_sentence or None,
+        "app_want_to_read_count": book.app_want_to_read_count,
+        "app_reading_count": book.app_reading_count,
+        "app_read_count": book.app_read_count,
+    }
+
+
+def _case_book_item_proto_to_dict(item) -> typing.Dict[str, typing.Any]:
+    return {
+        "book_id": item.book_id,
+        "title": item.title,
+        "slug": item.slug,
+        "primary_cover_url": item.primary_cover_url,
+        "authors": [
+            {
+                "author_id": a.author_id,
+                "name": a.name,
+                "slug": a.slug,
+                "photo_url": a.photo_url,
+            }
+            for a in item.authors
+        ],
+        "rarity": item.rarity,
+        "combined_rating": item.combined_rating,
+        "avg_rating": item.avg_rating,
+        "rating_count": item.rating_count,
+        "readers": item.readers,
+    }
+
+
+@router.get(
+    "/case/open",
+    response_model=app.models.books_responses.OpenCaseResponse,
+    summary="Open a book case",
+    description="""
+    Open a randomized book case (CS2-style). Returns a display list of 25 books
+    for a scroll animation and the winning book with full details.
+
+    Only books with at least one rating (app or OpenLibrary) are eligible.
+
+    **Combined rating formula:**
+    `(avg_rating * rating_count + ol_avg_rating * ol_rating_count) / (rating_count + ol_rating_count)`
+
+    **Rarity tiers** (based on combined weighted rating):
+    | Rarity | Rating range | Probability |
+    |---|---|---|
+    | `legendary` | >4.75 | ~1.5% |
+    | `ultra_rare` | >4.50 — <=4.75 | ~3.5% |
+    | `super_rare` | >4.00 — <=4.50 | ~10% |
+    | `rare` | >3.25 — <=4.00 | ~20% |
+    | `uncommon` | >2.25 — <=3.25 | ~30% |
+    | `common` | <=2.25 | ~35% |
+
+    **Display list:** 25 books are returned — 24 sampled across all rarity tiers
+    (proportional to their probability weights) plus the winner inserted at a fixed position.
+    The list is shuffled before the winner is inserted, suitable for a scroll-reveal animation.
+
+    **`winning_index`** is always `23` (0-based) — the 24th book out of 25.
+
+    **Fallback:** if the rolled rarity tier has no eligible books for the requested language,
+    the service cascades to the closest adjacent tiers until a winner is found.
+
+    Returns `404` when no rated books exist for the given language.
+    """,
+)
+@limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
+async def open_case(
+    request: fastapi.Request,
+    language: str = Query(
+        "en", min_length=2, max_length=10, description="Language code (e.g. en, pl, de)"
+    ),
+):
+    try:
+        response = await app.grpc_clients.books_client.open_case(language=language)
+
+        display_list = [
+            _case_book_item_proto_to_dict(item) for item in response.display_list
+        ]
+
+        return {
+            "success": True,
+            "data": {
+                "display_list": display_list,
+                "winning_index": response.winning_index,
+                "winner": _case_book_item_proto_to_dict(response.winner),
+                "winner_detail": _book_detail_proto_to_dict(response.winner_detail),
+            },
+            "error": None,
+        }
+    except grpc.RpcError as e:
+        logger.error(f"gRPC error opening case: {e.code()} - {e.details()}")
+        if e.code() == grpc.StatusCode.NOT_FOUND:
+            raise fastapi.HTTPException(
+                status_code=404,
+                detail=f"No eligible books found for language '{language}'",
+            )
+        raise fastapi.HTTPException(
+            status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
+            detail=f"Open case failed: {e.details()}",
         )

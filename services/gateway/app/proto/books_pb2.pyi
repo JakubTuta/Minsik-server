@@ -522,3 +522,45 @@ class UpdateSeriesRequest(_message.Message):
     description: str
     total_books: int
     def __init__(self, series_id: _Optional[int] = ..., name: _Optional[str] = ..., slug: _Optional[str] = ..., description: _Optional[str] = ..., total_books: _Optional[int] = ...) -> None: ...
+
+class OpenCaseRequest(_message.Message):
+    __slots__ = ("language",)
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
+    language: str
+    def __init__(self, language: _Optional[str] = ...) -> None: ...
+
+class CaseBookItem(_message.Message):
+    __slots__ = ("book_id", "title", "slug", "primary_cover_url", "authors", "rarity", "combined_rating", "avg_rating", "rating_count", "readers")
+    BOOK_ID_FIELD_NUMBER: _ClassVar[int]
+    TITLE_FIELD_NUMBER: _ClassVar[int]
+    SLUG_FIELD_NUMBER: _ClassVar[int]
+    PRIMARY_COVER_URL_FIELD_NUMBER: _ClassVar[int]
+    AUTHORS_FIELD_NUMBER: _ClassVar[int]
+    RARITY_FIELD_NUMBER: _ClassVar[int]
+    COMBINED_RATING_FIELD_NUMBER: _ClassVar[int]
+    AVG_RATING_FIELD_NUMBER: _ClassVar[int]
+    RATING_COUNT_FIELD_NUMBER: _ClassVar[int]
+    READERS_FIELD_NUMBER: _ClassVar[int]
+    book_id: int
+    title: str
+    slug: str
+    primary_cover_url: str
+    authors: _containers.RepeatedCompositeFieldContainer[AuthorInfo]
+    rarity: str
+    combined_rating: str
+    avg_rating: str
+    rating_count: int
+    readers: int
+    def __init__(self, book_id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., primary_cover_url: _Optional[str] = ..., authors: _Optional[_Iterable[_Union[AuthorInfo, _Mapping]]] = ..., rarity: _Optional[str] = ..., combined_rating: _Optional[str] = ..., avg_rating: _Optional[str] = ..., rating_count: _Optional[int] = ..., readers: _Optional[int] = ...) -> None: ...
+
+class OpenCaseResponse(_message.Message):
+    __slots__ = ("display_list", "winning_index", "winner", "winner_detail")
+    DISPLAY_LIST_FIELD_NUMBER: _ClassVar[int]
+    WINNING_INDEX_FIELD_NUMBER: _ClassVar[int]
+    WINNER_FIELD_NUMBER: _ClassVar[int]
+    WINNER_DETAIL_FIELD_NUMBER: _ClassVar[int]
+    display_list: _containers.RepeatedCompositeFieldContainer[CaseBookItem]
+    winning_index: int
+    winner: CaseBookItem
+    winner_detail: BookDetail
+    def __init__(self, display_list: _Optional[_Iterable[_Union[CaseBookItem, _Mapping]]] = ..., winning_index: _Optional[int] = ..., winner: _Optional[_Union[CaseBookItem, _Mapping]] = ..., winner_detail: _Optional[_Union[BookDetail, _Mapping]] = ...) -> None: ...

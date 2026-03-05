@@ -429,6 +429,50 @@ class AdminUpdateSeriesRequest(pydantic.BaseModel):
     )
 
 
+class CaseBookItemSchema(pydantic.BaseModel):
+    book_id: int = pydantic.Field(description="Unique book identifier")
+    title: str = pydantic.Field(description="Book title")
+    slug: str = pydantic.Field(description="URL-safe book slug")
+    primary_cover_url: str = pydantic.Field(description="Cover image URL (empty string if unavailable)")
+    authors: typing.List[AuthorMinimalSchema] = pydantic.Field(description="List of contributing authors")
+    rarity: str = pydantic.Field(
+        description="Rarity tier based on combined weighted rating: legendary, ultra_rare, super_rare, rare, uncommon, or common"
+    )
+    combined_rating: str = pydantic.Field(
+        description="Weighted average of Minsik and OpenLibrary ratings, formatted as string with 2 decimal places"
+    )
+    avg_rating: str = pydantic.Field(
+        description="Alias for combined_rating — weighted average of Minsik and OpenLibrary ratings"
+    )
+    rating_count: int = pydantic.Field(
+        description="Total number of ratings from both Minsik and OpenLibrary"
+    )
+    readers: int = pydantic.Field(
+        description="Total reader count summed from Minsik bookshelves and OpenLibrary want-to-read/currently-reading/already-read counts"
+    )
+
+
+class OpenCaseData(pydantic.BaseModel):
+    display_list: typing.List[CaseBookItemSchema] = pydantic.Field(
+        description="List of 25 books shown in the scroll animation. The winning book is always at winning_index."
+    )
+    winning_index: int = pydantic.Field(
+        description="Zero-based index of the winning book within display_list. Always DISPLAY_LIST_SIZE - 2 (currently 23)."
+    )
+    winner: CaseBookItemSchema = pydantic.Field(
+        description="The winning book item (same object as display_list[winning_index])"
+    )
+    winner_detail: BookDetailData = pydantic.Field(
+        description="Full book details for the winning book, identical to the GET /books/{slug} response"
+    )
+
+
+class OpenCaseResponse(pydantic.BaseModel):
+    success: bool = True
+    data: OpenCaseData
+    error: typing.Optional[app.models.responses.ErrorDetail] = None
+
+
 class AdminBookUpdateData(pydantic.BaseModel):
     book_id: int
     title: str

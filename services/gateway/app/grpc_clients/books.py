@@ -224,5 +224,17 @@ class BooksClient:
             logger.error(f"gRPC error updating series: {e.code()} - {e.details()}")
             raise
 
+    async def open_case(self, language: str = "en") -> books_pb2.OpenCaseResponse:
+        request = books_pb2.OpenCaseRequest(language=language)
+
+        try:
+            response = await self.stub.OpenCase(
+                request, timeout=app.config.settings.grpc_timeout
+            )
+            return response
+        except grpc.RpcError as e:
+            logger.error(f"gRPC error opening case: {e.code()} - {e.details()}")
+            raise
+
 
 books_client = BooksClient()

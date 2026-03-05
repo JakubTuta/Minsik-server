@@ -75,6 +75,8 @@ def clean_description(description: typing.Optional[str]) -> typing.Optional[str]
 
     description = re.sub(r"\(\[Source\][^)]*\)", "", description)
 
+    description = re.sub(r"[\(\[\{]{2}[^\)\]\}\n]*[\)\]\}]{2}", "", description)
+
     description = re.sub(r"\*\*([^*]+)\*\*", r"\1", description)
 
     description = re.sub(r"__([^_]+)__", r"\1", description)
@@ -104,6 +106,8 @@ def clean_description(description: typing.Optional[str]) -> typing.Optional[str]
         r"^See also:.*$",
         r"^References:.*$",
         r"\n\nCopyright.*$",
+        r"Preceded by:.*$",
+        r"Followed by:.*$",
     ]
 
     for pattern in metadata_patterns:

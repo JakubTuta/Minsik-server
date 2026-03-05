@@ -12,6 +12,7 @@ service BooksService {
   rpc UpdateBook(UpdateBookRequest) returns (BookDetailResponse);
   rpc UpdateAuthor(UpdateAuthorRequest) returns (AuthorDetailResponse);
   rpc UpdateSeries(UpdateSeriesRequest) returns (SeriesDetailResponse);
+  rpc OpenCase(OpenCaseRequest) returns (OpenCaseResponse);
 }
 
 message SearchRequest {
@@ -287,4 +288,28 @@ message UpdateSeriesRequest {
   optional string slug = 3;
   optional string description = 4;
   optional int32 total_books = 5;
+}
+
+message OpenCaseRequest {
+  string language = 1;
+}
+
+message CaseBookItem {
+  int64 book_id = 1;
+  string title = 2;
+  string slug = 3;
+  string primary_cover_url = 4;
+  repeated AuthorInfo authors = 5;
+  string rarity = 6;
+  string combined_rating = 7;
+  string avg_rating = 8;
+  int32 rating_count = 9;
+  int32 readers = 10;
+}
+
+message OpenCaseResponse {
+  repeated CaseBookItem display_list = 1;
+  int32 winning_index = 2;
+  CaseBookItem winner = 3;
+  BookDetail winner_detail = 4;
 }
