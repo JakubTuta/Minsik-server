@@ -253,6 +253,49 @@ async def cleanup_orphan_genres(
     return total_deleted
 
 
+async def cleanup_underrepresented_genres(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    min_book_count: int,
+    batch_size: int,
+    stop_check: typing.Callable[[], bool] = lambda: False,
+) -> int:
+    total_deleted = 0
+    while True:
+        if stop_check():
+            logger.info(
+                "[cleanup] Stopping underrepresented genre cleanup: dump import started"
+            )
+            break
+        result = await session.execute(
+            sqlalchemy.text(
+                """
+                DELETE FROM books.genres
+                WHERE genre_id IN (
+                    SELECT g.genre_id FROM books.genres g
+                    LEFT JOIN (
+                        SELECT genre_id, COUNT(*) AS book_count
+                        FROM books.book_genres
+                        GROUP BY genre_id
+                    ) bg ON bg.genre_id = g.genre_id
+                    WHERE COALESCE(bg.book_count, 0) < :min_book_count
+                    LIMIT :batch_size
+                )
+            """
+            ),
+            {"min_book_count": min_book_count, "batch_size": batch_size},
+        )
+        deleted = typing.cast(CursorResult, result).rowcount
+        await session.commit()
+
+        if deleted == 0:
+            break
+
+        total_deleted += deleted
+        await asyncio.sleep(0.5)
+
+    return total_deleted
+
+
 async def run_cleanup_cycle(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     stop_check: typing.Callable[[], bool] = lambda: False,
@@ -270,6 +313,7 @@ async def run_cleanup_cycle(
             "authors": {"deleted": 0, "eligible": 0},
             "series_deleted": 0,
             "genres_deleted": 0,
+            "underrepresented_genres_deleted": 0,
         }
     author_stats = await cleanup_orphan_authors(
         session, min_books, batch_size, stop_check
@@ -280,6 +324,7 @@ async def run_cleanup_cycle(
             "authors": author_stats,
             "series_deleted": 0,
             "genres_deleted": 0,
+            "underrepresented_genres_deleted": 0,
         }
     series_deleted = await cleanup_orphan_series(session, batch_size, stop_check)
     if stop_check():
@@ -288,14 +333,27 @@ async def run_cleanup_cycle(
             "authors": author_stats,
             "series_deleted": series_deleted,
             "genres_deleted": 0,
+            "underrepresented_genres_deleted": 0,
         }
     genres_deleted = await cleanup_orphan_genres(session, batch_size, stop_check)
+    if stop_check():
+        return {
+            "books": book_stats,
+            "authors": author_stats,
+            "series_deleted": series_deleted,
+            "genres_deleted": genres_deleted,
+            "underrepresented_genres_deleted": 0,
+        }
+    underrepresented_genres_deleted = await cleanup_underrepresented_genres(
+        session, 3, batch_size, stop_check
+    )
 
     return {
         "books": book_stats,
         "authors": author_stats,
         "series_deleted": series_deleted,
         "genres_deleted": genres_deleted,
+        "underrepresented_genres_deleted": underrepresented_genres_deleted,
     }
 
 
@@ -330,12 +388,12 @@ async def run_cleanup_job() -> None:
             f"{stats['books']['deleted']} books, "
             f"{stats['authors']['deleted']} authors, "
             f"{stats['series_deleted']} series, "
-            f"{stats['genres_deleted']} genres deleted"
+            f"{stats['genres_deleted']} orphan genres, "
+            f"{stats['underrepresented_genres_deleted']} underrepresented genres deleted"
         )
 
     except Exception as e:
         logger.error(f"[cleanup] Cleanup cycle failed: {str(e)}")
     finally:
         if redis_client is not None:
-            redis_client.close()
             redis_client.close()
