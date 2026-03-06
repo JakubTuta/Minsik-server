@@ -2,8 +2,7 @@ import logging
 import random
 import typing
 
-import app.models.book
-import app.services.book_service
+import app.cache
 import sqlalchemy
 import sqlalchemy.ext.asyncio
 from sqlalchemy import text
@@ -19,8 +18,28 @@ RARITY_TIERS: typing.List[typing.Tuple[str, float, float, float]] = [
     ("common", 0.00, 2.25, 0.35),
 ]
 
+RARITY_MIN_RATINGS: typing.Dict[str, int] = {
+    "legendary": 50,
+    "ultra_rare": 30,
+    "super_rare": 15,
+    "rare": 8,
+    "uncommon": 3,
+    "common": 1,
+}
+
 DISPLAY_LIST_SIZE = 25
 WINNING_INDEX = DISPLAY_LIST_SIZE - 2
+
+DISPLAY_SLOTS: typing.Dict[str, int] = {
+    "legendary": 1,
+    "ultra_rare": 1,
+    "super_rare": 2,
+    "rare": 5,
+    "uncommon": 7,
+    "common": 8,
+}
+
+CACHE_POOL_KEY_PREFIX = "case:pool"
 
 _BOOK_SELECT = """
     SELECT
@@ -90,8 +109,15 @@ _COMBINED_RATING_FILTER = """
 async def open_case(
     session: sqlalchemy.ext.asyncio.AsyncSession, language: str
 ) -> typing.Dict[str, typing.Any]:
+    if language == "en":
+        cached_result = await _try_open_from_cache(language)
+        if cached_result is not None:
+            return cached_result
+
     tier = _pick_winning_tier()
-    winner_row = await _fetch_random_book_from_tier(session, language, tier[1], tier[2])
+    winner_row = await _fetch_random_book_from_tier(
+        session, language, tier[1], tier[2], RARITY_MIN_RATINGS[tier[0]]
+    )
 
     if winner_row is None:
         winner_row = await _fallback_book(session, language, tier)
@@ -99,21 +125,50 @@ async def open_case(
     if winner_row is None:
         raise ValueError(f"No rated books found for language '{language}'")
 
-    display_books = await _build_display_list(session, language, winner_row.book_id)
-
     winner_item = _row_to_case_item(winner_row)
+    display_books = await _build_display_list(session, language, winner_row.book_id)
     actual_winning_index = min(WINNING_INDEX, len(display_books))
     display_books.insert(actual_winning_index, winner_item)
-
-    winner_detail = await app.services.book_service.get_book_by_slug(
-        session, winner_row.slug, language
-    )
 
     return {
         "display_list": display_books,
         "winning_index": actual_winning_index,
         "winner": winner_item,
-        "winner_detail": winner_detail,
+    }
+
+
+async def _try_open_from_cache(
+    language: str,
+) -> typing.Optional[typing.Dict[str, typing.Any]]:
+    tier_pools: typing.Dict[str, typing.List[typing.Dict[str, typing.Any]]] = {}
+    for tier_name, _, _, _ in RARITY_TIERS:
+        pool = await app.cache.get_cached(
+            f"{CACHE_POOL_KEY_PREFIX}:{tier_name}:{language}"
+        )
+        if not pool:
+            return None
+        tier_pools[tier_name] = pool
+
+    winning_tier = _pick_winning_tier()
+    winner_pool = tier_pools[winning_tier[0]]
+    winner = random.choice(winner_pool)
+
+    display_books: typing.List[typing.Dict[str, typing.Any]] = []
+    for tier_name, _, _, _ in RARITY_TIERS:
+        slots = DISPLAY_SLOTS[tier_name]
+        eligible = [
+            b for b in tier_pools[tier_name] if b["book_id"] != winner["book_id"]
+        ]
+        display_books.extend(random.sample(eligible, min(slots, len(eligible))))
+
+    random.shuffle(display_books)
+    actual_winning_index = min(WINNING_INDEX, len(display_books))
+    display_books.insert(actual_winning_index, winner)
+
+    return {
+        "display_list": display_books,
+        "winning_index": actual_winning_index,
+        "winner": winner,
     }
 
 
@@ -132,12 +187,13 @@ async def _fetch_random_book_from_tier(
     language: str,
     min_rating: float,
     max_rating: float,
+    min_ratings: int,
 ) -> typing.Optional[typing.Any]:
     query = text(
         _BOOK_SELECT
         + f"""
         WHERE b.language = :language
-          AND (b.rating_count + b.ol_rating_count) > 0
+          AND (b.rating_count + b.ol_rating_count) >= :min_ratings
           AND {_COMBINED_RATING_FILTER}
         """
         + _BOOK_GROUP_BY
@@ -148,7 +204,12 @@ async def _fetch_random_book_from_tier(
     )
     result = await session.execute(
         query,
-        {"language": language, "min_rating": min_rating, "max_rating": max_rating},
+        {
+            "language": language,
+            "min_rating": min_rating,
+            "max_rating": max_rating,
+            "min_ratings": min_ratings,
+        },
     )
     return result.first()
 
@@ -175,7 +236,11 @@ async def _fallback_book(
 
     for fallback_tier in candidates:
         row = await _fetch_random_book_from_tier(
-            session, language, fallback_tier[1], fallback_tier[2]
+            session,
+            language,
+            fallback_tier[1],
+            fallback_tier[2],
+            RARITY_MIN_RATINGS[fallback_tier[0]],
         )
         if row is not None:
             return row
@@ -188,25 +253,9 @@ async def _build_display_list(
     language: str,
     winner_book_id: int,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
-    slots_per_tier = [
-        ("common", 0.00, 2.25, 8),
-        ("uncommon", 2.25, 3.25, 7),
-        ("rare", 3.25, 4.00, 5),
-        ("super_rare", 4.00, 4.50, 2),
-        ("ultra_rare", 4.50, 4.75, 1),
-        ("legendary", 4.75, 5.01, 1),
-    ]
-
-    books: typing.List[typing.Dict[str, typing.Any]] = []
     needed = DISPLAY_LIST_SIZE - 1
-
-    for rarity, min_r, max_r, slots in slots_per_tier:
-        if len(books) >= needed:
-            break
-        rows = await _fetch_tier_sample(
-            session, language, min_r, max_r, slots, winner_book_id
-        )
-        books.extend(_row_to_case_item(r) for r in rows)
+    rows = await _fetch_all_display_books(session, language, winner_book_id)
+    books = [_row_to_case_item(r) for r in rows]
 
     if len(books) < needed:
         extra = await _fetch_any_rated_books(
@@ -222,37 +271,91 @@ async def _build_display_list(
     return books[:needed]
 
 
-async def _fetch_tier_sample(
+async def _fetch_all_display_books(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     language: str,
-    min_rating: float,
-    max_rating: float,
-    limit: int,
-    exclude_book_id: int,
+    winner_book_id: int,
 ) -> typing.List[typing.Any]:
     query = text(
-        _BOOK_SELECT
-        + f"""
-        WHERE b.language = :language
-          AND b.book_id != :exclude_book_id
-          AND (b.rating_count + b.ol_rating_count) > 0
-          AND {_COMBINED_RATING_FILTER}
         """
-        + _BOOK_GROUP_BY
-        + """
-        ORDER BY RANDOM()
-        LIMIT :limit
+        WITH book_stats AS (
+            SELECT
+                b.book_id,
+                b.title,
+                b.slug,
+                b.description,
+                b.primary_cover_url,
+                b.rating_count,
+                b.avg_rating,
+                b.ol_rating_count,
+                b.ol_avg_rating,
+                b.ol_want_to_read_count,
+                b.ol_currently_reading_count,
+                b.ol_already_read_count,
+                (
+                    COALESCE(b.avg_rating::numeric, 0) * b.rating_count
+                    + COALESCE(b.ol_avg_rating::numeric, 0) * b.ol_rating_count
+                )::numeric / (b.rating_count + b.ol_rating_count) AS combined_rating,
+                b.rating_count + b.ol_rating_count AS total_ratings,
+                COALESCE(bs.app_want_to_read_count, 0) AS app_want_to_read_count,
+                COALESCE(bs.app_reading_count, 0) AS app_reading_count,
+                COALESCE(bs.app_read_count, 0) AS app_read_count,
+                ARRAY_AGG(a.author_id) FILTER (WHERE a.author_id IS NOT NULL) AS author_ids,
+                ARRAY_AGG(a.name)      FILTER (WHERE a.name IS NOT NULL)      AS author_names,
+                ARRAY_AGG(a.slug)      FILTER (WHERE a.slug IS NOT NULL)      AS author_slugs,
+                ARRAY_AGG(a.photo_url) FILTER (WHERE a.photo_url IS NOT NULL) AS author_photos
+            FROM books.books b
+            LEFT JOIN books.book_authors ba ON b.book_id = ba.book_id
+            LEFT JOIN books.authors a ON ba.author_id = a.author_id
+            LEFT JOIN (
+                SELECT
+                    book_id,
+                    COUNT(*) FILTER (WHERE status = 'want_to_read') AS app_want_to_read_count,
+                    COUNT(*) FILTER (WHERE status = 'reading')      AS app_reading_count,
+                    COUNT(*) FILTER (WHERE status = 'read')         AS app_read_count
+                FROM user_data.bookshelves
+                WHERE status != 'abandoned'
+                GROUP BY book_id
+            ) bs ON b.book_id = bs.book_id
+            WHERE b.language = :language
+              AND b.book_id != :exclude_book_id
+              AND (b.rating_count + b.ol_rating_count) >= 1
+            GROUP BY b.book_id, b.title, b.slug, b.description, b.primary_cover_url,
+                     b.rating_count, b.avg_rating, b.ol_rating_count, b.ol_avg_rating,
+                     b.ol_want_to_read_count, b.ol_currently_reading_count,
+                     b.ol_already_read_count, bs.app_want_to_read_count,
+                     bs.app_reading_count, bs.app_read_count
+        ),
+        bucketed AS (
+            SELECT *,
+                CASE
+                    WHEN total_ratings >= 50 AND combined_rating >  4.75                        THEN 1
+                    WHEN total_ratings >= 30 AND combined_rating >  4.50 AND combined_rating <= 4.75 THEN 2
+                    WHEN total_ratings >= 15 AND combined_rating >  4.00 AND combined_rating <= 4.50 THEN 3
+                    WHEN total_ratings >=  8 AND combined_rating >  3.25 AND combined_rating <= 4.00 THEN 4
+                    WHEN total_ratings >=  3 AND combined_rating >  2.25 AND combined_rating <= 3.25 THEN 5
+                    WHEN total_ratings >=  1 AND combined_rating <= 2.25                        THEN 6
+                    ELSE NULL
+                END AS bucket
+            FROM book_stats
+        ),
+        sampled AS (
+            SELECT *,
+                ROW_NUMBER() OVER (PARTITION BY bucket ORDER BY RANDOM()) AS rn
+            FROM bucketed
+            WHERE bucket IS NOT NULL
+        )
+        SELECT * FROM sampled
+        WHERE (bucket = 1 AND rn <= 1)
+           OR (bucket = 2 AND rn <= 1)
+           OR (bucket = 3 AND rn <= 2)
+           OR (bucket = 4 AND rn <= 5)
+           OR (bucket = 5 AND rn <= 7)
+           OR (bucket = 6 AND rn <= 8)
         """
     )
     result = await session.execute(
-        query,
-        {
-            "language": language,
-            "exclude_book_id": exclude_book_id,
-            "min_rating": min_rating,
-            "max_rating": max_rating,
-            "limit": limit,
-        },
+        query, {"language": language, "exclude_book_id": winner_book_id}
     )
     return result.fetchall()
 

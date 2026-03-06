@@ -417,9 +417,6 @@ class OpenCaseData(pydantic.BaseModel):
     winner: BookSummarySchema = pydantic.Field(
         description="The winning book item (same object as display_list[winning_index])"
     )
-    winner_detail: BookDetailData = pydantic.Field(
-        description="Full book details for the winning book, identical to the GET /books/{slug} response"
-    )
 
 
 class OpenCaseResponse(pydantic.BaseModel):

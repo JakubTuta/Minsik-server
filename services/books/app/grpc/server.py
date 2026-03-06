@@ -730,13 +730,10 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                     _build_book_summary_proto(item) for item in result["display_list"]
                 ]
 
-                winner_detail = _build_book_detail_proto(result["winner_detail"])
-
                 return app.proto.books_pb2.OpenCaseResponse(
                     display_list=display_list,
                     winning_index=result["winning_index"],
                     winner=_build_book_summary_proto(result["winner"]),
-                    winner_detail=winner_detail,
                 )
         except ValueError as e:
             await context.abort(grpc.StatusCode.NOT_FOUND, str(e))

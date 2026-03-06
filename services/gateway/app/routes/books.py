@@ -753,7 +753,6 @@ async def open_case(
                 "display_list": display_list,
                 "winning_index": response.winning_index,
                 "winner": _book_summary_proto_to_dict(response.winner),
-                "winner_detail": _book_detail_proto_to_dict(response.winner_detail),
             },
             "error": None,
         }

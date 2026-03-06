@@ -1,5 +1,5 @@
-from pydantic_settings import BaseSettings
 from pydantic import Field
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -36,6 +36,9 @@ class Settings(BaseSettings):
         default="most_read,highest_rated,trending_reads,most_wanted,recently_added,user_favorites,classics,best_writing,funniest,most_emotional"
     )
     home_author_categories: str = Field(default="top_authors,popular_authors")
+
+    case_pool_refresh_hours: int = Field(default=1)
+    cache_case_pool_ttl: int = Field(default=7200)
 
     class Config:
         env_file = ".env"

@@ -9,6 +9,7 @@ import app.db
 import app.grpc.server
 import app.proto.recommendation_pb2
 import app.proto.recommendation_pb2_grpc
+import app.services.case_pool_builder
 import app.services.list_builder
 import app.services.personal_refresher
 import grpc
@@ -40,10 +41,23 @@ async def _midnight_refresh() -> None:
 async def _personal_refresh() -> None:
     logger.info("[rec:personal] Running 1AM personalized recommendation refresh")
     try:
-        await app.services.personal_refresher.refresh_all_personal(app.db.async_session_maker)
+        await app.services.personal_refresher.refresh_all_personal(
+            app.db.async_session_maker
+        )
         logger.info("[rec:personal] 1AM personal refresh complete")
     except Exception as e:
         logger.error(f"[rec:personal] 1AM personal refresh error: {str(e)}")
+
+
+async def _case_pool_refresh() -> None:
+    logger.info("[case] Running case pool refresh")
+    try:
+        await app.services.case_pool_builder.refresh_case_pools(
+            app.db.async_session_maker
+        )
+        logger.info("[case] Case pool refresh complete")
+    except Exception as e:
+        logger.error(f"[case] Case pool refresh error: {str(e)}")
 
 
 async def start_server() -> None:
@@ -82,13 +96,24 @@ async def start_server() -> None:
     except Exception as e:
         logger.error(f"[rec] Initial refresh failed: {str(e)}")
 
+    logger.info("[case] Running initial case pool refresh at startup")
+    try:
+        await app.services.case_pool_builder.refresh_case_pools(
+            app.db.async_session_maker
+        )
+        logger.info("[case] Initial case pool refresh complete")
+    except Exception as e:
+        logger.error(f"[case] Initial case pool refresh failed: {str(e)}")
+
     scheduler = AsyncScheduler()
     await scheduler.__aenter__()
     await scheduler.add_schedule(_midnight_refresh, CronTrigger(hour=0, minute=0))
     await scheduler.add_schedule(_personal_refresh, CronTrigger(hour=1, minute=0))
+    await scheduler.add_schedule(_case_pool_refresh, CronTrigger(minute=0))
     await scheduler.start_in_background()
     logger.info("[rec] Midnight refresh scheduled (cron: '0 0 * * *')")
     logger.info("[rec:personal] Personal refresh scheduled (cron: '0 1 * * *')")
+    logger.info("[case] Case pool refresh scheduled (cron: every hour)")
 
     logger.info("Recommendation service is running")
 
