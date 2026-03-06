@@ -785,3 +785,145 @@ async def update_series(
             details={"error": str(e)},
             status_code=500,
         )
+
+
+@router.delete(
+    "/books/{book_id}",
+    response_model=app.models.responses.APIResponse,
+    summary="Delete a book",
+    description=(
+        "Permanently delete a book and all associated data: book_authors, book_genres, "
+        "user bookshelves, ratings, and comments. User stats are recalculated for all "
+        "affected users."
+    ),
+    dependencies=[
+        fastapi.Depends(lambda: limiter),
+        fastapi.Depends(app.middleware.auth.require_admin),
+    ],
+    responses={
+        200: {"description": "Book deleted successfully"},
+        404: {"description": "Book not found"},
+        **_AUTH_RESPONSES,
+        500: {"description": "Internal server error"},
+    },
+)
+@limiter.limit(app.middleware.rate_limit.get_admin_limit())
+async def delete_book(request: fastapi.Request, book_id: int):
+    try:
+        async with app.grpc_clients.BooksClient() as client:
+            response = await client.delete_book(book_id=book_id)
+            return app.utils.responses.success_response({"message": response.message})
+    except grpc.RpcError as e:
+        logger.error(f"gRPC error deleting book: {e.code()} - {e.details()}")
+        if e.code() == grpc.StatusCode.NOT_FOUND:
+            return app.utils.responses.error_response(
+                code="NOT_FOUND", message=e.details(), status_code=404
+            )
+        return app.utils.responses.error_response(
+            code="INTERNAL_ERROR",
+            message="Failed to delete book",
+            details={"grpc_code": e.code().name, "grpc_details": e.details()},
+            status_code=500,
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error deleting book: {str(e)}")
+        return app.utils.responses.error_response(
+            code="INTERNAL_ERROR",
+            message="An unexpected error occurred",
+            details={"error": str(e)},
+            status_code=500,
+        )
+
+
+@router.delete(
+    "/authors/{author_id}",
+    response_model=app.models.responses.APIResponse,
+    summary="Delete an author",
+    description=(
+        "Permanently delete an author and their book_authors join entries. "
+        "Books written by this author are NOT deleted."
+    ),
+    dependencies=[
+        fastapi.Depends(lambda: limiter),
+        fastapi.Depends(app.middleware.auth.require_admin),
+    ],
+    responses={
+        200: {"description": "Author deleted successfully"},
+        404: {"description": "Author not found"},
+        **_AUTH_RESPONSES,
+        500: {"description": "Internal server error"},
+    },
+)
+@limiter.limit(app.middleware.rate_limit.get_admin_limit())
+async def delete_author(request: fastapi.Request, author_id: int):
+    try:
+        async with app.grpc_clients.BooksClient() as client:
+            response = await client.delete_author(author_id=author_id)
+            return app.utils.responses.success_response({"message": response.message})
+    except grpc.RpcError as e:
+        logger.error(f"gRPC error deleting author: {e.code()} - {e.details()}")
+        if e.code() == grpc.StatusCode.NOT_FOUND:
+            return app.utils.responses.error_response(
+                code="NOT_FOUND", message=e.details(), status_code=404
+            )
+        return app.utils.responses.error_response(
+            code="INTERNAL_ERROR",
+            message="Failed to delete author",
+            details={"grpc_code": e.code().name, "grpc_details": e.details()},
+            status_code=500,
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error deleting author: {str(e)}")
+        return app.utils.responses.error_response(
+            code="INTERNAL_ERROR",
+            message="An unexpected error occurred",
+            details={"error": str(e)},
+            status_code=500,
+        )
+
+
+@router.delete(
+    "/series/{series_id}",
+    response_model=app.models.responses.APIResponse,
+    summary="Delete a series",
+    description=(
+        "Permanently delete a series. Books that belong to the series have their "
+        "series_id and series_position set to NULL — they are NOT deleted."
+    ),
+    dependencies=[
+        fastapi.Depends(lambda: limiter),
+        fastapi.Depends(app.middleware.auth.require_admin),
+    ],
+    responses={
+        200: {"description": "Series deleted successfully"},
+        404: {"description": "Series not found"},
+        **_AUTH_RESPONSES,
+        500: {"description": "Internal server error"},
+    },
+)
+@limiter.limit(app.middleware.rate_limit.get_admin_limit())
+async def delete_series(request: fastapi.Request, series_id: int):
+    try:
+        async with app.grpc_clients.BooksClient() as client:
+            response = await client.delete_series(series_id=series_id)
+            return app.utils.responses.success_response({"message": response.message})
+    except grpc.RpcError as e:
+        logger.error(f"gRPC error deleting series: {e.code()} - {e.details()}")
+        if e.code() == grpc.StatusCode.NOT_FOUND:
+            return app.utils.responses.error_response(
+                code="NOT_FOUND", message=e.details(), status_code=404
+            )
+        return app.utils.responses.error_response(
+            code="INTERNAL_ERROR",
+            message="Failed to delete series",
+            details={"grpc_code": e.code().name, "grpc_details": e.details()},
+            status_code=500,
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error deleting series: {str(e)}")
+        return app.utils.responses.error_response(
+            code="INTERNAL_ERROR",
+            message="An unexpected error occurred",
+            details={"error": str(e)},
+            status_code=500,
+        )

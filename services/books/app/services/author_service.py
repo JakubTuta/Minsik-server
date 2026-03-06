@@ -440,3 +440,27 @@ async def flush_view_counts_to_db(session: sqlalchemy.ext.asyncio.AsyncSession) 
     except Exception as e:
         logger.error(f"Failed to flush author view counts: {str(e)}")
         await session.rollback()
+
+
+async def delete_author(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    author_id: int,
+) -> typing.Dict[str, typing.Any]:
+    stmt = select(app.models.author.Author).filter(
+        app.models.author.Author.author_id == author_id
+    )
+    result = await session.execute(stmt)
+    author = result.scalars().first()
+
+    if not author:
+        raise ValueError("not_found")
+
+    slug = author.slug
+    name = author.name
+
+    await session.delete(author)
+    await session.commit()
+
+    await app.cache.delete_cached(f"author_slug:{slug}:en")
+
+    return {"author_id": author_id, "name": name}

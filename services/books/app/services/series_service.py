@@ -362,3 +362,39 @@ async def _track_series_view(series_id: int) -> None:
         await app.cache.increment_view_count("series", series_id)
     except Exception as e:
         logger.error(f"Error tracking series view: {str(e)}")
+
+
+async def delete_series(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    series_id: int,
+) -> typing.Dict[str, typing.Any]:
+    stmt = select(app.models.series.Series).filter(
+        app.models.series.Series.series_id == series_id
+    )
+    result = await session.execute(stmt)
+    series = result.scalars().first()
+
+    if not series:
+        raise ValueError("not_found")
+
+    slug = series.slug
+    name = series.name
+
+    unlink_result = await session.execute(
+        sqlalchemy.text(
+            """
+            UPDATE books.books
+            SET series_id = NULL, series_position = NULL
+            WHERE series_id = :series_id
+            """
+        ),
+        {"series_id": series_id},
+    )
+    books_unlinked = unlink_result.rowcount
+
+    await session.delete(series)
+    await session.commit()
+
+    await app.cache.delete_cached(f"series_slug:{slug}:en")
+
+    return {"series_id": series_id, "name": name, "books_unlinked": books_unlinked}

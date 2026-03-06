@@ -14,6 +14,9 @@ service BooksService {
   rpc UpdateSeries(UpdateSeriesRequest) returns (SeriesDetailResponse);
   rpc OpenCase(OpenCaseRequest) returns (OpenCaseResponse);
   rpc DiscoverBook(DiscoverBookRequest) returns (DiscoverBookResponse);
+  rpc DeleteBook(DeleteBookRequest) returns (DeleteEntityResponse);
+  rpc DeleteAuthor(DeleteAuthorRequest) returns (DeleteEntityResponse);
+  rpc DeleteSeries(DeleteSeriesRequest) returns (DeleteEntityResponse);
 }
 
 message SearchRequest {
@@ -321,4 +324,12 @@ message DiscoverBookRequest {
 message DiscoverBookResponse {
   BookSummary book = 1;
   int32 matching_count = 2;
+}
+
+message DeleteBookRequest   { int64 book_id   = 1; }
+message DeleteAuthorRequest { int64 author_id = 1; }
+message DeleteSeriesRequest { int64 series_id = 1; }
+
+message DeleteEntityResponse {
+  string message = 1;
 }

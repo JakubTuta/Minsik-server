@@ -254,3 +254,111 @@ async def flush_view_counts_to_db(session: sqlalchemy.ext.asyncio.AsyncSession) 
     except Exception as e:
         logger.error(f"Failed to flush book view counts: {str(e)}")
         await session.rollback()
+
+
+async def delete_book(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    book_id: int,
+) -> typing.Dict[str, typing.Any]:
+    stmt = select(app.models.book.Book).filter(app.models.book.Book.book_id == book_id)
+    result = await session.execute(stmt)
+    book = result.scalars().first()
+
+    if not book:
+        raise ValueError("not_found")
+
+    slug = book.slug
+    language = book.language
+    title = book.title
+
+    affected_users_result = await session.execute(
+        sqlalchemy.text(
+            """
+            SELECT DISTINCT user_id FROM user_data.bookshelves WHERE book_id = :book_id
+            UNION
+            SELECT DISTINCT user_id FROM user_data.ratings WHERE book_id = :book_id
+            UNION
+            SELECT DISTINCT user_id FROM user_data.comments WHERE book_id = :book_id
+            """
+        ),
+        {"book_id": book_id},
+    )
+    affected_user_ids = [row.user_id for row in affected_users_result.fetchall()]
+
+    comments_result = await session.execute(
+        sqlalchemy.text("DELETE FROM user_data.comments WHERE book_id = :book_id"),
+        {"book_id": book_id},
+    )
+    comments_deleted = comments_result.rowcount
+
+    ratings_result = await session.execute(
+        sqlalchemy.text("DELETE FROM user_data.ratings WHERE book_id = :book_id"),
+        {"book_id": book_id},
+    )
+    ratings_deleted = ratings_result.rowcount
+
+    bookshelves_result = await session.execute(
+        sqlalchemy.text("DELETE FROM user_data.bookshelves WHERE book_id = :book_id"),
+        {"book_id": book_id},
+    )
+    bookshelves_deleted = bookshelves_result.rowcount
+
+    await session.delete(book)
+    await session.flush()
+
+    for user_id in affected_user_ids:
+        await session.execute(
+            sqlalchemy.text(
+                """
+                INSERT INTO user_data.user_stats (user_id, want_to_read_count, reading_count, read_count, abandoned_count, favourites_count)
+                SELECT
+                    :user_id,
+                    COUNT(CASE WHEN status = 'want_to_read' THEN 1 END),
+                    COUNT(CASE WHEN status = 'reading'      THEN 1 END),
+                    COUNT(CASE WHEN status = 'read'         THEN 1 END),
+                    COUNT(CASE WHEN status = 'abandoned'    THEN 1 END),
+                    COUNT(CASE WHEN is_favorite             THEN 1 END)
+                FROM user_data.bookshelves
+                WHERE user_id = :user_id
+                ON CONFLICT (user_id) DO UPDATE SET
+                    want_to_read_count = EXCLUDED.want_to_read_count,
+                    reading_count      = EXCLUDED.reading_count,
+                    read_count         = EXCLUDED.read_count,
+                    abandoned_count    = EXCLUDED.abandoned_count,
+                    favourites_count   = EXCLUDED.favourites_count
+                """
+            ),
+            {"user_id": user_id},
+        )
+        await session.execute(
+            sqlalchemy.text(
+                """
+                INSERT INTO user_data.user_stats (user_id, ratings_count)
+                SELECT :user_id, COUNT(*) FROM user_data.ratings WHERE user_id = :user_id
+                ON CONFLICT (user_id) DO UPDATE SET ratings_count = EXCLUDED.ratings_count
+                """
+            ),
+            {"user_id": user_id},
+        )
+        await session.execute(
+            sqlalchemy.text(
+                """
+                INSERT INTO user_data.user_stats (user_id, comments_count)
+                SELECT :user_id, COUNT(*) FROM user_data.comments WHERE user_id = :user_id
+                ON CONFLICT (user_id) DO UPDATE SET comments_count = EXCLUDED.comments_count
+                """
+            ),
+            {"user_id": user_id},
+        )
+
+    await session.commit()
+    await app.cache.delete_cached(f"book_slug:{slug}:{language}")
+
+    return {
+        "book_id": book_id,
+        "title": title,
+        "bookshelves_deleted": bookshelves_deleted,
+        "ratings_deleted": ratings_deleted,
+        "comments_deleted": comments_deleted,
+        "users_recalculated": len(affected_user_ids),
+    }

@@ -566,3 +566,27 @@ class DiscoverBookResponse(_message.Message):
     book: BookSummary
     matching_count: int
     def __init__(self, book: _Optional[_Union[BookSummary, _Mapping]] = ..., matching_count: _Optional[int] = ...) -> None: ...
+
+class DeleteBookRequest(_message.Message):
+    __slots__ = ("book_id",)
+    BOOK_ID_FIELD_NUMBER: _ClassVar[int]
+    book_id: int
+    def __init__(self, book_id: _Optional[int] = ...) -> None: ...
+
+class DeleteAuthorRequest(_message.Message):
+    __slots__ = ("author_id",)
+    AUTHOR_ID_FIELD_NUMBER: _ClassVar[int]
+    author_id: int
+    def __init__(self, author_id: _Optional[int] = ...) -> None: ...
+
+class DeleteSeriesRequest(_message.Message):
+    __slots__ = ("series_id",)
+    SERIES_ID_FIELD_NUMBER: _ClassVar[int]
+    series_id: int
+    def __init__(self, series_id: _Optional[int] = ...) -> None: ...
+
+class DeleteEntityResponse(_message.Message):
+    __slots__ = ("message",)
+    MESSAGE_FIELD_NUMBER: _ClassVar[int]
+    message: str
+    def __init__(self, message: _Optional[str] = ...) -> None: ...

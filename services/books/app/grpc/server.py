@@ -745,3 +745,86 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
         except Exception as e:
             logger.error(f"Error in OpenCase: {str(e)}")
             await context.abort(grpc.StatusCode.INTERNAL, f"Open case failed: {str(e)}")
+
+    async def DeleteBook(
+        self,
+        request: app.proto.books_pb2.DeleteBookRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> app.proto.books_pb2.DeleteEntityResponse:
+        try:
+            async with app.db.async_session_maker() as session:
+                result = await app.services.book_service.delete_book(
+                    session, request.book_id
+                )
+                return app.proto.books_pb2.DeleteEntityResponse(
+                    message=(
+                        f"Book {result['book_id']} '{result['title']}' deleted. "
+                        f"Cleaned up: {result['bookshelves_deleted']} bookshelf entries, "
+                        f"{result['ratings_deleted']} ratings, "
+                        f"{result['comments_deleted']} comments. "
+                        f"Recalculated stats for {result['users_recalculated']} users."
+                    )
+                )
+        except ValueError:
+            await context.abort(
+                grpc.StatusCode.NOT_FOUND,
+                f"Book with id {request.book_id} not found",
+            )
+        except Exception as e:
+            logger.error(f"Error in DeleteBook: {str(e)}")
+            await context.abort(
+                grpc.StatusCode.INTERNAL, f"Delete book failed: {str(e)}"
+            )
+
+    async def DeleteAuthor(
+        self,
+        request: app.proto.books_pb2.DeleteAuthorRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> app.proto.books_pb2.DeleteEntityResponse:
+        try:
+            async with app.db.async_session_maker() as session:
+                result = await app.services.author_service.delete_author(
+                    session, request.author_id
+                )
+                return app.proto.books_pb2.DeleteEntityResponse(
+                    message=(
+                        f"Author {result['author_id']} '{result['name']}' deleted."
+                    )
+                )
+        except ValueError:
+            await context.abort(
+                grpc.StatusCode.NOT_FOUND,
+                f"Author with id {request.author_id} not found",
+            )
+        except Exception as e:
+            logger.error(f"Error in DeleteAuthor: {str(e)}")
+            await context.abort(
+                grpc.StatusCode.INTERNAL, f"Delete author failed: {str(e)}"
+            )
+
+    async def DeleteSeries(
+        self,
+        request: app.proto.books_pb2.DeleteSeriesRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> app.proto.books_pb2.DeleteEntityResponse:
+        try:
+            async with app.db.async_session_maker() as session:
+                result = await app.services.series_service.delete_series(
+                    session, request.series_id
+                )
+                return app.proto.books_pb2.DeleteEntityResponse(
+                    message=(
+                        f"Series {result['series_id']} '{result['name']}' deleted. "
+                        f"{result['books_unlinked']} books unlinked."
+                    )
+                )
+        except ValueError:
+            await context.abort(
+                grpc.StatusCode.NOT_FOUND,
+                f"Series with id {request.series_id} not found",
+            )
+        except Exception as e:
+            logger.error(f"Error in DeleteSeries: {str(e)}")
+            await context.abort(
+                grpc.StatusCode.INTERNAL, f"Delete series failed: {str(e)}"
+            )
