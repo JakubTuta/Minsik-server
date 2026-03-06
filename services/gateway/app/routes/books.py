@@ -743,12 +743,10 @@ async def open_case(
 ):
     try:
         response = await app.grpc_clients.books_client.open_case(language=language)
-        print(response)
 
         display_list = [
             _book_summary_proto_to_dict(item) for item in response.display_list
         ]
-        print(display_list)
 
         return {
             "success": True,

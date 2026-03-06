@@ -11,8 +11,8 @@ from sqlalchemy import text
 logger = logging.getLogger(__name__)
 
 RARITY_TIERS: typing.List[typing.Tuple[str, float, float, float]] = [
-    ("legendary", 4.75, 5.01, 0.015),
-    ("ultra_rare", 4.50, 4.75, 0.035),
+    ("legendary", 4.65, 5.01, 0.015),
+    ("ultra_rare", 4.50, 4.65, 0.035),
     ("super_rare", 4.00, 4.50, 0.10),
     ("rare", 3.25, 4.00, 0.20),
     ("uncommon", 2.25, 3.25, 0.30),
@@ -20,7 +20,7 @@ RARITY_TIERS: typing.List[typing.Tuple[str, float, float, float]] = [
 ]
 
 RARITY_MIN_RATINGS: typing.Dict[str, int] = {
-    "legendary": 50,
+    "legendary": 30,
     "ultra_rare": 30,
     "super_rare": 15,
     "rare": 8,
@@ -92,8 +92,8 @@ _POOL_QUERY = text(
     bucketed AS (
         SELECT *,
             CASE
-                WHEN total_ratings >= 50 AND combined_rating >  4.75                              THEN 'legendary'
-                WHEN total_ratings >= 30 AND combined_rating >  4.50 AND combined_rating <= 4.75  THEN 'ultra_rare'
+                WHEN total_ratings >= 30 AND combined_rating >  4.65                              THEN 'legendary'
+                WHEN total_ratings >= 30 AND combined_rating >  4.50 AND combined_rating <= 4.65  THEN 'ultra_rare'
                 WHEN total_ratings >= 15 AND combined_rating >  4.00 AND combined_rating <= 4.50  THEN 'super_rare'
                 WHEN total_ratings >=  8 AND combined_rating >  3.25 AND combined_rating <= 4.00  THEN 'rare'
                 WHEN total_ratings >=  3 AND combined_rating >  2.25 AND combined_rating <= 3.25  THEN 'uncommon'

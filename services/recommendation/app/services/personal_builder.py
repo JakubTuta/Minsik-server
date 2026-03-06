@@ -59,8 +59,8 @@ async def _build_for_you(
             f"""
             WITH user_genres AS (
                 SELECT
-                    unnest(:genre_slugs::text[]) AS slug,
-                    unnest(:genre_weights::float[]) AS weight
+                    unnest(CAST(:genre_slugs AS text[])) AS slug,
+                    unnest(CAST(:genre_weights AS float[])) AS weight
             ),
             user_genre_ids AS (
                 SELECT g.genre_id, ug.weight
@@ -72,14 +72,14 @@ async def _build_for_you(
                 FROM books.books b
                 JOIN books.book_genres bg ON b.book_id = bg.book_id
                 JOIN user_genre_ids ugi ON bg.genre_id = ugi.genre_id
-                WHERE NOT (b.book_id = ANY(:exclude_ids::bigint[]))
+                WHERE NOT (b.book_id = ANY(CAST(:exclude_ids AS bigint[])))
                   AND {app.services.list_builder._BOOK_BASE_WHERE}
                 GROUP BY b.book_id
             ),
             similar_users AS (
                 SELECT bs2.user_id
                 FROM user_data.bookshelves bs2
-                WHERE bs2.book_id = ANY(:read_book_ids::bigint[])
+                WHERE bs2.book_id = ANY(CAST(:read_book_ids AS bigint[]))
                   AND bs2.user_id != :user_id
                   AND bs2.status IN ('read', 'reading')
                 GROUP BY bs2.user_id
@@ -92,7 +92,7 @@ async def _build_for_you(
                 FROM user_data.bookshelves bs
                 JOIN similar_users su ON bs.user_id = su.user_id
                 WHERE bs.status IN ('read', 'reading')
-                  AND NOT (bs.book_id = ANY(:exclude_ids::bigint[]))
+                  AND NOT (bs.book_id = ANY(CAST(:exclude_ids AS bigint[])))
                 GROUP BY bs.book_id
             ),
             max_collab AS (
@@ -156,7 +156,7 @@ async def _build_because_you_liked(
                 FROM books.book_genres bg
                 JOIN source_genres sg ON bg.genre_id = sg.genre_id
                 WHERE bg.book_id != :anchor_id
-                  AND NOT (bg.book_id = ANY(:exclude_ids::bigint[]))
+                  AND NOT (bg.book_id = ANY(CAST(:exclude_ids AS bigint[])))
                 GROUP BY bg.book_id
             ),
             genre_scored AS (
@@ -181,7 +181,7 @@ async def _build_because_you_liked(
                 JOIN source_readers sr ON bs.user_id = sr.user_id
                 WHERE bs.book_id != :anchor_id
                   AND bs.status IN ('read', 'reading')
-                  AND NOT (bs.book_id = ANY(:exclude_ids::bigint[]))
+                  AND NOT (bs.book_id = ANY(CAST(:exclude_ids AS bigint[])))
                 GROUP BY bs.book_id
                 HAVING COUNT(DISTINCT bs.user_id) >= 2
             ),
@@ -231,8 +231,8 @@ async def _build_continue_series(
             SELECT {app.services.list_builder._BOOK_FIELDS}, b.series_position AS score
             FROM books.books b {app.services.list_builder._BOOK_JOINS}
             WHERE {app.services.list_builder._BOOK_BASE_WHERE}
-              AND b.series_id = ANY(:series_ids::bigint[])
-              AND NOT (b.book_id = ANY(:exclude_ids::bigint[]))
+              AND b.series_id = ANY(CAST(:series_ids AS bigint[]))
+              AND NOT (b.book_id = ANY(CAST(:exclude_ids AS bigint[])))
             {app.services.list_builder._BOOK_GROUP_BY}
             ORDER BY b.series_position ASC NULLS LAST
             LIMIT :limit
@@ -260,11 +260,11 @@ async def _build_from_favorite_authors(
             SELECT {app.services.list_builder._BOOK_FIELDS}, b.avg_rating AS score
             FROM books.books b {app.services.list_builder._BOOK_JOINS}
             WHERE {app.services.list_builder._BOOK_BASE_WHERE}
-              AND NOT (b.book_id = ANY(:exclude_ids::bigint[]))
+              AND NOT (b.book_id = ANY(CAST(:exclude_ids AS bigint[])))
               AND EXISTS (
                   SELECT 1 FROM books.book_authors ba2
                   WHERE ba2.book_id = b.book_id
-                    AND ba2.author_id = ANY(:author_ids::bigint[])
+                    AND ba2.author_id = ANY(CAST(:author_ids AS bigint[]))
               )
             {app.services.list_builder._BOOK_GROUP_BY}
             ORDER BY b.avg_rating DESC NULLS LAST
@@ -294,7 +294,7 @@ async def _build_top_in_genre(
             SELECT {app.services.list_builder._BOOK_FIELDS}, b.avg_rating AS score
             FROM books.books b {app.services.list_builder._BOOK_JOINS}
             WHERE {app.services.list_builder._BOOK_BASE_WHERE}
-              AND NOT (b.book_id = ANY(:exclude_ids::bigint[]))
+              AND NOT (b.book_id = ANY(CAST(:exclude_ids AS bigint[])))
               AND b.avg_rating IS NOT NULL
               AND EXISTS (
                   SELECT 1 FROM books.book_genres bg2
@@ -327,7 +327,7 @@ async def _build_want_to_read_picks(
             SELECT {app.services.list_builder._BOOK_FIELDS}, b.avg_rating AS score
             FROM books.books b {app.services.list_builder._BOOK_JOINS}
             WHERE {app.services.list_builder._BOOK_BASE_WHERE}
-              AND b.book_id = ANY(:want_to_read_ids::bigint[])
+              AND b.book_id = ANY(CAST(:want_to_read_ids AS bigint[]))
             {app.services.list_builder._BOOK_GROUP_BY}
             ORDER BY b.avg_rating DESC NULLS LAST, b.ol_already_read_count DESC NULLS LAST
             LIMIT :limit
@@ -356,7 +356,7 @@ async def _build_readers_like_you(
             WITH similar_users AS (
                 SELECT bs2.user_id
                 FROM user_data.bookshelves bs2
-                WHERE bs2.book_id = ANY(:read_book_ids::bigint[])
+                WHERE bs2.book_id = ANY(CAST(:read_book_ids AS bigint[]))
                   AND bs2.user_id != :user_id
                   AND bs2.status IN ('read', 'reading')
                 GROUP BY bs2.user_id
@@ -369,7 +369,7 @@ async def _build_readers_like_you(
                 FROM user_data.bookshelves bs
                 JOIN similar_users su ON bs.user_id = su.user_id
                 WHERE bs.status IN ('read', 'reading')
-                  AND NOT (bs.book_id = ANY(:exclude_ids::bigint[]))
+                  AND NOT (bs.book_id = ANY(CAST(:exclude_ids AS bigint[])))
                 GROUP BY bs.book_id
                 HAVING COUNT(DISTINCT bs.user_id) >= 2
             )
@@ -410,14 +410,14 @@ async def _build_hidden_gems(
             SELECT {app.services.list_builder._BOOK_FIELDS}, b.avg_rating AS score
             FROM books.books b {app.services.list_builder._BOOK_JOINS}
             WHERE {app.services.list_builder._BOOK_BASE_WHERE}
-              AND NOT (b.book_id = ANY(:exclude_ids::bigint[]))
+              AND NOT (b.book_id = ANY(CAST(:exclude_ids AS bigint[])))
               AND b.avg_rating >= 4.0
               AND b.rating_count BETWEEN 3 AND 20
               AND COALESCE(b.view_count, 0) < 500
               AND EXISTS (
                   SELECT 1 FROM books.book_genres bg2
                   JOIN books.genres g ON bg2.genre_id = g.genre_id
-                  WHERE bg2.book_id = b.book_id AND g.slug = ANY(:genre_slugs::text[])
+                  WHERE bg2.book_id = b.book_id AND g.slug = ANY(CAST(:genre_slugs AS text[]))
               )
             {app.services.list_builder._BOOK_GROUP_BY}
             ORDER BY b.avg_rating DESC, b.rating_count DESC
@@ -450,12 +450,12 @@ async def _build_you_might_like(
                 SELECT bg.genre_id
                 FROM books.book_genres bg
                 JOIN books.genres g ON bg.genre_id = g.genre_id
-                WHERE bg.book_id = :book_id AND g.slug = ANY(:genre_slugs::text[])
+                WHERE bg.book_id = :book_id AND g.slug = ANY(CAST(:genre_slugs AS text[]))
             ),
             user_genres AS (
                 SELECT
-                    unnest(:genre_slugs::text[]) AS slug,
-                    unnest(:genre_weights::float[]) AS weight
+                    unnest(CAST(:genre_slugs AS text[])) AS slug,
+                    unnest(CAST(:genre_weights AS float[])) AS weight
             ),
             user_genre_ids AS (
                 SELECT g.genre_id, ug.weight
@@ -469,7 +469,7 @@ async def _build_you_might_like(
                 JOIN books.book_genres bg ON b.book_id = bg.book_id
                 JOIN book_genre_ids bgi ON bg.genre_id = bgi.genre_id
                 JOIN user_genre_ids ugi ON bg.genre_id = ugi.genre_id
-                WHERE NOT (b.book_id = ANY(:exclude_ids::bigint[]))
+                WHERE NOT (b.book_id = ANY(CAST(:exclude_ids AS bigint[])))
                   AND {app.services.list_builder._BOOK_BASE_WHERE}
                 GROUP BY b.book_id
             )
@@ -512,7 +512,7 @@ async def _build_unread_by_author(
             SELECT {app.services.list_builder._BOOK_FIELDS}, b.avg_rating AS score
             FROM books.books b {app.services.list_builder._BOOK_JOINS}
             WHERE {app.services.list_builder._BOOK_BASE_WHERE}
-              AND NOT (b.book_id = ANY(:shelved_ids::bigint[]))
+              AND NOT (b.book_id = ANY(CAST(:shelved_ids AS bigint[])))
               AND EXISTS (
                   SELECT 1 FROM books.book_authors ba2
                   WHERE ba2.book_id = b.book_id AND ba2.author_id = :author_id

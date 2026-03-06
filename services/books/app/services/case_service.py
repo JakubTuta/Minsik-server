@@ -19,8 +19,8 @@ RARITY_TIERS: typing.List[typing.Tuple[str, float, float, float]] = [
 ]
 
 RARITY_MIN_RATINGS: typing.Dict[str, int] = {
-    "legendary": 50,
-    "ultra_rare": 30,
+    "legendary": 30,
+    "ultra_rare": 20,
     "super_rare": 15,
     "rare": 8,
     "uncommon": 3,
@@ -28,7 +28,7 @@ RARITY_MIN_RATINGS: typing.Dict[str, int] = {
 }
 
 DISPLAY_LIST_SIZE = 25
-WINNING_INDEX = DISPLAY_LIST_SIZE - 2
+WINNING_INDEX = DISPLAY_LIST_SIZE - 3
 
 DISPLAY_SLOTS: typing.Dict[str, int] = {
     "legendary": 1,
@@ -145,12 +145,30 @@ async def _try_open_from_cache(
         pool = await app.cache.get_cached(
             f"{CACHE_POOL_KEY_PREFIX}:{tier_name}:{language}"
         )
-        if not pool:
+        if pool is None:
             return None
         tier_pools[tier_name] = pool
 
     winning_tier = _pick_winning_tier()
     winner_pool = tier_pools[winning_tier[0]]
+
+    if not winner_pool:
+        tier_index = next(
+            i for i, t in enumerate(RARITY_TIERS) if t[0] == winning_tier[0]
+        )
+        winner_pool = None
+        for i in range(1, len(RARITY_TIERS)):
+            for idx in [tier_index + i, tier_index - i]:
+                if 0 <= idx < len(RARITY_TIERS):
+                    candidate = tier_pools[RARITY_TIERS[idx][0]]
+                    if candidate:
+                        winner_pool = candidate
+                        break
+            if winner_pool:
+                break
+        if not winner_pool:
+            return None
+
     winner = random.choice(winner_pool)
 
     display_books: typing.List[typing.Dict[str, typing.Any]] = []
@@ -329,8 +347,8 @@ async def _fetch_all_display_books(
         bucketed AS (
             SELECT *,
                 CASE
-                    WHEN total_ratings >= 50 AND combined_rating >  4.75                        THEN 1
-                    WHEN total_ratings >= 30 AND combined_rating >  4.50 AND combined_rating <= 4.75 THEN 2
+                    WHEN total_ratings >= 30 AND combined_rating >  4.65                        THEN 1
+                    WHEN total_ratings >= 30 AND combined_rating >  4.50 AND combined_rating <= 4.65 THEN 2
                     WHEN total_ratings >= 15 AND combined_rating >  4.00 AND combined_rating <= 4.50 THEN 3
                     WHEN total_ratings >=  8 AND combined_rating >  3.25 AND combined_rating <= 4.00 THEN 4
                     WHEN total_ratings >=  3 AND combined_rating >  2.25 AND combined_rating <= 3.25 THEN 5

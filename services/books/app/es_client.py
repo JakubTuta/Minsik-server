@@ -110,17 +110,28 @@ async def init_es(host: str, port: int, max_retries: int = 10) -> None:
                 raise
 
 
+async def _index_has_language_field(index: str) -> bool:
+    try:
+        mapping = await _es_client.indices.get_mapping(index=index)
+        properties = mapping[index]["mappings"].get("properties", {})
+        return "language" in properties
+    except Exception:
+        return False
+
+
 async def create_indexes(
     index_books: str, index_authors: str, index_series: str
-) -> None:
+) -> typing.Set[str]:
+    recreated: typing.Set[str] = set()
     try:
-        # Check and create books index
+        # Books index
         try:
             exists = await _es_client.indices.exists(index=index_books)
             if not exists:
                 await _es_client.indices.create(
                     index=index_books, body=BOOKS_INDEX_MAPPING
                 )
+                recreated.add(index_books)
                 logger.info(f"[ES] Created index: {index_books}")
             else:
                 logger.info(f"[ES] Index already exists: {index_books}")
@@ -128,28 +139,44 @@ async def create_indexes(
             logger.error(f"[ES] Error creating books index: {e}")
             raise
 
-        # Check and create authors index
+        # Authors index — recreate if language field is missing (stale mapping)
         try:
             exists = await _es_client.indices.exists(index=index_authors)
             if not exists:
                 await _es_client.indices.create(
                     index=index_authors, body=AUTHORS_INDEX_MAPPING
                 )
+                recreated.add(index_authors)
                 logger.info(f"[ES] Created index: {index_authors}")
+            elif not await _index_has_language_field(index_authors):
+                await _es_client.indices.delete(index=index_authors)
+                await _es_client.indices.create(
+                    index=index_authors, body=AUTHORS_INDEX_MAPPING
+                )
+                recreated.add(index_authors)
+                logger.info(f"[ES] Recreated stale index: {index_authors}")
             else:
                 logger.info(f"[ES] Index already exists: {index_authors}")
         except Exception as e:
             logger.error(f"[ES] Error creating authors index: {e}")
             raise
 
-        # Check and create series index
+        # Series index — recreate if language field is missing (stale mapping)
         try:
             exists = await _es_client.indices.exists(index=index_series)
             if not exists:
                 await _es_client.indices.create(
                     index=index_series, body=SERIES_INDEX_MAPPING
                 )
+                recreated.add(index_series)
                 logger.info(f"[ES] Created index: {index_series}")
+            elif not await _index_has_language_field(index_series):
+                await _es_client.indices.delete(index=index_series)
+                await _es_client.indices.create(
+                    index=index_series, body=SERIES_INDEX_MAPPING
+                )
+                recreated.add(index_series)
+                logger.info(f"[ES] Recreated stale index: {index_series}")
             else:
                 logger.info(f"[ES] Index already exists: {index_series}")
         except Exception as e:
@@ -158,6 +185,7 @@ async def create_indexes(
     except Exception as e:
         logger.error(f"[ES] Failed to create indexes: {e}")
         raise
+    return recreated
 
 
 async def close_es() -> None:

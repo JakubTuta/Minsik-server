@@ -3,6 +3,7 @@ import datetime
 import logging
 import signal
 import sys
+import typing
 
 import app.cache
 import app.config
@@ -33,6 +34,8 @@ reindex_task: asyncio.Task = None
 shutdown_event = asyncio.Event()
 
 ES_LAST_SYNC_KEY = "es:last_sync_ts"
+ES_LAST_SYNC_KEY_AUTHORS = "es:last_sync_ts:authors"
+ES_LAST_SYNC_KEY_SERIES = "es:last_sync_ts:series"
 
 
 async def flush_view_counts_periodically() -> None:
@@ -54,17 +57,40 @@ async def flush_view_counts_periodically() -> None:
             logger.error(f"Error flushing view counts: {str(e)}")
 
 
-async def reindex_all_to_es() -> None:
+async def reindex_all_to_es(
+    recreated_indexes: typing.Optional[typing.Set[str]] = None,
+) -> None:
     es = app.es_client.get_es()
     settings = app.config.settings
+    if recreated_indexes is None:
+        recreated_indexes = set()
 
     raw_ts = await app.cache.redis_client.get(ES_LAST_SYNC_KEY)
-    if raw_ts:
-        last_sync = datetime.datetime.fromisoformat(raw_ts).replace(tzinfo=None)
+    if raw_ts and settings.es_index_books not in recreated_indexes:
+        last_sync_books = datetime.datetime.fromisoformat(raw_ts).replace(tzinfo=None)
     else:
-        last_sync = datetime.datetime(1970, 1, 1)
+        last_sync_books = datetime.datetime(1970, 1, 1)
 
-    logger.info(f"[ES] Starting reindex. Last sync: {last_sync.isoformat()}")
+    raw_ts_authors = await app.cache.redis_client.get(ES_LAST_SYNC_KEY_AUTHORS)
+    if raw_ts_authors and settings.es_index_authors not in recreated_indexes:
+        last_sync_authors = datetime.datetime.fromisoformat(raw_ts_authors).replace(
+            tzinfo=None
+        )
+    else:
+        last_sync_authors = datetime.datetime(1970, 1, 1)
+
+    raw_ts_series = await app.cache.redis_client.get(ES_LAST_SYNC_KEY_SERIES)
+    if raw_ts_series and settings.es_index_series not in recreated_indexes:
+        last_sync_series = datetime.datetime.fromisoformat(raw_ts_series).replace(
+            tzinfo=None
+        )
+    else:
+        last_sync_series = datetime.datetime(1970, 1, 1)
+
+    logger.info(
+        f"[ES] Starting reindex. last_sync books={last_sync_books.isoformat()} "
+        f"authors={last_sync_authors.isoformat()} series={last_sync_series.isoformat()}"
+    )
 
     books_indexed = 0
     authors_indexed = 0
@@ -91,7 +117,7 @@ async def reindex_all_to_es() -> None:
         """
         )
 
-        result = await session.stream(books_query, {"last_sync": last_sync})
+        result = await session.stream(books_query, {"last_sync": last_sync_books})
         batch: list = []
 
         async for row in result:
@@ -161,7 +187,7 @@ async def reindex_all_to_es() -> None:
         """
         )
 
-        result = await session.stream(authors_query, {"last_sync": last_sync})
+        result = await session.stream(authors_query, {"last_sync": last_sync_authors})
         batch = []
 
         async for row in result:
@@ -228,7 +254,7 @@ async def reindex_all_to_es() -> None:
         """
         )
 
-        result = await session.stream(series_query, {"last_sync": last_sync})
+        result = await session.stream(series_query, {"last_sync": last_sync_series})
         batch = []
 
         async for row in result:
@@ -273,6 +299,8 @@ async def reindex_all_to_es() -> None:
 
     now_ts = datetime.datetime.now(datetime.UTC).replace(tzinfo=None).isoformat()
     await app.cache.redis_client.set(ES_LAST_SYNC_KEY, now_ts)
+    await app.cache.redis_client.set(ES_LAST_SYNC_KEY_AUTHORS, now_ts)
+    await app.cache.redis_client.set(ES_LAST_SYNC_KEY_SERIES, now_ts)
 
     logger.info(
         f"[ES] Reindex complete. books={books_indexed}, authors={authors_indexed}, series={series_indexed}"
@@ -313,11 +341,12 @@ async def start_server() -> None:
     await app.es_client.init_es(
         app.config.settings.es_host, app.config.settings.es_port
     )
-    await app.es_client.create_indexes(
+    recreated_indexes = await app.es_client.create_indexes(
         app.config.settings.es_index_books,
         app.config.settings.es_index_authors,
         app.config.settings.es_index_series,
     )
+    await reindex_all_to_es(recreated_indexes)
 
     grpc_server = grpc.aio.server()
 
