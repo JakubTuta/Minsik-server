@@ -48,7 +48,7 @@ class TestSearchBooksAndAuthors:
                 "cover_url": "",
                 "authors": ["Test Author"],
                 "relevance_score": 0.9,
-                "view_count": 100,
+                "app_rating_count": 100,
             }
         ]
 
@@ -79,7 +79,7 @@ class TestSearchBooksAndAuthors:
                 "cover_url": "",
                 "authors": [],
                 "relevance_score": 0.8,
-                "view_count": 50,
+                "app_rating_count": 50,
             }
         ]
 
@@ -92,7 +92,7 @@ class TestSearchBooksAndAuthors:
                 "cover_url": "",
                 "authors": [],
                 "relevance_score": 0.4,
-                "view_count": 30,
+                "app_rating_count": 30,
             }
         ]
 
@@ -127,7 +127,7 @@ class TestSearchBooksAndAuthors:
                 "cover_url": "",
                 "authors": ["3 books"],
                 "relevance_score": 0.85,
-                "view_count": 75,
+                "app_rating_count": 75,
             }
         ]
 
@@ -140,7 +140,7 @@ class TestSearchBooksAndAuthors:
                 "cover_url": "",
                 "authors": [],
                 "relevance_score": 0.4,
-                "view_count": 20,
+                "app_rating_count": 20,
             }
         ]
 
@@ -175,7 +175,7 @@ class TestSearchBooksAndAuthors:
                 "cover_url": "",
                 "authors": [],
                 "relevance_score": 0.5,
-                "view_count": 10,
+                "app_rating_count": 10,
             },
             {
                 "type": "book",
@@ -185,7 +185,7 @@ class TestSearchBooksAndAuthors:
                 "cover_url": "",
                 "authors": [],
                 "relevance_score": 0.9,
-                "view_count": 50,
+                "app_rating_count": 50,
             },
             {
                 "type": "book",
@@ -195,7 +195,7 @@ class TestSearchBooksAndAuthors:
                 "cover_url": "",
                 "authors": [],
                 "relevance_score": 0.7,
-                "view_count": 30,
+                "app_rating_count": 30,
             },
         ]
 

@@ -74,9 +74,10 @@ async def reindex_all_to_es() -> None:
         books_query = sqlalchemy.text(
             """
             SELECT
-                b.book_id, b.title, b.description, b.language, b.slug,
-                b.primary_cover_url, b.view_count, b.last_viewed_at,
-                b.rating_count, b.avg_rating, b.created_at,
+                b.book_id, b.title, b.language, b.slug,
+                b.primary_cover_url,
+                b.rating_count AS app_rating_count, b.avg_rating AS app_avg_rating,
+                b.ol_rating_count, b.ol_avg_rating,
                 ARRAY_AGG(DISTINCT a.name) FILTER (WHERE a.name IS NOT NULL) as authors_names,
                 ARRAY_AGG(DISTINCT a.slug) FILTER (WHERE a.slug IS NOT NULL) as author_slugs,
                 s.name as series_name, s.slug as series_slug
@@ -94,13 +95,23 @@ async def reindex_all_to_es() -> None:
         batch: list = []
 
         async for row in result:
+            app_rating_count = row.app_rating_count or 0
+            ol_rating_count = row.ol_rating_count or 0
+            app_avg = float(row.app_avg_rating) if row.app_avg_rating else 0.0
+            ol_avg = float(row.ol_avg_rating) if row.ol_avg_rating else 0.0
+            total_ratings = app_rating_count + ol_rating_count
+            popularity_score = float(total_ratings)
+            combined_rating = (
+                (app_avg * app_rating_count + ol_avg * ol_rating_count) / total_ratings
+                if total_ratings > 0
+                else 0.0
+            )
             doc = {
                 "_index": settings.es_index_books,
                 "_id": str(row.book_id),
                 "_source": {
                     "book_id": row.book_id,
                     "title": row.title or "",
-                    "description": row.description or "",
                     "language": row.language or "",
                     "slug": row.slug or "",
                     "primary_cover_url": row.primary_cover_url or "",
@@ -108,15 +119,12 @@ async def reindex_all_to_es() -> None:
                     "author_slugs": list(row.author_slugs or []),
                     "series_name": row.series_name or "",
                     "series_slug": row.series_slug or "",
-                    "view_count": row.view_count or 0,
-                    "last_viewed_at": (
-                        row.last_viewed_at.isoformat() if row.last_viewed_at else None
-                    ),
-                    "rating_count": row.rating_count or 0,
-                    "avg_rating": float(row.avg_rating) if row.avg_rating else None,
-                    "created_at": (
-                        row.created_at.isoformat() if row.created_at else None
-                    ),
+                    "app_avg_rating": app_avg if app_rating_count > 0 else None,
+                    "app_rating_count": app_rating_count,
+                    "ol_avg_rating": ol_avg if ol_rating_count > 0 else None,
+                    "ol_rating_count": ol_rating_count,
+                    "popularity_score": popularity_score,
+                    "combined_rating": combined_rating,
                 },
             }
             batch.append(doc)
@@ -134,16 +142,22 @@ async def reindex_all_to_es() -> None:
             """
             SELECT
                 a.author_id, a.name, a.bio, a.slug, a.photo_url,
-                a.view_count, a.last_viewed_at, a.created_at,
-                COUNT(DISTINCT ba.book_id) as book_count,
-                COALESCE(AVG(b.avg_rating), 0) as avg_rating,
-                COALESCE(SUM(b.rating_count), 0) as rating_count
+                b.language,
+                COUNT(DISTINCT b.book_id) as book_count,
+                COALESCE(SUM(b.rating_count), 0) as app_rating_count,
+                CASE WHEN SUM(b.rating_count) > 0
+                     THEN SUM(b.avg_rating * b.rating_count) / SUM(b.rating_count)
+                     ELSE NULL END as app_avg_rating,
+                COALESCE(SUM(b.ol_rating_count), 0) as ol_rating_count,
+                CASE WHEN SUM(b.ol_rating_count) > 0
+                     THEN SUM(b.ol_avg_rating * b.ol_rating_count) / SUM(b.ol_rating_count)
+                     ELSE NULL END as ol_avg_rating
             FROM books.authors a
-            LEFT JOIN books.book_authors ba ON a.author_id = ba.author_id
-            LEFT JOIN books.books b ON ba.book_id = b.book_id
-            WHERE a.updated_at > :last_sync
-            GROUP BY a.author_id
-            ORDER BY a.author_id
+            JOIN books.book_authors ba ON a.author_id = ba.author_id
+            JOIN books.books b ON ba.book_id = b.book_id
+            WHERE a.updated_at > :last_sync AND b.language IS NOT NULL
+            GROUP BY a.author_id, a.name, a.bio, a.slug, a.photo_url, b.language
+            ORDER BY a.author_id, b.language
         """
         )
 
@@ -151,25 +165,34 @@ async def reindex_all_to_es() -> None:
         batch = []
 
         async for row in result:
+            app_rating_count = row.app_rating_count or 0
+            ol_rating_count = row.ol_rating_count or 0
+            app_avg = float(row.app_avg_rating) if row.app_avg_rating else 0.0
+            ol_avg = float(row.ol_avg_rating) if row.ol_avg_rating else 0.0
+            total_ratings = app_rating_count + ol_rating_count
+            popularity_score = float(total_ratings)
+            combined_rating = (
+                (app_avg * app_rating_count + ol_avg * ol_rating_count) / total_ratings
+                if total_ratings > 0
+                else 0.0
+            )
             doc = {
                 "_index": settings.es_index_authors,
-                "_id": str(row.author_id),
+                "_id": f"{row.author_id}_{row.language}",
                 "_source": {
                     "author_id": row.author_id,
+                    "language": row.language,
                     "name": row.name or "",
                     "bio": row.bio or "",
                     "slug": row.slug or "",
                     "photo_url": row.photo_url or "",
-                    "view_count": row.view_count or 0,
-                    "last_viewed_at": (
-                        row.last_viewed_at.isoformat() if row.last_viewed_at else None
-                    ),
-                    "created_at": (
-                        row.created_at.isoformat() if row.created_at else None
-                    ),
                     "book_count": row.book_count or 0,
-                    "avg_rating": float(row.avg_rating) if row.avg_rating else None,
-                    "rating_count": row.rating_count or 0,
+                    "app_avg_rating": app_avg if app_rating_count > 0 else None,
+                    "app_rating_count": app_rating_count,
+                    "ol_avg_rating": ol_avg if ol_rating_count > 0 else None,
+                    "ol_rating_count": ol_rating_count,
+                    "popularity_score": popularity_score,
+                    "combined_rating": combined_rating,
                 },
             }
             batch.append(doc)
@@ -186,16 +209,22 @@ async def reindex_all_to_es() -> None:
         series_query = sqlalchemy.text(
             """
             SELECT
-                s.series_id, s.name, s.description, s.slug,
-                s.view_count, s.last_viewed_at, s.created_at,
+                s.series_id, s.name, s.slug,
+                b.language,
                 COUNT(DISTINCT b.book_id) as book_count,
-                COALESCE(AVG(b.avg_rating), 0) as avg_rating,
-                COALESCE(SUM(b.rating_count), 0) as rating_count
+                COALESCE(SUM(b.rating_count), 0) as app_rating_count,
+                CASE WHEN SUM(b.rating_count) > 0
+                     THEN SUM(b.avg_rating * b.rating_count) / SUM(b.rating_count)
+                     ELSE NULL END as app_avg_rating,
+                COALESCE(SUM(b.ol_rating_count), 0) as ol_rating_count,
+                CASE WHEN SUM(b.ol_rating_count) > 0
+                     THEN SUM(b.ol_avg_rating * b.ol_rating_count) / SUM(b.ol_rating_count)
+                     ELSE NULL END as ol_avg_rating
             FROM books.series s
-            LEFT JOIN books.books b ON s.series_id = b.series_id
-            WHERE s.updated_at > :last_sync
-            GROUP BY s.series_id
-            ORDER BY s.series_id
+            JOIN books.books b ON s.series_id = b.series_id
+            WHERE s.updated_at > :last_sync AND b.language IS NOT NULL
+            GROUP BY s.series_id, s.name, s.slug, b.language
+            ORDER BY s.series_id, b.language
         """
         )
 
@@ -203,24 +232,32 @@ async def reindex_all_to_es() -> None:
         batch = []
 
         async for row in result:
+            app_rating_count = row.app_rating_count or 0
+            ol_rating_count = row.ol_rating_count or 0
+            app_avg = float(row.app_avg_rating) if row.app_avg_rating else 0.0
+            ol_avg = float(row.ol_avg_rating) if row.ol_avg_rating else 0.0
+            total_ratings = app_rating_count + ol_rating_count
+            popularity_score = float(total_ratings)
+            combined_rating = (
+                (app_avg * app_rating_count + ol_avg * ol_rating_count) / total_ratings
+                if total_ratings > 0
+                else 0.0
+            )
             doc = {
                 "_index": settings.es_index_series,
-                "_id": str(row.series_id),
+                "_id": f"{row.series_id}_{row.language}",
                 "_source": {
                     "series_id": row.series_id,
+                    "language": row.language,
                     "name": row.name or "",
-                    "description": row.description or "",
                     "slug": row.slug or "",
-                    "view_count": row.view_count or 0,
-                    "last_viewed_at": (
-                        row.last_viewed_at.isoformat() if row.last_viewed_at else None
-                    ),
-                    "created_at": (
-                        row.created_at.isoformat() if row.created_at else None
-                    ),
                     "book_count": row.book_count or 0,
-                    "avg_rating": float(row.avg_rating) if row.avg_rating else None,
-                    "rating_count": row.rating_count or 0,
+                    "app_avg_rating": app_avg if app_rating_count > 0 else None,
+                    "app_rating_count": app_rating_count,
+                    "ol_avg_rating": ol_avg if ol_rating_count > 0 else None,
+                    "ol_rating_count": ol_rating_count,
+                    "popularity_score": popularity_score,
+                    "combined_rating": combined_rating,
                 },
             }
             batch.append(doc)

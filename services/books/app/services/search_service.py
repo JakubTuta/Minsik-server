@@ -29,13 +29,15 @@ async def search_books_and_authors(
     total_count = 0
 
     if type_filter in ["all", "books"]:
-        book_results, book_total = await _search_books_es(query, limit * 2, offset, language)
+        book_results, book_total = await _search_books_es(
+            query, limit * 2, offset, language
+        )
         results.extend(book_results)
         total_count += book_total
 
     if type_filter in ["all", "authors"]:
         author_results, author_total = await _search_authors_es(
-            query, limit * 2, offset
+            query, limit * 2, offset, language
         )
         results.extend(author_results)
         total_count += author_total
@@ -51,7 +53,9 @@ async def search_books_and_authors(
                 results.extend(author_books)
 
     if type_filter in ["all", "series"]:
-        series_results, series_total = await _search_series_es(query, limit * 2, offset)
+        series_results, series_total = await _search_series_es(
+            query, limit * 2, offset, language
+        )
         results.extend(series_results)
         total_count += series_total
 
@@ -101,16 +105,21 @@ def _build_function_score_query(
             "functions": [
                 {
                     "field_value_factor": {
-                        "field": "view_count",
+                        "field": "popularity_score",
                         "modifier": "log1p",
                         "factor": 1.0,
                         "missing": 0,
                     },
-                    "weight": 0.3,
+                    "weight": 0.4,
                 },
                 {
-                    "gauss": {"last_viewed_at": {"scale": "7d", "decay": 0.5}},
-                    "weight": 0.3,
+                    "field_value_factor": {
+                        "field": "combined_rating",
+                        "modifier": "none",
+                        "factor": 1.0,
+                        "missing": 0,
+                    },
+                    "weight": 0.2,
                 },
             ],
             "score_mode": "sum",
@@ -127,9 +136,11 @@ async def _search_books_es(
 
     es_query = {
         "bool": {
-            "must": [_build_function_score_query(
-                query, ["title^3", "authors_names^2", "description", "series_name"]
-            )],
+            "must": [
+                _build_function_score_query(
+                    query, ["title^3", "authors_names^2", "series_name"]
+                )
+            ],
             "filter": [{"term": {"language": language}}],
         }
     }
@@ -148,9 +159,10 @@ async def _search_books_es(
                 "authors_names",
                 "author_slugs",
                 "series_slug",
-                "view_count",
-                "avg_rating",
-                "rating_count",
+                "app_avg_rating",
+                "app_rating_count",
+                "ol_avg_rating",
+                "ol_rating_count",
             ],
         },
     )
@@ -175,11 +187,12 @@ async def _search_books_es(
                 "cover_url": src.get("primary_cover_url") or "",
                 "authors": authors_names,
                 "relevance_score": float(hit["_score"] or 0),
-                "view_count": src.get("view_count") or 0,
                 "author_slugs": author_slugs,
                 "series_slug": src.get("series_slug") or "",
-                "avg_rating": src.get("avg_rating"),
-                "rating_count": src.get("rating_count") or 0,
+                "app_avg_rating": src.get("app_avg_rating"),
+                "app_rating_count": src.get("app_rating_count") or 0,
+                "ol_avg_rating": src.get("ol_avg_rating"),
+                "ol_rating_count": src.get("ol_rating_count") or 0,
                 "book_count": 0,
             }
         )
@@ -188,12 +201,17 @@ async def _search_books_es(
 
 
 async def _search_authors_es(
-    query: str, limit: int, offset: int
+    query: str, limit: int, offset: int, language: str
 ) -> typing.Tuple[typing.List[typing.Dict[str, typing.Any]], int]:
     es = app.es_client.get_es()
     index = app.config.settings.es_index_authors
 
-    es_query = _build_function_score_query(query, ["name^3", "bio"])
+    es_query = {
+        "bool": {
+            "must": [_build_function_score_query(query, ["name^3", "bio"])],
+            "filter": [{"term": {"language": language}}],
+        }
+    }
 
     response = await es.search(
         index=index,
@@ -206,10 +224,11 @@ async def _search_authors_es(
                 "name",
                 "slug",
                 "photo_url",
-                "view_count",
                 "book_count",
-                "avg_rating",
-                "rating_count",
+                "app_avg_rating",
+                "app_rating_count",
+                "ol_avg_rating",
+                "ol_rating_count",
             ],
         },
     )
@@ -227,11 +246,12 @@ async def _search_authors_es(
                 "cover_url": src.get("photo_url") or "",
                 "authors": [],
                 "relevance_score": float(hit["_score"] or 0),
-                "view_count": src.get("view_count") or 0,
                 "author_slugs": [],
                 "series_slug": "",
-                "avg_rating": src.get("avg_rating"),
-                "rating_count": src.get("rating_count") or 0,
+                "app_avg_rating": src.get("app_avg_rating"),
+                "app_rating_count": src.get("app_rating_count") or 0,
+                "ol_avg_rating": src.get("ol_avg_rating"),
+                "ol_rating_count": src.get("ol_rating_count") or 0,
                 "book_count": src.get("book_count") or 0,
             }
         )
@@ -240,12 +260,17 @@ async def _search_authors_es(
 
 
 async def _search_series_es(
-    query: str, limit: int, offset: int
+    query: str, limit: int, offset: int, language: str
 ) -> typing.Tuple[typing.List[typing.Dict[str, typing.Any]], int]:
     es = app.es_client.get_es()
     index = app.config.settings.es_index_series
 
-    es_query = _build_function_score_query(query, ["name^3", "description"])
+    es_query = {
+        "bool": {
+            "must": [_build_function_score_query(query, ["name^3"])],
+            "filter": [{"term": {"language": language}}],
+        }
+    }
 
     response = await es.search(
         index=index,
@@ -257,10 +282,11 @@ async def _search_series_es(
                 "series_id",
                 "name",
                 "slug",
-                "view_count",
                 "book_count",
-                "avg_rating",
-                "rating_count",
+                "app_avg_rating",
+                "app_rating_count",
+                "ol_avg_rating",
+                "ol_rating_count",
             ],
         },
     )
@@ -278,11 +304,12 @@ async def _search_series_es(
                 "cover_url": "",
                 "authors": [],
                 "relevance_score": float(hit["_score"] or 0),
-                "view_count": src.get("view_count") or 0,
                 "author_slugs": [],
                 "series_slug": "",
-                "avg_rating": src.get("avg_rating"),
-                "rating_count": src.get("rating_count") or 0,
+                "app_avg_rating": src.get("app_avg_rating"),
+                "app_rating_count": src.get("app_rating_count") or 0,
+                "ol_avg_rating": src.get("ol_avg_rating"),
+                "ol_rating_count": src.get("ol_rating_count") or 0,
                 "book_count": src.get("book_count") or 0,
             }
         )
@@ -291,7 +318,10 @@ async def _search_series_es(
 
 
 async def _get_author_top_books(
-    session: sqlalchemy.ext.asyncio.AsyncSession, author_id: int, limit: int, language: str
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    author_id: int,
+    limit: int,
+    language: str,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     query = text(
         """
@@ -300,9 +330,10 @@ async def _get_author_top_books(
             b.title,
             b.slug,
             b.primary_cover_url,
-            COALESCE(b.view_count, 0) as view_count,
-            COALESCE(b.rating_count, 0) as rating_count,
-            b.avg_rating,
+            COALESCE(b.rating_count, 0) as app_rating_count,
+            b.avg_rating as app_avg_rating,
+            COALESCE(b.ol_rating_count, 0) as ol_rating_count,
+            b.ol_avg_rating,
             ARRAY_AGG(a.slug) FILTER (WHERE a.slug IS NOT NULL) as author_slugs,
             s.slug as series_slug
         FROM books.books b
@@ -310,16 +341,18 @@ async def _get_author_top_books(
         LEFT JOIN books.authors a ON ba.author_id = a.author_id
         LEFT JOIN books.series s ON b.series_id = s.series_id
         WHERE ba.author_id = :author_id AND b.language = :language
-        GROUP BY b.book_id, b.title, b.slug, b.primary_cover_url, b.view_count, b.rating_count, b.avg_rating, b.created_at, s.slug
+        GROUP BY b.book_id, b.title, b.slug, b.primary_cover_url, b.rating_count, b.avg_rating, b.ol_rating_count, b.ol_avg_rating, b.created_at, s.slug
         ORDER BY
-            COALESCE(b.view_count, 0) DESC,
-            COALESCE(b.rating_count, 0) DESC,
+            COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0) DESC,
+            COALESCE(b.avg_rating, 0) DESC,
             b.created_at DESC
         LIMIT :limit
     """
     )
 
-    result = await session.execute(query, {"author_id": author_id, "limit": limit, "language": language})
+    result = await session.execute(
+        query, {"author_id": author_id, "limit": limit, "language": language}
+    )
 
     books = []
     for row in result:
@@ -332,11 +365,16 @@ async def _get_author_top_books(
                 "cover_url": row.primary_cover_url or "",
                 "authors": [],
                 "relevance_score": 0.4,
-                "view_count": row.view_count,
                 "author_slugs": row.author_slugs or [],
                 "series_slug": row.series_slug or "",
-                "avg_rating": float(row.avg_rating) if row.avg_rating else None,
-                "rating_count": row.rating_count,
+                "app_avg_rating": (
+                    float(row.app_avg_rating) if row.app_avg_rating else None
+                ),
+                "app_rating_count": row.app_rating_count,
+                "ol_avg_rating": (
+                    float(row.ol_avg_rating) if row.ol_avg_rating else None
+                ),
+                "ol_rating_count": row.ol_rating_count,
                 "book_count": 0,
             }
         )
@@ -345,7 +383,10 @@ async def _get_author_top_books(
 
 
 async def _get_series_top_books(
-    session: sqlalchemy.ext.asyncio.AsyncSession, series_id: int, limit: int, language: str
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    series_id: int,
+    limit: int,
+    language: str,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     query = text(
         """
@@ -355,9 +396,10 @@ async def _get_series_top_books(
             b.slug,
             b.primary_cover_url,
             b.series_position,
-            COALESCE(b.view_count, 0) as view_count,
-            COALESCE(b.rating_count, 0) as rating_count,
-            b.avg_rating,
+            COALESCE(b.rating_count, 0) as app_rating_count,
+            b.avg_rating as app_avg_rating,
+            COALESCE(b.ol_rating_count, 0) as ol_rating_count,
+            b.ol_avg_rating,
             ARRAY_AGG(a.slug) FILTER (WHERE a.slug IS NOT NULL) as author_slugs,
             s.slug as series_slug
         FROM books.books b
@@ -365,7 +407,7 @@ async def _get_series_top_books(
         LEFT JOIN books.authors a ON ba.author_id = a.author_id
         LEFT JOIN books.series s ON b.series_id = s.series_id
         WHERE b.series_id = :series_id AND b.language = :language
-        GROUP BY b.book_id, b.title, b.slug, b.primary_cover_url, b.series_position, b.view_count, b.rating_count, b.avg_rating, b.created_at, s.slug
+        GROUP BY b.book_id, b.title, b.slug, b.primary_cover_url, b.series_position, b.rating_count, b.avg_rating, b.ol_rating_count, b.ol_avg_rating, b.created_at, s.slug
         ORDER BY
             b.series_position ASC NULLS LAST,
             b.created_at ASC
@@ -373,7 +415,9 @@ async def _get_series_top_books(
     """
     )
 
-    result = await session.execute(query, {"series_id": series_id, "limit": limit, "language": language})
+    result = await session.execute(
+        query, {"series_id": series_id, "limit": limit, "language": language}
+    )
 
     books = []
     for row in result:
@@ -386,11 +430,16 @@ async def _get_series_top_books(
                 "cover_url": row.primary_cover_url or "",
                 "authors": [],
                 "relevance_score": 0.4,
-                "view_count": row.view_count,
                 "author_slugs": row.author_slugs or [],
                 "series_slug": row.series_slug or "",
-                "avg_rating": float(row.avg_rating) if row.avg_rating else None,
-                "rating_count": row.rating_count,
+                "app_avg_rating": (
+                    float(row.app_avg_rating) if row.app_avg_rating else None
+                ),
+                "app_rating_count": row.app_rating_count,
+                "ol_avg_rating": (
+                    float(row.ol_avg_rating) if row.ol_avg_rating else None
+                ),
+                "ol_rating_count": row.ol_rating_count,
                 "book_count": 0,
             }
         )

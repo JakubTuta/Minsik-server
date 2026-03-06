@@ -21,7 +21,7 @@ class SearchRequest(_message.Message):
     def __init__(self, query: _Optional[str] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., type_filter: _Optional[str] = ..., language: _Optional[str] = ...) -> None: ...
 
 class SearchResult(_message.Message):
-    __slots__ = ("type", "id", "title", "slug", "cover_url", "authors", "relevance_score", "view_count", "author_slugs", "series_slug", "avg_rating", "rating_count", "book_count")
+    __slots__ = ("type", "id", "title", "slug", "cover_url", "authors", "relevance_score", "author_slugs", "series_slug", "book_count", "app_avg_rating", "app_rating_count", "ol_avg_rating", "ol_rating_count")
     TYPE_FIELD_NUMBER: _ClassVar[int]
     ID_FIELD_NUMBER: _ClassVar[int]
     TITLE_FIELD_NUMBER: _ClassVar[int]
@@ -29,12 +29,13 @@ class SearchResult(_message.Message):
     COVER_URL_FIELD_NUMBER: _ClassVar[int]
     AUTHORS_FIELD_NUMBER: _ClassVar[int]
     RELEVANCE_SCORE_FIELD_NUMBER: _ClassVar[int]
-    VIEW_COUNT_FIELD_NUMBER: _ClassVar[int]
     AUTHOR_SLUGS_FIELD_NUMBER: _ClassVar[int]
     SERIES_SLUG_FIELD_NUMBER: _ClassVar[int]
-    AVG_RATING_FIELD_NUMBER: _ClassVar[int]
-    RATING_COUNT_FIELD_NUMBER: _ClassVar[int]
     BOOK_COUNT_FIELD_NUMBER: _ClassVar[int]
+    APP_AVG_RATING_FIELD_NUMBER: _ClassVar[int]
+    APP_RATING_COUNT_FIELD_NUMBER: _ClassVar[int]
+    OL_AVG_RATING_FIELD_NUMBER: _ClassVar[int]
+    OL_RATING_COUNT_FIELD_NUMBER: _ClassVar[int]
     type: str
     id: int
     title: str
@@ -42,13 +43,14 @@ class SearchResult(_message.Message):
     cover_url: str
     authors: _containers.RepeatedScalarFieldContainer[str]
     relevance_score: float
-    view_count: int
     author_slugs: _containers.RepeatedScalarFieldContainer[str]
     series_slug: str
-    avg_rating: str
-    rating_count: int
     book_count: int
-    def __init__(self, type: _Optional[str] = ..., id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., cover_url: _Optional[str] = ..., authors: _Optional[_Iterable[str]] = ..., relevance_score: _Optional[float] = ..., view_count: _Optional[int] = ..., author_slugs: _Optional[_Iterable[str]] = ..., series_slug: _Optional[str] = ..., avg_rating: _Optional[str] = ..., rating_count: _Optional[int] = ..., book_count: _Optional[int] = ...) -> None: ...
+    app_avg_rating: str
+    app_rating_count: int
+    ol_avg_rating: str
+    ol_rating_count: int
+    def __init__(self, type: _Optional[str] = ..., id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., cover_url: _Optional[str] = ..., authors: _Optional[_Iterable[str]] = ..., relevance_score: _Optional[float] = ..., author_slugs: _Optional[_Iterable[str]] = ..., series_slug: _Optional[str] = ..., book_count: _Optional[int] = ..., app_avg_rating: _Optional[str] = ..., app_rating_count: _Optional[int] = ..., ol_avg_rating: _Optional[str] = ..., ol_rating_count: _Optional[int] = ...) -> None: ...
 
 class SearchResponse(_message.Message):
     __slots__ = ("results", "total_count")
@@ -526,16 +528,14 @@ class OpenCaseRequest(_message.Message):
     def __init__(self, language: _Optional[str] = ...) -> None: ...
 
 class OpenCaseResponse(_message.Message):
-    __slots__ = ("display_list", "winning_index", "winner", "winner_detail")
+    __slots__ = ("display_list", "winning_index", "winner")
     DISPLAY_LIST_FIELD_NUMBER: _ClassVar[int]
     WINNING_INDEX_FIELD_NUMBER: _ClassVar[int]
     WINNER_FIELD_NUMBER: _ClassVar[int]
-    WINNER_DETAIL_FIELD_NUMBER: _ClassVar[int]
     display_list: _containers.RepeatedCompositeFieldContainer[BookSummary]
     winning_index: int
     winner: BookSummary
-    winner_detail: BookDetail
-    def __init__(self, display_list: _Optional[_Iterable[_Union[BookSummary, _Mapping]]] = ..., winning_index: _Optional[int] = ..., winner: _Optional[_Union[BookSummary, _Mapping]] = ..., winner_detail: _Optional[_Union[BookDetail, _Mapping]] = ...) -> None: ...
+    def __init__(self, display_list: _Optional[_Iterable[_Union[BookSummary, _Mapping]]] = ..., winning_index: _Optional[int] = ..., winner: _Optional[_Union[BookSummary, _Mapping]] = ...) -> None: ...
 
 class DiscoverBookRequest(_message.Message):
     __slots__ = ("language", "genre_slugs", "book_length", "quality", "moods", "era", "series_filter", "popularity", "exclude_ids")

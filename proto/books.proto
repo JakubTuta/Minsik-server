@@ -32,12 +32,17 @@ message SearchResult {
   string cover_url = 5;
   repeated string authors = 6;
   float relevance_score = 7;
-  int32 view_count = 8;
+  reserved 8;
+  reserved "view_count";
   repeated string author_slugs = 9;
   string series_slug = 10;
-  string avg_rating = 11;
-  int32 rating_count = 12;
+  reserved 11, 12;
+  reserved "avg_rating", "rating_count";
   int32 book_count = 13;
+  string app_avg_rating = 14;
+  int32 app_rating_count = 15;
+  string ol_avg_rating = 16;
+  int32 ol_rating_count = 17;
 }
 
 message SearchResponse {

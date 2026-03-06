@@ -75,11 +75,12 @@ async def search_books_and_authors(
                     "cover_url": result.cover_url,
                     "authors": list(result.authors),
                     "relevance_score": result.relevance_score,
-                    "view_count": result.view_count,
                     "author_slugs": list(result.author_slugs),
                     "series_slug": result.series_slug,
-                    "avg_rating": result.avg_rating or None,
-                    "rating_count": result.rating_count,
+                    "app_avg_rating": result.app_avg_rating or None,
+                    "app_rating_count": result.app_rating_count,
+                    "ol_avg_rating": result.ol_avg_rating or None,
+                    "ol_rating_count": result.ol_rating_count,
                     "book_count": result.book_count,
                 }
             )
@@ -742,10 +743,12 @@ async def open_case(
 ):
     try:
         response = await app.grpc_clients.books_client.open_case(language=language)
+        print(response)
 
         display_list = [
             _book_summary_proto_to_dict(item) for item in response.display_list
         ]
+        print(display_list)
 
         return {
             "success": True,

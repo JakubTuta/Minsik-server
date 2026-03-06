@@ -24,21 +24,21 @@ BOOKS_INDEX_MAPPING: typing.Dict[str, typing.Any] = {
     },
     "mappings": {
         "properties": {
-            "book_id": {"type": "long"},
+            "book_id": {"type": "long", "index": False},
             "title": {"type": "text", "analyzer": "book_analyzer"},
-            "description": {"type": "text", "analyzer": "book_analyzer"},
             "language": {"type": "keyword"},
-            "slug": {"type": "keyword"},
+            "slug": {"type": "keyword", "index": False},
             "primary_cover_url": {"type": "keyword", "index": False},
             "authors_names": {"type": "text", "analyzer": "book_analyzer"},
-            "author_slugs": {"type": "keyword"},
+            "author_slugs": {"type": "keyword", "index": False},
             "series_name": {"type": "text", "analyzer": "book_analyzer"},
-            "series_slug": {"type": "keyword"},
-            "view_count": {"type": "integer"},
-            "last_viewed_at": {"type": "date"},
-            "rating_count": {"type": "integer"},
-            "avg_rating": {"type": "float"},
-            "created_at": {"type": "date"},
+            "series_slug": {"type": "keyword", "index": False},
+            "app_avg_rating": {"type": "float", "index": False},
+            "app_rating_count": {"type": "integer", "index": False},
+            "ol_avg_rating": {"type": "float", "index": False},
+            "ol_rating_count": {"type": "integer", "index": False},
+            "popularity_score": {"type": "float", "index": False},
+            "combined_rating": {"type": "float", "index": False},
         }
     },
 }
@@ -46,17 +46,19 @@ BOOKS_INDEX_MAPPING: typing.Dict[str, typing.Any] = {
 AUTHORS_INDEX_MAPPING: typing.Dict[str, typing.Any] = {
     "mappings": {
         "properties": {
-            "author_id": {"type": "long"},
+            "author_id": {"type": "long", "index": False},
+            "language": {"type": "keyword"},
             "name": {"type": "text", "analyzer": "standard"},
             "bio": {"type": "text", "analyzer": "standard"},
-            "slug": {"type": "keyword"},
+            "slug": {"type": "keyword", "index": False},
             "photo_url": {"type": "keyword", "index": False},
-            "view_count": {"type": "integer"},
-            "last_viewed_at": {"type": "date"},
-            "created_at": {"type": "date"},
-            "book_count": {"type": "integer"},
-            "avg_rating": {"type": "float"},
-            "rating_count": {"type": "integer"},
+            "book_count": {"type": "integer", "index": False},
+            "app_avg_rating": {"type": "float", "index": False},
+            "app_rating_count": {"type": "integer", "index": False},
+            "ol_avg_rating": {"type": "float", "index": False},
+            "ol_rating_count": {"type": "integer", "index": False},
+            "popularity_score": {"type": "float", "index": False},
+            "combined_rating": {"type": "float", "index": False},
         }
     }
 }
@@ -64,16 +66,17 @@ AUTHORS_INDEX_MAPPING: typing.Dict[str, typing.Any] = {
 SERIES_INDEX_MAPPING: typing.Dict[str, typing.Any] = {
     "mappings": {
         "properties": {
-            "series_id": {"type": "long"},
+            "series_id": {"type": "long", "index": False},
+            "language": {"type": "keyword"},
             "name": {"type": "text", "analyzer": "standard"},
-            "description": {"type": "text", "analyzer": "standard"},
-            "slug": {"type": "keyword"},
-            "view_count": {"type": "integer"},
-            "last_viewed_at": {"type": "date"},
-            "created_at": {"type": "date"},
-            "book_count": {"type": "integer"},
-            "avg_rating": {"type": "float"},
-            "rating_count": {"type": "integer"},
+            "slug": {"type": "keyword", "index": False},
+            "book_count": {"type": "integer", "index": False},
+            "app_avg_rating": {"type": "float", "index": False},
+            "app_rating_count": {"type": "integer", "index": False},
+            "ol_avg_rating": {"type": "float", "index": False},
+            "ol_rating_count": {"type": "integer", "index": False},
+            "popularity_score": {"type": "float", "index": False},
+            "combined_rating": {"type": "float", "index": False},
         }
     }
 }

@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import typing
 
@@ -336,4 +337,5 @@ async def run_cleanup_job() -> None:
         logger.error(f"[cleanup] Cleanup cycle failed: {str(e)}")
     finally:
         if redis_client is not None:
+            redis_client.close()
             redis_client.close()

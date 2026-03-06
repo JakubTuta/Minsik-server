@@ -38,11 +38,12 @@ class SearchResultSchema(pydantic.BaseModel):
     cover_url: typing.Optional[str] = None
     authors: typing.List[str]
     relevance_score: float
-    view_count: int
     author_slugs: typing.List[str]
     series_slug: typing.Optional[str] = None
-    avg_rating: typing.Optional[str] = None
-    rating_count: int = 0
+    app_avg_rating: typing.Optional[str] = None
+    app_rating_count: int = 0
+    ol_avg_rating: typing.Optional[str] = None
+    ol_rating_count: int = 0
     book_count: int = 0
 
 
