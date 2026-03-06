@@ -241,7 +241,8 @@ CREATE TABLE auth.users (
     email VARCHAR(255) NOT NULL UNIQUE,
     username VARCHAR(100) NOT NULL UNIQUE,
     display_name VARCHAR(200),
-    password_hash VARCHAR(255) NOT NULL,      -- bcrypt with cost 12
+    password_hash VARCHAR(255),                -- bcrypt with cost 12 (NULL for Google-only accounts)
+    google_id VARCHAR(255) UNIQUE,             -- Google OAuth subject ID
 
     role VARCHAR(10) NOT NULL DEFAULT 'user', -- 'user' or 'admin'
     is_active BOOLEAN NOT NULL DEFAULT TRUE,
@@ -392,24 +393,34 @@ COMMENT ON TABLE user_data.comments IS 'Public book reviews. One comment per use
 
 -- NOTE: user_data.notes table has been REMOVED from scope (dropped in migration 003)
 
--- ============================================================================
--- PLANNED TABLES (not yet implemented as SQLAlchemy models)
--- ============================================================================
+-- ----------------------------------------------------------------------------
+-- user_data.user_stats - Denormalized per-user counters
+-- Source: services/user_data/app/models/user_stats.py
+-- ----------------------------------------------------------------------------
+CREATE TABLE user_data.user_stats (
+    user_id BIGINT PRIMARY KEY,
 
--- user_data.reading_profiles - Reading DNA (planned, not yet implemented)
+    want_to_read_count INT NOT NULL DEFAULT 0,
+    reading_count INT NOT NULL DEFAULT 0,
+    read_count INT NOT NULL DEFAULT 0,
+    abandoned_count INT NOT NULL DEFAULT 0,
+    favourites_count INT NOT NULL DEFAULT 0,
+    ratings_count INT NOT NULL DEFAULT 0,
+    comments_count INT NOT NULL DEFAULT 0,
+
+    created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+    updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+COMMENT ON TABLE user_data.user_stats IS 'Denormalized per-user activity counters. Updated on every bookshelf/rating/comment change. One row per user, created on first user action.';
 
 -- ============================================================================
 -- RECOMMENDATIONS SCHEMA - Non-personalized recommendation lists
 -- ============================================================================
--- Phase 1: Read-only service — no tables in this schema.
+-- Read-only service — no tables in this schema.
 -- All data is read from books.* and user_data.* schemas, aggregated by a
 -- 24-hour background job, and stored in Redis with 24h TTL.
 -- Redis key format: rec:{category_key}  (e.g. rec:most_read)
---
--- Phase 2+ (planned):
--- recommendations.book_similarities - Pre-computed content-based similarities
--- recommendations.user_recommendations - Personalized per-user recommendations
--- recommendations.book_influences - Book lineage graph
 
 -- ============================================================================
 -- SEARCH
@@ -440,15 +451,15 @@ CREATE TRIGGER trig_ratings_updated_at BEFORE UPDATE ON user_data.ratings
 CREATE TRIGGER trig_comments_updated_at BEFORE UPDATE ON user_data.comments
     FOR EACH ROW EXECUTE FUNCTION user_data.update_updated_at();
 
+CREATE TRIGGER trig_user_stats_updated_at BEFORE UPDATE ON user_data.user_stats
+    FOR EACH ROW EXECUTE FUNCTION user_data.update_updated_at();
+
 -- ============================================================================
 -- PERFORMANCE NOTES
 -- ============================================================================
 
 -- Partitioning:
 -- - user_data.bookshelves: HASH partition by user_id (4 partitions, active)
---
--- Future partitioning (not yet implemented):
--- - user_data.ratings: RANGE partition by created_at (when ratings accumulate)
 
 -- Index Maintenance:
 -- - REINDEX monthly for heavily updated indexes

@@ -69,6 +69,7 @@ async def shutdown(signal_received=None):
 
 
 async def main():
+    global scheduler
     try:
         should_resume = await clear_stale_import_flag()
 

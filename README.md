@@ -18,28 +18,29 @@ Minsik lets you track what you're reading, rate books across nine dimensions, wr
 
 ## 🛠 Tech Stack
 
-|                         |                         |
-| ----------------------- | ----------------------- |
-| Gateway                 | FastAPI + uvicorn       |
-| Internal communication  | gRPC + Protocol Buffers |
-| Database                | PostgreSQL 15           |
-| Search                  | Elasticsearch 8         |
-| Cache / Background jobs | Redis 7 + RQ            |
-| Auth                    | JWT (HS256)             |
-| Migrations              | Alembic                 |
+|                         |                            |
+| ----------------------- | -------------------------- |
+| Gateway                 | FastAPI + uvicorn          |
+| Internal communication  | gRPC + Protocol Buffers    |
+| Database                | PostgreSQL 15              |
+| Search                  | Elasticsearch 8            |
+| Cache / Background jobs | Redis 7 + RQ + APScheduler |
+| Auth                    | JWT (HS256)                |
+| Migrations              | Alembic                    |
 
 ## 🏗 Architecture
 
 The gateway is the only publicly exposed service. All internal services communicate exclusively over gRPC. Proto definitions live in `proto/` and are compiled into each service container at startup.
 
-| Service             | Port         | Role                                                   |
-| ------------------- | ------------ | ------------------------------------------------------ |
-| `gateway-service`   | 8040 (HTTP)  | Public REST API, routes requests to internal services  |
-| `auth-service`      | 50051 (gRPC) | Registration, login, JWT issuance and validation       |
-| `books-service`     | 50055 (gRPC) | Book, author, and series catalog; Elasticsearch search |
-| `user-data-service` | 50053 (gRPC) | Bookshelves, ratings, favourites, comments             |
-| `ingestion-service` | 50054 (gRPC) | Data import from Open Library and Google Books         |
-| `rq-worker`         | —            | Background job worker for the ingestion queue          |
+| Service                  | Port         | Role                                                   |
+| ------------------------ | ------------ | ------------------------------------------------------ |
+| `gateway-service`        | 8040 (HTTP)  | Public REST API, routes requests to internal services  |
+| `auth-service`           | 50051 (gRPC) | Registration, login, JWT issuance and validation       |
+| `books-service`          | 50055 (gRPC) | Book, author, and series catalog; Elasticsearch search |
+| `user-data-service`      | 50053 (gRPC) | Bookshelves, ratings, favourites, comments             |
+| `ingestion-service`      | 50054 (gRPC) | Data import from Open Library and Google Books         |
+| `recommendation-service` | 50056 (gRPC) | Generic and personalized book/author recommendations   |
+| `rq-worker`              | —            | Background job worker for the ingestion queue          |
 
 Infrastructure: PostgreSQL 15, Redis 7, Elasticsearch 8.
 

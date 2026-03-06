@@ -14,7 +14,6 @@ rq==2.6.1
 httpx==0.28.1
 python-dotenv==1.2.1
 python-dateutil==2.9.0
-croniter==6.0.0
 apscheduler==4.0.0a6
 text-unidecode==1.3
 

@@ -3,7 +3,6 @@ import typing
 
 import app.config
 import app.models
-import app.workers.scheduler
 import redis
 import sqlalchemy
 import sqlalchemy.ext.asyncio
