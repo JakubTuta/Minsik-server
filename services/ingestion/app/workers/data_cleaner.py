@@ -116,14 +116,14 @@ async def cleanup_orphan_authors(
 ) -> typing.Dict[str, int]:
     result = await session.execute(
         sqlalchemy.text(
-            f"""
+            """
             SELECT COUNT(*) FROM books.authors a
             LEFT JOIN (
                 SELECT author_id, COUNT(*) AS book_count
                 FROM books.book_authors
                 GROUP BY author_id
             ) ba ON ba.author_id = a.author_id
-            WHERE COALESCE(ba.book_count, 0) < :min_books
+            WHERE COALESCE(ba.book_count, 0) <= :min_books
             AND a.view_count = 0
             AND a.created_at < NOW() - INTERVAL '1 day'
         """
@@ -142,31 +142,130 @@ async def cleanup_orphan_authors(
         if stop_check():
             logger.info("[cleanup] Stopping author cleanup: dump import started")
             break
-        result = await session.execute(
+
+        author_id_result = await session.execute(
             sqlalchemy.text(
-                f"""
-                DELETE FROM books.authors
-                WHERE author_id IN (
-                    SELECT a.author_id FROM books.authors a
-                    LEFT JOIN (
-                        SELECT author_id, COUNT(*) AS book_count
-                        FROM books.book_authors
-                        GROUP BY author_id
-                    ) ba ON ba.author_id = a.author_id
-                    WHERE COALESCE(ba.book_count, 0) < :min_books
-                    AND a.view_count = 0
-                    AND a.created_at < NOW() - INTERVAL '1 day'
-                    LIMIT :batch_size
-                )
-            """
+                """
+                SELECT a.author_id FROM books.authors a
+                LEFT JOIN (
+                    SELECT author_id, COUNT(*) AS book_count
+                    FROM books.book_authors
+                    GROUP BY author_id
+                ) ba ON ba.author_id = a.author_id
+                WHERE COALESCE(ba.book_count, 0) <= :min_books
+                AND a.view_count = 0
+                AND a.created_at < NOW() - INTERVAL '1 day'
+                LIMIT :batch_size
+                """
             ),
             {"min_books": min_books, "batch_size": batch_size},
         )
+        author_ids = [row[0] for row in author_id_result.fetchall()]
+
+        if not author_ids:
+            break
+
+        book_id_result = await session.execute(
+            sqlalchemy.text(
+                "SELECT DISTINCT book_id FROM books.book_authors WHERE author_id = ANY(:author_ids)"
+            ),
+            {"author_ids": author_ids},
+        )
+        book_ids = [row[0] for row in book_id_result.fetchall()]
+
+        if book_ids:
+            affected_users_result = await session.execute(
+                sqlalchemy.text(
+                    """
+                    SELECT DISTINCT user_id FROM user_data.bookshelves WHERE book_id = ANY(:book_ids)
+                    UNION
+                    SELECT DISTINCT user_id FROM user_data.ratings WHERE book_id = ANY(:book_ids)
+                    UNION
+                    SELECT DISTINCT user_id FROM user_data.comments WHERE book_id = ANY(:book_ids)
+                    """
+                ),
+                {"book_ids": book_ids},
+            )
+            affected_user_ids = [row[0] for row in affected_users_result.fetchall()]
+
+            await session.execute(
+                sqlalchemy.text(
+                    "DELETE FROM user_data.comments WHERE book_id = ANY(:book_ids)"
+                ),
+                {"book_ids": book_ids},
+            )
+            await session.execute(
+                sqlalchemy.text(
+                    "DELETE FROM user_data.ratings WHERE book_id = ANY(:book_ids)"
+                ),
+                {"book_ids": book_ids},
+            )
+            await session.execute(
+                sqlalchemy.text(
+                    "DELETE FROM user_data.bookshelves WHERE book_id = ANY(:book_ids)"
+                ),
+                {"book_ids": book_ids},
+            )
+            await session.execute(
+                sqlalchemy.text(
+                    "DELETE FROM books.books WHERE book_id = ANY(:book_ids)"
+                ),
+                {"book_ids": book_ids},
+            )
+
+            for user_id in affected_user_ids:
+                await session.execute(
+                    sqlalchemy.text(
+                        """
+                        INSERT INTO user_data.user_stats (user_id, want_to_read_count, reading_count, read_count, abandoned_count, favourites_count)
+                        SELECT
+                            :user_id,
+                            COUNT(CASE WHEN status = 'want_to_read' THEN 1 END),
+                            COUNT(CASE WHEN status = 'reading'      THEN 1 END),
+                            COUNT(CASE WHEN status = 'read'         THEN 1 END),
+                            COUNT(CASE WHEN status = 'abandoned'    THEN 1 END),
+                            COUNT(CASE WHEN is_favorite             THEN 1 END)
+                        FROM user_data.bookshelves
+                        WHERE user_id = :user_id
+                        ON CONFLICT (user_id) DO UPDATE SET
+                            want_to_read_count = EXCLUDED.want_to_read_count,
+                            reading_count      = EXCLUDED.reading_count,
+                            read_count         = EXCLUDED.read_count,
+                            abandoned_count    = EXCLUDED.abandoned_count,
+                            favourites_count   = EXCLUDED.favourites_count
+                        """
+                    ),
+                    {"user_id": user_id},
+                )
+                await session.execute(
+                    sqlalchemy.text(
+                        """
+                        INSERT INTO user_data.user_stats (user_id, ratings_count)
+                        SELECT :user_id, COUNT(*) FROM user_data.ratings WHERE user_id = :user_id
+                        ON CONFLICT (user_id) DO UPDATE SET ratings_count = EXCLUDED.ratings_count
+                        """
+                    ),
+                    {"user_id": user_id},
+                )
+                await session.execute(
+                    sqlalchemy.text(
+                        """
+                        INSERT INTO user_data.user_stats (user_id, comments_count)
+                        SELECT :user_id, COUNT(*) FROM user_data.comments WHERE user_id = :user_id
+                        ON CONFLICT (user_id) DO UPDATE SET comments_count = EXCLUDED.comments_count
+                        """
+                    ),
+                    {"user_id": user_id},
+                )
+
+        result = await session.execute(
+            sqlalchemy.text(
+                "DELETE FROM books.authors WHERE author_id = ANY(:author_ids)"
+            ),
+            {"author_ids": author_ids},
+        )
         deleted = typing.cast(CursorResult, result).rowcount
         await session.commit()
-
-        if deleted == 0:
-            break
 
         total_deleted += deleted
         logger.info(
@@ -177,8 +276,9 @@ async def cleanup_orphan_authors(
     return {"deleted": total_deleted, "eligible": total_eligible}
 
 
-async def cleanup_orphan_series(
+async def cleanup_underrepresented_series(
     session: sqlalchemy.ext.asyncio.AsyncSession,
+    max_books: int,
     batch_size: int,
     stop_check: typing.Callable[[], bool] = lambda: False,
 ) -> int:
@@ -187,28 +287,49 @@ async def cleanup_orphan_series(
         if stop_check():
             logger.info("[cleanup] Stopping series cleanup: dump import started")
             break
-        result = await session.execute(
+
+        series_id_result = await session.execute(
             sqlalchemy.text(
                 """
-                DELETE FROM books.series
-                WHERE series_id IN (
-                    SELECT s.series_id FROM books.series s
-                    WHERE NOT EXISTS (
-                        SELECT 1 FROM books.books b WHERE b.series_id = s.series_id
-                    )
-                    AND s.view_count = 0
-                    AND s.created_at < NOW() - INTERVAL '1 day'
-                    LIMIT :batch_size
-                )
-            """
+                SELECT s.series_id FROM books.series s
+                LEFT JOIN (
+                    SELECT series_id, COUNT(*) AS book_count
+                    FROM books.books
+                    WHERE series_id IS NOT NULL
+                    GROUP BY series_id
+                ) bc ON bc.series_id = s.series_id
+                WHERE COALESCE(bc.book_count, 0) <= :max_books
+                AND s.view_count = 0
+                AND s.created_at < NOW() - INTERVAL '1 day'
+                LIMIT :batch_size
+                """
             ),
-            {"batch_size": batch_size},
+            {"max_books": max_books, "batch_size": batch_size},
+        )
+        series_ids = [row[0] for row in series_id_result.fetchall()]
+
+        if not series_ids:
+            break
+
+        await session.execute(
+            sqlalchemy.text(
+                """
+                UPDATE books.books
+                SET series_id = NULL, series_position = NULL
+                WHERE series_id = ANY(:series_ids)
+                """
+            ),
+            {"series_ids": series_ids},
+        )
+
+        result = await session.execute(
+            sqlalchemy.text(
+                "DELETE FROM books.series WHERE series_id = ANY(:series_ids)"
+            ),
+            {"series_ids": series_ids},
         )
         deleted = typing.cast(CursorResult, result).rowcount
         await session.commit()
-
-        if deleted == 0:
-            break
 
         total_deleted += deleted
         await asyncio.sleep(0.5)
@@ -277,7 +398,7 @@ async def cleanup_underrepresented_genres(
                         FROM books.book_genres
                         GROUP BY genre_id
                     ) bg ON bg.genre_id = g.genre_id
-                    WHERE COALESCE(bg.book_count, 0) < :min_book_count
+                    WHERE COALESCE(bg.book_count, 0) <= :min_book_count
                     LIMIT :batch_size
                 )
             """
@@ -326,7 +447,9 @@ async def run_cleanup_cycle(
             "genres_deleted": 0,
             "underrepresented_genres_deleted": 0,
         }
-    series_deleted = await cleanup_orphan_series(session, batch_size, stop_check)
+    series_deleted = await cleanup_underrepresented_series(
+        session, 2, batch_size, stop_check
+    )
     if stop_check():
         return {
             "books": book_stats,
