@@ -5,6 +5,7 @@ import sys
 
 import app.config
 import app.grpc_clients
+import app.middleware
 import app.middleware.cors as cors_middleware
 import app.middleware.logging as logging_middleware
 import app.middleware.rate_limit as rate_limit_middleware
@@ -17,6 +18,8 @@ import app.routes.user_data
 import app.routes.user_recommendations
 import fastapi
 import uvicorn
+from ledger import LedgerClient
+from ledger.integrations.fastapi import LedgerMiddleware
 from slowapi import _rate_limit_exceeded_handler
 from slowapi.errors import RateLimitExceeded
 
@@ -59,6 +62,10 @@ async def lifespan(app: fastapi.FastAPI):
     await grpc_clients_module.auth_client.close()
     await grpc_clients_module.books_client.close()
     await grpc_clients_module.ingestion_client.close()
+
+    if ledger:
+        await ledger.shutdown()
+
     logger.info("Gateway service shut down successfully")
 
 
@@ -104,6 +111,15 @@ app = fastapi.FastAPI(
     license_info={"name": "MIT", "url": "https://opensource.org/licenses/MIT"},
     lifespan=lifespan,
 )
+
+ledger = None
+
+if settings.env == "production" and settings.ledger_api_key:
+    ledger = LedgerClient(
+        api_key=settings.ledger_api_key,
+    )
+
+    app.add_middleware(LedgerMiddleware, ledger_client=ledger)
 
 if settings.env == "development":
     cors_middleware.setup_cors(app)

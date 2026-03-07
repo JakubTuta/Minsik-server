@@ -1,5 +1,5 @@
-from pydantic_settings import BaseSettings
 from pydantic import Field
+from pydantic_settings import BaseSettings
 
 
 class Settings(BaseSettings):
@@ -44,6 +44,8 @@ class Settings(BaseSettings):
     rate_limit_per_minute: int = Field(default=60)
     rate_limit_burst: int = Field(default=10)
     rate_limit_admin_per_minute: int = Field(default=20)
+
+    ledger_api_key: str = Field(default="")
 
     class Config:
         env_file = ".env"

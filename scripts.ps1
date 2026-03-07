@@ -194,7 +194,7 @@ function Compile-Proto {
 
             $grpcFile = Join-Path $destination "${protoBaseName}_pb2_grpc.py"
             $content = Get-Content $grpcFile -Raw
-            $content = $content -replace "^import ${protoBaseName}_pb2", "from . import ${protoBaseName}_pb2"
+            $content = $content -replace "(?m)^import ${protoBaseName}_pb2", "from . import ${protoBaseName}_pb2"
             Set-Content -Path $grpcFile -Value $content -NoNewline
 
             Write-Host "    Compiled to $destination" -ForegroundColor Gray
