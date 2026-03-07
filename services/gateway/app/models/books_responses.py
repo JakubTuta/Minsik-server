@@ -40,9 +40,9 @@ class SearchResultSchema(pydantic.BaseModel):
     relevance_score: float
     author_slugs: typing.List[str]
     series_slug: typing.Optional[str] = None
-    app_avg_rating: typing.Optional[str] = None
+    app_avg_rating: float = 0.0
     app_rating_count: int = 0
-    ol_avg_rating: typing.Optional[str] = None
+    ol_avg_rating: float = 0.0
     ol_rating_count: int = 0
     book_count: int = 0
 
@@ -61,10 +61,7 @@ class SearchResponse(pydantic.BaseModel):
 
 
 class SubRatingStatSchema(pydantic.BaseModel):
-    avg: typing.Optional[str] = pydantic.Field(
-        default=None,
-        description="Average score as string (e.g. '3.50'), '0' when no ratings",
-    )
+    avg: float = 0.0
     count: int = pydantic.Field(
         default=0, description="Number of ratings for this dimension"
     )
@@ -82,7 +79,7 @@ class BookDetailData(pydantic.BaseModel):
     primary_cover_url: typing.Optional[str] = None
     cover_history: typing.List[CoverHistorySchema]
     rating_count: int
-    avg_rating: float
+    avg_rating: float = 0.0
     sub_rating_stats: typing.Dict[str, SubRatingStatSchema] = {}
     view_count: int
     last_viewed_at: typing.Optional[str] = None
@@ -99,7 +96,7 @@ class BookDetailData(pydantic.BaseModel):
     number_of_pages: int = 0
     external_ids: typing.Dict[str, str] = {}
     ol_rating_count: int = 0
-    ol_avg_rating: typing.Optional[str] = None
+    ol_avg_rating: float = 0.0
     ol_want_to_read_count: int = 0
     ol_currently_reading_count: int = 0
     ol_already_read_count: int = 0
@@ -128,9 +125,9 @@ class AuthorDetailData(pydantic.BaseModel):
     last_viewed_at: typing.Optional[str] = None
     books_count: int
     book_categories: typing.List[str] = []
-    books_avg_rating: float
+    books_avg_rating: float = 0.0
     books_total_ratings: int
-    books_ol_avg_rating: typing.Optional[str] = None
+    books_ol_avg_rating: float = 0.0
     books_ol_total_ratings: int = 0
     app_want_to_read_count: int = 0
     app_reading_count: int = 0
@@ -161,9 +158,9 @@ class BookSummarySchema(pydantic.BaseModel):
     primary_cover_url: typing.Optional[str] = None
     authors: typing.List[AuthorMinimalSchema] = []
     rating_count: int = 0
-    avg_rating: typing.Optional[str] = None
+    avg_rating: float = 0.0
     ol_rating_count: int = 0
-    ol_avg_rating: typing.Optional[str] = None
+    ol_avg_rating: float = 0.0
     ol_want_to_read_count: int = 0
     ol_currently_reading_count: int = 0
     ol_already_read_count: int = 0
@@ -197,9 +194,9 @@ class SeriesDetailData(pydantic.BaseModel):
     last_viewed_at: typing.Optional[str] = None
     created_at: str
     updated_at: str
-    avg_rating: typing.Optional[str] = None
+    avg_rating: float = 0.0
     rating_count: int = 0
-    ol_avg_rating: typing.Optional[str] = None
+    ol_avg_rating: float = 0.0
     ol_rating_count: int = 0
     app_want_to_read_count: int = 0
     app_reading_count: int = 0
@@ -530,7 +527,7 @@ class AdminBookUpdateData(pydantic.BaseModel):
     rating_count: int = 0
     avg_rating: float = 0.0
     ol_rating_count: int = 0
-    ol_avg_rating: typing.Optional[str] = None
+    ol_avg_rating: float = 0.0
     updated_at: str
 
 
@@ -570,9 +567,9 @@ class AdminSeriesUpdateData(pydantic.BaseModel):
     slug: str
     description: typing.Optional[str] = None
     total_books: typing.Optional[int] = None
-    avg_rating: typing.Optional[str] = None
+    avg_rating: float = 0.0
     rating_count: int = 0
-    ol_avg_rating: typing.Optional[str] = None
+    ol_avg_rating: float = 0.0
     ol_rating_count: int = 0
     updated_at: str
 

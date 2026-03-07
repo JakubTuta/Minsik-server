@@ -12,7 +12,7 @@ class RecommendationBookItemSchema(pydantic.BaseModel):
     primary_cover_url: typing.Optional[str] = None
     author_names: typing.List[str]
     author_slugs: typing.List[str]
-    avg_rating: typing.Optional[str] = None
+    avg_rating: float = 0.0
     rating_count: int
     score: float
 
@@ -27,12 +27,16 @@ class RecommendationAuthorItemSchema(pydantic.BaseModel):
 
 
 class RecommendationSectionData(pydantic.BaseModel):
-    key: str = pydantic.Field(description="Section key (e.g. 'most_read', 'more_by_author')")
+    key: str = pydantic.Field(
+        description="Section key (e.g. 'most_read', 'more_by_author')"
+    )
     display_name: str = pydantic.Field(description="Human-readable label")
     item_type: str = pydantic.Field(description="'book' or 'author'")
     book_items: typing.Optional[typing.List[RecommendationBookItemSchema]] = None
     author_items: typing.Optional[typing.List[RecommendationAuthorItemSchema]] = None
-    total: int = pydantic.Field(description="Total items in the full cached list (before pagination)")
+    total: int = pydantic.Field(
+        description="Total items in the full cached list (before pagination)"
+    )
 
 
 class RecommendationSectionResponse(pydantic.BaseModel):

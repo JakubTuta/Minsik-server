@@ -36,7 +36,7 @@ def _to_section_dict(key: str, item) -> dict:
                 "primary_cover_url": i.primary_cover_url or None,
                 "author_names": list(i.author_names),
                 "author_slugs": list(i.author_slugs),
-                "avg_rating": i.avg_rating or None,
+                "avg_rating": float(i.avg_rating) if i.avg_rating else 0.0,
                 "rating_count": i.rating_count,
                 "score": i.score,
             }
@@ -85,7 +85,9 @@ def _to_section_dict(key: str, item) -> dict:
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
 async def get_home_page(
     request: fastapi.Request,
-    items_per_category: int = Query(20, ge=1, le=100, description="Number of items to return per section"),
+    items_per_category: int = Query(
+        20, ge=1, le=100, description="Number of items to return per section"
+    ),
 ):
     try:
         response = await app.grpc_clients.recommendation_client.get_home_page(
@@ -130,7 +132,9 @@ async def get_home_page(
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
 async def get_available_categories(request: fastapi.Request):
     try:
-        response = await app.grpc_clients.recommendation_client.get_available_categories()
+        response = (
+            await app.grpc_clients.recommendation_client.get_available_categories()
+        )
         categories = [
             {
                 "key": cat.category,
@@ -141,7 +145,9 @@ async def get_available_categories(request: fastapi.Request):
         ]
         return app.utils.responses.success_response({"categories": categories})
     except grpc.RpcError as e:
-        logger.error(f"gRPC error in get_available_categories: {e.code()} - {e.details()}")
+        logger.error(
+            f"gRPC error in get_available_categories: {e.code()} - {e.details()}"
+        )
         return app.utils.responses.error_response(
             "INTERNAL_ERROR", "Failed to fetch categories", status_code=500
         )
@@ -184,7 +190,9 @@ async def get_available_categories(request: fastapi.Request):
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
 async def get_recommendation_list(
     request: fastapi.Request,
-    category: str = fastapi.Path(..., description="Category key (e.g. 'most_read', 'top_authors')"),
+    category: str = fastapi.Path(
+        ..., description="Category key (e.g. 'most_read', 'top_authors')"
+    ),
     limit: int = Query(20, ge=1, le=100, description="Number of items to return"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
 ):
@@ -192,9 +200,13 @@ async def get_recommendation_list(
         response = await app.grpc_clients.recommendation_client.get_recommendation_list(
             category=category, limit=limit, offset=offset
         )
-        return app.utils.responses.success_response(_to_section_dict(response.category, response))
+        return app.utils.responses.success_response(
+            _to_section_dict(response.category, response)
+        )
     except grpc.RpcError as e:
-        logger.error(f"gRPC error in get_recommendation_list: {e.code()} - {e.details()}")
+        logger.error(
+            f"gRPC error in get_recommendation_list: {e.code()} - {e.details()}"
+        )
         if e.code() == grpc.StatusCode.NOT_FOUND:
             return app.utils.responses.error_response(
                 "NOT_FOUND", f"Unknown category: {category}", status_code=404
@@ -242,16 +254,24 @@ async def get_recommendation_list(
 async def get_book_recommendations(
     request: fastapi.Request,
     book_id: int = fastapi.Path(..., description="Book ID"),
-    limit_per_section: int = Query(15, ge=1, le=50, description="Number of items per recommendation section"),
+    limit_per_section: int = Query(
+        15, ge=1, le=50, description="Number of items per recommendation section"
+    ),
 ):
     try:
-        response = await app.grpc_clients.recommendation_client.get_book_recommendations(
-            book_id=book_id, limit_per_section=limit_per_section
+        response = (
+            await app.grpc_clients.recommendation_client.get_book_recommendations(
+                book_id=book_id, limit_per_section=limit_per_section
+            )
         )
         sections = [_to_section_dict(s.section_key, s) for s in response.sections]
-        return app.utils.responses.success_response({"book_id": response.book_id, "sections": sections})
+        return app.utils.responses.success_response(
+            {"book_id": response.book_id, "sections": sections}
+        )
     except grpc.RpcError as e:
-        logger.error(f"gRPC error in get_book_recommendations: {e.code()} - {e.details()}")
+        logger.error(
+            f"gRPC error in get_book_recommendations: {e.code()} - {e.details()}"
+        )
         if e.code() == grpc.StatusCode.NOT_FOUND:
             return app.utils.responses.error_response(
                 "NOT_FOUND", f"Book with ID {book_id} not found", status_code=404
@@ -291,16 +311,24 @@ async def get_book_recommendations(
 async def get_author_recommendations(
     request: fastapi.Request,
     author_id: int = fastapi.Path(..., description="Author ID"),
-    limit_per_section: int = Query(15, ge=1, le=50, description="Number of items per recommendation section"),
+    limit_per_section: int = Query(
+        15, ge=1, le=50, description="Number of items per recommendation section"
+    ),
 ):
     try:
-        response = await app.grpc_clients.recommendation_client.get_author_recommendations(
-            author_id=author_id, limit_per_section=limit_per_section
+        response = (
+            await app.grpc_clients.recommendation_client.get_author_recommendations(
+                author_id=author_id, limit_per_section=limit_per_section
+            )
         )
         sections = [_to_section_dict(s.section_key, s) for s in response.sections]
-        return app.utils.responses.success_response({"author_id": response.author_id, "sections": sections})
+        return app.utils.responses.success_response(
+            {"author_id": response.author_id, "sections": sections}
+        )
     except grpc.RpcError as e:
-        logger.error(f"gRPC error in get_author_recommendations: {e.code()} - {e.details()}")
+        logger.error(
+            f"gRPC error in get_author_recommendations: {e.code()} - {e.details()}"
+        )
         if e.code() == grpc.StatusCode.NOT_FOUND:
             return app.utils.responses.error_response(
                 "NOT_FOUND", f"Author with ID {author_id} not found", status_code=404
@@ -341,12 +369,16 @@ async def get_author_recommendations(
 @limiter.limit(app.middleware.rate_limit.get_admin_limit())
 async def refresh_recommendations(request: fastapi.Request):
     try:
-        response = await app.grpc_clients.recommendation_client.refresh_recommendations()
+        response = (
+            await app.grpc_clients.recommendation_client.refresh_recommendations()
+        )
         return app.utils.responses.success_response(
             {"success": response.success, "message": response.message}
         )
     except grpc.RpcError as e:
-        logger.error(f"gRPC error in refresh_recommendations: {e.code()} - {e.details()}")
+        logger.error(
+            f"gRPC error in refresh_recommendations: {e.code()} - {e.details()}"
+        )
         return app.utils.responses.error_response(
             "INTERNAL_ERROR", "Failed to refresh recommendations", status_code=500
         )

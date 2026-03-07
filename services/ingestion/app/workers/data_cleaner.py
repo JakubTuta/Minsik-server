@@ -46,14 +46,10 @@ async def cleanup_low_quality_books(
             f"""
             SELECT COUNT(*) FROM books.books b
             WHERE ({quality_score_sql}) < :min_score
-              AND b.rating_count = 0
               AND b.view_count = 0
-              AND COALESCE(b.ol_rating_count, 0) = 0
-              AND COALESCE(b.ol_already_read_count, 0) = 0
+              AND (b.rating_count + COALESCE(b.ol_rating_count, 0)) < 30
+              AND (COALESCE(b.ol_already_read_count, 0) + (SELECT COUNT(*) FROM user_data.bookshelves bs WHERE bs.book_id = b.book_id)) < 30
               AND b.created_at < NOW() - INTERVAL '1 day'
-              AND NOT EXISTS (
-                  SELECT 1 FROM user_data.bookshelves bs WHERE bs.book_id = b.book_id
-              )
         """
         ),
         {"min_score": min_quality_score},
@@ -79,14 +75,10 @@ async def cleanup_low_quality_books(
                 WHERE book_id IN (
                     SELECT b.book_id FROM books.books b
                     WHERE ({quality_score_sql}) < :min_score
-                      AND b.rating_count = 0
                       AND b.view_count = 0
-                      AND COALESCE(b.ol_rating_count, 0) = 0
-                      AND COALESCE(b.ol_already_read_count, 0) = 0
+                      AND (b.rating_count + COALESCE(b.ol_rating_count, 0)) < 30
+                      AND (COALESCE(b.ol_already_read_count, 0) + (SELECT COUNT(*) FROM user_data.bookshelves bs WHERE bs.book_id = b.book_id)) < 30
                       AND b.created_at < NOW() - INTERVAL '1 day'
-                      AND NOT EXISTS (
-                          SELECT 1 FROM user_data.bookshelves bs WHERE bs.book_id = b.book_id
-                      )
                     LIMIT :batch_size
                 )
             """
@@ -126,6 +118,18 @@ async def cleanup_orphan_authors(
             WHERE COALESCE(ba.book_count, 0) <= :min_books
             AND a.view_count = 0
             AND a.created_at < NOW() - INTERVAL '1 day'
+            AND (
+                SELECT COALESCE(SUM(b.rating_count + COALESCE(b.ol_rating_count, 0)), 0)
+                FROM books.books b
+                JOIN books.book_authors ba2 ON ba2.book_id = b.book_id
+                WHERE ba2.author_id = a.author_id
+            ) < 30
+            AND (
+                SELECT COUNT(*)
+                FROM user_data.bookshelves bs
+                JOIN books.book_authors ba2 ON ba2.book_id = bs.book_id
+                WHERE ba2.author_id = a.author_id
+            ) < 30
         """
         ),
         {"min_books": min_books},
@@ -155,6 +159,18 @@ async def cleanup_orphan_authors(
                 WHERE COALESCE(ba.book_count, 0) <= :min_books
                 AND a.view_count = 0
                 AND a.created_at < NOW() - INTERVAL '1 day'
+                AND (
+                    SELECT COALESCE(SUM(b.rating_count + COALESCE(b.ol_rating_count, 0)), 0)
+                    FROM books.books b
+                    JOIN books.book_authors ba2 ON ba2.book_id = b.book_id
+                    WHERE ba2.author_id = a.author_id
+                ) < 30
+                AND (
+                    SELECT COUNT(*)
+                    FROM user_data.bookshelves bs
+                    JOIN books.book_authors ba2 ON ba2.book_id = bs.book_id
+                    WHERE ba2.author_id = a.author_id
+                ) < 30
                 LIMIT :batch_size
                 """
             ),
@@ -167,13 +183,21 @@ async def cleanup_orphan_authors(
 
         book_id_result = await session.execute(
             sqlalchemy.text(
-                "SELECT DISTINCT book_id FROM books.book_authors WHERE author_id = ANY(:author_ids)"
+                """
+                SELECT ba.book_id,
+                       (SELECT COUNT(*) FROM books.book_authors ba2 WHERE ba2.book_id = ba.book_id) AS author_count
+                FROM books.book_authors ba
+                WHERE ba.author_id = ANY(:author_ids)
+                """
             ),
             {"author_ids": author_ids},
         )
-        book_ids = [row[0] for row in book_id_result.fetchall()]
+        sole_book_ids = []
+        for row in book_id_result.fetchall():
+            if row[1] == 1:
+                sole_book_ids.append(row[0])
 
-        if book_ids:
+        if sole_book_ids:
             affected_users_result = await session.execute(
                 sqlalchemy.text(
                     """
@@ -184,7 +208,7 @@ async def cleanup_orphan_authors(
                     SELECT DISTINCT user_id FROM user_data.comments WHERE book_id = ANY(:book_ids)
                     """
                 ),
-                {"book_ids": book_ids},
+                {"book_ids": sole_book_ids},
             )
             affected_user_ids = [row[0] for row in affected_users_result.fetchall()]
 
@@ -192,25 +216,25 @@ async def cleanup_orphan_authors(
                 sqlalchemy.text(
                     "DELETE FROM user_data.comments WHERE book_id = ANY(:book_ids)"
                 ),
-                {"book_ids": book_ids},
+                {"book_ids": sole_book_ids},
             )
             await session.execute(
                 sqlalchemy.text(
                     "DELETE FROM user_data.ratings WHERE book_id = ANY(:book_ids)"
                 ),
-                {"book_ids": book_ids},
+                {"book_ids": sole_book_ids},
             )
             await session.execute(
                 sqlalchemy.text(
                     "DELETE FROM user_data.bookshelves WHERE book_id = ANY(:book_ids)"
                 ),
-                {"book_ids": book_ids},
+                {"book_ids": sole_book_ids},
             )
             await session.execute(
                 sqlalchemy.text(
                     "DELETE FROM books.books WHERE book_id = ANY(:book_ids)"
                 ),
-                {"book_ids": book_ids},
+                {"book_ids": sole_book_ids},
             )
 
             for user_id in affected_user_ids:
@@ -301,6 +325,17 @@ async def cleanup_underrepresented_series(
                 WHERE COALESCE(bc.book_count, 0) <= :max_books
                 AND s.view_count = 0
                 AND s.created_at < NOW() - INTERVAL '1 day'
+                AND (
+                    SELECT COALESCE(SUM(b.rating_count + COALESCE(b.ol_rating_count, 0)), 0)
+                    FROM books.books b
+                    WHERE b.series_id = s.series_id
+                ) < 30
+                AND (
+                    SELECT COUNT(*)
+                    FROM user_data.bookshelves bs
+                    JOIN books.books b ON b.book_id = bs.book_id
+                    WHERE b.series_id = s.series_id
+                ) < 30
                 LIMIT :batch_size
                 """
             ),

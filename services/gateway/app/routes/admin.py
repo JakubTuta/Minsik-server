@@ -595,9 +595,11 @@ async def update_book(
                     ),
                     "series_position": book.series_position or None,
                     "rating_count": book.rating_count,
-                    "avg_rating": book.avg_rating,
+                    "avg_rating": float(book.avg_rating) if book.avg_rating else 0.0,
                     "ol_rating_count": book.ol_rating_count,
-                    "ol_avg_rating": book.ol_avg_rating,
+                    "ol_avg_rating": (
+                        float(book.ol_avg_rating) if book.ol_avg_rating else 0.0
+                    ),
                     "updated_at": book.updated_at,
                 }
             )
@@ -758,9 +760,13 @@ async def update_series(
                     "slug": series.slug,
                     "description": series.description or None,
                     "total_books": series.total_books,
-                    "avg_rating": series.avg_rating or None,
+                    "avg_rating": (
+                        float(series.avg_rating) if series.avg_rating else 0.0
+                    ),
                     "rating_count": series.rating_count,
-                    "ol_avg_rating": series.ol_avg_rating or None,
+                    "ol_avg_rating": (
+                        float(series.ol_avg_rating) if series.ol_avg_rating else 0.0
+                    ),
                     "ol_rating_count": series.ol_rating_count,
                     "updated_at": series.updated_at,
                 }

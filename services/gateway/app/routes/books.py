@@ -77,9 +77,13 @@ async def search_books_and_authors(
                     "relevance_score": result.relevance_score,
                     "author_slugs": list(result.author_slugs),
                     "series_slug": result.series_slug,
-                    "app_avg_rating": result.app_avg_rating or None,
+                    "app_avg_rating": (
+                        float(result.app_avg_rating) if result.app_avg_rating else 0.0
+                    ),
                     "app_rating_count": result.app_rating_count,
-                    "ol_avg_rating": result.ol_avg_rating or None,
+                    "ol_avg_rating": (
+                        float(result.ol_avg_rating) if result.ol_avg_rating else 0.0
+                    ),
                     "ol_rating_count": result.ol_rating_count,
                     "book_count": result.book_count,
                 }
@@ -229,7 +233,11 @@ async def get_author(
                 "book_categories": list(author.book_categories),
                 "books_avg_rating": float(author.books_avg_rating),
                 "books_total_ratings": author.books_total_ratings,
-                "books_ol_avg_rating": author.books_ol_avg_rating or None,
+                "books_ol_avg_rating": (
+                    float(author.books_ol_avg_rating)
+                    if author.books_ol_avg_rating
+                    else 0.0
+                ),
                 "books_ol_total_ratings": author.books_ol_total_ratings,
                 "app_want_to_read_count": author.app_want_to_read_count,
                 "app_reading_count": author.app_reading_count,
@@ -384,9 +392,11 @@ async def get_series(
                 "last_viewed_at": series.last_viewed_at,
                 "created_at": series.created_at,
                 "updated_at": series.updated_at,
-                "avg_rating": series.avg_rating or None,
+                "avg_rating": float(series.avg_rating) if series.avg_rating else 0.0,
                 "rating_count": series.rating_count,
-                "ol_avg_rating": series.ol_avg_rating or None,
+                "ol_avg_rating": (
+                    float(series.ol_avg_rating) if series.ol_avg_rating else 0.0
+                ),
                 "ol_rating_count": series.ol_rating_count,
                 "app_want_to_read_count": series.app_want_to_read_count,
                 "app_reading_count": series.app_reading_count,
@@ -657,7 +667,7 @@ def _book_detail_proto_to_dict(book) -> typing.Dict[str, typing.Any]:
         "number_of_pages": book.number_of_pages,
         "external_ids": dict(book.external_ids),
         "ol_rating_count": book.ol_rating_count,
-        "ol_avg_rating": book.ol_avg_rating,
+        "ol_avg_rating": float(book.ol_avg_rating) if book.ol_avg_rating else 0.0,
         "ol_want_to_read_count": book.ol_want_to_read_count,
         "ol_currently_reading_count": book.ol_currently_reading_count,
         "ol_already_read_count": book.ol_already_read_count,
@@ -685,9 +695,9 @@ def _book_summary_proto_to_dict(item) -> typing.Dict[str, typing.Any]:
             for a in item.authors
         ],
         "rating_count": item.rating_count,
-        "avg_rating": item.avg_rating or None,
+        "avg_rating": float(item.avg_rating) if item.avg_rating else 0.0,
         "ol_rating_count": item.ol_rating_count,
-        "ol_avg_rating": item.ol_avg_rating or None,
+        "ol_avg_rating": float(item.ol_avg_rating) if item.ol_avg_rating else 0.0,
         "ol_want_to_read_count": item.ol_want_to_read_count,
         "ol_currently_reading_count": item.ol_currently_reading_count,
         "ol_already_read_count": item.ol_already_read_count,

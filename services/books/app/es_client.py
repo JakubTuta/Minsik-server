@@ -133,6 +133,13 @@ async def create_indexes(
                 )
                 recreated.add(index_books)
                 logger.info(f"[ES] Created index: {index_books}")
+            elif not await _index_has_language_field(index_books):
+                await _es_client.indices.delete(index=index_books)
+                await _es_client.indices.create(
+                    index=index_books, body=BOOKS_INDEX_MAPPING
+                )
+                recreated.add(index_books)
+                logger.info(f"[ES] Recreated stale index: {index_books}")
             else:
                 logger.info(f"[ES] Index already exists: {index_books}")
         except Exception as e:
