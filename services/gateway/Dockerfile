@@ -4,6 +4,7 @@ WORKDIR /app
 
 RUN apt-get update && apt-get install -y \
     gcc \
+    tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 COPY services/gateway/requirements.txt .
@@ -57,6 +58,7 @@ RUN mkdir -p app/proto && \
 
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
+ENV TZ=Europe/Warsaw
 
 EXPOSE 8040
 

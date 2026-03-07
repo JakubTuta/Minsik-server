@@ -5,6 +5,7 @@ WORKDIR /app
 RUN apt-get update && apt-get install -y \
     gcc \
     postgresql-client \
+    tzdata \
     && rm -rf /var/lib/apt/lists/*
 
 COPY services/recommendation/requirements.txt .
@@ -28,6 +29,7 @@ RUN mkdir -p app/proto && \
 
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
+ENV TZ=Europe/Warsaw
 
 EXPOSE 50056
 
