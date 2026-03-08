@@ -86,7 +86,7 @@ class BookDetailData(pydantic.BaseModel):
     authors: typing.List[AuthorMinimalSchema]
     genres: typing.List[GenreSchema]
     series: typing.Optional[SeriesMinimalSchema] = None
-    series_position: typing.Optional[str] = None
+    series_position: typing.Optional[float] = None
     open_library_id: typing.Optional[str] = None
     google_books_id: typing.Optional[str] = None
     created_at: str
@@ -167,7 +167,7 @@ class BookSummarySchema(pydantic.BaseModel):
     app_want_to_read_count: int = 0
     app_reading_count: int = 0
     app_read_count: int = 0
-    series_position: typing.Optional[str] = None
+    series_position: typing.Optional[float] = None
     rarity: typing.Optional[str] = None
 
 
@@ -313,8 +313,8 @@ class AdminUpdateBookRequest(pydantic.BaseModel):
         None,
         description="ID of the series this book belongs to; set to null to remove the book from its series",
     )
-    series_position: typing.Optional[str] = pydantic.Field(
-        None, description="Position within the series (e.g. '1', '2.5')"
+    series_position: typing.Optional[float] = pydantic.Field(
+        None, description="Position within the series (e.g. 1, 2.5)"
     )
 
     model_config = pydantic.ConfigDict(
@@ -326,7 +326,7 @@ class AdminUpdateBookRequest(pydantic.BaseModel):
                 "original_publication_year": 1954,
                 "number_of_pages": 423,
                 "series_id": 12,
-                "series_position": "1",
+                "series_position": 1,
             }
         }
     )
@@ -523,7 +523,7 @@ class AdminBookUpdateData(pydantic.BaseModel):
     open_library_id: typing.Optional[str] = None
     google_books_id: typing.Optional[str] = None
     series: typing.Optional[SeriesMinimalSchema] = None
-    series_position: typing.Optional[str] = None
+    series_position: typing.Optional[float] = None
     rating_count: int = 0
     avg_rating: float = 0.0
     ol_rating_count: int = 0

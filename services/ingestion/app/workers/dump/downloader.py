@@ -11,8 +11,8 @@ import httpx
 
 logger = logging.getLogger(__name__)
 
-_DOWNLOAD_MAX_RETRIES = 5
-_DOWNLOAD_READ_TIMEOUT = 300
+_DOWNLOAD_MAX_RETRIES = 10
+_DOWNLOAD_READ_TIMEOUT = 60
 _DOWNLOAD_CONNECT_TIMEOUT = 60
 _DOWNLOAD_LOG_EVERY_MB = 100
 
@@ -98,10 +98,22 @@ async def download_file(url: str, dest_path: str) -> None:
 
                     response.raise_for_status()
 
+                    if "Range" in headers and response.status_code != 206:
+                        logger.warning(
+                            f"[dump] Server returned {response.status_code} instead of 206 "
+                            f"for Range request — resume not supported, restarting download"
+                        )
+                        if os.path.exists(dest_path):
+                            os.remove(dest_path)
+                        downloaded = 0
+                        total_size = None
+                        file_mode = "wb"
+
                     if total_size is None:
                         content_length = response.headers.get("content-length")
                         if content_length:
-                            total_size = int(content_length) + downloaded
+                            offset = downloaded if response.status_code == 206 else 0
+                            total_size = int(content_length) + offset
 
                     with open(dest_path, file_mode) as f:
                         async for chunk in response.aiter_bytes(chunk_size=65536):

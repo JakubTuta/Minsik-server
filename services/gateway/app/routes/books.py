@@ -657,7 +657,9 @@ def _book_detail_proto_to_dict(book) -> typing.Dict[str, typing.Any]:
             if book.HasField("series")
             else None
         ),
-        "series_position": book.series_position if book.series_position else None,
+        "series_position": (
+            float(book.series_position) if book.series_position else None
+        ),
         "open_library_id": book.open_library_id,
         "google_books_id": book.google_books_id,
         "created_at": book.created_at,
@@ -704,7 +706,9 @@ def _book_summary_proto_to_dict(item) -> typing.Dict[str, typing.Any]:
         "app_want_to_read_count": item.app_want_to_read_count,
         "app_reading_count": item.app_reading_count,
         "app_read_count": item.app_read_count,
-        "series_position": item.series_position or None,
+        "series_position": (
+            float(item.series_position) if item.series_position else None
+        ),
         "rarity": item.rarity or None,
     }
 

@@ -555,6 +555,8 @@ async def update_book(
             proto_fields["isbn_json"] = json.dumps(value)
         elif field == "external_ids":
             proto_fields["external_ids_json"] = json.dumps(value)
+        elif field == "series_position":
+            proto_fields["series_position"] = str(value) if value is not None else ""
         else:
             proto_fields[field] = value
 
@@ -593,7 +595,9 @@ async def update_book(
                         if book.HasField("series")
                         else None
                     ),
-                    "series_position": book.series_position or None,
+                    "series_position": (
+                        float(book.series_position) if book.series_position else None
+                    ),
                     "rating_count": book.rating_count,
                     "avg_rating": float(book.avg_rating) if book.avg_rating else 0.0,
                     "ol_rating_count": book.ol_rating_count,

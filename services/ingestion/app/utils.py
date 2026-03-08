@@ -126,24 +126,6 @@ def clean_description(description: typing.Optional[str]) -> typing.Optional[str]
     return description if description else None
 
 
-def format_title_with_series(title: str, series_name: typing.Optional[str]) -> str:
-    if not title:
-        return ""
-
-    if not series_name:
-        return title
-
-    title_lower = title.lower()
-    series_lower = series_name.lower()
-
-    series_core = re.sub(r"^the\s+", "", series_lower).strip()
-
-    if series_lower in title_lower or series_core in title_lower:
-        return title
-
-    return f"{series_name}: {title}"
-
-
 def clamp_series_position(value: typing.Any) -> typing.Optional[float]:
     if value is None:
         return None
