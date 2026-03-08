@@ -105,22 +105,13 @@ def _build_function_score_query(
             "functions": [
                 {
                     "field_value_factor": {
-                        "field": "popularity_score",
-                        "modifier": "log1p",
-                        "factor": 1.0,
-                        "missing": 0,
-                    },
-                    "weight": 0.4,
-                },
-                {
-                    "field_value_factor": {
-                        "field": "combined_rating",
+                        "field": "bayesian_score",
                         "modifier": "none",
-                        "factor": 1.0,
+                        "factor": 4.0,
                         "missing": 0,
                     },
-                    "weight": 0.2,
-                },
+                    "weight": 1.0,
+                }
             ],
             "score_mode": "sum",
             "boost_mode": "sum",
@@ -138,7 +129,7 @@ async def _search_books_es(
         "bool": {
             "must": [
                 _build_function_score_query(
-                    query, ["title^3", "authors_names^2", "series_name"]
+                    query, ["title^3", "authors_names^2", "series_name", "slug"]
                 )
             ],
             "filter": [{"term": {"language": language}}],
@@ -208,7 +199,7 @@ async def _search_authors_es(
 
     es_query = {
         "bool": {
-            "must": [_build_function_score_query(query, ["name^3", "bio"])],
+            "must": [_build_function_score_query(query, ["name^3", "slug"])],
             "filter": [{"term": {"language": language}}],
         }
     }
@@ -267,7 +258,7 @@ async def _search_series_es(
 
     es_query = {
         "bool": {
-            "must": [_build_function_score_query(query, ["name^3"])],
+            "must": [_build_function_score_query(query, ["name^3", "slug"])],
             "filter": [{"term": {"language": language}}],
         }
     }

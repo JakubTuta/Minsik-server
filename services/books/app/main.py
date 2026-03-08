@@ -37,6 +37,9 @@ ES_LAST_SYNC_KEY = "es:last_sync_ts"
 ES_LAST_SYNC_KEY_AUTHORS = "es:last_sync_ts:authors"
 ES_LAST_SYNC_KEY_SERIES = "es:last_sync_ts:series"
 
+BAYESIAN_PRIOR_MEAN = 3.0
+BAYESIAN_MIN_RATINGS = 10
+
 
 async def flush_view_counts_periodically() -> None:
     logger.info("Starting view count flush background task")
@@ -57,40 +60,45 @@ async def flush_view_counts_periodically() -> None:
             logger.error(f"Error flushing view counts: {str(e)}")
 
 
-async def reindex_all_to_es(
-    recreated_indexes: typing.Optional[typing.Set[str]] = None,
-) -> None:
+def _compute_bayesian_score(total_ratings: int, combined_avg: float) -> float:
+    return (
+        total_ratings * combined_avg + BAYESIAN_MIN_RATINGS * BAYESIAN_PRIOR_MEAN
+    ) / (total_ratings + BAYESIAN_MIN_RATINGS)
+
+
+async def reindex_all_to_es(full: bool = False) -> None:
     es = app.es_client.get_es()
     settings = app.config.settings
-    if recreated_indexes is None:
-        recreated_indexes = set()
+    epoch = datetime.datetime(1970, 1, 1)
 
-    raw_ts = await app.cache.redis_client.get(ES_LAST_SYNC_KEY)
-    if raw_ts and settings.es_index_books not in recreated_indexes:
-        last_sync_books = datetime.datetime.fromisoformat(raw_ts).replace(tzinfo=None)
+    if full:
+        last_sync_books = epoch
+        last_sync_authors = epoch
+        last_sync_series = epoch
+        logger.info("[ES] Starting full reindex")
     else:
-        last_sync_books = datetime.datetime(1970, 1, 1)
-
-    raw_ts_authors = await app.cache.redis_client.get(ES_LAST_SYNC_KEY_AUTHORS)
-    if raw_ts_authors and settings.es_index_authors not in recreated_indexes:
-        last_sync_authors = datetime.datetime.fromisoformat(raw_ts_authors).replace(
-            tzinfo=None
+        raw_ts = await app.cache.redis_client.get(ES_LAST_SYNC_KEY)
+        last_sync_books = (
+            datetime.datetime.fromisoformat(raw_ts).replace(tzinfo=None)
+            if raw_ts
+            else epoch
         )
-    else:
-        last_sync_authors = datetime.datetime(1970, 1, 1)
-
-    raw_ts_series = await app.cache.redis_client.get(ES_LAST_SYNC_KEY_SERIES)
-    if raw_ts_series and settings.es_index_series not in recreated_indexes:
-        last_sync_series = datetime.datetime.fromisoformat(raw_ts_series).replace(
-            tzinfo=None
+        raw_ts_authors = await app.cache.redis_client.get(ES_LAST_SYNC_KEY_AUTHORS)
+        last_sync_authors = (
+            datetime.datetime.fromisoformat(raw_ts_authors).replace(tzinfo=None)
+            if raw_ts_authors
+            else epoch
         )
-    else:
-        last_sync_series = datetime.datetime(1970, 1, 1)
-
-    logger.info(
-        f"[ES] Starting reindex. last_sync books={last_sync_books.isoformat()} "
-        f"authors={last_sync_authors.isoformat()} series={last_sync_series.isoformat()}"
-    )
+        raw_ts_series = await app.cache.redis_client.get(ES_LAST_SYNC_KEY_SERIES)
+        last_sync_series = (
+            datetime.datetime.fromisoformat(raw_ts_series).replace(tzinfo=None)
+            if raw_ts_series
+            else epoch
+        )
+        logger.info(
+            f"[ES] Starting incremental reindex. last_sync books={last_sync_books.isoformat()} "
+            f"authors={last_sync_authors.isoformat()} series={last_sync_series.isoformat()}"
+        )
 
     books_indexed = 0
     authors_indexed = 0
@@ -126,8 +134,7 @@ async def reindex_all_to_es(
             app_avg = float(row.app_avg_rating) if row.app_avg_rating else 0.0
             ol_avg = float(row.ol_avg_rating) if row.ol_avg_rating else 0.0
             total_ratings = app_rating_count + ol_rating_count
-            popularity_score = float(total_ratings)
-            combined_rating = (
+            combined_avg = (
                 (app_avg * app_rating_count + ol_avg * ol_rating_count) / total_ratings
                 if total_ratings > 0
                 else 0.0
@@ -149,8 +156,9 @@ async def reindex_all_to_es(
                     "app_rating_count": app_rating_count,
                     "ol_avg_rating": ol_avg if ol_rating_count > 0 else None,
                     "ol_rating_count": ol_rating_count,
-                    "popularity_score": popularity_score,
-                    "combined_rating": combined_rating,
+                    "bayesian_score": _compute_bayesian_score(
+                        total_ratings, combined_avg
+                    ),
                 },
             }
             batch.append(doc)
@@ -167,7 +175,7 @@ async def reindex_all_to_es(
         authors_query = sqlalchemy.text(
             """
             SELECT
-                a.author_id, a.name, a.bio, a.slug, a.photo_url,
+                a.author_id, a.name, a.slug, a.photo_url,
                 b.language,
                 COUNT(DISTINCT b.book_id) as book_count,
                 COALESCE(SUM(b.rating_count), 0) as app_rating_count,
@@ -182,7 +190,7 @@ async def reindex_all_to_es(
             JOIN books.book_authors ba ON a.author_id = ba.author_id
             JOIN books.books b ON ba.book_id = b.book_id
             WHERE a.updated_at > :last_sync AND b.language IS NOT NULL
-            GROUP BY a.author_id, a.name, a.bio, a.slug, a.photo_url, b.language
+            GROUP BY a.author_id, a.name, a.slug, a.photo_url, b.language
             ORDER BY a.author_id, b.language
         """
         )
@@ -196,8 +204,7 @@ async def reindex_all_to_es(
             app_avg = float(row.app_avg_rating) if row.app_avg_rating else 0.0
             ol_avg = float(row.ol_avg_rating) if row.ol_avg_rating else 0.0
             total_ratings = app_rating_count + ol_rating_count
-            popularity_score = float(total_ratings)
-            combined_rating = (
+            combined_avg = (
                 (app_avg * app_rating_count + ol_avg * ol_rating_count) / total_ratings
                 if total_ratings > 0
                 else 0.0
@@ -209,7 +216,6 @@ async def reindex_all_to_es(
                     "author_id": row.author_id,
                     "language": row.language,
                     "name": row.name or "",
-                    "bio": row.bio or "",
                     "slug": row.slug or "",
                     "photo_url": row.photo_url or "",
                     "book_count": row.book_count or 0,
@@ -217,8 +223,9 @@ async def reindex_all_to_es(
                     "app_rating_count": app_rating_count,
                     "ol_avg_rating": ol_avg if ol_rating_count > 0 else None,
                     "ol_rating_count": ol_rating_count,
-                    "popularity_score": popularity_score,
-                    "combined_rating": combined_rating,
+                    "bayesian_score": _compute_bayesian_score(
+                        total_ratings, combined_avg
+                    ),
                 },
             }
             batch.append(doc)
@@ -263,8 +270,7 @@ async def reindex_all_to_es(
             app_avg = float(row.app_avg_rating) if row.app_avg_rating else 0.0
             ol_avg = float(row.ol_avg_rating) if row.ol_avg_rating else 0.0
             total_ratings = app_rating_count + ol_rating_count
-            popularity_score = float(total_ratings)
-            combined_rating = (
+            combined_avg = (
                 (app_avg * app_rating_count + ol_avg * ol_rating_count) / total_ratings
                 if total_ratings > 0
                 else 0.0
@@ -282,8 +288,9 @@ async def reindex_all_to_es(
                     "app_rating_count": app_rating_count,
                     "ol_avg_rating": ol_avg if ol_rating_count > 0 else None,
                     "ol_rating_count": ol_rating_count,
-                    "popularity_score": popularity_score,
-                    "combined_rating": combined_rating,
+                    "bayesian_score": _compute_bayesian_score(
+                        total_ratings, combined_avg
+                    ),
                 },
             }
             batch.append(doc)
@@ -319,7 +326,7 @@ async def reindex_periodically() -> None:
     logger.info("Starting ES reindex background task")
     while not shutdown_event.is_set():
         try:
-            await reindex_all_to_es()
+            await reindex_all_to_es(full=False)
         except asyncio.CancelledError:
             logger.info("ES reindex task cancelled")
             break
@@ -341,12 +348,12 @@ async def start_server() -> None:
     await app.es_client.init_es(
         app.config.settings.es_host, app.config.settings.es_port
     )
-    recreated_indexes = await app.es_client.create_indexes(
+    await app.es_client.create_indexes(
         app.config.settings.es_index_books,
         app.config.settings.es_index_authors,
         app.config.settings.es_index_series,
     )
-    await reindex_all_to_es(recreated_indexes)
+    await reindex_all_to_es(full=True)
 
     grpc_server = grpc.aio.server()
 
