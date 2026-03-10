@@ -322,6 +322,15 @@ async def _bulk_index(es: object, docs: list) -> None:
         raise
 
 
+async def _run_initial_reindex() -> None:
+    try:
+        await reindex_all_to_es(full=True)
+    except Exception as e:
+        logger.error(
+            f"[ES] Initial full reindex failed, service will continue without fresh index: {str(e)}"
+        )
+
+
 async def reindex_periodically() -> None:
     logger.info("Starting ES reindex background task")
     while not shutdown_event.is_set():
@@ -353,7 +362,6 @@ async def start_server() -> None:
         app.config.settings.es_index_authors,
         app.config.settings.es_index_series,
     )
-    await reindex_all_to_es(full=True)
 
     grpc_server = grpc.aio.server()
 
@@ -375,6 +383,7 @@ async def start_server() -> None:
 
     view_count_flush_task = asyncio.create_task(flush_view_counts_periodically())
     reindex_task = asyncio.create_task(reindex_periodically())
+    asyncio.create_task(_run_initial_reindex())
 
     logger.info("Books service is running")
 

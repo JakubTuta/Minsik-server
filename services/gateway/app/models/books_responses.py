@@ -423,6 +423,18 @@ class OpenCaseResponse(pydantic.BaseModel):
     error: typing.Optional[app.models.responses.ErrorDetail] = None
 
 
+class OpenPackData(pydantic.BaseModel):
+    items: typing.List[BookSummarySchema] = pydantic.Field(
+        description="List of book cards in the pack, each with rarity assigned."
+    )
+
+
+class OpenPackResponse(pydantic.BaseModel):
+    success: bool = True
+    data: OpenPackData
+    error: typing.Optional[app.models.responses.ErrorDetail] = None
+
+
 class DiscoverBookFilters(pydantic.BaseModel):
     language: str = pydantic.Field(
         default="en",

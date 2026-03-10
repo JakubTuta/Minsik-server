@@ -20,8 +20,8 @@ RARITY_TIERS: typing.List[typing.Tuple[str, float, float, float]] = [
 ]
 
 RARITY_MIN_RATINGS: typing.Dict[str, int] = {
-    "legendary": 30,
-    "ultra_rare": 30,
+    "legendary": 25,
+    "ultra_rare": 20,
     "super_rare": 15,
     "rare": 8,
     "uncommon": 3,
@@ -31,10 +31,10 @@ RARITY_MIN_RATINGS: typing.Dict[str, int] = {
 POOL_SIZES: typing.Dict[str, int] = {
     "legendary": 20,
     "ultra_rare": 30,
-    "super_rare": 40,
-    "rare": 60,
-    "uncommon": 80,
-    "common": 100,
+    "super_rare": 50,
+    "rare": 80,
+    "uncommon": 110,
+    "common": 150,
 }
 
 CACHE_KEY_PREFIX = "case:pool"
@@ -92,8 +92,8 @@ _POOL_QUERY = text(
     bucketed AS (
         SELECT *,
             CASE
-                WHEN total_ratings >= 30 AND combined_rating >  4.65                              THEN 'legendary'
-                WHEN total_ratings >= 30 AND combined_rating >  4.50 AND combined_rating <= 4.65  THEN 'ultra_rare'
+                WHEN total_ratings >= 25 AND combined_rating >  4.65                              THEN 'legendary'
+                WHEN total_ratings >= 20 AND combined_rating >  4.50 AND combined_rating <= 4.65  THEN 'ultra_rare'
                 WHEN total_ratings >= 15 AND combined_rating >  4.00 AND combined_rating <= 4.50  THEN 'super_rare'
                 WHEN total_ratings >=  8 AND combined_rating >  3.25 AND combined_rating <= 4.00  THEN 'rare'
                 WHEN total_ratings >=  3 AND combined_rating >  2.25 AND combined_rating <= 3.25  THEN 'uncommon'
@@ -111,10 +111,10 @@ _POOL_QUERY = text(
     SELECT * FROM sampled
     WHERE (rarity_name = 'legendary'  AND rn <= 20)
        OR (rarity_name = 'ultra_rare' AND rn <= 30)
-       OR (rarity_name = 'super_rare' AND rn <= 40)
-       OR (rarity_name = 'rare'       AND rn <= 60)
-       OR (rarity_name = 'uncommon'   AND rn <= 80)
-       OR (rarity_name = 'common'     AND rn <= 100)
+       OR (rarity_name = 'super_rare' AND rn <= 50)
+       OR (rarity_name = 'rare'       AND rn <= 80)
+       OR (rarity_name = 'uncommon'   AND rn <= 110)
+       OR (rarity_name = 'common'     AND rn <= 150)
     """
 )
 

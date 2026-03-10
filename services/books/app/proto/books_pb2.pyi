@@ -537,6 +537,20 @@ class OpenCaseResponse(_message.Message):
     winner: BookSummary
     def __init__(self, display_list: _Optional[_Iterable[_Union[BookSummary, _Mapping]]] = ..., winning_index: _Optional[int] = ..., winner: _Optional[_Union[BookSummary, _Mapping]] = ...) -> None: ...
 
+class OpenPackRequest(_message.Message):
+    __slots__ = ("language", "length")
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
+    LENGTH_FIELD_NUMBER: _ClassVar[int]
+    language: str
+    length: int
+    def __init__(self, language: _Optional[str] = ..., length: _Optional[int] = ...) -> None: ...
+
+class OpenPackResponse(_message.Message):
+    __slots__ = ("items",)
+    ITEMS_FIELD_NUMBER: _ClassVar[int]
+    items: _containers.RepeatedCompositeFieldContainer[BookSummary]
+    def __init__(self, items: _Optional[_Iterable[_Union[BookSummary, _Mapping]]] = ...) -> None: ...
+
 class DiscoverBookRequest(_message.Message):
     __slots__ = ("language", "genre_slugs", "book_length", "quality", "moods", "era", "series_filter", "popularity", "exclude_ids")
     LANGUAGE_FIELD_NUMBER: _ClassVar[int]

@@ -740,7 +740,7 @@ def _book_summary_proto_to_dict(item) -> typing.Dict[str, typing.Any]:
     (proportional to their probability weights) plus the winner inserted at a fixed position.
     The list is shuffled before the winner is inserted, suitable for a scroll-reveal animation.
 
-    **`winning_index`** is always `23` (0-based) — the 24th book out of 25.
+    **`winning_index`** is always `22` (0-based) — the 23rd book out of 25.
 
     **Fallback:** if the rolled rarity tier has no eligible books for the requested language,
     the service cascades to the closest adjacent tiers until a winner is found.
@@ -781,6 +781,64 @@ async def open_case(
         raise fastapi.HTTPException(
             status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
             detail=f"Open case failed: {e.details()}",
+        )
+
+
+@router.get(
+    "/pack/open",
+    response_model=app.models.books_responses.OpenPackResponse,
+    summary="Open a book pack",
+    description="""
+    Open a randomized book pack. Returns a list of `length` book cards (default 8),
+    each with a rarity tier assigned. At least one card is guaranteed to be
+    `super_rare` or higher.
+
+    Rarity tiers and probabilities match case opening:
+    | Rarity | Rating range | Probability |
+    |---|---|---|
+    | `legendary` | >4.75 | ~1.5% |
+    | `ultra_rare` | >4.50 — <=4.75 | ~3.5% |
+    | `super_rare` | >4.00 — <=4.50 | ~10% |
+    | `rare` | >3.25 — <=4.00 | ~20% |
+    | `uncommon` | >2.25 — <=3.25 | ~30% |
+    | `common` | <=2.25 | ~35% |
+
+    If no card rolls `super_rare` or higher naturally, the lowest-rarity card
+    is replaced with a re-rolled `super_rare+` card.
+
+    Returns `404` when no rated books exist for the given language.
+    """,
+)
+@limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
+async def open_pack(
+    request: fastapi.Request,
+    language: str = Query(
+        "en", min_length=2, max_length=10, description="Language code (e.g. en, pl, de)"
+    ),
+    length: int = Query(8, ge=1, le=25, description="Number of cards in the pack"),
+):
+    try:
+        response = await app.grpc_clients.books_client.open_pack(
+            language=language, length=length
+        )
+
+        return {
+            "success": True,
+            "data": {
+                "items": [_book_summary_proto_to_dict(item) for item in response.items],
+            },
+            "error": None,
+        }
+    except grpc.RpcError as e:
+        logger.error(f"gRPC error opening pack: {e.code()} - {e.details()}")
+        if e.code() == grpc.StatusCode.NOT_FOUND:
+            raise fastapi.HTTPException(
+                status_code=404,
+                detail=f"No eligible books found for language '{language}'",
+            )
+        raise fastapi.HTTPException(
+            status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
+            detail=f"Open pack failed: {e.details()}",
         )
 
 

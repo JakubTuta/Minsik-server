@@ -84,6 +84,11 @@ class BooksServiceStub(object):
                 request_serializer=books__pb2.OpenCaseRequest.SerializeToString,
                 response_deserializer=books__pb2.OpenCaseResponse.FromString,
                 _registered_method=True)
+        self.OpenPack = channel.unary_unary(
+                '/books.v1.BooksService/OpenPack',
+                request_serializer=books__pb2.OpenPackRequest.SerializeToString,
+                response_deserializer=books__pb2.OpenPackResponse.FromString,
+                _registered_method=True)
         self.DiscoverBook = channel.unary_unary(
                 '/books.v1.BooksService/DiscoverBook',
                 request_serializer=books__pb2.DiscoverBookRequest.SerializeToString,
@@ -169,6 +174,12 @@ class BooksServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def OpenPack(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def DiscoverBook(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -245,6 +256,11 @@ def add_BooksServiceServicer_to_server(servicer, server):
                     servicer.OpenCase,
                     request_deserializer=books__pb2.OpenCaseRequest.FromString,
                     response_serializer=books__pb2.OpenCaseResponse.SerializeToString,
+            ),
+            'OpenPack': grpc.unary_unary_rpc_method_handler(
+                    servicer.OpenPack,
+                    request_deserializer=books__pb2.OpenPackRequest.FromString,
+                    response_serializer=books__pb2.OpenPackResponse.SerializeToString,
             ),
             'DiscoverBook': grpc.unary_unary_rpc_method_handler(
                     servicer.DiscoverBook,
@@ -537,6 +553,33 @@ class BooksService(object):
             '/books.v1.BooksService/OpenCase',
             books__pb2.OpenCaseRequest.SerializeToString,
             books__pb2.OpenCaseResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def OpenPack(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/books.v1.BooksService/OpenPack',
+            books__pb2.OpenPackRequest.SerializeToString,
+            books__pb2.OpenPackResponse.FromString,
             options,
             channel_credentials,
             insecure,

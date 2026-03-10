@@ -299,5 +299,19 @@ class BooksClient:
             logger.error(f"gRPC error opening case: {e.code()} - {e.details()}")
             raise
 
+    async def open_pack(
+        self, language: str = "en", length: int = 8
+    ) -> books_pb2.OpenPackResponse:
+        request = books_pb2.OpenPackRequest(language=language, length=length)
+
+        try:
+            response = await self.stub.OpenPack(
+                request, timeout=app.config.settings.grpc_timeout
+            )
+            return response
+        except grpc.RpcError as e:
+            logger.error(f"gRPC error opening pack: {e.code()} - {e.details()}")
+            raise
+
 
 books_client = BooksClient()

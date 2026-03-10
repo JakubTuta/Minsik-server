@@ -13,6 +13,7 @@ service BooksService {
   rpc UpdateAuthor(UpdateAuthorRequest) returns (AuthorDetailResponse);
   rpc UpdateSeries(UpdateSeriesRequest) returns (SeriesDetailResponse);
   rpc OpenCase(OpenCaseRequest) returns (OpenCaseResponse);
+  rpc OpenPack(OpenPackRequest) returns (OpenPackResponse);
   rpc DiscoverBook(DiscoverBookRequest) returns (DiscoverBookResponse);
   rpc DeleteBook(DeleteBookRequest) returns (DeleteEntityResponse);
   rpc DeleteAuthor(DeleteAuthorRequest) returns (DeleteEntityResponse);
@@ -307,6 +308,15 @@ message OpenCaseResponse {
   BookSummary winner = 3;
   reserved 4;
   reserved "winner_detail";
+}
+
+message OpenPackRequest {
+  string language = 1;
+  int32 length = 2;
+}
+
+message OpenPackResponse {
+  repeated BookSummary items = 1;
 }
 
 message DiscoverBookRequest {

@@ -8,6 +8,7 @@ import app.services.author_service
 import app.services.book_service
 import app.services.case_service
 import app.services.discovery_service
+import app.services.pack_service
 import app.services.search_service
 import app.services.series_service
 import grpc
@@ -745,6 +746,27 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
         except Exception as e:
             logger.error(f"Error in OpenCase: {str(e)}")
             await context.abort(grpc.StatusCode.INTERNAL, f"Open case failed: {str(e)}")
+
+    async def OpenPack(
+        self,
+        request: app.proto.books_pb2.OpenPackRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> app.proto.books_pb2.OpenPackResponse:
+        try:
+            async with app.db.async_session_maker() as session:
+                items = await app.services.pack_service.open_pack(
+                    session,
+                    request.language or "en",
+                    request.length or app.services.pack_service.DEFAULT_PACK_LENGTH,
+                )
+                return app.proto.books_pb2.OpenPackResponse(
+                    items=[_build_book_summary_proto(item) for item in items],
+                )
+        except ValueError as e:
+            await context.abort(grpc.StatusCode.NOT_FOUND, str(e))
+        except Exception as e:
+            logger.error(f"Error in OpenPack: {str(e)}")
+            await context.abort(grpc.StatusCode.INTERNAL, f"Open pack failed: {str(e)}")
 
     async def DeleteBook(
         self,
