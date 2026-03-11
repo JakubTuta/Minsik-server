@@ -25,6 +25,7 @@ class RecommendationAuthorItemSchema(pydantic.BaseModel):
     photo_url: typing.Optional[str] = None
     book_count: int
     avg_rating: float = 0.0
+    rating_count: int = 0
     readers: int = 0
     score: float
 

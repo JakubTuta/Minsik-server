@@ -24,7 +24,7 @@ _sym_db = _symbol_database.Default()
 
 
 
-DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x14recommendation.proto\x12\x11recommendation.v1\"O\n\x1cGetRecommendationListRequest\x12\x10\n\x08\x63\x61tegory\x18\x01 \x01(\t\x12\r\n\x05limit\x18\x02 \x01(\x05\x12\x0e\n\x06offset\x18\x03 \x01(\x05\"\xe8\x01\n\x1aRecommendationListResponse\x12\x10\n\x08\x63\x61tegory\x18\x01 \x01(\t\x12\x14\n\x0c\x64isplay_name\x18\x02 \x01(\t\x12\x11\n\titem_type\x18\x03 \x01(\t\x12=\n\nbook_items\x18\x04 \x03(\x0b\x32).recommendation.v1.RecommendationBookItem\x12\x41\n\x0c\x61uthor_items\x18\x05 \x03(\x0b\x32+.recommendation.v1.RecommendationAuthorItem\x12\r\n\x05total\x18\x06 \x01(\x05\"\xe9\x01\n\x16RecommendationBookItem\x12\x0f\n\x07\x62ook_id\x18\x01 \x01(\x03\x12\r\n\x05title\x18\x02 \x01(\t\x12\x0c\n\x04slug\x18\x03 \x01(\t\x12\x10\n\x08language\x18\x04 \x01(\t\x12\x19\n\x11primary_cover_url\x18\x05 \x01(\t\x12\x14\n\x0c\x61uthor_names\x18\x06 \x03(\t\x12\x14\n\x0c\x61uthor_slugs\x18\x07 \x03(\t\x12\x12\n\navg_rating\x18\x08 \x01(\t\x12\x14\n\x0crating_count\x18\t \x01(\x05\x12\r\n\x05score\x18\n \x01(\x01\x12\x0f\n\x07readers\x18\x0b \x01(\x05\"\xa4\x01\n\x18RecommendationAuthorItem\x12\x11\n\tauthor_id\x18\x01 \x01(\x03\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0c\n\x04slug\x18\x03 \x01(\t\x12\x11\n\tphoto_url\x18\x04 \x01(\t\x12\x12\n\nbook_count\x18\x05 \x01(\x05\x12\r\n\x05score\x18\x06 \x01(\x01\x12\x12\n\navg_rating\x18\x07 \x01(\t\x12\x0f\n\x07readers\x18\x08 \x01(\x05\"A\n\x12GetHomePageRequest\x12\x1a\n\x12items_per_category\x18\x01 \x01(\x05\x12\x0f\n\x07user_id\x18\x02 \x01(\x03\"U\n\x10HomePageResponse\x12\x41\n\ncategories\x18\x01 \x03(\x0b\x32-.recommendation.v1.RecommendationListResponse\"\x1f\n\x1dGetAvailableCategoriesRequest\"R\n\x1b\x41vailableCategoriesResponse\x12\x33\n\ncategories\x18\x01 \x03(\x0b\x32\x1f.recommendation.v1.CategoryInfo\"I\n\x0c\x43\x61tegoryInfo\x12\x10\n\x08\x63\x61tegory\x18\x01 \x01(\t\x12\x14\n\x0c\x64isplay_name\x18\x02 \x01(\t\x12\x11\n\titem_type\x18\x03 \x01(\t\"\x1f\n\x1dRefreshRecommendationsRequest\"B\n\x1eRefreshRecommendationsResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\"\\\n\x1dGetBookRecommendationsRequest\x12\x0f\n\x07\x62ook_id\x18\x01 \x01(\x03\x12\x19\n\x11limit_per_section\x18\x02 \x01(\x05\x12\x0f\n\x07user_id\x18\x03 \x01(\x03\"`\n\x1fGetAuthorRecommendationsRequest\x12\x11\n\tauthor_id\x18\x01 \x01(\x03\x12\x19\n\x11limit_per_section\x18\x02 \x01(\x05\x12\x0f\n\x07user_id\x18\x03 \x01(\x03\"\xe6\x01\n\x15RecommendationSection\x12\x13\n\x0bsection_key\x18\x01 \x01(\t\x12\x14\n\x0c\x64isplay_name\x18\x02 \x01(\t\x12\x11\n\titem_type\x18\x03 \x01(\t\x12=\n\nbook_items\x18\x04 \x03(\x0b\x32).recommendation.v1.RecommendationBookItem\x12\x41\n\x0c\x61uthor_items\x18\x05 \x03(\x0b\x32+.recommendation.v1.RecommendationAuthorItem\x12\r\n\x05total\x18\x06 \x01(\x05\"j\n\x1b\x42ookRecommendationsResponse\x12\x0f\n\x07\x62ook_id\x18\x01 \x01(\x03\x12:\n\x08sections\x18\x02 \x03(\x0b\x32(.recommendation.v1.RecommendationSection\"n\n\x1d\x41uthorRecommendationsResponse\x12\x11\n\tauthor_id\x18\x01 \x01(\x03\x12:\n\x08sections\x18\x02 \x03(\x0b\x32(.recommendation.v1.RecommendationSection\"O\n\x1fGetSeriesRecommendationsRequest\x12\x11\n\tseries_id\x18\x01 \x01(\x03\x12\x19\n\x11limit_per_section\x18\x02 \x01(\x05\"n\n\x1dSeriesRecommendationsResponse\x12\x11\n\tseries_id\x18\x01 \x01(\x03\x12:\n\x08sections\x18\x02 \x03(\x0b\x32(.recommendation.v1.RecommendationSection2\xe8\x06\n\x15RecommendationService\x12w\n\x15GetRecommendationList\x12/.recommendation.v1.GetRecommendationListRequest\x1a-.recommendation.v1.RecommendationListResponse\x12Y\n\x0bGetHomePage\x12%.recommendation.v1.GetHomePageRequest\x1a#.recommendation.v1.HomePageResponse\x12z\n\x16GetAvailableCategories\x12\x30.recommendation.v1.GetAvailableCategoriesRequest\x1a..recommendation.v1.AvailableCategoriesResponse\x12}\n\x16RefreshRecommendations\x12\x30.recommendation.v1.RefreshRecommendationsRequest\x1a\x31.recommendation.v1.RefreshRecommendationsResponse\x12z\n\x16GetBookRecommendations\x12\x30.recommendation.v1.GetBookRecommendationsRequest\x1a..recommendation.v1.BookRecommendationsResponse\x12\x80\x01\n\x18GetAuthorRecommendations\x12\x32.recommendation.v1.GetAuthorRecommendationsRequest\x1a\x30.recommendation.v1.AuthorRecommendationsResponse\x12\x80\x01\n\x18GetSeriesRecommendations\x12\x32.recommendation.v1.GetSeriesRecommendationsRequest\x1a\x30.recommendation.v1.SeriesRecommendationsResponseb\x06proto3')
+DESCRIPTOR = _descriptor_pool.Default().AddSerializedFile(b'\n\x14recommendation.proto\x12\x11recommendation.v1\"O\n\x1cGetRecommendationListRequest\x12\x10\n\x08\x63\x61tegory\x18\x01 \x01(\t\x12\r\n\x05limit\x18\x02 \x01(\x05\x12\x0e\n\x06offset\x18\x03 \x01(\x05\"\xe8\x01\n\x1aRecommendationListResponse\x12\x10\n\x08\x63\x61tegory\x18\x01 \x01(\t\x12\x14\n\x0c\x64isplay_name\x18\x02 \x01(\t\x12\x11\n\titem_type\x18\x03 \x01(\t\x12=\n\nbook_items\x18\x04 \x03(\x0b\x32).recommendation.v1.RecommendationBookItem\x12\x41\n\x0c\x61uthor_items\x18\x05 \x03(\x0b\x32+.recommendation.v1.RecommendationAuthorItem\x12\r\n\x05total\x18\x06 \x01(\x05\"\xe9\x01\n\x16RecommendationBookItem\x12\x0f\n\x07\x62ook_id\x18\x01 \x01(\x03\x12\r\n\x05title\x18\x02 \x01(\t\x12\x0c\n\x04slug\x18\x03 \x01(\t\x12\x10\n\x08language\x18\x04 \x01(\t\x12\x19\n\x11primary_cover_url\x18\x05 \x01(\t\x12\x14\n\x0c\x61uthor_names\x18\x06 \x03(\t\x12\x14\n\x0c\x61uthor_slugs\x18\x07 \x03(\t\x12\x12\n\navg_rating\x18\x08 \x01(\t\x12\x14\n\x0crating_count\x18\t \x01(\x05\x12\r\n\x05score\x18\n \x01(\x01\x12\x0f\n\x07readers\x18\x0b \x01(\x05\"\xba\x01\n\x18RecommendationAuthorItem\x12\x11\n\tauthor_id\x18\x01 \x01(\x03\x12\x0c\n\x04name\x18\x02 \x01(\t\x12\x0c\n\x04slug\x18\x03 \x01(\t\x12\x11\n\tphoto_url\x18\x04 \x01(\t\x12\x12\n\nbook_count\x18\x05 \x01(\x05\x12\r\n\x05score\x18\x06 \x01(\x01\x12\x12\n\navg_rating\x18\x07 \x01(\t\x12\x0f\n\x07readers\x18\x08 \x01(\x05\x12\x14\n\x0crating_count\x18\t \x01(\x05\"A\n\x12GetHomePageRequest\x12\x1a\n\x12items_per_category\x18\x01 \x01(\x05\x12\x0f\n\x07user_id\x18\x02 \x01(\x03\"U\n\x10HomePageResponse\x12\x41\n\ncategories\x18\x01 \x03(\x0b\x32-.recommendation.v1.RecommendationListResponse\"\x1f\n\x1dGetAvailableCategoriesRequest\"R\n\x1b\x41vailableCategoriesResponse\x12\x33\n\ncategories\x18\x01 \x03(\x0b\x32\x1f.recommendation.v1.CategoryInfo\"I\n\x0c\x43\x61tegoryInfo\x12\x10\n\x08\x63\x61tegory\x18\x01 \x01(\t\x12\x14\n\x0c\x64isplay_name\x18\x02 \x01(\t\x12\x11\n\titem_type\x18\x03 \x01(\t\"\x1f\n\x1dRefreshRecommendationsRequest\"B\n\x1eRefreshRecommendationsResponse\x12\x0f\n\x07success\x18\x01 \x01(\x08\x12\x0f\n\x07message\x18\x02 \x01(\t\"\\\n\x1dGetBookRecommendationsRequest\x12\x0f\n\x07\x62ook_id\x18\x01 \x01(\x03\x12\x19\n\x11limit_per_section\x18\x02 \x01(\x05\x12\x0f\n\x07user_id\x18\x03 \x01(\x03\"`\n\x1fGetAuthorRecommendationsRequest\x12\x11\n\tauthor_id\x18\x01 \x01(\x03\x12\x19\n\x11limit_per_section\x18\x02 \x01(\x05\x12\x0f\n\x07user_id\x18\x03 \x01(\x03\"\xe6\x01\n\x15RecommendationSection\x12\x13\n\x0bsection_key\x18\x01 \x01(\t\x12\x14\n\x0c\x64isplay_name\x18\x02 \x01(\t\x12\x11\n\titem_type\x18\x03 \x01(\t\x12=\n\nbook_items\x18\x04 \x03(\x0b\x32).recommendation.v1.RecommendationBookItem\x12\x41\n\x0c\x61uthor_items\x18\x05 \x03(\x0b\x32+.recommendation.v1.RecommendationAuthorItem\x12\r\n\x05total\x18\x06 \x01(\x05\"j\n\x1b\x42ookRecommendationsResponse\x12\x0f\n\x07\x62ook_id\x18\x01 \x01(\x03\x12:\n\x08sections\x18\x02 \x03(\x0b\x32(.recommendation.v1.RecommendationSection\"n\n\x1d\x41uthorRecommendationsResponse\x12\x11\n\tauthor_id\x18\x01 \x01(\x03\x12:\n\x08sections\x18\x02 \x03(\x0b\x32(.recommendation.v1.RecommendationSection\"O\n\x1fGetSeriesRecommendationsRequest\x12\x11\n\tseries_id\x18\x01 \x01(\x03\x12\x19\n\x11limit_per_section\x18\x02 \x01(\x05\"n\n\x1dSeriesRecommendationsResponse\x12\x11\n\tseries_id\x18\x01 \x01(\x03\x12:\n\x08sections\x18\x02 \x03(\x0b\x32(.recommendation.v1.RecommendationSection2\xe8\x06\n\x15RecommendationService\x12w\n\x15GetRecommendationList\x12/.recommendation.v1.GetRecommendationListRequest\x1a-.recommendation.v1.RecommendationListResponse\x12Y\n\x0bGetHomePage\x12%.recommendation.v1.GetHomePageRequest\x1a#.recommendation.v1.HomePageResponse\x12z\n\x16GetAvailableCategories\x12\x30.recommendation.v1.GetAvailableCategoriesRequest\x1a..recommendation.v1.AvailableCategoriesResponse\x12}\n\x16RefreshRecommendations\x12\x30.recommendation.v1.RefreshRecommendationsRequest\x1a\x31.recommendation.v1.RefreshRecommendationsResponse\x12z\n\x16GetBookRecommendations\x12\x30.recommendation.v1.GetBookRecommendationsRequest\x1a..recommendation.v1.BookRecommendationsResponse\x12\x80\x01\n\x18GetAuthorRecommendations\x12\x32.recommendation.v1.GetAuthorRecommendationsRequest\x1a\x30.recommendation.v1.AuthorRecommendationsResponse\x12\x80\x01\n\x18GetSeriesRecommendations\x12\x32.recommendation.v1.GetSeriesRecommendationsRequest\x1a\x30.recommendation.v1.SeriesRecommendationsResponseb\x06proto3')
 
 _globals = globals()
 _builder.BuildMessageAndEnumDescriptors(DESCRIPTOR, _globals)
@@ -38,35 +38,35 @@ if not _descriptor._USE_C_DESCRIPTORS:
   _globals['_RECOMMENDATIONBOOKITEM']._serialized_start=360
   _globals['_RECOMMENDATIONBOOKITEM']._serialized_end=593
   _globals['_RECOMMENDATIONAUTHORITEM']._serialized_start=596
-  _globals['_RECOMMENDATIONAUTHORITEM']._serialized_end=760
-  _globals['_GETHOMEPAGEREQUEST']._serialized_start=762
-  _globals['_GETHOMEPAGEREQUEST']._serialized_end=827
-  _globals['_HOMEPAGERESPONSE']._serialized_start=829
-  _globals['_HOMEPAGERESPONSE']._serialized_end=914
-  _globals['_GETAVAILABLECATEGORIESREQUEST']._serialized_start=916
-  _globals['_GETAVAILABLECATEGORIESREQUEST']._serialized_end=947
-  _globals['_AVAILABLECATEGORIESRESPONSE']._serialized_start=949
-  _globals['_AVAILABLECATEGORIESRESPONSE']._serialized_end=1031
-  _globals['_CATEGORYINFO']._serialized_start=1033
-  _globals['_CATEGORYINFO']._serialized_end=1106
-  _globals['_REFRESHRECOMMENDATIONSREQUEST']._serialized_start=1108
-  _globals['_REFRESHRECOMMENDATIONSREQUEST']._serialized_end=1139
-  _globals['_REFRESHRECOMMENDATIONSRESPONSE']._serialized_start=1141
-  _globals['_REFRESHRECOMMENDATIONSRESPONSE']._serialized_end=1207
-  _globals['_GETBOOKRECOMMENDATIONSREQUEST']._serialized_start=1209
-  _globals['_GETBOOKRECOMMENDATIONSREQUEST']._serialized_end=1301
-  _globals['_GETAUTHORRECOMMENDATIONSREQUEST']._serialized_start=1303
-  _globals['_GETAUTHORRECOMMENDATIONSREQUEST']._serialized_end=1399
-  _globals['_RECOMMENDATIONSECTION']._serialized_start=1402
-  _globals['_RECOMMENDATIONSECTION']._serialized_end=1632
-  _globals['_BOOKRECOMMENDATIONSRESPONSE']._serialized_start=1634
-  _globals['_BOOKRECOMMENDATIONSRESPONSE']._serialized_end=1740
-  _globals['_AUTHORRECOMMENDATIONSRESPONSE']._serialized_start=1742
-  _globals['_AUTHORRECOMMENDATIONSRESPONSE']._serialized_end=1852
-  _globals['_GETSERIESRECOMMENDATIONSREQUEST']._serialized_start=1854
-  _globals['_GETSERIESRECOMMENDATIONSREQUEST']._serialized_end=1933
-  _globals['_SERIESRECOMMENDATIONSRESPONSE']._serialized_start=1935
-  _globals['_SERIESRECOMMENDATIONSRESPONSE']._serialized_end=2045
-  _globals['_RECOMMENDATIONSERVICE']._serialized_start=2048
-  _globals['_RECOMMENDATIONSERVICE']._serialized_end=2920
+  _globals['_RECOMMENDATIONAUTHORITEM']._serialized_end=782
+  _globals['_GETHOMEPAGEREQUEST']._serialized_start=784
+  _globals['_GETHOMEPAGEREQUEST']._serialized_end=849
+  _globals['_HOMEPAGERESPONSE']._serialized_start=851
+  _globals['_HOMEPAGERESPONSE']._serialized_end=936
+  _globals['_GETAVAILABLECATEGORIESREQUEST']._serialized_start=938
+  _globals['_GETAVAILABLECATEGORIESREQUEST']._serialized_end=969
+  _globals['_AVAILABLECATEGORIESRESPONSE']._serialized_start=971
+  _globals['_AVAILABLECATEGORIESRESPONSE']._serialized_end=1053
+  _globals['_CATEGORYINFO']._serialized_start=1055
+  _globals['_CATEGORYINFO']._serialized_end=1128
+  _globals['_REFRESHRECOMMENDATIONSREQUEST']._serialized_start=1130
+  _globals['_REFRESHRECOMMENDATIONSREQUEST']._serialized_end=1161
+  _globals['_REFRESHRECOMMENDATIONSRESPONSE']._serialized_start=1163
+  _globals['_REFRESHRECOMMENDATIONSRESPONSE']._serialized_end=1229
+  _globals['_GETBOOKRECOMMENDATIONSREQUEST']._serialized_start=1231
+  _globals['_GETBOOKRECOMMENDATIONSREQUEST']._serialized_end=1323
+  _globals['_GETAUTHORRECOMMENDATIONSREQUEST']._serialized_start=1325
+  _globals['_GETAUTHORRECOMMENDATIONSREQUEST']._serialized_end=1421
+  _globals['_RECOMMENDATIONSECTION']._serialized_start=1424
+  _globals['_RECOMMENDATIONSECTION']._serialized_end=1654
+  _globals['_BOOKRECOMMENDATIONSRESPONSE']._serialized_start=1656
+  _globals['_BOOKRECOMMENDATIONSRESPONSE']._serialized_end=1762
+  _globals['_AUTHORRECOMMENDATIONSRESPONSE']._serialized_start=1764
+  _globals['_AUTHORRECOMMENDATIONSRESPONSE']._serialized_end=1874
+  _globals['_GETSERIESRECOMMENDATIONSREQUEST']._serialized_start=1876
+  _globals['_GETSERIESRECOMMENDATIONSREQUEST']._serialized_end=1955
+  _globals['_SERIESRECOMMENDATIONSRESPONSE']._serialized_start=1957
+  _globals['_SERIESRECOMMENDATIONSRESPONSE']._serialized_end=2067
+  _globals['_RECOMMENDATIONSERVICE']._serialized_start=2070
+  _globals['_RECOMMENDATIONSERVICE']._serialized_end=2942
 # @@protoc_insertion_point(module_scope)

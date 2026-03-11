@@ -372,6 +372,7 @@ async def _build_top_authors(
                   AND b3.language = 'en'
                   AND bs_a.status IN ('want_to_read', 'reading', 'read')
             ), 0) AS readers,
+            COALESCE(SUM(b.rating_count) FILTER (WHERE b.language = 'en'), 0) AS rating_count,
             COALESCE(SUM(b.ol_already_read_count) FILTER (WHERE b.language = 'en'), 0) AS score
         FROM books.authors a
         JOIN books.book_authors ba ON a.author_id = ba.author_id
@@ -391,6 +392,7 @@ async def _build_top_authors(
             "photo_url": row.photo_url or "",
             "book_count": int(row.book_count or 0),
             "avg_rating": str(row.avg_rating) if row.avg_rating else "",
+            "rating_count": int(row.rating_count or 0),
             "readers": int(row.readers or 0),
             "score": float(row.score or 0),
         }
@@ -425,6 +427,7 @@ async def _build_popular_authors(
                   AND b3.language = 'en'
                   AND bs_a.status IN ('want_to_read', 'reading', 'read')
             ), 0) AS readers,
+            COALESCE(SUM(b.rating_count) FILTER (WHERE b.language = 'en'), 0) AS rating_count,
             COALESCE(a.view_count, 0) AS score
         FROM books.authors a
         LEFT JOIN books.book_authors ba ON a.author_id = ba.author_id
@@ -444,6 +447,7 @@ async def _build_popular_authors(
             "photo_url": row.photo_url or "",
             "book_count": int(row.book_count or 0),
             "avg_rating": str(row.avg_rating) if row.avg_rating else "",
+            "rating_count": int(row.rating_count or 0),
             "readers": int(row.readers or 0),
             "score": float(row.score or 0),
         }

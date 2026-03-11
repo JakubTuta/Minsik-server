@@ -52,6 +52,7 @@ def _to_section_dict(key: str, item) -> dict:
                 "photo_url": i.photo_url or None,
                 "book_count": i.book_count,
                 "avg_rating": float(i.avg_rating) if i.avg_rating else 0.0,
+                "rating_count": i.rating_count,
                 "readers": i.readers,
                 "score": i.score,
             }

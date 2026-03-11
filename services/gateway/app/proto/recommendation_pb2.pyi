@@ -59,7 +59,7 @@ class RecommendationBookItem(_message.Message):
     def __init__(self, book_id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., language: _Optional[str] = ..., primary_cover_url: _Optional[str] = ..., author_names: _Optional[_Iterable[str]] = ..., author_slugs: _Optional[_Iterable[str]] = ..., avg_rating: _Optional[str] = ..., rating_count: _Optional[int] = ..., score: _Optional[float] = ..., readers: _Optional[int] = ...) -> None: ...
 
 class RecommendationAuthorItem(_message.Message):
-    __slots__ = ("author_id", "name", "slug", "photo_url", "book_count", "score", "avg_rating", "readers")
+    __slots__ = ("author_id", "name", "slug", "photo_url", "book_count", "score", "avg_rating", "readers", "rating_count")
     AUTHOR_ID_FIELD_NUMBER: _ClassVar[int]
     NAME_FIELD_NUMBER: _ClassVar[int]
     SLUG_FIELD_NUMBER: _ClassVar[int]
@@ -68,6 +68,7 @@ class RecommendationAuthorItem(_message.Message):
     SCORE_FIELD_NUMBER: _ClassVar[int]
     AVG_RATING_FIELD_NUMBER: _ClassVar[int]
     READERS_FIELD_NUMBER: _ClassVar[int]
+    RATING_COUNT_FIELD_NUMBER: _ClassVar[int]
     author_id: int
     name: str
     slug: str
@@ -76,7 +77,8 @@ class RecommendationAuthorItem(_message.Message):
     score: float
     avg_rating: str
     readers: int
-    def __init__(self, author_id: _Optional[int] = ..., name: _Optional[str] = ..., slug: _Optional[str] = ..., photo_url: _Optional[str] = ..., book_count: _Optional[int] = ..., score: _Optional[float] = ..., avg_rating: _Optional[str] = ..., readers: _Optional[int] = ...) -> None: ...
+    rating_count: int
+    def __init__(self, author_id: _Optional[int] = ..., name: _Optional[str] = ..., slug: _Optional[str] = ..., photo_url: _Optional[str] = ..., book_count: _Optional[int] = ..., score: _Optional[float] = ..., avg_rating: _Optional[str] = ..., readers: _Optional[int] = ..., rating_count: _Optional[int] = ...) -> None: ...
 
 class GetHomePageRequest(_message.Message):
     __slots__ = ("items_per_category", "user_id")

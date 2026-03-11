@@ -50,6 +50,7 @@ message RecommendationAuthorItem {
   double score = 6;
   string avg_rating = 7;
   int32 readers = 8;
+  int32 rating_count = 9;
 }
 
 message GetHomePageRequest {

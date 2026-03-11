@@ -36,6 +36,7 @@ def _dict_to_author_item(item: dict) -> recommendation_pb2.RecommendationAuthorI
         book_count=item["book_count"],
         score=item["score"],
         avg_rating=item.get("avg_rating", ""),
+        rating_count=item.get("rating_count", 0),
         readers=item.get("readers", 0),
     )
 
