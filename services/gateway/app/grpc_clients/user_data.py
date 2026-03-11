@@ -1,9 +1,10 @@
-import typing
-import grpc
 import logging
+import typing
+
 import app.config
 import app.proto.user_data_pb2 as user_data_pb2
 import app.proto.user_data_pb2_grpc as user_data_pb2_grpc
+import grpc
 
 logger = logging.getLogger(__name__)
 
@@ -18,13 +19,18 @@ class UserDataClient:
             app.config.settings.user_data_service_url,
             options=[
                 ("grpc.keepalive_time_ms", app.config.settings.grpc_keepalive_time_ms),
-                ("grpc.keepalive_timeout_ms", app.config.settings.grpc_keepalive_timeout_ms),
+                (
+                    "grpc.keepalive_timeout_ms",
+                    app.config.settings.grpc_keepalive_timeout_ms,
+                ),
                 ("grpc.keepalive_permit_without_calls", 0),
                 ("grpc.http2.max_pings_without_data", 0),
-            ]
+            ],
         )
         self.stub = user_data_pb2_grpc.UserDataServiceStub(self.channel)
-        logger.info(f"Connected to user data service at {app.config.settings.user_data_service_url}")
+        logger.info(
+            f"Connected to user data service at {app.config.settings.user_data_service_url}"
+        )
 
     async def close(self) -> None:
         if self.channel:
@@ -34,9 +40,13 @@ class UserDataClient:
     async def get_bookshelf(
         self, user_id: int, book_slug: str
     ) -> user_data_pb2.BookshelfResponse:
-        request = user_data_pb2.GetBookshelfRequest(user_id=user_id, book_slug=book_slug)
+        request = user_data_pb2.GetBookshelfRequest(
+            user_id=user_id, book_slug=book_slug
+        )
         try:
-            return await self.stub.GetBookshelf(request, timeout=app.config.settings.grpc_timeout)
+            return await self.stub.GetBookshelf(
+                request, timeout=app.config.settings.grpc_timeout
+            )
         except grpc.RpcError as e:
             logger.error(f"gRPC error in get_bookshelf: {e.code()} - {e.details()}")
             raise
@@ -44,11 +54,17 @@ class UserDataClient:
     async def get_user_book_info(
         self, user_id: int, book_slug: str
     ) -> user_data_pb2.UserBookInfoResponse:
-        request = user_data_pb2.GetUserBookInfoRequest(user_id=user_id, book_slug=book_slug)
+        request = user_data_pb2.GetUserBookInfoRequest(
+            user_id=user_id, book_slug=book_slug
+        )
         try:
-            return await self.stub.GetUserBookInfo(request, timeout=app.config.settings.grpc_timeout)
+            return await self.stub.GetUserBookInfo(
+                request, timeout=app.config.settings.grpc_timeout
+            )
         except grpc.RpcError as e:
-            logger.error(f"gRPC error in get_user_book_info: {e.code()} - {e.details()}")
+            logger.error(
+                f"gRPC error in get_user_book_info: {e.code()} - {e.details()}"
+            )
             raise
 
     async def upsert_bookshelf(
@@ -58,7 +74,9 @@ class UserDataClient:
             user_id=user_id, book_slug=book_slug, status=status
         )
         try:
-            return await self.stub.UpsertBookshelf(request, timeout=app.config.settings.grpc_timeout)
+            return await self.stub.UpsertBookshelf(
+                request, timeout=app.config.settings.grpc_timeout
+            )
         except grpc.RpcError as e:
             logger.error(f"gRPC error in upsert_bookshelf: {e.code()} - {e.details()}")
             raise
@@ -66,9 +84,13 @@ class UserDataClient:
     async def delete_bookshelf(
         self, user_id: int, book_slug: str
     ) -> user_data_pb2.EmptyResponse:
-        request = user_data_pb2.DeleteBookshelfRequest(user_id=user_id, book_slug=book_slug)
+        request = user_data_pb2.DeleteBookshelfRequest(
+            user_id=user_id, book_slug=book_slug
+        )
         try:
-            return await self.stub.DeleteBookshelf(request, timeout=app.config.settings.grpc_timeout)
+            return await self.stub.DeleteBookshelf(
+                request, timeout=app.config.settings.grpc_timeout
+            )
         except grpc.RpcError as e:
             logger.error(f"gRPC error in delete_bookshelf: {e.code()} - {e.details()}")
             raise
@@ -81,7 +103,7 @@ class UserDataClient:
         status_filter: str = "",
         favourites_only: bool = False,
         sort_by: str = "created_at",
-        order: str = "desc"
+        order: str = "desc",
     ) -> user_data_pb2.BookshelvesListResponse:
         request = user_data_pb2.GetUserBookshelvesRequest(
             user_id=user_id,
@@ -90,12 +112,16 @@ class UserDataClient:
             status_filter=status_filter,
             favourites_only=favourites_only,
             sort_by=sort_by,
-            order=order
+            order=order,
         )
         try:
-            return await self.stub.GetUserBookshelves(request, timeout=app.config.settings.grpc_timeout)
+            return await self.stub.GetUserBookshelves(
+                request, timeout=app.config.settings.grpc_timeout
+            )
         except grpc.RpcError as e:
-            logger.error(f"gRPC error in get_user_bookshelves: {e.code()} - {e.details()}")
+            logger.error(
+                f"gRPC error in get_user_bookshelves: {e.code()} - {e.details()}"
+            )
             raise
 
     async def get_public_bookshelves(
@@ -106,7 +132,7 @@ class UserDataClient:
         status_filter: str = "",
         favourites_only: bool = False,
         sort_by: str = "created_at",
-        order: str = "desc"
+        order: str = "desc",
     ) -> user_data_pb2.BookshelvesListResponse:
         request = user_data_pb2.GetPublicBookshelvesRequest(
             username=username,
@@ -115,12 +141,16 @@ class UserDataClient:
             status_filter=status_filter,
             favourites_only=favourites_only,
             sort_by=sort_by,
-            order=order
+            order=order,
         )
         try:
-            return await self.stub.GetPublicBookshelves(request, timeout=app.config.settings.grpc_timeout)
+            return await self.stub.GetPublicBookshelves(
+                request, timeout=app.config.settings.grpc_timeout
+            )
         except grpc.RpcError as e:
-            logger.error(f"gRPC error in get_public_bookshelves: {e.code()} - {e.details()}")
+            logger.error(
+                f"gRPC error in get_public_bookshelves: {e.code()} - {e.details()}"
+            )
             raise
 
     async def get_rating(
@@ -128,7 +158,9 @@ class UserDataClient:
     ) -> user_data_pb2.RatingResponse:
         request = user_data_pb2.GetRatingRequest(user_id=user_id, book_slug=book_slug)
         try:
-            return await self.stub.GetRating(request, timeout=app.config.settings.grpc_timeout)
+            return await self.stub.GetRating(
+                request, timeout=app.config.settings.grpc_timeout
+            )
         except grpc.RpcError as e:
             logger.error(f"gRPC error in get_rating: {e.code()} - {e.details()}")
             raise
@@ -146,7 +178,7 @@ class UserDataClient:
         rereadability: typing.Optional[float] = None,
         readability: typing.Optional[float] = None,
         plot_complexity: typing.Optional[float] = None,
-        humor: typing.Optional[float] = None
+        humor: typing.Optional[float] = None,
     ) -> user_data_pb2.RatingResponse:
         request = user_data_pb2.UpsertRatingRequest(
             user_id=user_id,
@@ -168,10 +200,12 @@ class UserDataClient:
             plot_complexity=plot_complexity or 0.0,
             has_plot_complexity=plot_complexity is not None,
             humor=humor or 0.0,
-            has_humor=humor is not None
+            has_humor=humor is not None,
         )
         try:
-            return await self.stub.UpsertRating(request, timeout=app.config.settings.grpc_timeout)
+            return await self.stub.UpsertRating(
+                request, timeout=app.config.settings.grpc_timeout
+            )
         except grpc.RpcError as e:
             logger.error(f"gRPC error in upsert_rating: {e.code()} - {e.details()}")
             raise
@@ -179,9 +213,13 @@ class UserDataClient:
     async def delete_rating(
         self, user_id: int, book_slug: str
     ) -> user_data_pb2.EmptyResponse:
-        request = user_data_pb2.DeleteRatingRequest(user_id=user_id, book_slug=book_slug)
+        request = user_data_pb2.DeleteRatingRequest(
+            user_id=user_id, book_slug=book_slug
+        )
         try:
-            return await self.stub.DeleteRating(request, timeout=app.config.settings.grpc_timeout)
+            return await self.stub.DeleteRating(
+                request, timeout=app.config.settings.grpc_timeout
+            )
         except grpc.RpcError as e:
             logger.error(f"gRPC error in delete_rating: {e.code()} - {e.details()}")
             raise
@@ -194,7 +232,7 @@ class UserDataClient:
         sort_by: str = "created_at",
         order: str = "desc",
         min_rating: float = 0.0,
-        max_rating: float = 0.0
+        max_rating: float = 0.0,
     ) -> user_data_pb2.RatingsListResponse:
         request = user_data_pb2.GetUserRatingsRequest(
             user_id=user_id,
@@ -203,10 +241,12 @@ class UserDataClient:
             sort_by=sort_by,
             order=order,
             min_rating=min_rating,
-            max_rating=max_rating
+            max_rating=max_rating,
         )
         try:
-            return await self.stub.GetUserRatings(request, timeout=app.config.settings.grpc_timeout)
+            return await self.stub.GetUserRatings(
+                request, timeout=app.config.settings.grpc_timeout
+            )
         except grpc.RpcError as e:
             logger.error(f"gRPC error in get_user_ratings: {e.code()} - {e.details()}")
             raise
@@ -218,7 +258,9 @@ class UserDataClient:
             user_id=user_id, book_slug=book_slug, is_favorite=is_favorite
         )
         try:
-            return await self.stub.ToggleFavourite(request, timeout=app.config.settings.grpc_timeout)
+            return await self.stub.ToggleFavourite(
+                request, timeout=app.config.settings.grpc_timeout
+            )
         except grpc.RpcError as e:
             logger.error(f"gRPC error in toggle_favourite: {e.code()} - {e.details()}")
             raise
@@ -230,9 +272,13 @@ class UserDataClient:
             user_id=user_id, limit=limit, offset=offset
         )
         try:
-            return await self.stub.GetUserFavourites(request, timeout=app.config.settings.grpc_timeout)
+            return await self.stub.GetUserFavourites(
+                request, timeout=app.config.settings.grpc_timeout
+            )
         except grpc.RpcError as e:
-            logger.error(f"gRPC error in get_user_favourites: {e.code()} - {e.details()}")
+            logger.error(
+                f"gRPC error in get_user_favourites: {e.code()} - {e.details()}"
+            )
             raise
 
     async def create_comment(
@@ -242,7 +288,9 @@ class UserDataClient:
             user_id=user_id, book_slug=book_slug, body=body, is_spoiler=is_spoiler
         )
         try:
-            return await self.stub.CreateComment(request, timeout=app.config.settings.grpc_timeout)
+            return await self.stub.CreateComment(
+                request, timeout=app.config.settings.grpc_timeout
+            )
         except grpc.RpcError as e:
             logger.error(f"gRPC error in create_comment: {e.code()} - {e.details()}")
             raise
@@ -254,7 +302,9 @@ class UserDataClient:
             comment_id=comment_id, user_id=user_id, body=body, is_spoiler=is_spoiler
         )
         try:
-            return await self.stub.UpdateComment(request, timeout=app.config.settings.grpc_timeout)
+            return await self.stub.UpdateComment(
+                request, timeout=app.config.settings.grpc_timeout
+            )
         except grpc.RpcError as e:
             logger.error(f"gRPC error in update_comment: {e.code()} - {e.details()}")
             raise
@@ -262,9 +312,13 @@ class UserDataClient:
     async def delete_comment(
         self, comment_id: int, user_id: int
     ) -> user_data_pb2.EmptyResponse:
-        request = user_data_pb2.DeleteCommentRequest(comment_id=comment_id, user_id=user_id)
+        request = user_data_pb2.DeleteCommentRequest(
+            comment_id=comment_id, user_id=user_id
+        )
         try:
-            return await self.stub.DeleteComment(request, timeout=app.config.settings.grpc_timeout)
+            return await self.stub.DeleteComment(
+                request, timeout=app.config.settings.grpc_timeout
+            )
         except grpc.RpcError as e:
             logger.error(f"gRPC error in delete_comment: {e.code()} - {e.details()}")
             raise
@@ -276,7 +330,7 @@ class UserDataClient:
         offset: int = 0,
         sort_by: str = "created_at",
         order: str = "desc",
-        book_slug: str = ""
+        book_slug: str = "",
     ) -> user_data_pb2.CommentsListResponse:
         request = user_data_pb2.GetUserCommentsRequest(
             user_id=user_id,
@@ -284,10 +338,12 @@ class UserDataClient:
             offset=offset,
             sort_by=sort_by,
             order=order,
-            book_slug=book_slug
+            book_slug=book_slug,
         )
         try:
-            return await self.stub.GetUserComments(request, timeout=app.config.settings.grpc_timeout)
+            return await self.stub.GetUserComments(
+                request, timeout=app.config.settings.grpc_timeout
+            )
         except grpc.RpcError as e:
             logger.error(f"gRPC error in get_user_comments: {e.code()} - {e.details()}")
             raise
@@ -300,7 +356,8 @@ class UserDataClient:
         order: str = "desc",
         include_spoilers: bool = False,
         sort_by: str = "created_at",
-        requesting_user_id: int = 0
+        requesting_user_id: int = 0,
+        rating_filter: float = 0.0,
     ) -> user_data_pb2.BookCommentsResponse:
         request = user_data_pb2.GetBookCommentsRequest(
             book_slug=book_slug,
@@ -309,10 +366,13 @@ class UserDataClient:
             order=order,
             include_spoilers=include_spoilers,
             sort_by=sort_by,
-            requesting_user_id=requesting_user_id
+            requesting_user_id=requesting_user_id,
+            rating_filter=rating_filter,
         )
         try:
-            return await self.stub.GetBookComments(request, timeout=app.config.settings.grpc_timeout)
+            return await self.stub.GetBookComments(
+                request, timeout=app.config.settings.grpc_timeout
+            )
         except grpc.RpcError as e:
             logger.error(f"gRPC error in get_book_comments: {e.code()} - {e.details()}")
             raise
@@ -322,20 +382,25 @@ class UserDataClient:
     ) -> user_data_pb2.ProfileStatsResponse:
         request = user_data_pb2.GetPublicProfileStatsRequest(username=username)
         try:
-            return await self.stub.GetPublicProfileStats(request, timeout=app.config.settings.grpc_timeout)
+            return await self.stub.GetPublicProfileStats(
+                request, timeout=app.config.settings.grpc_timeout
+            )
         except grpc.RpcError as e:
-            logger.error(f"gRPC error in get_public_profile_stats: {e.code()} - {e.details()}")
+            logger.error(
+                f"gRPC error in get_public_profile_stats: {e.code()} - {e.details()}"
+            )
             raise
 
-    async def delete_user_data(
-        self, user_id: int
-    ) -> user_data_pb2.EmptyResponse:
+    async def delete_user_data(self, user_id: int) -> user_data_pb2.EmptyResponse:
         request = user_data_pb2.DeleteUserDataRequest(user_id=user_id)
         try:
-            return await self.stub.DeleteUserData(request, timeout=app.config.settings.grpc_timeout)
+            return await self.stub.DeleteUserData(
+                request, timeout=app.config.settings.grpc_timeout
+            )
         except grpc.RpcError as e:
             logger.error(f"gRPC error in delete_user_data: {e.code()} - {e.details()}")
             raise
 
 
+user_data_client = UserDataClient()
 user_data_client = UserDataClient()

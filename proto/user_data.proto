@@ -183,6 +183,7 @@ message GetBookCommentsRequest {
   bool   include_spoilers   = 5;
   string sort_by            = 6;
   int64  requesting_user_id = 7;
+  float  rating_filter      = 8;
 }
 
 message BookCommentWithRating {

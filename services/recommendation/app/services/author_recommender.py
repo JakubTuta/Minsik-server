@@ -31,6 +31,8 @@ def _row_to_author_item(row: typing.Any, score: float) -> typing.Dict[str, typin
         "slug": row.slug or "",
         "photo_url": row.photo_url or "",
         "book_count": int(row.book_count or 0),
+        "avg_rating": str(row.avg_rating) if row.avg_rating else "",
+        "readers": int(row.readers or 0),
         "score": score,
     }
 
@@ -41,7 +43,8 @@ async def _build_similar_authors_by_genre(
     limit: int,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     result = await session.execute(
-        sqlalchemy.text("""
+        sqlalchemy.text(
+            """
             WITH author_genres AS (
                 SELECT DISTINCT bg.genre_id
                 FROM books.book_genres bg
@@ -66,7 +69,22 @@ async def _build_similar_authors_by_genre(
                 a.name,
                 a.slug,
                 COALESCE(a.photo_url, '') AS photo_url,
-                COUNT(DISTINCT b.book_id) AS book_count,
+                COUNT(DISTINCT b.book_id) FILTER (WHERE b.language = 'en') AS book_count,
+                SUM(b.avg_rating * b.rating_count) FILTER (WHERE b.language = 'en')
+                    / NULLIF(SUM(b.rating_count) FILTER (WHERE b.language = 'en'), 0) AS avg_rating,
+                COALESCE(SUM(
+                    COALESCE(b.ol_want_to_read_count, 0) +
+                    COALESCE(b.ol_currently_reading_count, 0) +
+                    COALESCE(b.ol_already_read_count, 0)
+                ) FILTER (WHERE b.language = 'en'), 0) + COALESCE((
+                    SELECT COUNT(*)
+                    FROM user_data.bookshelves bs_a
+                    JOIN books.book_authors ba3 ON bs_a.book_id = ba3.book_id
+                    JOIN books.books b3 ON ba3.book_id = b3.book_id
+                    WHERE ba3.author_id = a.author_id
+                      AND b3.language = 'en'
+                      AND bs_a.status IN ('want_to_read', 'reading', 'read')
+                ), 0) AS readers,
                 ca.shared::float / NULLIF(
                     (SELECT cnt FROM author_genre_count) + (
                         SELECT COUNT(DISTINCT bg2.genre_id)
@@ -83,7 +101,8 @@ async def _build_similar_authors_by_genre(
             GROUP BY a.author_id, a.name, a.slug, a.photo_url, ca.shared
             ORDER BY score DESC NULLS LAST, book_count DESC
             LIMIT :limit
-        """),
+        """
+        ),
         {"author_id": author_id, "limit": limit},
     )
     return [_row_to_author_item(row, float(row.score or 0)) for row in result]
@@ -95,7 +114,8 @@ async def _build_fans_also_read(
     limit: int,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     result = await session.execute(
-        sqlalchemy.text("""
+        sqlalchemy.text(
+            """
             WITH author_readers AS (
                 SELECT DISTINCT bs.user_id
                 FROM user_data.bookshelves bs
@@ -120,7 +140,22 @@ async def _build_fans_also_read(
                 a.name,
                 a.slug,
                 COALESCE(a.photo_url, '') AS photo_url,
-                COUNT(DISTINCT b.book_id) AS book_count,
+                COUNT(DISTINCT b.book_id) FILTER (WHERE b.language = 'en') AS book_count,
+                SUM(b.avg_rating * b.rating_count) FILTER (WHERE b.language = 'en')
+                    / NULLIF(SUM(b.rating_count) FILTER (WHERE b.language = 'en'), 0) AS avg_rating,
+                COALESCE(SUM(
+                    COALESCE(b.ol_want_to_read_count, 0) +
+                    COALESCE(b.ol_currently_reading_count, 0) +
+                    COALESCE(b.ol_already_read_count, 0)
+                ) FILTER (WHERE b.language = 'en'), 0) + COALESCE((
+                    SELECT COUNT(*)
+                    FROM user_data.bookshelves bs_a
+                    JOIN books.book_authors ba3 ON bs_a.book_id = ba3.book_id
+                    JOIN books.books b3 ON ba3.book_id = b3.book_id
+                    WHERE ba3.author_id = a.author_id
+                      AND b3.language = 'en'
+                      AND bs_a.status IN ('want_to_read', 'reading', 'read')
+                ), 0) AS readers,
                 ca.co_count AS score
             FROM co_authors ca
             JOIN books.authors a ON ca.author_id = a.author_id
@@ -129,7 +164,8 @@ async def _build_fans_also_read(
             GROUP BY a.author_id, a.name, a.slug, a.photo_url, ca.co_count
             ORDER BY ca.co_count DESC, book_count DESC
             LIMIT :limit
-        """),
+        """
+        ),
         {"author_id": author_id, "limit": limit},
     )
     return [_row_to_author_item(row, float(row.score or 0)) for row in result]
@@ -169,17 +205,21 @@ async def build_author_recommendations(
     sections: typing.List[typing.Dict[str, typing.Any]] = []
 
     if similar_items and not isinstance(similar_items, Exception):
-        sections.append(_make_author_section(
-            "similar_authors",
-            f"Similar to {author_name}",
-            similar_items,
-        ))
+        sections.append(
+            _make_author_section(
+                "similar_authors",
+                f"Similar to {author_name}",
+                similar_items,
+            )
+        )
 
     if fans_items and not isinstance(fans_items, Exception):
-        sections.append(_make_author_section(
-            "fans_also_read",
-            "Fans also read",
-            fans_items,
-        ))
+        sections.append(
+            _make_author_section(
+                "fans_also_read",
+                "Fans also read",
+                fans_items,
+            )
+        )
 
     return sections

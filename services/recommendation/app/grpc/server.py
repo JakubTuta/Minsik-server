@@ -23,6 +23,7 @@ def _dict_to_book_item(item: dict) -> recommendation_pb2.RecommendationBookItem:
         avg_rating=item["avg_rating"],
         rating_count=item["rating_count"],
         score=item["score"],
+        readers=item.get("readers", 0),
     )
 
 
@@ -34,6 +35,8 @@ def _dict_to_author_item(item: dict) -> recommendation_pb2.RecommendationAuthorI
         photo_url=item["photo_url"],
         book_count=item["book_count"],
         score=item["score"],
+        avg_rating=item.get("avg_rating", ""),
+        readers=item.get("readers", 0),
     )
 
 
@@ -185,7 +188,9 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
                     f"Book with ID {request.book_id} not found",
                 )
                 return
-            response = recommendation_pb2.BookRecommendationsResponse(book_id=request.book_id)
+            response = recommendation_pb2.BookRecommendationsResponse(
+                book_id=request.book_id
+            )
             for section in sections:
                 response.sections.append(_dict_to_section(section))
             return response
@@ -203,8 +208,10 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
         try:
             limit = request.limit_per_section if request.limit_per_section > 0 else 15
             user_id = request.user_id if request.user_id > 0 else 0
-            sections = await app.services.contextual_provider.get_author_recommendations(
-                request.author_id, limit, user_id
+            sections = (
+                await app.services.contextual_provider.get_author_recommendations(
+                    request.author_id, limit, user_id
+                )
             )
             if sections is None:
                 await context.abort(
@@ -212,7 +219,9 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
                     f"Author with ID {request.author_id} not found",
                 )
                 return
-            response = recommendation_pb2.AuthorRecommendationsResponse(author_id=request.author_id)
+            response = recommendation_pb2.AuthorRecommendationsResponse(
+                author_id=request.author_id
+            )
             for section in sections:
                 response.sections.append(_dict_to_section(section))
             return response
@@ -220,4 +229,34 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
             raise
         except Exception as e:
             logger.error(f"Error in GetAuthorRecommendations: {str(e)}")
+            await context.abort(grpc.StatusCode.INTERNAL, f"Internal error: {str(e)}")
+
+    async def GetSeriesRecommendations(
+        self,
+        request: recommendation_pb2.GetSeriesRecommendationsRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> recommendation_pb2.SeriesRecommendationsResponse:
+        try:
+            limit = request.limit_per_section if request.limit_per_section > 0 else 15
+            sections = (
+                await app.services.contextual_provider.get_series_recommendations(
+                    request.series_id, limit
+                )
+            )
+            if sections is None:
+                await context.abort(
+                    grpc.StatusCode.NOT_FOUND,
+                    f"Series with ID {request.series_id} not found",
+                )
+                return
+            response = recommendation_pb2.SeriesRecommendationsResponse(
+                series_id=request.series_id
+            )
+            for section in sections:
+                response.sections.append(_dict_to_section(section))
+            return response
+        except grpc.aio.AbortError:
+            raise
+        except Exception as e:
+            logger.error(f"Error in GetSeriesRecommendations: {str(e)}")
             await context.abort(grpc.StatusCode.INTERNAL, f"Internal error: {str(e)}")

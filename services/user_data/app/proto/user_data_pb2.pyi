@@ -401,7 +401,7 @@ class EmptyResponse(_message.Message):
     def __init__(self) -> None: ...
 
 class GetBookCommentsRequest(_message.Message):
-    __slots__ = ("book_slug", "limit", "offset", "order", "include_spoilers", "sort_by", "requesting_user_id")
+    __slots__ = ("book_slug", "limit", "offset", "order", "include_spoilers", "sort_by", "requesting_user_id", "rating_filter")
     BOOK_SLUG_FIELD_NUMBER: _ClassVar[int]
     LIMIT_FIELD_NUMBER: _ClassVar[int]
     OFFSET_FIELD_NUMBER: _ClassVar[int]
@@ -409,6 +409,7 @@ class GetBookCommentsRequest(_message.Message):
     INCLUDE_SPOILERS_FIELD_NUMBER: _ClassVar[int]
     SORT_BY_FIELD_NUMBER: _ClassVar[int]
     REQUESTING_USER_ID_FIELD_NUMBER: _ClassVar[int]
+    RATING_FILTER_FIELD_NUMBER: _ClassVar[int]
     book_slug: str
     limit: int
     offset: int
@@ -416,7 +417,8 @@ class GetBookCommentsRequest(_message.Message):
     include_spoilers: bool
     sort_by: str
     requesting_user_id: int
-    def __init__(self, book_slug: _Optional[str] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., order: _Optional[str] = ..., include_spoilers: bool = ..., sort_by: _Optional[str] = ..., requesting_user_id: _Optional[int] = ...) -> None: ...
+    rating_filter: float
+    def __init__(self, book_slug: _Optional[str] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., order: _Optional[str] = ..., include_spoilers: bool = ..., sort_by: _Optional[str] = ..., requesting_user_id: _Optional[int] = ..., rating_filter: _Optional[float] = ...) -> None: ...
 
 class BookCommentWithRating(_message.Message):
     __slots__ = ("comment_id", "user_id", "book_id", "book_slug", "body", "is_spoiler", "comment_created_at", "comment_updated_at", "has_rating", "overall_rating", "review_text", "pacing", "has_pacing", "emotional_impact", "has_emotional_impact", "intellectual_depth", "has_intellectual_depth", "writing_quality", "has_writing_quality", "rereadability", "has_rereadability", "readability", "has_readability", "plot_complexity", "has_plot_complexity", "humor", "has_humor", "username")

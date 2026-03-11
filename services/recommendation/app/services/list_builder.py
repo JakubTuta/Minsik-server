@@ -17,7 +17,11 @@ _BOOK_FIELDS = """
     COALESCE(b.avg_rating::text, '') AS avg_rating,
     b.rating_count,
     ARRAY_AGG(DISTINCT a.name) FILTER (WHERE a.name IS NOT NULL) AS author_names,
-    ARRAY_AGG(DISTINCT a.slug) FILTER (WHERE a.slug IS NOT NULL) AS author_slugs
+    ARRAY_AGG(DISTINCT a.slug) FILTER (WHERE a.slug IS NOT NULL) AS author_slugs,
+    COALESCE(b.ol_want_to_read_count, 0) + COALESCE(b.ol_currently_reading_count, 0) + COALESCE(b.ol_already_read_count, 0)
+        + COALESCE((SELECT COUNT(*) FROM user_data.bookshelves bs_r
+                     WHERE bs_r.book_id = b.book_id
+                     AND bs_r.status IN ('want_to_read', 'reading', 'read')), 0) AS readers
 """
 
 _BOOK_JOINS = """
@@ -41,6 +45,7 @@ def _row_to_book_item(row: typing.Any, score: float) -> typing.Dict[str, typing.
         "rating_count": row.rating_count or 0,
         "author_names": list(row.author_names or []),
         "author_slugs": list(row.author_slugs or []),
+        "readers": int(row.readers or 0),
         "score": score,
     }
 
@@ -351,8 +356,23 @@ async def _build_top_authors(
             a.name,
             a.slug,
             COALESCE(a.photo_url, '') AS photo_url,
-            COUNT(DISTINCT b.book_id) AS book_count,
-            COALESCE(SUM(b.ol_already_read_count), 0) AS score
+            COUNT(DISTINCT b.book_id) FILTER (WHERE b.language = 'en') AS book_count,
+            SUM(b.avg_rating * b.rating_count) FILTER (WHERE b.language = 'en')
+                / NULLIF(SUM(b.rating_count) FILTER (WHERE b.language = 'en'), 0) AS avg_rating,
+            COALESCE(SUM(
+                COALESCE(b.ol_want_to_read_count, 0) +
+                COALESCE(b.ol_currently_reading_count, 0) +
+                COALESCE(b.ol_already_read_count, 0)
+            ) FILTER (WHERE b.language = 'en'), 0) + COALESCE((
+                SELECT COUNT(*)
+                FROM user_data.bookshelves bs_a
+                JOIN books.book_authors ba3 ON bs_a.book_id = ba3.book_id
+                JOIN books.books b3 ON ba3.book_id = b3.book_id
+                WHERE ba3.author_id = a.author_id
+                  AND b3.language = 'en'
+                  AND bs_a.status IN ('want_to_read', 'reading', 'read')
+            ), 0) AS readers,
+            COALESCE(SUM(b.ol_already_read_count) FILTER (WHERE b.language = 'en'), 0) AS score
         FROM books.authors a
         JOIN books.book_authors ba ON a.author_id = ba.author_id
         JOIN books.books b ON ba.book_id = b.book_id
@@ -370,6 +390,8 @@ async def _build_top_authors(
             "slug": row.slug or "",
             "photo_url": row.photo_url or "",
             "book_count": int(row.book_count or 0),
+            "avg_rating": str(row.avg_rating) if row.avg_rating else "",
+            "readers": int(row.readers or 0),
             "score": float(row.score or 0),
         }
         for row in result
@@ -387,7 +409,22 @@ async def _build_popular_authors(
             a.name,
             a.slug,
             COALESCE(a.photo_url, '') AS photo_url,
-            COUNT(DISTINCT b.book_id) AS book_count,
+            COUNT(DISTINCT b.book_id) FILTER (WHERE b.language = 'en') AS book_count,
+            SUM(b.avg_rating * b.rating_count) FILTER (WHERE b.language = 'en')
+                / NULLIF(SUM(b.rating_count) FILTER (WHERE b.language = 'en'), 0) AS avg_rating,
+            COALESCE(SUM(
+                COALESCE(b.ol_want_to_read_count, 0) +
+                COALESCE(b.ol_currently_reading_count, 0) +
+                COALESCE(b.ol_already_read_count, 0)
+            ) FILTER (WHERE b.language = 'en'), 0) + COALESCE((
+                SELECT COUNT(*)
+                FROM user_data.bookshelves bs_a
+                JOIN books.book_authors ba3 ON bs_a.book_id = ba3.book_id
+                JOIN books.books b3 ON ba3.book_id = b3.book_id
+                WHERE ba3.author_id = a.author_id
+                  AND b3.language = 'en'
+                  AND bs_a.status IN ('want_to_read', 'reading', 'read')
+            ), 0) AS readers,
             COALESCE(a.view_count, 0) AS score
         FROM books.authors a
         LEFT JOIN books.book_authors ba ON a.author_id = ba.author_id
@@ -406,6 +443,8 @@ async def _build_popular_authors(
             "slug": row.slug or "",
             "photo_url": row.photo_url or "",
             "book_count": int(row.book_count or 0),
+            "avg_rating": str(row.avg_rating) if row.avg_rating else "",
+            "readers": int(row.readers or 0),
             "score": float(row.score or 0),
         }
         for row in result

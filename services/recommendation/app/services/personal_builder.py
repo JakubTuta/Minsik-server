@@ -110,7 +110,7 @@ async def _build_for_you(
             {app.services.list_builder._BOOK_JOINS}
             LEFT JOIN collab_scored cs ON gs.book_id = cs.book_id
             WHERE {app.services.list_builder._BOOK_BASE_WHERE}
-            {app.services.list_builder._BOOK_GROUP_BY}
+            GROUP BY b.book_id, gs.genre_score, cs.collab_score
             ORDER BY score DESC
             LIMIT :limit
             """
@@ -124,7 +124,10 @@ async def _build_for_you(
             "limit": limit,
         },
     )
-    return [app.services.list_builder._row_to_book_item(row, float(row.score or 0)) for row in result]
+    return [
+        app.services.list_builder._row_to_book_item(row, float(row.score or 0))
+        for row in result
+    ]
 
 
 async def _build_because_you_liked(
@@ -202,14 +205,17 @@ async def _build_because_you_liked(
             JOIN books.books b ON c.book_id = b.book_id
             {app.services.list_builder._BOOK_JOINS}
             WHERE {app.services.list_builder._BOOK_BASE_WHERE}
-            {app.services.list_builder._BOOK_GROUP_BY}
+            GROUP BY b.book_id, c.score
             ORDER BY c.score DESC
             LIMIT :limit
             """
         ),
         {"anchor_id": anchor_book_id, "exclude_ids": exclude_ids, "limit": limit},
     )
-    items = [app.services.list_builder._row_to_book_item(row, float(row.score or 0)) for row in result]
+    items = [
+        app.services.list_builder._row_to_book_item(row, float(row.score or 0))
+        for row in result
+    ]
     return items, anchor_title
 
 
@@ -240,7 +246,10 @@ async def _build_continue_series(
         ),
         {"series_ids": series_ids, "exclude_ids": exclude_ids, "limit": limit},
     )
-    return [app.services.list_builder._row_to_book_item(row, float(row.score or 0)) for row in result]
+    return [
+        app.services.list_builder._row_to_book_item(row, float(row.score or 0))
+        for row in result
+    ]
 
 
 async def _build_from_favorite_authors(
@@ -273,7 +282,10 @@ async def _build_from_favorite_authors(
         ),
         {"author_ids": author_ids, "exclude_ids": exclude_ids, "limit": limit},
     )
-    return [app.services.list_builder._row_to_book_item(row, float(row.score or 0)) for row in result]
+    return [
+        app.services.list_builder._row_to_book_item(row, float(row.score or 0))
+        for row in result
+    ]
 
 
 async def _build_top_in_genre(
@@ -308,7 +320,10 @@ async def _build_top_in_genre(
         ),
         {"genre_slug": genre_slug, "exclude_ids": exclude_ids, "limit": limit},
     )
-    items = [app.services.list_builder._row_to_book_item(row, float(row.score or 0)) for row in result]
+    items = [
+        app.services.list_builder._row_to_book_item(row, float(row.score or 0))
+        for row in result
+    ]
     return items, genre_slug
 
 
@@ -335,7 +350,10 @@ async def _build_want_to_read_picks(
         ),
         {"want_to_read_ids": want_to_read_ids, "limit": limit},
     )
-    return [app.services.list_builder._row_to_book_item(row, float(row.score or 0)) for row in result]
+    return [
+        app.services.list_builder._row_to_book_item(row, float(row.score or 0))
+        for row in result
+    ]
 
 
 async def _build_readers_like_you(
@@ -378,7 +396,7 @@ async def _build_readers_like_you(
             JOIN books.books b ON r.book_id = b.book_id
             {app.services.list_builder._BOOK_JOINS}
             WHERE {app.services.list_builder._BOOK_BASE_WHERE}
-            {app.services.list_builder._BOOK_GROUP_BY}
+            GROUP BY b.book_id, r.reader_count
             ORDER BY r.reader_count DESC, b.avg_rating DESC NULLS LAST
             LIMIT :limit
             """
@@ -390,7 +408,10 @@ async def _build_readers_like_you(
             "limit": limit,
         },
     )
-    return [app.services.list_builder._row_to_book_item(row, float(row.score or 0)) for row in result]
+    return [
+        app.services.list_builder._row_to_book_item(row, float(row.score or 0))
+        for row in result
+    ]
 
 
 async def _build_hidden_gems(
@@ -426,7 +447,10 @@ async def _build_hidden_gems(
         ),
         {"genre_slugs": top_genre_slugs, "exclude_ids": exclude_ids, "limit": limit},
     )
-    return [app.services.list_builder._row_to_book_item(row, float(row.score or 0)) for row in result]
+    return [
+        app.services.list_builder._row_to_book_item(row, float(row.score or 0))
+        for row in result
+    ]
 
 
 async def _build_you_might_like(
@@ -478,7 +502,7 @@ async def _build_you_might_like(
             JOIN books.books b ON s.book_id = b.book_id
             {app.services.list_builder._BOOK_JOINS}
             WHERE {app.services.list_builder._BOOK_BASE_WHERE}
-            {app.services.list_builder._BOOK_GROUP_BY}
+            GROUP BY b.book_id, s.score
             ORDER BY s.score DESC, b.avg_rating DESC NULLS LAST
             LIMIT :limit
             """
@@ -491,7 +515,10 @@ async def _build_you_might_like(
             "limit": limit,
         },
     )
-    return [app.services.list_builder._row_to_book_item(row, float(row.score or 0)) for row in result]
+    return [
+        app.services.list_builder._row_to_book_item(row, float(row.score or 0))
+        for row in result
+    ]
 
 
 async def _build_unread_by_author(
@@ -501,10 +528,12 @@ async def _build_unread_by_author(
     limit: int,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     exclude_ids = profile.get("read_book_ids", [])
-    shelved_ids = list({
-        *exclude_ids,
-        *profile.get("want_to_read_book_ids", []),
-    }) or [-1]
+    shelved_ids = list(
+        {
+            *exclude_ids,
+            *profile.get("want_to_read_book_ids", []),
+        }
+    ) or [-1]
 
     result = await session.execute(
         sqlalchemy.text(
@@ -524,7 +553,10 @@ async def _build_unread_by_author(
         ),
         {"author_id": author_id, "shelved_ids": shelved_ids, "limit": limit},
     )
-    return [app.services.list_builder._row_to_book_item(row, float(row.score or 0)) for row in result]
+    return [
+        app.services.list_builder._row_to_book_item(row, float(row.score or 0))
+        for row in result
+    ]
 
 
 async def build_personal_home_sections(
@@ -561,26 +593,64 @@ async def build_personal_home_sections(
     sections: typing.List[typing.Dict[str, typing.Any]] = []
 
     if for_you_items:
-        sections.append(_make_home_section("for_you", "Recommended For You", "book", for_you_items))
+        sections.append(
+            _make_home_section("for_you", "Recommended For You", "book", for_you_items)
+        )
     if because_items and anchor_title:
-        sections.append(_make_home_section(
-            "because_you_liked", f"Because You Liked {anchor_title}", "book", because_items
-        ))
+        sections.append(
+            _make_home_section(
+                "because_you_liked",
+                f"Because You Liked {anchor_title}",
+                "book",
+                because_items,
+            )
+        )
     if continue_items:
-        sections.append(_make_home_section("continue_series", "Continue Your Series", "book", continue_items))
+        sections.append(
+            _make_home_section(
+                "continue_series", "Continue Your Series", "book", continue_items
+            )
+        )
     if fav_author_items:
-        sections.append(_make_home_section("from_favorite_authors", "From Authors You Love", "book", fav_author_items))
+        sections.append(
+            _make_home_section(
+                "from_favorite_authors",
+                "From Authors You Love",
+                "book",
+                fav_author_items,
+            )
+        )
     if top_genre_items and genre_slug:
         display_genre = genre_slug.replace("-", " ").title()
-        sections.append(_make_home_section(
-            "top_in_your_genres", f"Top in {display_genre}", "book", top_genre_items
-        ))
+        sections.append(
+            _make_home_section(
+                "top_in_your_genres", f"Top in {display_genre}", "book", top_genre_items
+            )
+        )
     if want_to_read_items:
-        sections.append(_make_home_section("want_to_read_picks", "From Your Want-to-Read", "book", want_to_read_items))
+        sections.append(
+            _make_home_section(
+                "want_to_read_picks",
+                "From Your Want-to-Read",
+                "book",
+                want_to_read_items,
+            )
+        )
     if readers_like_items:
-        sections.append(_make_home_section("readers_like_you", "Readers Like You Enjoyed", "book", readers_like_items))
+        sections.append(
+            _make_home_section(
+                "readers_like_you",
+                "Readers Like You Enjoyed",
+                "book",
+                readers_like_items,
+            )
+        )
     if hidden_gems_items:
-        sections.append(_make_home_section("hidden_gems", "Hidden Gems For You", "book", hidden_gems_items))
+        sections.append(
+            _make_home_section(
+                "hidden_gems", "Hidden Gems For You", "book", hidden_gems_items
+            )
+        )
 
     return sections
 
@@ -603,7 +673,11 @@ async def build_personal_author_sections(
     profile: typing.Dict[str, typing.Any],
     limit_per_section: int,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
-    items = await _build_unread_by_author(session, author_id, profile, limit_per_section)
+    items = await _build_unread_by_author(
+        session, author_id, profile, limit_per_section
+    )
     if not items:
         return []
-    return [_make_book_page_section("unread_by_author", "Books You Haven't Read", items)]
+    return [
+        _make_book_page_section("unread_by_author", "Books You Haven't Read", items)
+    ]

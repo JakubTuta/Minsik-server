@@ -38,6 +38,7 @@ def _to_section_dict(key: str, item) -> dict:
                 "author_slugs": list(i.author_slugs),
                 "avg_rating": i.avg_rating or None,
                 "rating_count": i.rating_count,
+                "readers": i.readers,
                 "score": i.score,
             }
             for i in item.book_items
@@ -50,6 +51,8 @@ def _to_section_dict(key: str, item) -> dict:
                 "slug": i.slug,
                 "photo_url": i.photo_url or None,
                 "book_count": i.book_count,
+                "avg_rating": float(i.avg_rating) if i.avg_rating else 0.0,
+                "readers": i.readers,
                 "score": i.score,
             }
             for i in item.author_items
@@ -86,8 +89,12 @@ def _to_section_dict(key: str, item) -> dict:
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
 async def get_personal_home_page(
     request: fastapi.Request,
-    items_per_category: int = Query(20, ge=1, le=100, description="Number of items to return per section"),
-    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(app.middleware.auth.require_user),
+    items_per_category: int = Query(
+        20, ge=1, le=100, description="Number of items to return per section"
+    ),
+    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
+        app.middleware.auth.require_user
+    ),
 ):
     user_id = current_user["user_id"]
     try:
@@ -97,9 +104,13 @@ async def get_personal_home_page(
         sections = [_to_section_dict(cat.category, cat) for cat in response.categories]
         return app.utils.responses.success_response({"sections": sections})
     except grpc.RpcError as e:
-        logger.error(f"gRPC error in get_personal_home_page: {e.code()} - {e.details()}")
+        logger.error(
+            f"gRPC error in get_personal_home_page: {e.code()} - {e.details()}"
+        )
         return app.utils.responses.error_response(
-            "INTERNAL_ERROR", "Failed to fetch personalized recommendations", status_code=500
+            "INTERNAL_ERROR",
+            "Failed to fetch personalized recommendations",
+            status_code=500,
         )
     except Exception as e:
         logger.error(f"Unexpected error in get_personal_home_page: {str(e)}")
@@ -132,24 +143,36 @@ async def get_personal_home_page(
 async def get_personal_book_recommendations(
     request: fastapi.Request,
     book_id: int = fastapi.Path(..., description="Book ID"),
-    limit_per_section: int = Query(15, ge=1, le=50, description="Number of items per section"),
-    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(app.middleware.auth.require_user),
+    limit_per_section: int = Query(
+        15, ge=1, le=50, description="Number of items per section"
+    ),
+    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
+        app.middleware.auth.require_user
+    ),
 ):
     user_id = current_user["user_id"]
     try:
-        response = await app.grpc_clients.recommendation_client.get_book_recommendations(
-            book_id=book_id, limit_per_section=limit_per_section, user_id=user_id
+        response = (
+            await app.grpc_clients.recommendation_client.get_book_recommendations(
+                book_id=book_id, limit_per_section=limit_per_section, user_id=user_id
+            )
         )
         sections = [_to_section_dict(s.section_key, s) for s in response.sections]
-        return app.utils.responses.success_response({"book_id": response.book_id, "sections": sections})
+        return app.utils.responses.success_response(
+            {"book_id": response.book_id, "sections": sections}
+        )
     except grpc.RpcError as e:
-        logger.error(f"gRPC error in get_personal_book_recommendations: {e.code()} - {e.details()}")
+        logger.error(
+            f"gRPC error in get_personal_book_recommendations: {e.code()} - {e.details()}"
+        )
         if e.code() == grpc.StatusCode.NOT_FOUND:
             return app.utils.responses.error_response(
                 "NOT_FOUND", f"Book with ID {book_id} not found", status_code=404
             )
         return app.utils.responses.error_response(
-            "INTERNAL_ERROR", "Failed to fetch personalized book recommendations", status_code=500
+            "INTERNAL_ERROR",
+            "Failed to fetch personalized book recommendations",
+            status_code=500,
         )
     except Exception as e:
         logger.error(f"Unexpected error in get_personal_book_recommendations: {str(e)}")
@@ -182,27 +205,43 @@ async def get_personal_book_recommendations(
 async def get_personal_author_recommendations(
     request: fastapi.Request,
     author_id: int = fastapi.Path(..., description="Author ID"),
-    limit_per_section: int = Query(15, ge=1, le=50, description="Number of items per section"),
-    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(app.middleware.auth.require_user),
+    limit_per_section: int = Query(
+        15, ge=1, le=50, description="Number of items per section"
+    ),
+    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
+        app.middleware.auth.require_user
+    ),
 ):
     user_id = current_user["user_id"]
     try:
-        response = await app.grpc_clients.recommendation_client.get_author_recommendations(
-            author_id=author_id, limit_per_section=limit_per_section, user_id=user_id
+        response = (
+            await app.grpc_clients.recommendation_client.get_author_recommendations(
+                author_id=author_id,
+                limit_per_section=limit_per_section,
+                user_id=user_id,
+            )
         )
         sections = [_to_section_dict(s.section_key, s) for s in response.sections]
-        return app.utils.responses.success_response({"author_id": response.author_id, "sections": sections})
+        return app.utils.responses.success_response(
+            {"author_id": response.author_id, "sections": sections}
+        )
     except grpc.RpcError as e:
-        logger.error(f"gRPC error in get_personal_author_recommendations: {e.code()} - {e.details()}")
+        logger.error(
+            f"gRPC error in get_personal_author_recommendations: {e.code()} - {e.details()}"
+        )
         if e.code() == grpc.StatusCode.NOT_FOUND:
             return app.utils.responses.error_response(
                 "NOT_FOUND", f"Author with ID {author_id} not found", status_code=404
             )
         return app.utils.responses.error_response(
-            "INTERNAL_ERROR", "Failed to fetch personalized author recommendations", status_code=500
+            "INTERNAL_ERROR",
+            "Failed to fetch personalized author recommendations",
+            status_code=500,
         )
     except Exception as e:
-        logger.error(f"Unexpected error in get_personal_author_recommendations: {str(e)}")
+        logger.error(
+            f"Unexpected error in get_personal_author_recommendations: {str(e)}"
+        )
         return app.utils.responses.error_response(
             "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
         )

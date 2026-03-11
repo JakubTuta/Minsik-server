@@ -14,6 +14,7 @@ class RecommendationBookItemSchema(pydantic.BaseModel):
     author_slugs: typing.List[str]
     avg_rating: float = 0.0
     rating_count: int
+    readers: int = 0
     score: float
 
 
@@ -23,6 +24,8 @@ class RecommendationAuthorItemSchema(pydantic.BaseModel):
     slug: str
     photo_url: typing.Optional[str] = None
     book_count: int
+    avg_rating: float = 0.0
+    readers: int = 0
     score: float
 
 
@@ -101,4 +104,15 @@ class AuthorRecommendationsData(pydantic.BaseModel):
 class AuthorRecommendationsResponse(pydantic.BaseModel):
     success: bool = True
     data: AuthorRecommendationsData
+    error: typing.Optional[app.models.responses.ErrorDetail] = None
+
+
+class SeriesRecommendationsData(pydantic.BaseModel):
+    series_id: int
+    sections: typing.List[RecommendationSectionData]
+
+
+class SeriesRecommendationsResponse(pydantic.BaseModel):
+    success: bool = True
+    data: SeriesRecommendationsData
     error: typing.Optional[app.models.responses.ErrorDetail] = None

@@ -28,7 +28,8 @@ async def _get_book_metadata(
     book_id: int,
 ) -> typing.Optional[typing.Dict[str, typing.Any]]:
     result = await session.execute(
-        sqlalchemy.text("""
+        sqlalchemy.text(
+            """
             SELECT
                 b.book_id,
                 b.title,
@@ -42,7 +43,8 @@ async def _get_book_metadata(
             LEFT JOIN books.authors a ON ba.author_id = a.author_id
             WHERE b.book_id = :book_id
             GROUP BY b.book_id, s.name
-        """),
+        """
+        ),
         {"book_id": book_id},
     )
     row = result.fetchone()
@@ -102,7 +104,10 @@ async def _build_more_by_author(
         ),
         {"book_id": book_id, "limit": limit},
     )
-    return [app.services.list_builder._row_to_book_item(row, float(row.score or 0)) for row in result]
+    return [
+        app.services.list_builder._row_to_book_item(row, float(row.score or 0))
+        for row in result
+    ]
 
 
 async def _build_more_from_series(
@@ -126,7 +131,10 @@ async def _build_more_from_series(
         ),
         {"book_id": book_id, "series_id": series_id, "limit": limit},
     )
-    return [app.services.list_builder._row_to_book_item(row, float(row.score or 0)) for row in result]
+    return [
+        app.services.list_builder._row_to_book_item(row, float(row.score or 0))
+        for row in result
+    ]
 
 
 async def _build_similar_by_genre(
@@ -164,14 +172,17 @@ async def _build_similar_by_genre(
             {app.services.list_builder._BOOK_JOINS}
             WHERE {app.services.list_builder._BOOK_BASE_WHERE}
               AND c.shared > 0
-            {app.services.list_builder._BOOK_GROUP_BY}
+            GROUP BY b.book_id, c.shared, c.source_cnt
             ORDER BY score DESC NULLS LAST, b.rating_count DESC NULLS LAST
             LIMIT :limit
             """
         ),
         {"book_id": book_id, "limit": limit},
     )
-    return [app.services.list_builder._row_to_book_item(row, float(row.score or 0)) for row in result]
+    return [
+        app.services.list_builder._row_to_book_item(row, float(row.score or 0))
+        for row in result
+    ]
 
 
 async def _build_readers_also_enjoyed(
@@ -202,14 +213,17 @@ async def _build_readers_also_enjoyed(
             JOIN books.books b ON cb.book_id = b.book_id
             {app.services.list_builder._BOOK_JOINS}
             WHERE {app.services.list_builder._BOOK_BASE_WHERE}
-            {app.services.list_builder._BOOK_GROUP_BY}
+            GROUP BY b.book_id, cb.co_count
             ORDER BY cb.co_count DESC, b.avg_rating DESC NULLS LAST
             LIMIT :limit
             """
         ),
         {"book_id": book_id, "limit": limit},
     )
-    return [app.services.list_builder._row_to_book_item(row, float(row.score or 0)) for row in result]
+    return [
+        app.services.list_builder._row_to_book_item(row, float(row.score or 0))
+        for row in result
+    ]
 
 
 async def _build_similar_by_dimension(
@@ -242,7 +256,10 @@ async def _build_similar_by_dimension(
             "limit": limit,
         },
     )
-    return [app.services.list_builder._row_to_book_item(row, float(row.score or 0)) for row in result]
+    return [
+        app.services.list_builder._row_to_book_item(row, float(row.score or 0))
+        for row in result
+    ]
 
 
 def _make_book_section(
@@ -314,44 +331,56 @@ async def build_book_recommendations(
     dimension_results = []
     for i, (dim, display_name, _) in enumerate(prominent_dimensions):
         raw = all_results[idx + i]
-        dimension_results.append((dim, display_name, raw if not isinstance(raw, Exception) else []))
+        dimension_results.append(
+            (dim, display_name, raw if not isinstance(raw, Exception) else [])
+        )
 
     sections: typing.List[typing.Dict[str, typing.Any]] = []
 
     if more_by_author_items:
-        sections.append(_make_book_section(
-            "more_by_author",
-            f"More by {author_label}",
-            more_by_author_items,
-        ))
+        sections.append(
+            _make_book_section(
+                "more_by_author",
+                f"More by {author_label}",
+                more_by_author_items,
+            )
+        )
 
     if series_items:
-        sections.append(_make_book_section(
-            "more_from_series",
-            f"More from {series_name}",
-            series_items,
-        ))
+        sections.append(
+            _make_book_section(
+                "more_from_series",
+                f"More from {series_name}",
+                series_items,
+            )
+        )
 
     if similar_genre_items:
-        sections.append(_make_book_section(
-            "similar_by_genre",
-            f"Similar to {title}",
-            similar_genre_items,
-        ))
+        sections.append(
+            _make_book_section(
+                "similar_by_genre",
+                f"Similar to {title}",
+                similar_genre_items,
+            )
+        )
 
     if readers_enjoyed_items:
-        sections.append(_make_book_section(
-            "readers_also_enjoyed",
-            "Readers also enjoyed",
-            readers_enjoyed_items,
-        ))
+        sections.append(
+            _make_book_section(
+                "readers_also_enjoyed",
+                "Readers also enjoyed",
+                readers_enjoyed_items,
+            )
+        )
 
     for dim, display_name, items in dimension_results:
         if items:
-            sections.append(_make_book_section(
-                f"similar_{dim}",
-                display_name,
-                items,
-            ))
+            sections.append(
+                _make_book_section(
+                    f"similar_{dim}",
+                    display_name,
+                    items,
+                )
+            )
 
     return sections

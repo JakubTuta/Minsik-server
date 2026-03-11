@@ -75,6 +75,7 @@ CREATE TABLE books.books (
     --   "plot_complexity"     - 1: simple, straightforward    5: complex, multi-layered
     --   "humor"               - 1: serious, no humor          5: very funny, comedic
     sub_rating_stats JSONB NOT NULL DEFAULT '{}',
+    rating_distribution JSONB NOT NULL DEFAULT '{}', -- Per-half-star rating counts e.g. {"1.0": 5, "4.5": 12}
 
     -- OpenLibrary community statistics
     ol_rating_count INT NOT NULL DEFAULT 0,

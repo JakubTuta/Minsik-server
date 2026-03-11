@@ -33,7 +33,7 @@ class RecommendationListResponse(_message.Message):
     def __init__(self, category: _Optional[str] = ..., display_name: _Optional[str] = ..., item_type: _Optional[str] = ..., book_items: _Optional[_Iterable[_Union[RecommendationBookItem, _Mapping]]] = ..., author_items: _Optional[_Iterable[_Union[RecommendationAuthorItem, _Mapping]]] = ..., total: _Optional[int] = ...) -> None: ...
 
 class RecommendationBookItem(_message.Message):
-    __slots__ = ("book_id", "title", "slug", "language", "primary_cover_url", "author_names", "author_slugs", "avg_rating", "rating_count", "score")
+    __slots__ = ("book_id", "title", "slug", "language", "primary_cover_url", "author_names", "author_slugs", "avg_rating", "rating_count", "score", "readers")
     BOOK_ID_FIELD_NUMBER: _ClassVar[int]
     TITLE_FIELD_NUMBER: _ClassVar[int]
     SLUG_FIELD_NUMBER: _ClassVar[int]
@@ -44,6 +44,7 @@ class RecommendationBookItem(_message.Message):
     AVG_RATING_FIELD_NUMBER: _ClassVar[int]
     RATING_COUNT_FIELD_NUMBER: _ClassVar[int]
     SCORE_FIELD_NUMBER: _ClassVar[int]
+    READERS_FIELD_NUMBER: _ClassVar[int]
     book_id: int
     title: str
     slug: str
@@ -54,23 +55,28 @@ class RecommendationBookItem(_message.Message):
     avg_rating: str
     rating_count: int
     score: float
-    def __init__(self, book_id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., language: _Optional[str] = ..., primary_cover_url: _Optional[str] = ..., author_names: _Optional[_Iterable[str]] = ..., author_slugs: _Optional[_Iterable[str]] = ..., avg_rating: _Optional[str] = ..., rating_count: _Optional[int] = ..., score: _Optional[float] = ...) -> None: ...
+    readers: int
+    def __init__(self, book_id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., language: _Optional[str] = ..., primary_cover_url: _Optional[str] = ..., author_names: _Optional[_Iterable[str]] = ..., author_slugs: _Optional[_Iterable[str]] = ..., avg_rating: _Optional[str] = ..., rating_count: _Optional[int] = ..., score: _Optional[float] = ..., readers: _Optional[int] = ...) -> None: ...
 
 class RecommendationAuthorItem(_message.Message):
-    __slots__ = ("author_id", "name", "slug", "photo_url", "book_count", "score")
+    __slots__ = ("author_id", "name", "slug", "photo_url", "book_count", "score", "avg_rating", "readers")
     AUTHOR_ID_FIELD_NUMBER: _ClassVar[int]
     NAME_FIELD_NUMBER: _ClassVar[int]
     SLUG_FIELD_NUMBER: _ClassVar[int]
     PHOTO_URL_FIELD_NUMBER: _ClassVar[int]
     BOOK_COUNT_FIELD_NUMBER: _ClassVar[int]
     SCORE_FIELD_NUMBER: _ClassVar[int]
+    AVG_RATING_FIELD_NUMBER: _ClassVar[int]
+    READERS_FIELD_NUMBER: _ClassVar[int]
     author_id: int
     name: str
     slug: str
     photo_url: str
     book_count: int
     score: float
-    def __init__(self, author_id: _Optional[int] = ..., name: _Optional[str] = ..., slug: _Optional[str] = ..., photo_url: _Optional[str] = ..., book_count: _Optional[int] = ..., score: _Optional[float] = ...) -> None: ...
+    avg_rating: str
+    readers: int
+    def __init__(self, author_id: _Optional[int] = ..., name: _Optional[str] = ..., slug: _Optional[str] = ..., photo_url: _Optional[str] = ..., book_count: _Optional[int] = ..., score: _Optional[float] = ..., avg_rating: _Optional[str] = ..., readers: _Optional[int] = ...) -> None: ...
 
 class GetHomePageRequest(_message.Message):
     __slots__ = ("items_per_category", "user_id")
@@ -169,3 +175,19 @@ class AuthorRecommendationsResponse(_message.Message):
     author_id: int
     sections: _containers.RepeatedCompositeFieldContainer[RecommendationSection]
     def __init__(self, author_id: _Optional[int] = ..., sections: _Optional[_Iterable[_Union[RecommendationSection, _Mapping]]] = ...) -> None: ...
+
+class GetSeriesRecommendationsRequest(_message.Message):
+    __slots__ = ("series_id", "limit_per_section")
+    SERIES_ID_FIELD_NUMBER: _ClassVar[int]
+    LIMIT_PER_SECTION_FIELD_NUMBER: _ClassVar[int]
+    series_id: int
+    limit_per_section: int
+    def __init__(self, series_id: _Optional[int] = ..., limit_per_section: _Optional[int] = ...) -> None: ...
+
+class SeriesRecommendationsResponse(_message.Message):
+    __slots__ = ("series_id", "sections")
+    SERIES_ID_FIELD_NUMBER: _ClassVar[int]
+    SECTIONS_FIELD_NUMBER: _ClassVar[int]
+    series_id: int
+    sections: _containers.RepeatedCompositeFieldContainer[RecommendationSection]
+    def __init__(self, series_id: _Optional[int] = ..., sections: _Optional[_Iterable[_Union[RecommendationSection, _Mapping]]] = ...) -> None: ...

@@ -100,6 +100,7 @@ message BookDetail {
   int32 app_want_to_read_count = 33;
   int32 app_reading_count = 34;
   int32 app_read_count = 35;
+  map<string, int32> rating_distribution = 36;
 }
 
 message CoverHistory {

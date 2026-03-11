@@ -40,11 +40,24 @@ async def _update_book_stats(
                 COUNT(humor)                               AS humor_count
             FROM user_data.ratings
             WHERE book_id = :book_id
+        ),
+        dist AS (
+            SELECT COALESCE(
+                jsonb_object_agg(overall_rating::text, cnt),
+                '{}'
+            ) AS distribution
+            FROM (
+                SELECT overall_rating, COUNT(*) AS cnt
+                FROM user_data.ratings
+                WHERE book_id = :book_id
+                GROUP BY overall_rating
+            ) t
         )
         UPDATE books.books
         SET
-            avg_rating       = stats.avg_overall,
-            rating_count     = stats.total_count,
+            avg_rating           = stats.avg_overall,
+            rating_count         = stats.total_count,
+            rating_distribution  = dist.distribution,
             sub_rating_stats = (
                 SELECT jsonb_object_agg(key, value)
                 FROM (VALUES
@@ -58,7 +71,7 @@ async def _update_book_stats(
                     ('humor',             jsonb_build_object('avg', COALESCE(stats.avg_humor, 0)::text,             'count', stats.humor_count))
                 ) AS t(key, value)
             )
-        FROM stats
+        FROM stats, dist
         WHERE books.books.book_id = :book_id
     """
         ),

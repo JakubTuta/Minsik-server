@@ -77,7 +77,7 @@ class SubRatingStat(_message.Message):
     def __init__(self, avg: _Optional[str] = ..., count: _Optional[int] = ...) -> None: ...
 
 class BookDetail(_message.Message):
-    __slots__ = ("book_id", "title", "slug", "description", "language", "original_publication_year", "formats", "primary_cover_url", "cover_history", "rating_count", "avg_rating", "view_count", "last_viewed_at", "authors", "genres", "open_library_id", "google_books_id", "created_at", "updated_at", "series", "series_position", "sub_rating_stats", "isbn", "publisher", "number_of_pages", "external_ids", "ol_rating_count", "ol_avg_rating", "ol_want_to_read_count", "ol_currently_reading_count", "ol_already_read_count", "first_sentence", "app_want_to_read_count", "app_reading_count", "app_read_count")
+    __slots__ = ("book_id", "title", "slug", "description", "language", "original_publication_year", "formats", "primary_cover_url", "cover_history", "rating_count", "avg_rating", "view_count", "last_viewed_at", "authors", "genres", "open_library_id", "google_books_id", "created_at", "updated_at", "series", "series_position", "sub_rating_stats", "isbn", "publisher", "number_of_pages", "external_ids", "ol_rating_count", "ol_avg_rating", "ol_want_to_read_count", "ol_currently_reading_count", "ol_already_read_count", "first_sentence", "app_want_to_read_count", "app_reading_count", "app_read_count", "rating_distribution")
     class SubRatingStatsEntry(_message.Message):
         __slots__ = ("key", "value")
         KEY_FIELD_NUMBER: _ClassVar[int]
@@ -92,6 +92,13 @@ class BookDetail(_message.Message):
         key: str
         value: str
         def __init__(self, key: _Optional[str] = ..., value: _Optional[str] = ...) -> None: ...
+    class RatingDistributionEntry(_message.Message):
+        __slots__ = ("key", "value")
+        KEY_FIELD_NUMBER: _ClassVar[int]
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        key: str
+        value: int
+        def __init__(self, key: _Optional[str] = ..., value: _Optional[int] = ...) -> None: ...
     BOOK_ID_FIELD_NUMBER: _ClassVar[int]
     TITLE_FIELD_NUMBER: _ClassVar[int]
     SLUG_FIELD_NUMBER: _ClassVar[int]
@@ -127,6 +134,7 @@ class BookDetail(_message.Message):
     APP_WANT_TO_READ_COUNT_FIELD_NUMBER: _ClassVar[int]
     APP_READING_COUNT_FIELD_NUMBER: _ClassVar[int]
     APP_READ_COUNT_FIELD_NUMBER: _ClassVar[int]
+    RATING_DISTRIBUTION_FIELD_NUMBER: _ClassVar[int]
     book_id: int
     title: str
     slug: str
@@ -162,7 +170,8 @@ class BookDetail(_message.Message):
     app_want_to_read_count: int
     app_reading_count: int
     app_read_count: int
-    def __init__(self, book_id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., description: _Optional[str] = ..., language: _Optional[str] = ..., original_publication_year: _Optional[int] = ..., formats: _Optional[_Iterable[str]] = ..., primary_cover_url: _Optional[str] = ..., cover_history: _Optional[_Iterable[_Union[CoverHistory, _Mapping]]] = ..., rating_count: _Optional[int] = ..., avg_rating: _Optional[str] = ..., view_count: _Optional[int] = ..., last_viewed_at: _Optional[str] = ..., authors: _Optional[_Iterable[_Union[AuthorInfo, _Mapping]]] = ..., genres: _Optional[_Iterable[_Union[GenreInfo, _Mapping]]] = ..., open_library_id: _Optional[str] = ..., google_books_id: _Optional[str] = ..., created_at: _Optional[str] = ..., updated_at: _Optional[str] = ..., series: _Optional[_Union[SeriesInfo, _Mapping]] = ..., series_position: _Optional[str] = ..., sub_rating_stats: _Optional[_Mapping[str, SubRatingStat]] = ..., isbn: _Optional[_Iterable[str]] = ..., publisher: _Optional[str] = ..., number_of_pages: _Optional[int] = ..., external_ids: _Optional[_Mapping[str, str]] = ..., ol_rating_count: _Optional[int] = ..., ol_avg_rating: _Optional[str] = ..., ol_want_to_read_count: _Optional[int] = ..., ol_currently_reading_count: _Optional[int] = ..., ol_already_read_count: _Optional[int] = ..., first_sentence: _Optional[str] = ..., app_want_to_read_count: _Optional[int] = ..., app_reading_count: _Optional[int] = ..., app_read_count: _Optional[int] = ...) -> None: ...
+    rating_distribution: _containers.ScalarMap[str, int]
+    def __init__(self, book_id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., description: _Optional[str] = ..., language: _Optional[str] = ..., original_publication_year: _Optional[int] = ..., formats: _Optional[_Iterable[str]] = ..., primary_cover_url: _Optional[str] = ..., cover_history: _Optional[_Iterable[_Union[CoverHistory, _Mapping]]] = ..., rating_count: _Optional[int] = ..., avg_rating: _Optional[str] = ..., view_count: _Optional[int] = ..., last_viewed_at: _Optional[str] = ..., authors: _Optional[_Iterable[_Union[AuthorInfo, _Mapping]]] = ..., genres: _Optional[_Iterable[_Union[GenreInfo, _Mapping]]] = ..., open_library_id: _Optional[str] = ..., google_books_id: _Optional[str] = ..., created_at: _Optional[str] = ..., updated_at: _Optional[str] = ..., series: _Optional[_Union[SeriesInfo, _Mapping]] = ..., series_position: _Optional[str] = ..., sub_rating_stats: _Optional[_Mapping[str, SubRatingStat]] = ..., isbn: _Optional[_Iterable[str]] = ..., publisher: _Optional[str] = ..., number_of_pages: _Optional[int] = ..., external_ids: _Optional[_Mapping[str, str]] = ..., ol_rating_count: _Optional[int] = ..., ol_avg_rating: _Optional[str] = ..., ol_want_to_read_count: _Optional[int] = ..., ol_currently_reading_count: _Optional[int] = ..., ol_already_read_count: _Optional[int] = ..., first_sentence: _Optional[str] = ..., app_want_to_read_count: _Optional[int] = ..., app_reading_count: _Optional[int] = ..., app_read_count: _Optional[int] = ..., rating_distribution: _Optional[_Mapping[str, int]] = ...) -> None: ...
 
 class CoverHistory(_message.Message):
     __slots__ = ("url", "width", "size")

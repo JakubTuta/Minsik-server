@@ -28,15 +28,17 @@ limiter = rate_limit_middleware.limiter
     When searching for an author with high relevance, their most popular books are also included.
 
     **Type Filter Options:**
-    - `all`: Search books, authors, and series (default)
+    - `all`: Search books, authors, and series (default) — categories are excluded from `all`
     - `books`: Search only books
     - `authors`: Search only authors
     - `series`: Search only series
+    - `categories`: Search by genre/category name or slug, returns books belonging to matched genres
 
     **Language Filter (`language`):**
     Filters book results to the specified language edition (default: `en`).
     Author and series results are always returned regardless of language.
     Book expansions shown under author/series results also respect this filter.
+    Category results are also filtered by language.
 
     **Examples:**
     - `/api/v1/search?q=lord of the rings`
@@ -44,6 +46,8 @@ limiter = rate_limit_middleware.limiter
     - `/api/v1/search?q=harry potter&type=series`
     - `/api/v1/search?q=python programming&limit=20&offset=0`
     - `/api/v1/search?q=hobbit&language=pl`
+    - `/api/v1/search?q=fantasy&type=categories`
+    - `/api/v1/search?q=sci-fi&type=categories&language=en`
     """,
 )
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
@@ -51,7 +55,9 @@ async def search_books_and_authors(
     request: fastapi.Request,
     q: str = Query(..., min_length=1, description="Search query"),
     type: str = Query(
-        "all", regex="^(all|books|authors|series)$", description="Filter by type"
+        "all",
+        regex="^(all|books|authors|series|categories)$",
+        description="Filter by type",
     ),
     limit: int = Query(10, ge=1, le=100, description="Number of results per page"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
@@ -476,9 +482,16 @@ def _comment_with_rating_to_dict(c) -> typing.Dict[str, typing.Any]:
     When authenticated, the requesting user's own comment is returned in `my_entry`
     regardless of the current page, so the frontend can pin it at the top.
 
+    **Rating Filter (`rating_filter`):**
+    When provided, only returns comments from users who rated the book with that exact value.
+    Accepts half-star increments from 1.0 to 5.0 (e.g. `1.0`, `1.5`, `2.0`, ..., `5.0`).
+    Omit to return all comments regardless of rating.
+
     **Examples:**
     - `/api/v1/books/the-hobbit/comments?sort_by=overall_rating&order=desc`
     - `/api/v1/books/the-hobbit/comments?include_spoilers=true&limit=20`
+    - `/api/v1/books/the-hobbit/comments?rating_filter=5.0`
+    - `/api/v1/books/the-hobbit/comments?rating_filter=4.5&sort_by=overall_rating`
     """,
 )
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
@@ -494,6 +507,12 @@ async def get_book_comments(
         regex="^(created_at|overall_rating|pacing|emotional_impact|intellectual_depth|writing_quality|rereadability|readability|plot_complexity|humor)$",
         description="Sort field",
     ),
+    rating_filter: typing.Optional[float] = Query(
+        None,
+        ge=1.0,
+        le=5.0,
+        description="Filter by exact overall rating (e.g. 5.0, 4.5)",
+    ),
     user: typing.Optional[typing.Dict[str, typing.Any]] = fastapi.Depends(
         app.middleware.auth.get_current_user_optional
     ),
@@ -508,6 +527,7 @@ async def get_book_comments(
             include_spoilers=include_spoilers,
             sort_by=sort_by,
             requesting_user_id=requesting_user_id,
+            rating_filter=rating_filter or 0.0,
         )
         my_entry = (
             _comment_with_rating_to_dict(response.my_entry)
@@ -677,6 +697,10 @@ def _book_detail_proto_to_dict(book) -> typing.Dict[str, typing.Any]:
         "app_want_to_read_count": book.app_want_to_read_count,
         "app_reading_count": book.app_reading_count,
         "app_read_count": book.app_read_count,
+        "rating_distribution": {
+            v: dict(book.rating_distribution).get(v, 0)
+            for v in ["1.0", "1.5", "2.0", "2.5", "3.0", "3.5", "4.0", "4.5", "5.0"]
+        },
     }
 
 

@@ -95,6 +95,7 @@ def _build_book_detail_proto(
         app_want_to_read_count=book.get("app_want_to_read_count", 0),
         app_reading_count=book.get("app_reading_count", 0),
         app_read_count=book.get("app_read_count", 0),
+        rating_distribution=book.get("rating_distribution", {}),
     )
 
 

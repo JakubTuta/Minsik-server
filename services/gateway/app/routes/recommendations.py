@@ -38,6 +38,7 @@ def _to_section_dict(key: str, item) -> dict:
                 "author_slugs": list(i.author_slugs),
                 "avg_rating": float(i.avg_rating) if i.avg_rating else 0.0,
                 "rating_count": i.rating_count,
+                "readers": i.readers,
                 "score": i.score,
             }
             for i in item.book_items
@@ -50,6 +51,8 @@ def _to_section_dict(key: str, item) -> dict:
                 "slug": i.slug,
                 "photo_url": i.photo_url or None,
                 "book_count": i.book_count,
+                "avg_rating": float(i.avg_rating) if i.avg_rating else 0.0,
+                "readers": i.readers,
                 "score": i.score,
             }
             for i in item.author_items
@@ -338,6 +341,61 @@ async def get_author_recommendations(
         )
     except Exception as e:
         logger.error(f"Unexpected error in get_author_recommendations: {str(e)}")
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
+        )
+
+
+@router.get(
+    "/recommendations/series/{series_id}",
+    response_model=app.models.recommendation_responses.SeriesRecommendationsResponse,
+    summary="Get recommendations for a series",
+    description="""
+    Returns contextual recommendation sections for a specific series.
+
+    Sections (only non-empty sections are returned):
+    - `more_by_author` — Other books by the series author(s), ordered by avg_rating
+    - `similar_by_genre` — Books with the highest Jaccard genre overlap to the series
+    - `readers_also_enjoyed` — Books co-read by users who read books from this series
+
+    Results are computed on first request and cached for 1 hour.
+    """,
+    responses={
+        404: {"description": "Series not found"},
+        500: {"description": "Internal server error"},
+    },
+)
+@limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
+async def get_series_recommendations(
+    request: fastapi.Request,
+    series_id: int = fastapi.Path(..., description="Series ID"),
+    limit_per_section: int = Query(
+        15, ge=1, le=50, description="Number of items per recommendation section"
+    ),
+):
+    try:
+        response = (
+            await app.grpc_clients.recommendation_client.get_series_recommendations(
+                series_id=series_id, limit_per_section=limit_per_section
+            )
+        )
+        sections = [_to_section_dict(s.section_key, s) for s in response.sections]
+        return app.utils.responses.success_response(
+            {"series_id": response.series_id, "sections": sections}
+        )
+    except grpc.RpcError as e:
+        logger.error(
+            f"gRPC error in get_series_recommendations: {e.code()} - {e.details()}"
+        )
+        if e.code() == grpc.StatusCode.NOT_FOUND:
+            return app.utils.responses.error_response(
+                "NOT_FOUND", f"Series with ID {series_id} not found", status_code=404
+            )
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "Failed to fetch series recommendations", status_code=500
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error in get_series_recommendations: {str(e)}")
         return app.utils.responses.error_response(
             "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
         )

@@ -147,6 +147,7 @@ def _book_to_dict(book: app.models.book.Book) -> typing.Dict[str, typing.Any]:
         "ol_want_to_read_count": book.ol_want_to_read_count or 0,
         "ol_currently_reading_count": book.ol_currently_reading_count or 0,
         "ol_already_read_count": book.ol_already_read_count or 0,
+        "rating_distribution": book.rating_distribution or {},
     }
 
 

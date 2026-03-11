@@ -103,6 +103,7 @@ class BookDetailData(pydantic.BaseModel):
     app_want_to_read_count: int = 0
     app_reading_count: int = 0
     app_read_count: int = 0
+    rating_distribution: typing.Dict[str, int] = {}
 
 
 class BookDetailResponse(pydantic.BaseModel):
