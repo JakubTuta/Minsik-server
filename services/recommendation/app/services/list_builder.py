@@ -14,8 +14,16 @@ _BOOK_FIELDS = """
     b.slug,
     b.language,
     b.primary_cover_url,
-    COALESCE(b.avg_rating::text, '') AS avg_rating,
-    b.rating_count,
+    CASE
+        WHEN (b.rating_count + b.ol_rating_count) > 0
+        THEN ROUND(
+            (COALESCE(b.avg_rating::numeric, 0) * b.rating_count
+             + COALESCE(b.ol_avg_rating::numeric, 0) * b.ol_rating_count)
+            / (b.rating_count + b.ol_rating_count), 2
+        )::text
+        ELSE ''
+    END AS avg_rating,
+    b.rating_count + b.ol_rating_count AS rating_count,
     ARRAY_AGG(DISTINCT a.name) FILTER (WHERE a.name IS NOT NULL) AS author_names,
     ARRAY_AGG(DISTINCT a.slug) FILTER (WHERE a.slug IS NOT NULL) AS author_slugs,
     COALESCE(b.ol_want_to_read_count, 0) + COALESCE(b.ol_currently_reading_count, 0) + COALESCE(b.ol_already_read_count, 0)
@@ -357,8 +365,14 @@ async def _build_top_authors(
             a.slug,
             COALESCE(a.photo_url, '') AS photo_url,
             COUNT(DISTINCT b.book_id) FILTER (WHERE b.language = 'en') AS book_count,
-            SUM(b.avg_rating * b.rating_count) FILTER (WHERE b.language = 'en')
-                / NULLIF(SUM(b.rating_count) FILTER (WHERE b.language = 'en'), 0) AS avg_rating,
+            COALESCE(
+                SUM(
+                    COALESCE(b.avg_rating::numeric, 0) * b.rating_count
+                    + COALESCE(b.ol_avg_rating::numeric, 0) * b.ol_rating_count
+                ) FILTER (WHERE b.language = 'en')
+                / NULLIF(SUM(b.rating_count + b.ol_rating_count) FILTER (WHERE b.language = 'en'), 0),
+                0
+            ) AS avg_rating,
             COALESCE(SUM(
                 COALESCE(b.ol_want_to_read_count, 0) +
                 COALESCE(b.ol_currently_reading_count, 0) +
@@ -372,7 +386,7 @@ async def _build_top_authors(
                   AND b3.language = 'en'
                   AND bs_a.status IN ('want_to_read', 'reading', 'read')
             ), 0) AS readers,
-            COALESCE(SUM(b.rating_count) FILTER (WHERE b.language = 'en'), 0) AS rating_count,
+            COALESCE(SUM(b.rating_count + b.ol_rating_count) FILTER (WHERE b.language = 'en'), 0) AS rating_count,
             COALESCE(SUM(b.ol_already_read_count) FILTER (WHERE b.language = 'en'), 0) AS score
         FROM books.authors a
         JOIN books.book_authors ba ON a.author_id = ba.author_id
@@ -412,8 +426,14 @@ async def _build_popular_authors(
             a.slug,
             COALESCE(a.photo_url, '') AS photo_url,
             COUNT(DISTINCT b.book_id) FILTER (WHERE b.language = 'en') AS book_count,
-            SUM(b.avg_rating * b.rating_count) FILTER (WHERE b.language = 'en')
-                / NULLIF(SUM(b.rating_count) FILTER (WHERE b.language = 'en'), 0) AS avg_rating,
+            COALESCE(
+                SUM(
+                    COALESCE(b.avg_rating::numeric, 0) * b.rating_count
+                    + COALESCE(b.ol_avg_rating::numeric, 0) * b.ol_rating_count
+                ) FILTER (WHERE b.language = 'en')
+                / NULLIF(SUM(b.rating_count + b.ol_rating_count) FILTER (WHERE b.language = 'en'), 0),
+                0
+            ) AS avg_rating,
             COALESCE(SUM(
                 COALESCE(b.ol_want_to_read_count, 0) +
                 COALESCE(b.ol_currently_reading_count, 0) +
@@ -427,7 +447,7 @@ async def _build_popular_authors(
                   AND b3.language = 'en'
                   AND bs_a.status IN ('want_to_read', 'reading', 'read')
             ), 0) AS readers,
-            COALESCE(SUM(b.rating_count) FILTER (WHERE b.language = 'en'), 0) AS rating_count,
+            COALESCE(SUM(b.rating_count + b.ol_rating_count) FILTER (WHERE b.language = 'en'), 0) AS rating_count,
             COALESCE(a.view_count, 0) AS score
         FROM books.authors a
         LEFT JOIN books.book_authors ba ON a.author_id = ba.author_id

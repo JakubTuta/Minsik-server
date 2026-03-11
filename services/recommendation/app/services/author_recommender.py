@@ -71,8 +71,14 @@ async def _build_similar_authors_by_genre(
                 a.slug,
                 COALESCE(a.photo_url, '') AS photo_url,
                 COUNT(DISTINCT b.book_id) FILTER (WHERE b.language = 'en') AS book_count,
-                SUM(b.avg_rating * b.rating_count) FILTER (WHERE b.language = 'en')
-                    / NULLIF(SUM(b.rating_count) FILTER (WHERE b.language = 'en'), 0) AS avg_rating,
+                COALESCE(
+                    SUM(
+                        COALESCE(b.avg_rating::numeric, 0) * b.rating_count
+                        + COALESCE(b.ol_avg_rating::numeric, 0) * b.ol_rating_count
+                    ) FILTER (WHERE b.language = 'en')
+                    / NULLIF(SUM(b.rating_count + b.ol_rating_count) FILTER (WHERE b.language = 'en'), 0),
+                    0
+                ) AS avg_rating,
                 COALESCE(SUM(
                     COALESCE(b.ol_want_to_read_count, 0) +
                     COALESCE(b.ol_currently_reading_count, 0) +
@@ -86,7 +92,7 @@ async def _build_similar_authors_by_genre(
                       AND b3.language = 'en'
                       AND bs_a.status IN ('want_to_read', 'reading', 'read')
                 ), 0) AS readers,
-                COALESCE(SUM(b.rating_count) FILTER (WHERE b.language = 'en'), 0) AS rating_count,
+                COALESCE(SUM(b.rating_count + b.ol_rating_count) FILTER (WHERE b.language = 'en'), 0) AS rating_count,
                 ca.shared::float / NULLIF(
                     (SELECT cnt FROM author_genre_count) + (
                         SELECT COUNT(DISTINCT bg2.genre_id)
@@ -143,8 +149,14 @@ async def _build_fans_also_read(
                 a.slug,
                 COALESCE(a.photo_url, '') AS photo_url,
                 COUNT(DISTINCT b.book_id) FILTER (WHERE b.language = 'en') AS book_count,
-                SUM(b.avg_rating * b.rating_count) FILTER (WHERE b.language = 'en')
-                    / NULLIF(SUM(b.rating_count) FILTER (WHERE b.language = 'en'), 0) AS avg_rating,
+                COALESCE(
+                    SUM(
+                        COALESCE(b.avg_rating::numeric, 0) * b.rating_count
+                        + COALESCE(b.ol_avg_rating::numeric, 0) * b.ol_rating_count
+                    ) FILTER (WHERE b.language = 'en')
+                    / NULLIF(SUM(b.rating_count + b.ol_rating_count) FILTER (WHERE b.language = 'en'), 0),
+                    0
+                ) AS avg_rating,
                 COALESCE(SUM(
                     COALESCE(b.ol_want_to_read_count, 0) +
                     COALESCE(b.ol_currently_reading_count, 0) +
@@ -158,7 +170,7 @@ async def _build_fans_also_read(
                       AND b3.language = 'en'
                       AND bs_a.status IN ('want_to_read', 'reading', 'read')
                 ), 0) AS readers,
-                COALESCE(SUM(b.rating_count) FILTER (WHERE b.language = 'en'), 0) AS rating_count,
+                COALESCE(SUM(b.rating_count + b.ol_rating_count) FILTER (WHERE b.language = 'en'), 0) AS rating_count,
                 ca.co_count AS score
             FROM co_authors ca
             JOIN books.authors a ON ca.author_id = a.author_id
