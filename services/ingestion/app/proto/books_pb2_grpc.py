@@ -3,7 +3,7 @@
 import grpc
 import warnings
 
-import books_pb2 as books__pb2
+from . import books_pb2 as books__pb2
 
 GRPC_GENERATED_VERSION = '1.76.0'
 GRPC_VERSION = grpc.__version__
@@ -84,10 +84,30 @@ class BooksServiceStub(object):
                 request_serializer=books__pb2.OpenCaseRequest.SerializeToString,
                 response_deserializer=books__pb2.OpenCaseResponse.FromString,
                 _registered_method=True)
+        self.OpenPack = channel.unary_unary(
+                '/books.v1.BooksService/OpenPack',
+                request_serializer=books__pb2.OpenPackRequest.SerializeToString,
+                response_deserializer=books__pb2.OpenPackResponse.FromString,
+                _registered_method=True)
         self.DiscoverBook = channel.unary_unary(
                 '/books.v1.BooksService/DiscoverBook',
                 request_serializer=books__pb2.DiscoverBookRequest.SerializeToString,
                 response_deserializer=books__pb2.DiscoverBookResponse.FromString,
+                _registered_method=True)
+        self.DeleteBook = channel.unary_unary(
+                '/books.v1.BooksService/DeleteBook',
+                request_serializer=books__pb2.DeleteBookRequest.SerializeToString,
+                response_deserializer=books__pb2.DeleteEntityResponse.FromString,
+                _registered_method=True)
+        self.DeleteAuthor = channel.unary_unary(
+                '/books.v1.BooksService/DeleteAuthor',
+                request_serializer=books__pb2.DeleteAuthorRequest.SerializeToString,
+                response_deserializer=books__pb2.DeleteEntityResponse.FromString,
+                _registered_method=True)
+        self.DeleteSeries = channel.unary_unary(
+                '/books.v1.BooksService/DeleteSeries',
+                request_serializer=books__pb2.DeleteSeriesRequest.SerializeToString,
+                response_deserializer=books__pb2.DeleteEntityResponse.FromString,
                 _registered_method=True)
 
 
@@ -154,7 +174,31 @@ class BooksServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def OpenPack(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def DiscoverBook(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteBook(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteAuthor(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def DeleteSeries(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -213,10 +257,30 @@ def add_BooksServiceServicer_to_server(servicer, server):
                     request_deserializer=books__pb2.OpenCaseRequest.FromString,
                     response_serializer=books__pb2.OpenCaseResponse.SerializeToString,
             ),
+            'OpenPack': grpc.unary_unary_rpc_method_handler(
+                    servicer.OpenPack,
+                    request_deserializer=books__pb2.OpenPackRequest.FromString,
+                    response_serializer=books__pb2.OpenPackResponse.SerializeToString,
+            ),
             'DiscoverBook': grpc.unary_unary_rpc_method_handler(
                     servicer.DiscoverBook,
                     request_deserializer=books__pb2.DiscoverBookRequest.FromString,
                     response_serializer=books__pb2.DiscoverBookResponse.SerializeToString,
+            ),
+            'DeleteBook': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteBook,
+                    request_deserializer=books__pb2.DeleteBookRequest.FromString,
+                    response_serializer=books__pb2.DeleteEntityResponse.SerializeToString,
+            ),
+            'DeleteAuthor': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteAuthor,
+                    request_deserializer=books__pb2.DeleteAuthorRequest.FromString,
+                    response_serializer=books__pb2.DeleteEntityResponse.SerializeToString,
+            ),
+            'DeleteSeries': grpc.unary_unary_rpc_method_handler(
+                    servicer.DeleteSeries,
+                    request_deserializer=books__pb2.DeleteSeriesRequest.FromString,
+                    response_serializer=books__pb2.DeleteEntityResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -500,6 +564,33 @@ class BooksService(object):
             _registered_method=True)
 
     @staticmethod
+    def OpenPack(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/books.v1.BooksService/OpenPack',
+            books__pb2.OpenPackRequest.SerializeToString,
+            books__pb2.OpenPackResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
     def DiscoverBook(request,
             target,
             options=(),
@@ -516,6 +607,87 @@ class BooksService(object):
             '/books.v1.BooksService/DiscoverBook',
             books__pb2.DiscoverBookRequest.SerializeToString,
             books__pb2.DiscoverBookResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteBook(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/books.v1.BooksService/DeleteBook',
+            books__pb2.DeleteBookRequest.SerializeToString,
+            books__pb2.DeleteEntityResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteAuthor(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/books.v1.BooksService/DeleteAuthor',
+            books__pb2.DeleteAuthorRequest.SerializeToString,
+            books__pb2.DeleteEntityResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def DeleteSeries(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/books.v1.BooksService/DeleteSeries',
+            books__pb2.DeleteSeriesRequest.SerializeToString,
+            books__pb2.DeleteEntityResponse.FromString,
             options,
             channel_credentials,
             insecure,

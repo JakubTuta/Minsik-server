@@ -13,13 +13,6 @@ async def test_create_book(db_session):
         description="A science fiction novel",
         original_publication_year=1984,
         formats=["hardcover", "ebook"],
-        cover_history=[
-            {
-                "year": 1984,
-                "cover_url": "http://example.com/cover.jpg",
-                "publisher": "Ace",
-            }
-        ],
         primary_cover_url="http://example.com/cover.jpg",
         open_library_id="OL123W",
     )
@@ -31,7 +24,6 @@ async def test_create_book(db_session):
     assert book.title == "Neuromancer"
     assert book.language == "en"
     assert len(book.formats) == 2
-    assert len(book.cover_history) == 1
 
 
 @pytest.mark.asyncio

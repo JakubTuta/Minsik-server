@@ -20,7 +20,6 @@ def mock_book():
     book.original_publication_year = 2020
     book.formats = ["paperback", "ebook"]
     book.primary_cover_url = "http://example.com/cover.jpg"
-    book.cover_history = []
     book.rating_count = 100
     book.avg_rating = 4.5
     book.view_count = 500

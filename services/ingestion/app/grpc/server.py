@@ -159,17 +159,6 @@ class IngestionService(ingestion_pb2_grpc.IngestionServiceServicer):
                         for genre_name in book.get("genres", [])
                     ],
                     "formats": [],
-                    "cover_history": (
-                        [
-                            {
-                                "year": book.get("publication_year") or 2024,
-                                "cover_url": book.get("cover_url"),
-                                "publisher": book.get("publisher", "Unknown"),
-                            }
-                        ]
-                        if book.get("cover_url")
-                        else []
-                    ),
                 }
                 books_to_insert.append(book_for_db)
 

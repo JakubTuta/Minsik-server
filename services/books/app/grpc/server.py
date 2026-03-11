@@ -36,14 +36,6 @@ def _build_book_detail_proto(
         )
         for genre in book["genres"]
     ]
-    cover_history = [
-        app.proto.books_pb2.CoverHistory(
-            url=cover.get("url", ""),
-            width=cover.get("width", 0),
-            size=cover.get("size", ""),
-        )
-        for cover in book["cover_history"]
-    ]
     series_info = None
     if book.get("series"):
         series_info = app.proto.books_pb2.SeriesInfo(
@@ -68,7 +60,6 @@ def _build_book_detail_proto(
         original_publication_year=book["original_publication_year"],
         formats=book["formats"],
         primary_cover_url=book["primary_cover_url"],
-        cover_history=cover_history,
         rating_count=book["rating_count"],
         avg_rating=book["avg_rating"],
         view_count=book["view_count"],
@@ -397,8 +388,6 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                     updates["primary_cover_url"] = request.primary_cover_url
                 if request.HasField("formats_json"):
                     updates["formats"] = json.loads(request.formats_json)
-                if request.HasField("cover_history_json"):
-                    updates["cover_history"] = json.loads(request.cover_history_json)
                 if request.HasField("isbn_json"):
                     updates["isbn"] = json.loads(request.isbn_json)
                 if request.HasField("publisher"):
@@ -458,15 +447,6 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                         total_books=s.get("total_books", 0),
                     )
 
-                cover_history = [
-                    app.proto.books_pb2.CoverHistory(
-                        url=c.get("url", ""),
-                        width=c.get("width", 0),
-                        size=c.get("size", ""),
-                    )
-                    for c in book.get("cover_history", [])
-                ]
-
                 sub_rating_stats = {
                     k: app.proto.books_pb2.SubRatingStat(
                         avg=v.get("avg", "0"), count=v.get("count", 0)
@@ -484,7 +464,6 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                     original_publication_year=book.get("original_publication_year", 0),
                     formats=book.get("formats", []),
                     primary_cover_url=book.get("primary_cover_url", ""),
-                    cover_history=cover_history,
                     rating_count=book.get("rating_count", 0),
                     avg_rating=book.get("avg_rating", "0.00"),
                     sub_rating_stats=sub_rating_stats,

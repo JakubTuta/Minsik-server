@@ -54,7 +54,6 @@ class Book(Base):
     original_publication_year = Column(Integer)
 
     formats = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
-    cover_history = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
     primary_cover_url = Column(String(1000))
 
     isbn = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))

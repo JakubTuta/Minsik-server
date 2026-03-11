@@ -642,10 +642,6 @@ def _book_detail_proto_to_dict(book) -> typing.Dict[str, typing.Any]:
         "original_publication_year": book.original_publication_year,
         "formats": list(book.formats),
         "primary_cover_url": book.primary_cover_url,
-        "cover_history": [
-            {"url": cover.url, "width": cover.width, "size": cover.size}
-            for cover in book.cover_history
-        ],
         "rating_count": book.rating_count,
         "avg_rating": book.avg_rating,
         "sub_rating_stats": {

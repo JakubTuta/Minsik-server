@@ -16,7 +16,7 @@ async def test_cleanup_removes_low_quality_book(commit_session):
         language="en",
         slug="bad-book",
         formats=[],
-        cover_history=[],
+
         created_at=OLD_DATE,
     )
     commit_session.add(book)
@@ -47,7 +47,7 @@ async def test_cleanup_keeps_high_quality_book(commit_session):
         primary_cover_url="http://example.com/cover.jpg",
         original_publication_year=2020,
         formats=["hardcover"],
-        cover_history=[],
+
         created_at=OLD_DATE,
     )
     commit_session.add(book)
@@ -75,7 +75,7 @@ async def test_cleanup_keeps_book_with_views(commit_session):
         slug="viewed-book",
         view_count=5,
         formats=[],
-        cover_history=[],
+
         created_at=OLD_DATE,
     )
     commit_session.add(book)
@@ -99,7 +99,7 @@ async def test_cleanup_keeps_book_with_ratings(commit_session):
         slug="rated-book",
         rating_count=1,
         formats=[],
-        cover_history=[],
+
         created_at=OLD_DATE,
     )
     commit_session.add(book)
@@ -143,7 +143,7 @@ async def test_cleanup_keeps_author_with_books(commit_session):
             language="en",
             slug=f"book-{i}",
             formats=[],
-            cover_history=[],
+    
         )
         commit_session.add(book)
         await commit_session.flush()

@@ -185,13 +185,6 @@ def sample_book_data():
         "description": "A science fiction novel",
         "original_publication_year": 1984,
         "formats": ["hardcover", "ebook"],
-        "cover_history": [
-            {
-                "year": 1984,
-                "cover_url": "http://example.com/cover1.jpg",
-                "publisher": "Ace Books",
-            }
-        ],
         "primary_cover_url": "http://example.com/cover1.jpg",
         "open_library_id": "OL123W",
         "google_books_id": "gb123",

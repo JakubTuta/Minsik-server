@@ -167,7 +167,6 @@ def _create_books_schema() -> None:
             first_sentence                  TEXT,
             original_publication_year       INT,
             formats                         JSONB NOT NULL DEFAULT '[]',
-            cover_history                   JSONB NOT NULL DEFAULT '[]',
             primary_cover_url               VARCHAR(1000),
             isbn                            JSONB NOT NULL DEFAULT '[]',
             publisher                       VARCHAR(500),

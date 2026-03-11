@@ -39,13 +39,6 @@ CREATE TABLE books.books (
     -- Example: ["hardcover", "paperback", "ebook", "audiobook"]
     formats JSONB NOT NULL DEFAULT '[]',
 
-    -- Cover history timeline (JSONB array of objects)
-    -- Example: [
-    --   {"year": 1984, "cover_url": "https://...", "publisher": "Ace"},
-    --   {"year": 2016, "cover_url": "https://...", "publisher": "Penguin"}
-    -- ]
-    cover_history JSONB NOT NULL DEFAULT '[]',
-
     primary_cover_url VARCHAR(1000),
 
     -- Edition metadata (from OpenLibrary dump)

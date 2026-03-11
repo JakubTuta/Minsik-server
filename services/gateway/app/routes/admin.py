@@ -549,8 +549,6 @@ async def update_book(
     for field, value in updates.items():
         if field == "formats":
             proto_fields["formats_json"] = json.dumps(value)
-        elif field == "cover_history":
-            proto_fields["cover_history_json"] = json.dumps(value)
         elif field == "isbn":
             proto_fields["isbn_json"] = json.dumps(value)
         elif field == "external_ids":
@@ -574,10 +572,6 @@ async def update_book(
                     "language": book.language,
                     "original_publication_year": book.original_publication_year,
                     "primary_cover_url": book.primary_cover_url,
-                    "cover_history": [
-                        {"url": c.url, "width": c.width, "size": c.size}
-                        for c in book.cover_history
-                    ],
                     "formats": list(book.formats),
                     "isbn": list(book.isbn),
                     "publisher": book.publisher,

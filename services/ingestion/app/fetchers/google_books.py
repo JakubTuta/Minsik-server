@@ -187,7 +187,6 @@ class GoogleBooksFetcher(BaseFetcher):
                 genres.append({"name": category, "slug": slugify(category)})
 
             formats = self._extract_formats(raw_data)
-            cover_history = self._extract_cover_history(volume_info, primary_cover_url)
 
             published_date = volume_info.get("publishedDate", "")
             publication_year = None
@@ -229,7 +228,6 @@ class GoogleBooksFetcher(BaseFetcher):
                 "description": volume_info.get("description"),
                 "original_publication_year": publication_year,
                 "formats": formats,
-                "cover_history": cover_history,
                 "primary_cover_url": primary_cover_url,
                 "google_books_id": raw_data.get("id"),
                 "authors": authors,
@@ -265,28 +263,3 @@ class GoogleBooksFetcher(BaseFetcher):
 
         return list(formats)
 
-    def _extract_cover_history(
-        self,
-        volume_info: typing.Dict[str, typing.Any],
-        primary_cover_url: typing.Optional[str],
-    ) -> list[typing.Dict[str, typing.Any]]:
-        cover_history = []
-
-        if primary_cover_url:
-            published_date = volume_info.get("publishedDate", "")
-            year = datetime.now().year
-
-            if published_date:
-                try:
-                    if len(published_date) >= 4 and published_date[:4].isdigit():
-                        year = int(published_date[:4])
-                except (ValueError, TypeError):
-                    pass
-
-            publisher = volume_info.get("publisher", "Unknown")
-
-            cover_history.append(
-                {"year": year, "cover_url": primary_cover_url, "publisher": publisher}
-            )
-
-        return cover_history

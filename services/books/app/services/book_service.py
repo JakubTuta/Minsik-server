@@ -111,7 +111,6 @@ def _book_to_dict(book: app.models.book.Book) -> typing.Dict[str, typing.Any]:
         "original_publication_year": book.original_publication_year or 0,
         "formats": book.formats or [],
         "primary_cover_url": book.primary_cover_url or "",
-        "cover_history": book.cover_history or [],
         "rating_count": book.rating_count or 0,
         "avg_rating": str(book.avg_rating) if book.avg_rating else "0.00",
         "sub_rating_stats": book.sub_rating_stats or {},

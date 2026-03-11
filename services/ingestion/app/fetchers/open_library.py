@@ -195,7 +195,6 @@ class OpenLibraryFetcher(BaseFetcher):
                 genres.append({"name": subject, "slug": slugify(subject)})
 
             formats = self._extract_formats(work_data)
-            cover_history = self._extract_cover_history(work_data, cover_id)
 
             editions_data = await self._fetch_editions(work_key)
             series_info = self._extract_series_from_editions(editions_data)
@@ -208,7 +207,6 @@ class OpenLibraryFetcher(BaseFetcher):
                 "description": self._extract_description(work_data),
                 "original_publication_year": self._extract_publication_year(work_data),
                 "formats": formats,
-                "cover_history": cover_history,
                 "primary_cover_url": primary_cover_url,
                 "open_library_id": work_key.split("/")[-1],
                 "authors": authors,
@@ -290,40 +288,6 @@ class OpenLibraryFetcher(BaseFetcher):
             formats.add("paperback")
 
         return list(formats)
-
-    def _extract_cover_history(
-        self,
-        work_data: typing.Dict[str, typing.Any],
-        primary_cover_id: typing.Optional[int],
-    ) -> list[typing.Dict[str, typing.Any]]:
-        cover_history = []
-
-        if primary_cover_id:
-            year = self._extract_publication_year(work_data) or datetime.now().year
-            cover_history.append(
-                {
-                    "year": year,
-                    "cover_url": self._get_cover_url(primary_cover_id),
-                    "publisher": "Unknown",
-                }
-            )
-
-        editions = work_data.get("editions", {}).get("entries", [])
-        for edition in editions[:5]:
-            covers = edition.get("covers", [])
-            if covers and covers[0]:
-                year = self._extract_publication_year(edition) or datetime.now().year
-                cover_history.append(
-                    {
-                        "year": year,
-                        "cover_url": self._get_cover_url(covers[0]),
-                        "publisher": ", ".join(edition.get("publishers", ["Unknown"])),
-                    }
-                )
-
-        cover_history.sort(key=lambda x: x["year"])
-
-        return cover_history
 
     async def _fetch_editions(
         self, work_key: str

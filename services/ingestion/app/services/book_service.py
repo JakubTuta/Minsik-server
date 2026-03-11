@@ -161,7 +161,6 @@ def _validate_and_clean_book(book_data: Dict[str, Any]) -> Optional[Dict[str, An
         "series_data": series_data,
         "series_name": series_name,
         "formats": formats,
-        "cover_history": book_data.get("cover_history", []),
         "isbn": isbn,
         "publisher": publisher,
         "number_of_pages": number_of_pages,
@@ -392,7 +391,6 @@ async def _bulk_insert_books(
                 book["series_data"].get("position") if book.get("series_data") else None
             ),
             "formats": book["formats"],
-            "cover_history": book["cover_history"],
             "isbn": book.get("isbn", []),
             "publisher": book.get("publisher"),
             "number_of_pages": book.get("number_of_pages"),
@@ -420,10 +418,6 @@ async def _bulk_insert_books(
             "number_of_pages": stmt.excluded.number_of_pages,
             "external_ids": stmt.excluded.external_ids,
             "formats": stmt.excluded.formats,
-            "cover_history": sqlalchemy.func.coalesce(
-                app.models.book.Book.__table__.c.cover_history,
-                sqlalchemy.type_coerce([], sqlalchemy.dialects.postgresql.JSONB),
-            ).concat(stmt.excluded.cover_history),
         },
     )
 

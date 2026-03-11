@@ -73,7 +73,8 @@ message BookDetail {
   int32 original_publication_year = 6;
   repeated string formats = 7;
   string primary_cover_url = 8;
-  repeated CoverHistory cover_history = 9;
+  reserved 9;
+  reserved "cover_history";
   int32 rating_count = 10;
   string avg_rating = 11;
   int32 view_count = 12;
@@ -101,12 +102,6 @@ message BookDetail {
   int32 app_reading_count = 34;
   int32 app_read_count = 35;
   map<string, int32> rating_distribution = 36;
-}
-
-message CoverHistory {
-  string url = 1;
-  int32 width = 2;
-  string size = 3;
 }
 
 message AuthorInfo {
@@ -263,7 +258,8 @@ message UpdateBookRequest {
   optional int32 original_publication_year = 7;
   optional string primary_cover_url = 8;
   optional string formats_json = 9;
-  optional string cover_history_json = 10;
+  reserved 10;
+  reserved "cover_history_json";
   optional string isbn_json = 11;
   optional string publisher = 12;
   optional int32 number_of_pages = 13;

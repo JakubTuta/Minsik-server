@@ -129,13 +129,6 @@ async def test_process_single_book_duplicate(db_session, sample_book_data):
 
     updated_data = sample_book_data.copy()
     updated_data["formats"] = ["audiobook"]
-    updated_data["cover_history"] = [
-        {
-            "year": 1985,
-            "cover_url": "http://example.com/new.jpg",
-            "publisher": "New Publisher",
-        }
-    ]
 
     await process_single_book(db_session, updated_data)
 
@@ -144,4 +137,3 @@ async def test_process_single_book_duplicate(db_session, sample_book_data):
 
     assert len(books) == 1
     assert "audiobook" in books[0].formats
-    assert len(books[0].cover_history) == 2

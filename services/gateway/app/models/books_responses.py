@@ -24,12 +24,6 @@ class SeriesMinimalSchema(pydantic.BaseModel):
     total_books: typing.Optional[int] = None
 
 
-class CoverHistorySchema(pydantic.BaseModel):
-    url: str
-    width: int
-    size: str
-
-
 class SearchResultSchema(pydantic.BaseModel):
     type: str
     id: int
@@ -77,7 +71,6 @@ class BookDetailData(pydantic.BaseModel):
     original_publication_year: typing.Optional[int] = None
     formats: typing.List[str]
     primary_cover_url: typing.Optional[str] = None
-    cover_history: typing.List[CoverHistorySchema]
     rating_count: int
     avg_rating: float = 0.0
     sub_rating_stats: typing.Dict[str, SubRatingStatSchema] = {}
@@ -285,10 +278,6 @@ class AdminUpdateBookRequest(pydantic.BaseModel):
     )
     primary_cover_url: typing.Optional[str] = pydantic.Field(
         None, description="URL of the primary cover image"
-    )
-    cover_history: typing.Optional[typing.List[CoverHistorySchema]] = pydantic.Field(
-        None,
-        description="Full list of cover images; each entry has url, width (px), and size label",
     )
     formats: typing.Optional[typing.List[str]] = pydantic.Field(
         None, description="Available formats, e.g. ['ebook', 'paperback', 'hardcover']"
@@ -527,7 +516,6 @@ class AdminBookUpdateData(pydantic.BaseModel):
     language: str
     original_publication_year: typing.Optional[int] = None
     primary_cover_url: typing.Optional[str] = None
-    cover_history: typing.List[CoverHistorySchema] = []
     formats: typing.List[str] = []
     isbn: typing.List[str] = []
     publisher: typing.Optional[str] = None

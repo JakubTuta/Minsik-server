@@ -150,7 +150,6 @@ async def process_works_dump(file_path: str) -> int:
                         "authors": authors_list,
                         "genres": genres_list,
                         "formats": [],
-                        "cover_history": [],
                         "series": None,
                     }
                     if (
