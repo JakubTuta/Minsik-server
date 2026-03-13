@@ -148,7 +148,7 @@ services:
   # DB Migrator - Production (runs all migrations before services start)
   # ============================================================================
   db-migrator:
-    image: europe-central2-docker.pkg.dev/minsik-486117/server/db-migrator:latest
+    image: container-registry.jtuta.cloud/minsik/db-migrator:latest
     container_name: minsik-db-migrator
     environment:
       DB_HOST: ${DB_HOST}
@@ -172,7 +172,7 @@ services:
   # Gateway Service - Production Configuration
   # ============================================================================
   gateway-service:
-    image: europe-central2-docker.pkg.dev/minsik-486117/server/gateway-service:latest
+    image: container-registry.jtuta.cloud/minsik/gateway-service:latest
     container_name: minsik-gateway-service
     environment:
       ENV: production
@@ -232,7 +232,7 @@ services:
   # Ingestion Service - Production Configuration
   # ============================================================================
   ingestion-service:
-    image: europe-central2-docker.pkg.dev/minsik-486117/server/ingestion-service:latest
+    image: container-registry.jtuta.cloud/minsik/ingestion-service:latest
     container_name: minsik-ingestion-service
     environment:
       ENV: production
@@ -297,7 +297,7 @@ services:
   # Books Service - Production Configuration
   # ============================================================================
   books-service:
-    image: europe-central2-docker.pkg.dev/minsik-486117/server/books-service:latest
+    image: container-registry.jtuta.cloud/minsik/books-service:latest
     container_name: minsik-books-service
     environment:
       ENV: production
@@ -361,7 +361,7 @@ services:
   # Auth Service - Production Configuration
   # ============================================================================
   auth-service:
-    image: europe-central2-docker.pkg.dev/minsik-486117/server/auth-service:latest
+    image: container-registry.jtuta.cloud/minsik/auth-service:latest
     container_name: minsik-auth-service
     environment:
       ENV: production
@@ -407,7 +407,7 @@ services:
   # User Data Service - Production Configuration
   # ============================================================================
   user-data-service:
-    image: europe-central2-docker.pkg.dev/minsik-486117/server/user-data-service:latest
+    image: container-registry.jtuta.cloud/minsik/user-data-service:latest
     container_name: minsik-user-data-service
     environment:
       ENV: production
@@ -456,7 +456,7 @@ services:
   # Recommendation Service - Production Configuration
   # ============================================================================
   recommendation-service:
-    image: europe-central2-docker.pkg.dev/minsik-486117/server/recommendation-service:latest
+    image: container-registry.jtuta.cloud/minsik/recommendation-service:latest
     container_name: minsik-recommendation-service
     environment:
       ENV: production
@@ -516,7 +516,7 @@ services:
   # RQ Worker - Production Configuration
   # ============================================================================
   rq-worker:
-    image: europe-central2-docker.pkg.dev/minsik-486117/server/rq-worker:latest
+    image: container-registry.jtuta.cloud/minsik/rq-worker:latest
     container_name: minsik-rq-worker
     command: rq worker ingestion --url redis://:${REDIS_PASSWORD}@${REDIS_HOST}:${REDIS_PORT}/${REDIS_DB}
     environment:

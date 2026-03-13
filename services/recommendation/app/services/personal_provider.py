@@ -24,10 +24,9 @@ async def get_personal_home_sections(
     if profile is None or profile.get("is_cold_start"):
         return []
 
-    async with app.db.async_session_maker() as session:
-        sections = await app.services.personal_builder.build_personal_home_sections(
-            session, profile, limit_per_section
-        )
+    sections = await app.services.personal_builder.build_personal_home_sections(
+        app.db.async_session_maker, profile, limit_per_section
+    )
 
     await app.cache.set_cached(cache_key, sections, app.config.settings.cache_personal_ttl)
     return sections

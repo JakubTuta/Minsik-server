@@ -560,19 +560,23 @@ async def _build_unread_by_author(
 
 
 async def build_personal_home_sections(
-    session: sqlalchemy.ext.asyncio.AsyncSession,
+    session_maker: typing.Any,
     profile: typing.Dict[str, typing.Any],
     limit_per_section: int,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
+    async def run(builder_fn: typing.Any, *args: typing.Any) -> typing.Any:
+        async with session_maker() as session:
+            return await builder_fn(session, *args)
+
     results = await asyncio.gather(
-        _build_for_you(session, profile, limit_per_section),
-        _build_because_you_liked(session, profile, limit_per_section),
-        _build_continue_series(session, profile, limit_per_section),
-        _build_from_favorite_authors(session, profile, limit_per_section),
-        _build_top_in_genre(session, profile, limit_per_section),
-        _build_want_to_read_picks(session, profile, limit_per_section),
-        _build_readers_like_you(session, profile, limit_per_section),
-        _build_hidden_gems(session, profile, limit_per_section),
+        run(_build_for_you, profile, limit_per_section),
+        run(_build_because_you_liked, profile, limit_per_section),
+        run(_build_continue_series, profile, limit_per_section),
+        run(_build_from_favorite_authors, profile, limit_per_section),
+        run(_build_top_in_genre, profile, limit_per_section),
+        run(_build_want_to_read_picks, profile, limit_per_section),
+        run(_build_readers_like_you, profile, limit_per_section),
+        run(_build_hidden_gems, profile, limit_per_section),
         return_exceptions=True,
     )
 

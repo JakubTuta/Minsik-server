@@ -41,10 +41,9 @@ async def _refresh_user(
     if profile.get("is_cold_start"):
         return
 
-    async with session_maker() as session:
-        sections = await app.services.personal_builder.build_personal_home_sections(
-            session, profile, app.config.settings.list_default_size
-        )
+    sections = await app.services.personal_builder.build_personal_home_sections(
+        session_maker, profile, app.config.settings.list_default_size
+    )
 
     sections_key = f"rec:personal:{user_id}"
     await app.cache.set_cached(sections_key, sections, app.config.settings.cache_personal_ttl)

@@ -249,7 +249,7 @@ function Create-Admin-User {
 }
 
 function Build-And-Push-Images {
-    $GAR_REGISTRY = "europe-central2-docker.pkg.dev/minsik-486117/server"
+    $GAR_REGISTRY = "container-registry.jtuta.cloud/minsik"
 
     $services = @(
         @{ Name = "Auth Service";           Dockerfile = "services/auth/Dockerfile";           ImageName = "auth-service" },
@@ -258,13 +258,17 @@ function Build-And-Push-Images {
         @{ Name = "Books Service";          Dockerfile = "services/books/Dockerfile";          ImageName = "books-service" },
         @{ Name = "User Data Service";      Dockerfile = "services/user_data/Dockerfile";      ImageName = "user-data-service" },
         @{ Name = "Recommendation Service"; Dockerfile = "services/recommendation/Dockerfile"; ImageName = "recommendation-service" },
-        @{ Name = "DB Migrator";            Dockerfile = "services/db_migrator/Dockerfile";  ImageName = "db-migrator" }
+        @{ Name = "DB Migrator";            Dockerfile = "services/db_migrator/Dockerfile";  ImageName = "db-migrator" },
+        @{ Name = "RQ Worker";              Dockerfile = "services/ingestion/Dockerfile";      ImageName = "rq-worker" }
     )
 
     Write-Step "Building and pushing images to Google Artifact Registry..."
 
+    # Write-Host "  Configuring Docker authentication..." -ForegroundColor Gray
+    # & gcloud auth configure-docker europe-central2-docker.pkg.dev --quiet
+
     Write-Host "  Configuring Docker authentication..." -ForegroundColor Gray
-    & gcloud auth configure-docker europe-central2-docker.pkg.dev --quiet
+    & docker login container-registry.jtuta.cloud
 
     if ($LASTEXITCODE -ne 0) {
         Write-Error-Message "Failed to configure Docker authentication. Run 'gcloud auth login' first."
