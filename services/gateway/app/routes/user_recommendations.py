@@ -36,7 +36,7 @@ def _to_section_dict(key: str, item) -> dict:
                 "primary_cover_url": i.primary_cover_url or None,
                 "author_names": list(i.author_names),
                 "author_slugs": list(i.author_slugs),
-                "avg_rating": i.avg_rating or None,
+                "avg_rating": float(i.avg_rating) if i.avg_rating else 0.0,
                 "rating_count": i.rating_count,
                 "readers": i.readers,
                 "score": i.score,
@@ -52,6 +52,7 @@ def _to_section_dict(key: str, item) -> dict:
                 "photo_url": i.photo_url or None,
                 "book_count": i.book_count,
                 "avg_rating": float(i.avg_rating) if i.avg_rating else 0.0,
+                "rating_count": i.rating_count,
                 "readers": i.readers,
                 "score": i.score,
             }

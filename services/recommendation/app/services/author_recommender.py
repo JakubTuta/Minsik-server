@@ -217,6 +217,11 @@ async def build_author_recommendations(
         return_exceptions=True,
     )
 
+    if isinstance(similar_items, Exception):
+        logger.error(f"[rec:author:{author_id}] similar_authors failed: {similar_items}")
+    if isinstance(fans_items, Exception):
+        logger.error(f"[rec:author:{author_id}] fans_also_read failed: {fans_items}")
+
     sections: typing.List[typing.Dict[str, typing.Any]] = []
 
     if similar_items and not isinstance(similar_items, Exception):

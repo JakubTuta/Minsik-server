@@ -15,15 +15,15 @@ _BOOK_FIELDS = """
     b.language,
     b.primary_cover_url,
     CASE
-        WHEN (b.rating_count + b.ol_rating_count) > 0
+        WHEN (COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0)) > 0
         THEN ROUND(
-            (COALESCE(b.avg_rating::numeric, 0) * b.rating_count
-             + COALESCE(b.ol_avg_rating::numeric, 0) * b.ol_rating_count)
-            / (b.rating_count + b.ol_rating_count), 2
+            (COALESCE(b.avg_rating::numeric, 0) * COALESCE(b.rating_count, 0)
+             + COALESCE(b.ol_avg_rating::numeric, 0) * COALESCE(b.ol_rating_count, 0))
+            / (COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0)), 2
         )::text
         ELSE ''
     END AS avg_rating,
-    b.rating_count + b.ol_rating_count AS rating_count,
+    COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0) AS rating_count,
     ARRAY_AGG(DISTINCT a.name) FILTER (WHERE a.name IS NOT NULL) AS author_names,
     ARRAY_AGG(DISTINCT a.slug) FILTER (WHERE a.slug IS NOT NULL) AS author_slugs,
     COALESCE(b.ol_want_to_read_count, 0) + COALESCE(b.ol_currently_reading_count, 0) + COALESCE(b.ol_already_read_count, 0)

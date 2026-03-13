@@ -509,7 +509,7 @@ async def get_book_comments(
     ),
     rating_filter: typing.Optional[float] = Query(
         None,
-        ge=1.0,
+        ge=0.0,
         le=5.0,
         description="Filter by exact overall rating (e.g. 5.0, 4.5)",
     ),

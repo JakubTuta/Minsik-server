@@ -315,6 +315,11 @@ async def build_book_recommendations(
         return_exceptions=True,
     )
 
+    section_labels = ["more_by_author", "similar_by_genre", "readers_also_enjoyed"]
+    for i, result in enumerate(all_results[:3]):
+        if isinstance(result, Exception):
+            logger.error(f"[rec:book:{book_id}] {section_labels[i]} failed: {result}")
+
     more_by_author_items, similar_genre_items, readers_enjoyed_items = (
         all_results[0] if not isinstance(all_results[0], Exception) else [],
         all_results[1] if not isinstance(all_results[1], Exception) else [],
@@ -325,12 +330,18 @@ async def build_book_recommendations(
     series_items: typing.List[typing.Dict] = []
     if series_id is not None:
         raw = all_results[idx]
-        series_items = raw if not isinstance(raw, Exception) else []
+        if isinstance(raw, Exception):
+            logger.error(f"[rec:book:{book_id}] more_from_series failed: {raw}")
+            series_items = []
+        else:
+            series_items = raw
         idx += 1
 
     dimension_results = []
     for i, (dim, display_name, _) in enumerate(prominent_dimensions):
         raw = all_results[idx + i]
+        if isinstance(raw, Exception):
+            logger.error(f"[rec:book:{book_id}] similar_{dim} failed: {raw}")
         dimension_results.append(
             (dim, display_name, raw if not isinstance(raw, Exception) else [])
         )

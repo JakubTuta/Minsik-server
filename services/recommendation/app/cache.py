@@ -44,6 +44,23 @@ async def get_cached(key: str) -> typing.Optional[typing.Any]:
         return None
 
 
+async def flush_recommendation_caches() -> int:
+    deleted = 0
+    try:
+        cursor = 0
+        while True:
+            cursor, keys = await redis_client.scan(cursor=cursor, match="rec:*", count=500)
+            if keys:
+                await redis_client.delete(*keys)
+                deleted += len(keys)
+            if cursor == 0:
+                break
+        logger.info(f"Flushed {deleted} recommendation cache keys")
+    except Exception as e:
+        logger.error(f"Redis flush error: {str(e)}")
+    return deleted
+
+
 async def set_cached(key: str, value: typing.Any, ttl: int) -> bool:
     try:
         await redis_client.setex(key, ttl, json.dumps(value))

@@ -576,6 +576,15 @@ async def build_personal_home_sections(
         return_exceptions=True,
     )
 
+    user_id = profile["user_id"]
+    section_names = [
+        "for_you", "because_you_liked", "continue_series", "from_favorite_authors",
+        "top_in_your_genres", "want_to_read_picks", "readers_like_you", "hidden_gems",
+    ]
+    for i, result in enumerate(results):
+        if isinstance(result, Exception):
+            logger.error(f"[rec:personal:{user_id}] {section_names[i]} failed: {result}")
+
     def safe(result: typing.Any) -> typing.Any:
         return result if not isinstance(result, Exception) else None
 

@@ -452,6 +452,43 @@ async def cleanup_underrepresented_genres(
     return total_deleted
 
 
+async def cleanup_invalid_genre_names(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    batch_size: int,
+    stop_check: typing.Callable[[], bool] = lambda: False,
+) -> int:
+    total_deleted = 0
+    while True:
+        if stop_check():
+            logger.info(
+                "[cleanup] Stopping invalid genre name cleanup: dump import started"
+            )
+            break
+        result = await session.execute(
+            sqlalchemy.text(
+                """
+                DELETE FROM books.genres
+                WHERE genre_id IN (
+                    SELECT g.genre_id FROM books.genres g
+                    WHERE g.name ~ '[^a-zA-Z0-9 -]'
+                    LIMIT :batch_size
+                )
+            """
+            ),
+            {"batch_size": batch_size},
+        )
+        deleted = typing.cast(CursorResult, result).rowcount
+        await session.commit()
+
+        if deleted == 0:
+            break
+
+        total_deleted += deleted
+        await asyncio.sleep(0.5)
+
+    return total_deleted
+
+
 async def run_cleanup_cycle(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     stop_check: typing.Callable[[], bool] = lambda: False,
@@ -470,6 +507,7 @@ async def run_cleanup_cycle(
             "series_deleted": 0,
             "genres_deleted": 0,
             "underrepresented_genres_deleted": 0,
+            "invalid_name_genres_deleted": 0,
         }
     author_stats = await cleanup_orphan_authors(
         session, min_books, batch_size, stop_check
@@ -481,6 +519,7 @@ async def run_cleanup_cycle(
             "series_deleted": 0,
             "genres_deleted": 0,
             "underrepresented_genres_deleted": 0,
+            "invalid_name_genres_deleted": 0,
         }
     series_deleted = await cleanup_underrepresented_series(
         session, 2, batch_size, stop_check
@@ -492,6 +531,7 @@ async def run_cleanup_cycle(
             "series_deleted": series_deleted,
             "genres_deleted": 0,
             "underrepresented_genres_deleted": 0,
+            "invalid_name_genres_deleted": 0,
         }
     genres_deleted = await cleanup_orphan_genres(session, batch_size, stop_check)
     if stop_check():
@@ -501,9 +541,22 @@ async def run_cleanup_cycle(
             "series_deleted": series_deleted,
             "genres_deleted": genres_deleted,
             "underrepresented_genres_deleted": 0,
+            "invalid_name_genres_deleted": 0,
         }
     underrepresented_genres_deleted = await cleanup_underrepresented_genres(
-        session, 3, batch_size, stop_check
+        session, 5, batch_size, stop_check
+    )
+    if stop_check():
+        return {
+            "books": book_stats,
+            "authors": author_stats,
+            "series_deleted": series_deleted,
+            "genres_deleted": genres_deleted,
+            "underrepresented_genres_deleted": underrepresented_genres_deleted,
+            "invalid_name_genres_deleted": 0,
+        }
+    invalid_name_genres_deleted = await cleanup_invalid_genre_names(
+        session, batch_size, stop_check
     )
 
     return {
@@ -512,6 +565,7 @@ async def run_cleanup_cycle(
         "series_deleted": series_deleted,
         "genres_deleted": genres_deleted,
         "underrepresented_genres_deleted": underrepresented_genres_deleted,
+        "invalid_name_genres_deleted": invalid_name_genres_deleted,
     }
 
 
@@ -547,7 +601,8 @@ async def run_cleanup_job() -> None:
             f"{stats['authors']['deleted']} authors, "
             f"{stats['series_deleted']} series, "
             f"{stats['genres_deleted']} orphan genres, "
-            f"{stats['underrepresented_genres_deleted']} underrepresented genres deleted"
+            f"{stats['underrepresented_genres_deleted']} underrepresented genres, "
+            f"{stats['invalid_name_genres_deleted']} invalid name genres deleted"
         )
 
     except Exception as e:
