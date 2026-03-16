@@ -395,16 +395,14 @@ class AdminUpdateSeriesRequest(pydantic.BaseModel):
     )
 
 
+class UpdateSeriesResponse(pydantic.BaseModel):
+    success: bool = True
+    data: typing.Optional[SeriesDetailSchema] = None
+    error: typing.Optional[app.models.responses.ErrorDetail] = None
+
+
 class OpenCaseData(pydantic.BaseModel):
-    display_list: typing.List[BookSummarySchema] = pydantic.Field(
-        description="List of 25 books shown in the scroll animation. The winning book is always at winning_index."
-    )
-    winning_index: int = pydantic.Field(
-        description="Zero-based index of the winning book within display_list. Always DISPLAY_LIST_SIZE - 2 (currently 23)."
-    )
-    winner: BookSummarySchema = pydantic.Field(
-        description="The winning book item (same object as display_list[winning_index])"
-    )
+    winner: BookSummarySchema = pydantic.Field(description="The winning book item")
 
 
 class OpenCaseResponse(pydantic.BaseModel):

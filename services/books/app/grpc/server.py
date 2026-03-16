@@ -674,13 +674,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                     session, request.language or "en"
                 )
 
-                display_list = [
-                    _build_book_summary_proto(item) for item in result["display_list"]
-                ]
-
                 return app.proto.books_pb2.OpenCaseResponse(
-                    display_list=display_list,
-                    winning_index=result["winning_index"],
                     winner=_build_book_summary_proto(result["winner"]),
                 )
         except ValueError as e:

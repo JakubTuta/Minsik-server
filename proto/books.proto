@@ -301,11 +301,9 @@ message OpenCaseRequest {
 }
 
 message OpenCaseResponse {
-  repeated BookSummary display_list = 1;
-  int32 winning_index = 2;
-  BookSummary winner = 3;
-  reserved 4;
-  reserved "winner_detail";
+  BookSummary winner = 1;
+  reserved 2, 3, 4;
+  reserved "display_list", "winning_index", "winner_detail";
 }
 
 message OpenPackRequest {

@@ -523,14 +523,10 @@ class OpenCaseRequest(_message.Message):
     def __init__(self, language: _Optional[str] = ...) -> None: ...
 
 class OpenCaseResponse(_message.Message):
-    __slots__ = ("display_list", "winning_index", "winner")
-    DISPLAY_LIST_FIELD_NUMBER: _ClassVar[int]
-    WINNING_INDEX_FIELD_NUMBER: _ClassVar[int]
+    __slots__ = ("winner",)
     WINNER_FIELD_NUMBER: _ClassVar[int]
-    display_list: _containers.RepeatedCompositeFieldContainer[BookSummary]
-    winning_index: int
     winner: BookSummary
-    def __init__(self, display_list: _Optional[_Iterable[_Union[BookSummary, _Mapping]]] = ..., winning_index: _Optional[int] = ..., winner: _Optional[_Union[BookSummary, _Mapping]] = ...) -> None: ...
+    def __init__(self, winner: _Optional[_Union[BookSummary, _Mapping]] = ...) -> None: ...
 
 class OpenPackRequest(_message.Message):
     __slots__ = ("language", "length")

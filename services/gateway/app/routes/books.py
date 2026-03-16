@@ -738,8 +738,7 @@ def _book_summary_proto_to_dict(item) -> typing.Dict[str, typing.Any]:
     response_model=app.models.books_responses.OpenCaseResponse,
     summary="Open a book case",
     description="""
-    Open a randomized book case (CS2-style). Returns a display list of 25 books
-    for a scroll animation and the winning book with full details.
+    Open a randomized book case. Returns the winning book with full details.
 
     Only books with at least one rating (app or OpenLibrary) are eligible.
 
@@ -755,12 +754,6 @@ def _book_summary_proto_to_dict(item) -> typing.Dict[str, typing.Any]:
     | `rare` | >3.25 — <=4.00 | ~20% |
     | `uncommon` | >2.25 — <=3.25 | ~30% |
     | `common` | <=2.25 | ~35% |
-
-    **Display list:** 25 books are returned — 24 sampled across all rarity tiers
-    (proportional to their probability weights) plus the winner inserted at a fixed position.
-    The list is shuffled before the winner is inserted, suitable for a scroll-reveal animation.
-
-    **`winning_index`** is always `22` (0-based) — the 23rd book out of 25.
 
     **Fallback:** if the rolled rarity tier has no eligible books for the requested language,
     the service cascades to the closest adjacent tiers until a winner is found.
@@ -778,15 +771,9 @@ async def open_case(
     try:
         response = await app.grpc_clients.books_client.open_case(language=language)
 
-        display_list = [
-            _book_summary_proto_to_dict(item) for item in response.display_list
-        ]
-
         return {
             "success": True,
             "data": {
-                "display_list": display_list,
-                "winning_index": response.winning_index,
                 "winner": _book_summary_proto_to_dict(response.winner),
             },
             "error": None,

@@ -126,13 +126,8 @@ async def open_case(
         raise ValueError(f"No rated books found for language '{language}'")
 
     winner_item = _row_to_case_item(winner_row)
-    display_books = await _build_display_list(session, language, winner_row.book_id)
-    actual_winning_index = min(WINNING_INDEX, len(display_books))
-    display_books.insert(actual_winning_index, winner_item)
 
     return {
-        "display_list": display_books,
-        "winning_index": actual_winning_index,
         "winner": winner_item,
     }
 
@@ -170,22 +165,11 @@ async def _try_open_from_cache(
             return None
 
     winner = random.choice(winner_pool)
-
-    display_books: typing.List[typing.Dict[str, typing.Any]] = []
-    for tier_name, _, _, _ in RARITY_TIERS:
-        slots = DISPLAY_SLOTS[tier_name]
-        eligible = [
-            b for b in tier_pools[tier_name] if b["book_id"] != winner["book_id"]
-        ]
-        display_books.extend(random.sample(eligible, min(slots, len(eligible))))
-
-    random.shuffle(display_books)
-    actual_winning_index = min(WINNING_INDEX, len(display_books))
-    display_books.insert(actual_winning_index, winner)
+    # Ensure rarity is set based on the book, or fallback to the tier we found it in
+    if "rarity" not in winner:
+        winner["rarity"] = winning_tier[0]
 
     return {
-        "display_list": display_books,
-        "winning_index": actual_winning_index,
         "winner": winner,
     }
 
