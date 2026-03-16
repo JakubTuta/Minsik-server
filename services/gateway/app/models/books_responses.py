@@ -425,6 +425,21 @@ class OpenPackResponse(pydantic.BaseModel):
     error: typing.Optional[app.models.responses.ErrorDetail] = None
 
 
+class SpinSlotsData(pydantic.BaseModel):
+    items: typing.List[str] = pydantic.Field(
+        description="List of 3 rarity tiers for the slots reels. The lowest rarity matches the winner's rarity."
+    )
+    winner: BookSummarySchema = pydantic.Field(
+        description="The winning book item corresponding to the lowest rarity from the reels."
+    )
+
+
+class SpinSlotsResponse(pydantic.BaseModel):
+    success: bool = True
+    data: SpinSlotsData
+    error: typing.Optional[app.models.responses.ErrorDetail] = None
+
+
 class DiscoverBookFilters(pydantic.BaseModel):
     language: str = pydantic.Field(
         default="en",

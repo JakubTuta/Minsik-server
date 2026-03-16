@@ -862,6 +862,62 @@ async def open_pack(
         )
 
 
+@router.get(
+    "/slots/spin",
+    response_model=app.models.books_responses.SpinSlotsResponse,
+    summary="Spin the books slot machine",
+    description="""
+    Spin a 3-reel slot machine to win a book. Returns the 3 drawn rarity tiers and the
+    winning book. The winner's rarity tier will exactly match the lowest rarity tier
+    among the 3 drawn symbols, satisfying the rule that "the lowest tier wins".
+    
+    The API manages the actual drop rate probabilities similarly to case opening
+    and builds the reels to simulate the outcome.
+
+    Rarity tiers and probabilities match case opening:
+    | Rarity | Rating range | Probability |
+    |---|---|---|
+    | `legendary` | >4.75 | ~1.5% |
+    | `ultra_rare` | >4.50 — <=4.75 | ~3.5% |
+    | `super_rare` | >4.00 — <=4.50 | ~10% |
+    | `rare` | >3.25 — <=4.00 | ~20% |
+    | `uncommon` | >2.25 — <=3.25 | ~30% |
+    | `common` | <=2.25 | ~35% |
+
+    Returns `404` when no rated books exist for the given language.
+    """,
+)
+@limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
+async def spin_slots(
+    request: fastapi.Request,
+    language: str = Query(
+        "en", min_length=2, max_length=10, description="Language code (e.g. en, pl, de)"
+    ),
+):
+    try:
+        response = await app.grpc_clients.books_client.spin_slots(language=language)
+
+        return {
+            "success": True,
+            "data": {
+                "items": list(response.items),
+                "winner": _book_summary_proto_to_dict(response.winner),
+            },
+            "error": None,
+        }
+    except grpc.RpcError as e:
+        logger.error(f"gRPC error spinning slots: {e.code()} - {e.details()}")
+        if e.code() == grpc.StatusCode.NOT_FOUND:
+            raise fastapi.HTTPException(
+                status_code=404,
+                detail=f"No eligible books found for language '{language}'",
+            )
+        raise fastapi.HTTPException(
+            status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
+            detail=f"Spin slots failed: {e.details()}",
+        )
+
+
 @router.post(
     "/discover",
     response_model=app.models.books_responses.DiscoverBookResponse,

@@ -11,6 +11,7 @@ import app.services.discovery_service
 import app.services.pack_service
 import app.services.search_service
 import app.services.series_service
+import app.services.slots_service
 import grpc
 
 logger = logging.getLogger(__name__)
@@ -662,45 +663,6 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                 grpc.StatusCode.INTERNAL, f"Update series failed: {str(e)}"
             )
 
-    async def DiscoverBook(
-        self,
-        request: app.proto.books_pb2.DiscoverBookRequest,
-        context: grpc.aio.ServicerContext,
-    ) -> app.proto.books_pb2.DiscoverBookResponse:
-        try:
-            async with app.db.async_session_maker() as session:
-                result = await app.services.discovery_service.discover_book(
-                    session,
-                    language=request.language or "en",
-                    genre_slugs=list(request.genre_slugs),
-                    book_length=request.book_length or "",
-                    quality=request.quality or "",
-                    moods=list(request.moods),
-                    era=request.era or "",
-                    series_filter=request.series_filter or "",
-                    popularity=request.popularity or "",
-                    exclude_ids=list(request.exclude_ids),
-                )
-
-                if result is None:
-                    await context.abort(
-                        grpc.StatusCode.NOT_FOUND,
-                        "No books match the provided filters",
-                    )
-                    return
-
-                return app.proto.books_pb2.DiscoverBookResponse(
-                    book=_build_book_summary_proto(result["book"]),
-                    matching_count=result["matching_count"],
-                )
-        except ValueError as e:
-            await context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(e))
-        except Exception as e:
-            logger.error(f"Error in DiscoverBook: {str(e)}")
-            await context.abort(
-                grpc.StatusCode.INTERNAL, f"Discover book failed: {str(e)}"
-            )
-
     async def OpenCase(
         self,
         request: app.proto.books_pb2.OpenCaseRequest,
@@ -747,6 +709,68 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
         except Exception as e:
             logger.error(f"Error in OpenPack: {str(e)}")
             await context.abort(grpc.StatusCode.INTERNAL, f"Open pack failed: {str(e)}")
+
+    async def SpinSlots(
+        self,
+        request: app.proto.books_pb2.SpinSlotsRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> app.proto.books_pb2.SpinSlotsResponse:
+        try:
+            async with app.db.async_session_maker() as session:
+                items, winner = await app.services.slots_service.spin_slots(
+                    session,
+                    request.language or "en",
+                )
+                return app.proto.books_pb2.SpinSlotsResponse(
+                    items=items,
+                    winner=_build_book_summary_proto(winner),
+                )
+        except ValueError as e:
+            await context.abort(grpc.StatusCode.NOT_FOUND, str(e))
+        except Exception as e:
+            logger.error(f"Error in SpinSlots: {str(e)}")
+            await context.abort(
+                grpc.StatusCode.INTERNAL, f"Spin slots failed: {str(e)}"
+            )
+
+    async def DiscoverBook(
+        self,
+        request: app.proto.books_pb2.DiscoverBookRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> app.proto.books_pb2.DiscoverBookResponse:
+        try:
+            async with app.db.async_session_maker() as session:
+                result = await app.services.discovery_service.discover_book(
+                    session,
+                    language=request.language or "en",
+                    genre_slugs=list(request.genre_slugs),
+                    book_length=request.book_length or "",
+                    quality=request.quality or "",
+                    moods=list(request.moods),
+                    era=request.era or "",
+                    series_filter=request.series_filter or "",
+                    popularity=request.popularity or "",
+                    exclude_ids=list(request.exclude_ids),
+                )
+
+                if result is None:
+                    await context.abort(
+                        grpc.StatusCode.NOT_FOUND,
+                        "No books match the provided filters",
+                    )
+                    return
+
+                return app.proto.books_pb2.DiscoverBookResponse(
+                    book=_build_book_summary_proto(result["book"]),
+                    matching_count=result["matching_count"],
+                )
+        except ValueError as e:
+            await context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(e))
+        except Exception as e:
+            logger.error(f"Error in DiscoverBook: {str(e)}")
+            await context.abort(
+                grpc.StatusCode.INTERNAL, f"Discover book failed: {str(e)}"
+            )
 
     async def DeleteBook(
         self,

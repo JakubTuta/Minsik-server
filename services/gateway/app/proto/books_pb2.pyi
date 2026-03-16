@@ -576,6 +576,20 @@ class DiscoverBookResponse(_message.Message):
     matching_count: int
     def __init__(self, book: _Optional[_Union[BookSummary, _Mapping]] = ..., matching_count: _Optional[int] = ...) -> None: ...
 
+class SpinSlotsRequest(_message.Message):
+    __slots__ = ("language",)
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
+    language: str
+    def __init__(self, language: _Optional[str] = ...) -> None: ...
+
+class SpinSlotsResponse(_message.Message):
+    __slots__ = ("items", "winner")
+    ITEMS_FIELD_NUMBER: _ClassVar[int]
+    WINNER_FIELD_NUMBER: _ClassVar[int]
+    items: _containers.RepeatedScalarFieldContainer[str]
+    winner: BookSummary
+    def __init__(self, items: _Optional[_Iterable[str]] = ..., winner: _Optional[_Union[BookSummary, _Mapping]] = ...) -> None: ...
+
 class DeleteBookRequest(_message.Message):
     __slots__ = ("book_id",)
     BOOK_ID_FIELD_NUMBER: _ClassVar[int]

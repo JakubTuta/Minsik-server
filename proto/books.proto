@@ -14,6 +14,7 @@ service BooksService {
   rpc UpdateSeries(UpdateSeriesRequest) returns (SeriesDetailResponse);
   rpc OpenCase(OpenCaseRequest) returns (OpenCaseResponse);
   rpc OpenPack(OpenPackRequest) returns (OpenPackResponse);
+  rpc SpinSlots(SpinSlotsRequest) returns (SpinSlotsResponse);
   rpc DiscoverBook(DiscoverBookRequest) returns (DiscoverBookResponse);
   rpc DeleteBook(DeleteBookRequest) returns (DeleteEntityResponse);
   rpc DeleteAuthor(DeleteAuthorRequest) returns (DeleteEntityResponse);
@@ -331,6 +332,15 @@ message DiscoverBookRequest {
 message DiscoverBookResponse {
   BookSummary book = 1;
   int32 matching_count = 2;
+}
+
+message SpinSlotsRequest {
+  string language = 1;
+}
+
+message SpinSlotsResponse {
+  repeated string items = 1;
+  BookSummary winner = 2;
 }
 
 message DeleteBookRequest   { int64 book_id   = 1; }

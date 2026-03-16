@@ -89,6 +89,11 @@ class BooksServiceStub(object):
                 request_serializer=books__pb2.OpenPackRequest.SerializeToString,
                 response_deserializer=books__pb2.OpenPackResponse.FromString,
                 _registered_method=True)
+        self.SpinSlots = channel.unary_unary(
+                '/books.v1.BooksService/SpinSlots',
+                request_serializer=books__pb2.SpinSlotsRequest.SerializeToString,
+                response_deserializer=books__pb2.SpinSlotsResponse.FromString,
+                _registered_method=True)
         self.DiscoverBook = channel.unary_unary(
                 '/books.v1.BooksService/DiscoverBook',
                 request_serializer=books__pb2.DiscoverBookRequest.SerializeToString,
@@ -180,6 +185,12 @@ class BooksServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def SpinSlots(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def DiscoverBook(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -261,6 +272,11 @@ def add_BooksServiceServicer_to_server(servicer, server):
                     servicer.OpenPack,
                     request_deserializer=books__pb2.OpenPackRequest.FromString,
                     response_serializer=books__pb2.OpenPackResponse.SerializeToString,
+            ),
+            'SpinSlots': grpc.unary_unary_rpc_method_handler(
+                    servicer.SpinSlots,
+                    request_deserializer=books__pb2.SpinSlotsRequest.FromString,
+                    response_serializer=books__pb2.SpinSlotsResponse.SerializeToString,
             ),
             'DiscoverBook': grpc.unary_unary_rpc_method_handler(
                     servicer.DiscoverBook,
@@ -580,6 +596,33 @@ class BooksService(object):
             '/books.v1.BooksService/OpenPack',
             books__pb2.OpenPackRequest.SerializeToString,
             books__pb2.OpenPackResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SpinSlots(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/books.v1.BooksService/SpinSlots',
+            books__pb2.SpinSlotsRequest.SerializeToString,
+            books__pb2.SpinSlotsResponse.FromString,
             options,
             channel_credentials,
             insecure,

@@ -254,6 +254,18 @@ class BooksClient:
             logger.error(f"gRPC error deleting series: {e.code()} - {e.details()}")
             raise
 
+    async def spin_slots(self, language: str = "en") -> books_pb2.SpinSlotsResponse:
+        request = books_pb2.SpinSlotsRequest(language=language)
+
+        try:
+            response = await self.stub.SpinSlots(
+                request, timeout=app.config.settings.grpc_timeout
+            )
+            return response
+        except grpc.RpcError as e:
+            logger.error(f"gRPC error spinning slots: {e.code()} - {e.details()}")
+            raise
+
     async def discover_book(
         self,
         language: str = "en",
