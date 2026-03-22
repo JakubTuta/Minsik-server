@@ -53,7 +53,7 @@ class RecommendationClient:
         try:
             return await self.stub.GetRecommendationList(
                 request,
-                timeout=app.config.settings.grpc_timeout,
+                timeout=app.config.settings.grpc_recommendation_timeout,
             )
         except grpc.RpcError as e:
             logger.error(
@@ -73,7 +73,7 @@ class RecommendationClient:
         try:
             return await self.stub.GetHomePage(
                 request,
-                timeout=app.config.settings.grpc_timeout,
+                timeout=app.config.settings.grpc_recommendation_timeout,
             )
         except grpc.RpcError as e:
             logger.error(f"gRPC error in get_home_page: {e.code()} - {e.details()}")
@@ -86,7 +86,7 @@ class RecommendationClient:
         try:
             return await self.stub.GetAvailableCategories(
                 request,
-                timeout=app.config.settings.grpc_timeout,
+                timeout=app.config.settings.grpc_recommendation_timeout,
             )
         except grpc.RpcError as e:
             logger.error(
@@ -123,7 +123,7 @@ class RecommendationClient:
         try:
             return await self.stub.GetBookRecommendations(
                 request,
-                timeout=app.config.settings.grpc_timeout,
+                timeout=app.config.settings.grpc_recommendation_timeout,
             )
         except grpc.RpcError as e:
             logger.error(
@@ -145,7 +145,7 @@ class RecommendationClient:
         try:
             return await self.stub.GetAuthorRecommendations(
                 request,
-                timeout=app.config.settings.grpc_timeout,
+                timeout=app.config.settings.grpc_recommendation_timeout,
             )
         except grpc.RpcError as e:
             logger.error(
@@ -165,7 +165,7 @@ class RecommendationClient:
         try:
             return await self.stub.GetSeriesRecommendations(
                 request,
-                timeout=app.config.settings.grpc_timeout,
+                timeout=app.config.settings.grpc_recommendation_timeout,
             )
         except grpc.RpcError as e:
             logger.error(

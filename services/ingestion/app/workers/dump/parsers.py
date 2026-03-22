@@ -244,8 +244,8 @@ async def build_known_works_filter(
     count = 0
     result = await session.stream(
         sqlalchemy.text(
-            "SELECT open_library_id FROM books.books "
-            "WHERE open_library_id IS NOT NULL"
+            "SELECT COALESCE(external_ids->>'work_ol_id', open_library_id) as open_library_id FROM books.books "
+            "WHERE open_library_id IS NOT NULL OR external_ids ? 'work_ol_id'"
         )
     )
     async for row in result:
@@ -298,8 +298,9 @@ async def batch_lookup_books(
         params = {f"id_{j}": v for j, v in enumerate(chunk)}
         result = await session.execute(
             sqlalchemy.text(
-                "SELECT book_id, language, open_library_id "
-                f"FROM books.books WHERE open_library_id IN ({placeholders})"
+                "SELECT book_id, language, COALESCE(external_ids->>'work_ol_id', open_library_id) as open_library_id "
+                f"FROM books.books WHERE open_library_id IN ({placeholders}) "
+                f"OR external_ids->>'work_ol_id' IN ({placeholders})"
             ),
             params,
         )

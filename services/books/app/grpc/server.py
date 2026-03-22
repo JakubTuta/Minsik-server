@@ -195,13 +195,15 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                     await context.abort(
                         grpc.StatusCode.NOT_FOUND, f"Book not found: {request.slug}"
                     )
+                    return
 
                 return app.proto.books_pb2.BookDetailResponse(
                     book=_build_book_detail_proto(book)
                 )
         except Exception as e:
             logger.error(f"Error in GetBook: {str(e)}")
-            await context.abort(grpc.StatusCode.INTERNAL, f"Get book failed: {str(e)}")
+            # context.abort may have already been called, so just log and return
+            return
 
     async def GetAuthor(
         self,
@@ -218,6 +220,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                     await context.abort(
                         grpc.StatusCode.NOT_FOUND, f"Author not found: {request.slug}"
                     )
+                    return
 
                 author_detail = app.proto.books_pb2.AuthorDetail(
                     author_id=author["author_id"],
@@ -255,9 +258,8 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                 return app.proto.books_pb2.AuthorDetailResponse(author=author_detail)
         except Exception as e:
             logger.error(f"Error in GetAuthor: {str(e)}")
-            await context.abort(
-                grpc.StatusCode.INTERNAL, f"Get author failed: {str(e)}"
-            )
+            # context.abort may have already been called, so just log and return
+            return
 
     async def GetAuthorBooks(
         self,

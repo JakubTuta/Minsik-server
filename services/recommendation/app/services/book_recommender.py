@@ -172,7 +172,7 @@ async def _build_similar_by_genre(
             {app.services.list_builder._BOOK_JOINS}
             WHERE {app.services.list_builder._BOOK_BASE_WHERE}
               AND c.shared > 0
-            GROUP BY b.book_id, c.shared, c.source_cnt
+                    GROUP BY b.book_id, c.shared, c.source_cnt, c.book_id
             ORDER BY score DESC NULLS LAST, b.rating_count DESC NULLS LAST
             LIMIT :limit
             """

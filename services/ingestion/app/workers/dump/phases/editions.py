@@ -197,6 +197,12 @@ async def process_editions_dump(
                                 ):
                                     ext_ids[id_key] = id_vals[0]
 
+                        ext_ids["work_ol_id"] = work_ol_id
+                        edition_ol_id = edition_data.get("key", "").replace(
+                            "/books/", ""
+                        )
+                        google_books_id = ext_ids.pop("google", None)
+
                         cover_url = parsers.extract_cover_url(
                             edition_data.get("covers")
                         )
@@ -224,6 +230,8 @@ async def process_editions_dump(
                                 "publisher": publisher,
                                 "physical_format": physical_format,
                                 "external_ids": ext_ids,
+                                "edition_ol_id": edition_ol_id,
+                                "google_books_id": google_books_id,
                                 "cover_url": cover_url,
                                 "description": description,
                                 "first_sentence": first_sentence,
@@ -352,6 +360,8 @@ async def _flush_best_editions_chunk(
                     "number_of_pages": ed["page_count"],
                     "publisher": ed["publisher"],
                     "external_ids": ed["external_ids"],
+                    "open_library_id": ed["edition_ol_id"],
+                    "google_books_id": ed["google_books_id"],
                     "cover_url": ed["cover_url"],
                     "description": ed["description"],
                     "first_sentence": ed.get("first_sentence"),
@@ -371,6 +381,8 @@ async def _flush_best_editions_chunk(
                     "number_of_pages": ed["page_count"],
                     "publisher": ed["publisher"],
                     "external_ids": ed["external_ids"],
+                    "open_library_id": ed["edition_ol_id"],
+                    "google_books_id": ed["google_books_id"],
                     "cover_url": ed["cover_url"],
                     "description": ed["description"],
                     "first_sentence": ed.get("first_sentence"),
@@ -441,14 +453,14 @@ async def _flush_edition_updates(
             values_parts.append(
                 f"(CAST(:bid_{k} AS bigint), CAST(:isbn_{k} AS jsonb), CAST(:pages_{k} AS int), "
                 f":pub_{k}, CAST(:ext_{k} AS jsonb), :cover_{k}, :desc_{k}, :fsen_{k}, CAST(:fmt_{k} AS jsonb), "
-                f"CAST(:sid_{k} AS bigint), CAST(:spos_{k} AS numeric))"
+                f"CAST(:sid_{k} AS bigint), CAST(:spos_{k} AS numeric), :olid_{k}, :gbid_{k})"
             )
             params[f"bid_{k}"] = u["book_id"]
             params[f"isbn_{k}"] = json.dumps(u["isbn"]) if u["isbn"] else None
             params[f"pages_{k}"] = u["number_of_pages"]
             params[f"pub_{k}"] = u["publisher"][:500] if u["publisher"] else None
             params[f"ext_{k}"] = (
-                json.dumps(u["external_ids"]) if u["external_ids"] else None
+                json.dumps(u["external_ids"]) if u["external_ids"] else "{}"
             )
             params[f"cover_{k}"] = u["cover_url"][:1000] if u["cover_url"] else None
             params[f"desc_{k}"] = u["description"]
@@ -458,6 +470,12 @@ async def _flush_edition_updates(
             )
             params[f"sid_{k}"] = series_id
             params[f"spos_{k}"] = series_pos
+            params[f"olid_{k}"] = (
+                u.get("open_library_id")[:100] if u.get("open_library_id") else None
+            )
+            params[f"gbid_{k}"] = (
+                u.get("google_books_id")[:100] if u.get("google_books_id") else None
+            )
 
         await session.execute(
             sqlalchemy.text(
@@ -465,8 +483,9 @@ async def _flush_edition_updates(
                 "isbn = CASE WHEN v.isbn IS NOT NULL THEN v.isbn ELSE b.isbn END, "
                 "number_of_pages = COALESCE(b.number_of_pages, v.pages), "
                 "publisher = COALESCE(b.publisher, v.pub), "
-                "external_ids = CASE WHEN v.ext IS NOT NULL "
-                "THEN v.ext ELSE b.external_ids END, "
+                "external_ids = b.external_ids || v.ext, "
+                "open_library_id = v.olid, "
+                "google_books_id = v.gbid, "
                 "primary_cover_url = COALESCE(b.primary_cover_url, v.cover), "
                 "description = COALESCE(b.description, v.descr), "
                 "first_sentence = COALESCE(b.first_sentence, v.fsen), "
@@ -478,7 +497,7 @@ async def _flush_edition_updates(
                 "series_position = CASE WHEN b.series_position IS NULL "
                 "AND v.spos IS NOT NULL THEN v.spos ELSE b.series_position END "
                 f"FROM (VALUES {', '.join(values_parts)}) "
-                "AS v(bid, isbn, pages, pub, ext, cover, descr, fsen, fmt, sid, spos) "
+                "AS v(bid, isbn, pages, pub, ext, cover, descr, fsen, fmt, sid, spos, olid, gbid) "
                 "WHERE b.book_id = v.bid"
             ),
             params,
@@ -541,7 +560,8 @@ async def _insert_new_language_row(
         "first_sentence": update.get("first_sentence"),
         "original_publication_year": source.original_publication_year,
         "primary_cover_url": cover_url,
-        "open_library_id": work_ol_id,
+        "open_library_id": update.get("open_library_id") or work_ol_id,
+        "google_books_id": update.get("google_books_id"),
         "isbn": update["isbn"] or [],
         "publisher": publisher,
         "number_of_pages": update["number_of_pages"],
@@ -558,7 +578,11 @@ async def _insert_new_language_row(
             "isbn": stmt.excluded.isbn,
             "publisher": stmt.excluded.publisher,
             "number_of_pages": stmt.excluded.number_of_pages,
-            "external_ids": stmt.excluded.external_ids,
+            "external_ids": app.models.Book.external_ids.op("||")(
+                stmt.excluded.external_ids
+            ),
+            "open_library_id": stmt.excluded.open_library_id,
+            "google_books_id": stmt.excluded.google_books_id,
         },
     )
     stmt = stmt.returning(app.models.Book.book_id)

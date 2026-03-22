@@ -106,7 +106,7 @@ async def _build_similar_authors_by_genre(
             LEFT JOIN books.book_authors ba ON a.author_id = ba.author_id
             LEFT JOIN books.books b ON ba.book_id = b.book_id
             WHERE ca.shared > 0
-            GROUP BY a.author_id, a.name, a.slug, a.photo_url, ca.shared
+                    GROUP BY a.author_id, a.name, a.slug, a.photo_url, ca.shared, ca.author_id
             ORDER BY score DESC NULLS LAST, book_count DESC
             LIMIT :limit
         """
@@ -218,7 +218,9 @@ async def build_author_recommendations(
     )
 
     if isinstance(similar_items, Exception):
-        logger.error(f"[rec:author:{author_id}] similar_authors failed: {similar_items}")
+        logger.error(
+            f"[rec:author:{author_id}] similar_authors failed: {similar_items}"
+        )
     if isinstance(fans_items, Exception):
         logger.error(f"[rec:author:{author_id}] fans_also_read failed: {fans_items}")
 
