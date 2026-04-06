@@ -68,6 +68,41 @@ async def shutdown(signal_received=None):
     await app.models.engine.dispose()
 
 
+async def run_initial_jobs() -> None:
+    logger.info("Waiting 15 seconds before running initial scheduled jobs...")
+    await asyncio.sleep(15)
+
+    logger.info("Starting initial scheduled jobs sequentially.")
+    if app.config.settings.continuous_fetch_enabled:
+        try:
+            logger.info("Running initial continuous OL fetch")
+            await app.workers.continuous_fetcher.run_continuous_ol_fetch()
+        except Exception as e:
+            logger.error(f"Initial continuous OL fetch failed: {e}")
+
+        try:
+            logger.info("Running initial continuous GB fetch")
+            await app.workers.continuous_fetcher.run_continuous_gb_fetch()
+        except Exception as e:
+            logger.error(f"Initial continuous GB fetch failed: {e}")
+
+    if app.config.settings.description_enrich_enabled:
+        try:
+            logger.info("Running initial description enrichment")
+            await app.workers.description_enricher.run_description_enrichment()
+        except Exception as e:
+            logger.error(f"Initial description enrichment failed: {e}")
+
+    if app.config.settings.cleanup_enabled:
+        try:
+            logger.info("Running initial cleanup job")
+            await app.workers.data_cleaner.run_cleanup_job()
+        except Exception as e:
+            logger.error(f"Initial cleanup job failed: {e}")
+
+    logger.info("Initial scheduled jobs complete.")
+
+
 async def main():
     global scheduler
     try:
@@ -134,6 +169,8 @@ async def main():
             state = dump.get_job_state(resume_redis)
             if state:
                 asyncio.create_task(dump.run_import_dump(state["job_id"], resume_redis))
+        else:
+            asyncio.create_task(run_initial_jobs())
 
         await app.grpc.serve()
 

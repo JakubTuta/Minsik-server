@@ -60,6 +60,39 @@ async def _case_pool_refresh() -> None:
         logger.error(f"[case] Case pool refresh error: {str(e)}")
 
 
+async def run_initial_jobs() -> None:
+    logger.info("Waiting 15 seconds before running initial scheduled jobs...")
+    await asyncio.sleep(15)
+
+    logger.info("[rec] Flushing stale recommendation caches")
+    await app.cache.flush_recommendation_caches()
+
+    logger.info("[rec] Running initial recommendation list refresh at startup")
+    try:
+        await app.services.list_builder.refresh_all(app.db.async_session_maker)
+        logger.info("[rec] Initial list refresh complete")
+    except Exception as e:
+        logger.error(f"[rec] Initial list refresh failed: {str(e)}")
+
+    logger.info("[rec:personal] Running initial personal refresh at startup")
+    try:
+        await app.services.personal_refresher.refresh_all_personal(
+            app.db.async_session_maker
+        )
+        logger.info("[rec:personal] Initial personal refresh complete")
+    except Exception as e:
+        logger.error(f"[rec:personal] Initial personal refresh failed: {str(e)}")
+
+    logger.info("[case] Running initial case pool refresh at startup")
+    try:
+        await app.services.case_pool_builder.refresh_case_pools(
+            app.db.async_session_maker
+        )
+        logger.info("[case] Initial case pool refresh complete")
+    except Exception as e:
+        logger.error(f"[case] Initial case pool refresh failed: {str(e)}")
+
+
 async def start_server() -> None:
     global grpc_server, scheduler
 
@@ -89,33 +122,7 @@ async def start_server() -> None:
     logger.info(f"Starting gRPC server on {listen_addr}")
     await grpc_server.start()
 
-    logger.info("[rec] Flushing stale recommendation caches")
-    await app.cache.flush_recommendation_caches()
-
-    logger.info("[rec] Running initial recommendation list refresh at startup")
-    try:
-        await app.services.list_builder.refresh_all(app.db.async_session_maker)
-        logger.info("[rec] Initial list refresh complete")
-    except Exception as e:
-        logger.error(f"[rec] Initial list refresh failed: {str(e)}")
-
-    logger.info("[rec:personal] Running initial personal refresh at startup")
-    try:
-        await app.services.personal_refresher.refresh_all_personal(
-            app.db.async_session_maker
-        )
-        logger.info("[rec:personal] Initial personal refresh complete")
-    except Exception as e:
-        logger.error(f"[rec:personal] Initial personal refresh failed: {str(e)}")
-
-    logger.info("[case] Running initial case pool refresh at startup")
-    try:
-        await app.services.case_pool_builder.refresh_case_pools(
-            app.db.async_session_maker
-        )
-        logger.info("[case] Initial case pool refresh complete")
-    except Exception as e:
-        logger.error(f"[case] Initial case pool refresh failed: {str(e)}")
+    asyncio.create_task(run_initial_jobs())
 
     scheduler = AsyncScheduler()
     await scheduler.__aenter__()

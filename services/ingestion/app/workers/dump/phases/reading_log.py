@@ -46,7 +46,9 @@ async def process_reading_log_dump(file_path: str) -> int:
                     parts = line.rstrip("\n").split("\t")
                     if len(parts) < 3:
                         continue
-                    work_key = parts[0].strip().replace("/works/", "")
+                    work_key = (
+                        parts[0].strip().replace("/works/", "").replace("/books/", "")
+                    )
                     shelf = parts[2].strip()
 
                     if work_key not in batch:
@@ -133,6 +135,8 @@ async def _flush_reading_log_batch(
                         "read": counts["read"],
                     }
                 )
+
+        batch_params.sort(key=lambda x: x["bid"])
 
         for j in range(0, len(batch_params), 500):
             sub = batch_params[j : j + 500]

@@ -28,7 +28,9 @@ async def process_ratings_dump(file_path: str) -> int:
                     parts = line.rstrip("\n").split("\t")
                     if len(parts) < 3:
                         continue
-                    work_key = parts[0].strip().replace("/works/", "")
+                    work_key = (
+                        parts[0].strip().replace("/works/", "").replace("/books/", "")
+                    )
                     rating_val = int(parts[2].strip())
                     if rating_val < 1 or rating_val > 5:
                         continue
@@ -70,6 +72,8 @@ async def process_ratings_dump(file_path: str) -> int:
                             batch_params.append(
                                 {"bid": book_id, "cnt": agg["count"], "avg": avg}
                             )
+
+                    batch_params.sort(key=lambda x: x["bid"])
 
                     for j in range(0, len(batch_params), 500):
                         sub = batch_params[j : j + 500]

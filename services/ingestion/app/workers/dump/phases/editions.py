@@ -436,6 +436,7 @@ async def _flush_edition_updates(
         for row in result:
             series_name_to_id[row.slug] = row.series_id
 
+    existing_updates.sort(key=lambda x: x["book_id"])
     batch_size = 500
     for i in range(0, len(existing_updates), batch_size):
         sub = existing_updates[i : i + batch_size]

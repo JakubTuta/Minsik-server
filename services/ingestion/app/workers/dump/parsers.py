@@ -298,14 +298,14 @@ async def batch_lookup_books(
         params = {f"id_{j}": v for j, v in enumerate(chunk)}
         result = await session.execute(
             sqlalchemy.text(
-                "SELECT book_id, language, COALESCE(external_ids->>'work_ol_id', open_library_id) as open_library_id "
+                "SELECT book_id, language, COALESCE(external_ids->>'work_ol_id', open_library_id) as requested_id "
                 f"FROM books.books WHERE open_library_id IN ({placeholders}) "
                 f"OR external_ids->>'work_ol_id' IN ({placeholders})"
             ),
             params,
         )
         for row in result:
-            if row.open_library_id not in book_map:
-                book_map[row.open_library_id] = []
-            book_map[row.open_library_id].append((row.book_id, row.language))
+            if row.requested_id not in book_map:
+                book_map[row.requested_id] = []
+            book_map[row.requested_id].append((row.book_id, row.language))
     return book_map
