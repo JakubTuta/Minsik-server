@@ -79,6 +79,25 @@ class RecommendationClient:
             logger.error(f"gRPC error in get_home_page: {e.code()} - {e.details()}")
             raise
 
+    async def refresh_personal_home(
+        self,
+        user_id: int,
+    ) -> recommendation_pb2.HomePageResponse:
+        request = recommendation_pb2.GetHomePageRequest(
+            items_per_category=0,
+            user_id=user_id,
+        )
+        try:
+            return await self.stub.GetHomePage(
+                request,
+                timeout=app.config.settings.grpc_admin_timeout,
+            )
+        except grpc.RpcError as e:
+            logger.error(
+                f"gRPC error in refresh_personal_home: {e.code()} - {e.details()}"
+            )
+            raise
+
     async def get_available_categories(
         self,
     ) -> recommendation_pb2.AvailableCategoriesResponse:

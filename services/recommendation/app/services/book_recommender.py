@@ -160,14 +160,19 @@ async def _build_similar_by_genre(
                 JOIN source_genres sg ON bg.genre_id = sg.genre_id
                 WHERE bg.book_id != :book_id
                 GROUP BY bg.book_id
+            ),
+            candidate_genre_counts AS (
+                SELECT bg2.book_id, COUNT(*) AS candidate_cnt
+                FROM books.book_genres bg2
+                JOIN candidates c ON c.book_id = bg2.book_id
+                GROUP BY bg2.book_id
             )
             SELECT {app.services.list_builder._BOOK_FIELDS},
                    c.shared::float / NULLIF(
-                       c.source_cnt + (
-                           SELECT COUNT(*) FROM books.book_genres bg2 WHERE bg2.book_id = c.book_id
-                       ) - c.shared, 0
+                       c.source_cnt + cgc.candidate_cnt - c.shared, 0
                    ) AS score
             FROM candidates c
+            JOIN candidate_genre_counts cgc ON cgc.book_id = c.book_id
             JOIN books.books b ON c.book_id = b.book_id
             {app.services.list_builder._BOOK_JOINS}
             WHERE {app.services.list_builder._BOOK_BASE_WHERE}

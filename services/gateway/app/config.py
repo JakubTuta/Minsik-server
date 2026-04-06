@@ -35,6 +35,7 @@ class Settings(BaseSettings):
     grpc_timeout: float = Field(default=10.0)
     grpc_recommendation_timeout: float = Field(default=30.0)
     grpc_admin_timeout: float = Field(default=60.0)
+    recommendation_recompute_on_user_write: bool = Field(default=True)
 
     cors_origins: str = Field(default="*")
     cors_allow_credentials: bool = Field(default=True)

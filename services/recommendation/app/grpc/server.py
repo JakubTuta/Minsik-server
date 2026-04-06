@@ -115,12 +115,16 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
         context: grpc.aio.ServicerContext,
     ) -> recommendation_pb2.HomePageResponse:
         try:
+            user_id = request.user_id if request.user_id > 0 else 0
+            force_personal_refresh = user_id > 0 and request.items_per_category == 0
             items_per_category = (
                 request.items_per_category if request.items_per_category > 0 else 20
             )
-            user_id = request.user_id if request.user_id > 0 else 0
             categories = await app.services.list_provider.get_home_page(
-                items_per_category, user_id
+                items_per_category,
+                user_id,
+                personal_cache_only=user_id > 0 and not force_personal_refresh,
+                force_personal_refresh=force_personal_refresh,
             )
             response = recommendation_pb2.HomePageResponse()
             for data in categories:

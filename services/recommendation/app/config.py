@@ -28,7 +28,7 @@ class Settings(BaseSettings):
     cache_recommendation_ttl: int = Field(default=86400)
     cache_contextual_ttl: int = Field(default=3600)
     cache_profile_ttl: int = Field(default=86400)
-    cache_personal_ttl: int = Field(default=3600)
+    cache_personal_ttl: int = Field(default=86400)
     cache_personal_contextual_ttl: int = Field(default=1800)
     personal_cold_start_threshold: int = Field(default=5)
 

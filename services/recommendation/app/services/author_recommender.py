@@ -64,6 +64,13 @@ async def _build_similar_authors_by_genre(
                 JOIN author_genres ag ON bg.genre_id = ag.genre_id
                 WHERE ba.author_id != :author_id
                 GROUP BY ba.author_id
+            ),
+            candidate_genre_totals AS (
+                SELECT ba2.author_id, COUNT(DISTINCT bg2.genre_id) AS candidate_cnt
+                FROM books.book_authors ba2
+                JOIN books.book_genres bg2 ON ba2.book_id = bg2.book_id
+                JOIN candidate_authors ca2 ON ca2.author_id = ba2.author_id
+                GROUP BY ba2.author_id
             )
             SELECT
                 a.author_id,
@@ -94,14 +101,10 @@ async def _build_similar_authors_by_genre(
                 ), 0) AS readers,
                 COALESCE(SUM(b.rating_count + b.ol_rating_count) FILTER (WHERE b.language = 'en'), 0) AS rating_count,
                 ca.shared::float / NULLIF(
-                    (SELECT cnt FROM author_genre_count) + (
-                        SELECT COUNT(DISTINCT bg2.genre_id)
-                        FROM books.book_authors ba2
-                        JOIN books.book_genres bg2 ON ba2.book_id = bg2.book_id
-                        WHERE ba2.author_id = ca.author_id
-                    ) - ca.shared, 0
+                    (SELECT cnt FROM author_genre_count) + cgt.candidate_cnt - ca.shared, 0
                 ) AS score
             FROM candidate_authors ca
+            JOIN candidate_genre_totals cgt ON cgt.author_id = ca.author_id
             JOIN books.authors a ON ca.author_id = a.author_id
             LEFT JOIN books.book_authors ba ON a.author_id = ba.author_id
             LEFT JOIN books.books b ON ba.book_id = b.book_id

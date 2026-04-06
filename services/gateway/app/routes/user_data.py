@@ -1,13 +1,15 @@
-import typing
-import fastapi
-import grpc
+import asyncio
 import logging
+import typing
+
 import app.config
 import app.grpc_clients
 import app.middleware.auth
 import app.middleware.rate_limit
 import app.models.user_data_responses
 import app.utils.responses
+import fastapi
+import grpc
 
 logger = logging.getLogger(__name__)
 
@@ -19,14 +21,24 @@ limiter = app.middleware.rate_limit.limiter
 def _grpc_error_response(e: grpc.RpcError) -> fastapi.responses.JSONResponse:
     code = e.code()
     if code == grpc.StatusCode.NOT_FOUND:
-        return app.utils.responses.error_response("NOT_FOUND", e.details(), status_code=404)
+        return app.utils.responses.error_response(
+            "NOT_FOUND", e.details(), status_code=404
+        )
     if code == grpc.StatusCode.PERMISSION_DENIED:
-        return app.utils.responses.error_response("PERMISSION_DENIED", e.details(), status_code=403)
+        return app.utils.responses.error_response(
+            "PERMISSION_DENIED", e.details(), status_code=403
+        )
     if code == grpc.StatusCode.INVALID_ARGUMENT:
-        return app.utils.responses.error_response("INVALID_ARGUMENT", e.details(), status_code=400)
+        return app.utils.responses.error_response(
+            "INVALID_ARGUMENT", e.details(), status_code=400
+        )
     if code == grpc.StatusCode.ALREADY_EXISTS:
-        return app.utils.responses.error_response("ALREADY_EXISTS", e.details(), status_code=409)
-    return app.utils.responses.error_response("INTERNAL_ERROR", "An internal error occurred", status_code=500)
+        return app.utils.responses.error_response(
+            "ALREADY_EXISTS", e.details(), status_code=409
+        )
+    return app.utils.responses.error_response(
+        "INTERNAL_ERROR", "An internal error occurred", status_code=500
+    )
 
 
 def _bookshelf_proto_to_dict(b) -> typing.Dict[str, typing.Any]:
@@ -44,7 +56,7 @@ def _bookshelf_proto_to_dict(b) -> typing.Dict[str, typing.Any]:
         "book_author_names": list(b.book_author_names),
         "book_author_slugs": list(b.book_author_slugs),
         "book_series_name": b.book_series_name or None,
-        "book_series_slug": b.book_series_slug or None
+        "book_series_slug": b.book_series_slug or None,
     }
 
 
@@ -60,7 +72,9 @@ def _rating_proto_to_dict(r) -> typing.Dict[str, typing.Any]:
         "review_text": r.review_text or None,
         "pacing": r.pacing if r.has_pacing else None,
         "emotional_impact": r.emotional_impact if r.has_emotional_impact else None,
-        "intellectual_depth": r.intellectual_depth if r.has_intellectual_depth else None,
+        "intellectual_depth": (
+            r.intellectual_depth if r.has_intellectual_depth else None
+        ),
         "writing_quality": r.writing_quality if r.has_writing_quality else None,
         "rereadability": r.rereadability if r.has_rereadability else None,
         "readability": r.readability if r.has_readability else None,
@@ -71,7 +85,7 @@ def _rating_proto_to_dict(r) -> typing.Dict[str, typing.Any]:
         "book_author_names": list(r.book_author_names),
         "book_author_slugs": list(r.book_author_slugs),
         "book_series_name": r.book_series_name or None,
-        "book_series_slug": r.book_series_slug or None
+        "book_series_slug": r.book_series_slug or None,
     }
 
 
@@ -91,13 +105,37 @@ def _comment_proto_to_dict(c) -> typing.Dict[str, typing.Any]:
         "book_author_names": list(c.book_author_names),
         "book_author_slugs": list(c.book_author_slugs),
         "book_series_name": c.book_series_name or None,
-        "book_series_slug": c.book_series_slug or None
+        "book_series_slug": c.book_series_slug or None,
     }
+
+
+async def _refresh_personal_recommendations_after_user_write(user_id: int) -> None:
+    if not app.config.settings.recommendation_recompute_on_user_write:
+        return
+
+    try:
+        await app.grpc_clients.recommendation_client.refresh_personal_home(
+            user_id=user_id
+        )
+    except grpc.RpcError as e:
+        logger.error(
+            "gRPC error in personal recommendation refresh for user_id=%s: %s - %s",
+            user_id,
+            e.code(),
+            e.details(),
+        )
+    except Exception as e:
+        logger.error(
+            "Unexpected error in personal recommendation refresh for user_id=%s: %s",
+            user_id,
+            e,
+        )
 
 
 # ============================================================
 # User Book Info (consolidated)
 # ============================================================
+
 
 @router.get(
     "/users/me/books/{book_slug}",
@@ -113,27 +151,37 @@ def _comment_proto_to_dict(c) -> typing.Dict[str, typing.Any]:
     responses={
         200: {"description": "User book info retrieved"},
         401: {"description": "Not authenticated"},
-        404: {"description": "Book not found"}
-    }
+        404: {"description": "Book not found"},
+    },
 )
 @limiter.limit(app.middleware.rate_limit.get_default_limit())
 async def get_user_book_info(
     request: fastapi.Request,
     book_slug: str,
-    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(app.middleware.auth.require_user)
+    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
+        app.middleware.auth.require_user
+    ),
 ):
     try:
         response = await app.grpc_clients.user_data_client.get_user_book_info(
-            user_id=current_user["user_id"],
-            book_slug=book_slug
+            user_id=current_user["user_id"], book_slug=book_slug
         )
         data: typing.Dict[str, typing.Any] = {
-            "bookshelf": _bookshelf_proto_to_dict(response.bookshelf)
-            if response.HasField("bookshelf") else None,
-            "rating": _rating_proto_to_dict(response.rating)
-            if response.HasField("rating") else None,
-            "comment": _comment_proto_to_dict(response.comment)
-            if response.HasField("comment") else None,
+            "bookshelf": (
+                _bookshelf_proto_to_dict(response.bookshelf)
+                if response.HasField("bookshelf")
+                else None
+            ),
+            "rating": (
+                _rating_proto_to_dict(response.rating)
+                if response.HasField("rating")
+                else None
+            ),
+            "comment": (
+                _comment_proto_to_dict(response.comment)
+                if response.HasField("comment")
+                else None
+            ),
         }
         return app.utils.responses.success_response(data)
     except grpc.RpcError as e:
@@ -141,12 +189,15 @@ async def get_user_book_info(
         return _grpc_error_response(e)
     except Exception as e:
         logger.error(f"Unexpected error in get_user_book_info: {e}")
-        return app.utils.responses.error_response("INTERNAL_ERROR", "An unexpected error occurred", status_code=500)
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
+        )
 
 
 # ============================================================
 # Bookshelf
 # ============================================================
+
 
 @router.put(
     "/users/me/bookshelves/{book_slug}",
@@ -164,32 +215,36 @@ async def get_user_book_info(
     responses={
         200: {"description": "Bookshelf entry updated"},
         401: {"description": "Not authenticated"},
-        404: {"description": "Book not found"}
-    }
+        404: {"description": "Book not found"},
+    },
 )
 @limiter.limit(app.middleware.rate_limit.get_default_limit())
 async def upsert_bookshelf(
     request: fastapi.Request,
     book_slug: str,
     body: app.models.user_data_responses.UpsertBookshelfRequest,
-    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(app.middleware.auth.require_user)
+    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
+        app.middleware.auth.require_user
+    ),
 ):
     try:
         response = await app.grpc_clients.user_data_client.upsert_bookshelf(
-            user_id=current_user["user_id"],
-            book_slug=book_slug,
-            status=body.status
+            user_id=current_user["user_id"], book_slug=book_slug, status=body.status
+        )
+        asyncio.create_task(
+            _refresh_personal_recommendations_after_user_write(current_user["user_id"])
         )
         return app.utils.responses.success_response(
-            {"bookshelf": _bookshelf_proto_to_dict(response.bookshelf)},
-            status_code=200
+            {"bookshelf": _bookshelf_proto_to_dict(response.bookshelf)}, status_code=200
         )
     except grpc.RpcError as e:
         logger.error(f"gRPC error in upsert_bookshelf: {e.code()} - {e.details()}")
         return _grpc_error_response(e)
     except Exception as e:
         logger.error(f"Unexpected error in upsert_bookshelf: {e}")
-        return app.utils.responses.error_response("INTERNAL_ERROR", "An unexpected error occurred", status_code=500)
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
+        )
 
 
 @router.delete(
@@ -205,19 +260,23 @@ async def upsert_bookshelf(
     responses={
         204: {"description": "Bookshelf entry removed"},
         401: {"description": "Not authenticated"},
-        404: {"description": "Book or bookshelf entry not found"}
-    }
+        404: {"description": "Book or bookshelf entry not found"},
+    },
 )
 @limiter.limit(app.middleware.rate_limit.get_default_limit())
 async def delete_bookshelf(
     request: fastapi.Request,
     book_slug: str,
-    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(app.middleware.auth.require_user)
+    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
+        app.middleware.auth.require_user
+    ),
 ):
     try:
         await app.grpc_clients.user_data_client.delete_bookshelf(
-            user_id=current_user["user_id"],
-            book_slug=book_slug
+            user_id=current_user["user_id"], book_slug=book_slug
+        )
+        asyncio.create_task(
+            _refresh_personal_recommendations_after_user_write(current_user["user_id"])
         )
         return fastapi.Response(status_code=204)
     except grpc.RpcError as e:
@@ -225,7 +284,9 @@ async def delete_bookshelf(
         return _grpc_error_response(e)
     except Exception as e:
         logger.error(f"Unexpected error in delete_bookshelf: {e}")
-        return app.utils.responses.error_response("INTERNAL_ERROR", "An unexpected error occurred", status_code=500)
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
+        )
 
 
 @router.get(
@@ -243,19 +304,25 @@ async def delete_bookshelf(
     """,
     responses={
         200: {"description": "Bookshelf retrieved"},
-        401: {"description": "Not authenticated"}
-    }
+        401: {"description": "Not authenticated"},
+    },
 )
 @limiter.limit(app.middleware.rate_limit.get_default_limit())
 async def get_user_bookshelves(
     request: fastapi.Request,
     limit: int = fastapi.Query(10, ge=1, le=100),
     offset: int = fastapi.Query(0, ge=0),
-    status: typing.Optional[typing.Literal["want_to_read", "reading", "read", "abandoned"]] = fastapi.Query(None),
+    status: typing.Optional[
+        typing.Literal["want_to_read", "reading", "read", "abandoned"]
+    ] = fastapi.Query(None),
     favourites_only: bool = fastapi.Query(False),
-    sort_by: typing.Literal["created_at", "updated_at", "book_title"] = fastapi.Query("created_at"),
+    sort_by: typing.Literal["created_at", "updated_at", "book_title"] = fastapi.Query(
+        "created_at"
+    ),
     order: typing.Literal["asc", "desc"] = fastapi.Query("desc"),
-    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(app.middleware.auth.require_user)
+    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
+        app.middleware.auth.require_user
+    ),
 ):
     try:
         response = await app.grpc_clients.user_data_client.get_user_bookshelves(
@@ -265,18 +332,25 @@ async def get_user_bookshelves(
             status_filter=status or "",
             favourites_only=favourites_only,
             sort_by=sort_by,
-            order=order
+            order=order,
         )
         items = [_bookshelf_proto_to_dict(b) for b in response.bookshelves]
         return app.utils.responses.success_response(
-            {"items": items, "total_count": response.total_count, "limit": limit, "offset": offset}
+            {
+                "items": items,
+                "total_count": response.total_count,
+                "limit": limit,
+                "offset": offset,
+            }
         )
     except grpc.RpcError as e:
         logger.error(f"gRPC error in get_user_bookshelves: {e.code()} - {e.details()}")
         return _grpc_error_response(e)
     except Exception as e:
         logger.error(f"Unexpected error in get_user_bookshelves: {e}")
-        return app.utils.responses.error_response("INTERNAL_ERROR", "An unexpected error occurred", status_code=500)
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
+        )
 
 
 @router.get(
@@ -294,8 +368,8 @@ async def get_user_bookshelves(
     """,
     responses={
         200: {"description": "Bookshelf retrieved"},
-        404: {"description": "User not found"}
-    }
+        404: {"description": "User not found"},
+    },
 )
 @limiter.limit(app.middleware.rate_limit.get_default_limit())
 async def get_public_bookshelves(
@@ -303,9 +377,13 @@ async def get_public_bookshelves(
     username: str,
     limit: int = fastapi.Query(10, ge=1, le=100),
     offset: int = fastapi.Query(0, ge=0),
-    status: typing.Optional[typing.Literal["want_to_read", "reading", "read", "abandoned"]] = fastapi.Query(None),
+    status: typing.Optional[
+        typing.Literal["want_to_read", "reading", "read", "abandoned"]
+    ] = fastapi.Query(None),
     favourites_only: bool = fastapi.Query(False),
-    sort_by: typing.Literal["created_at", "updated_at", "book_title"] = fastapi.Query("created_at"),
+    sort_by: typing.Literal["created_at", "updated_at", "book_title"] = fastapi.Query(
+        "created_at"
+    ),
     order: typing.Literal["asc", "desc"] = fastapi.Query("desc"),
 ):
     try:
@@ -316,18 +394,27 @@ async def get_public_bookshelves(
             status_filter=status or "",
             favourites_only=favourites_only,
             sort_by=sort_by,
-            order=order
+            order=order,
         )
         items = [_bookshelf_proto_to_dict(b) for b in response.bookshelves]
         return app.utils.responses.success_response(
-            {"items": items, "total_count": response.total_count, "limit": limit, "offset": offset}
+            {
+                "items": items,
+                "total_count": response.total_count,
+                "limit": limit,
+                "offset": offset,
+            }
         )
     except grpc.RpcError as e:
-        logger.error(f"gRPC error in get_public_bookshelves: {e.code()} - {e.details()}")
+        logger.error(
+            f"gRPC error in get_public_bookshelves: {e.code()} - {e.details()}"
+        )
         return _grpc_error_response(e)
     except Exception as e:
         logger.error(f"Unexpected error in get_public_bookshelves: {e}")
-        return app.utils.responses.error_response("INTERNAL_ERROR", "An unexpected error occurred", status_code=500)
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
+        )
 
 
 @router.get(
@@ -342,8 +429,8 @@ async def get_public_bookshelves(
     """,
     responses={
         200: {"description": "Profile stats returned"},
-        404: {"description": "User not found"}
-    }
+        404: {"description": "User not found"},
+    },
 )
 @limiter.limit(app.middleware.rate_limit.get_default_limit())
 async def get_public_profile_stats(
@@ -355,28 +442,35 @@ async def get_public_profile_stats(
             username=username
         )
         s = response.stats
-        return app.utils.responses.success_response({
-            "stats": {
-                "want_to_read_count": s.want_to_read_count,
-                "reading_count": s.reading_count,
-                "read_count": s.read_count,
-                "abandoned_count": s.abandoned_count,
-                "favourites_count": s.favourites_count,
-                "ratings_count": s.ratings_count,
-                "comments_count": s.comments_count
+        return app.utils.responses.success_response(
+            {
+                "stats": {
+                    "want_to_read_count": s.want_to_read_count,
+                    "reading_count": s.reading_count,
+                    "read_count": s.read_count,
+                    "abandoned_count": s.abandoned_count,
+                    "favourites_count": s.favourites_count,
+                    "ratings_count": s.ratings_count,
+                    "comments_count": s.comments_count,
+                }
             }
-        })
+        )
     except grpc.RpcError as e:
-        logger.error(f"gRPC error in get_public_profile_stats: {e.code()} - {e.details()}")
+        logger.error(
+            f"gRPC error in get_public_profile_stats: {e.code()} - {e.details()}"
+        )
         return _grpc_error_response(e)
     except Exception as e:
         logger.error(f"Unexpected error in get_public_profile_stats: {e}")
-        return app.utils.responses.error_response("INTERNAL_ERROR", "An unexpected error occurred", status_code=500)
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
+        )
 
 
 # ============================================================
 # Favourites
 # ============================================================
+
 
 @router.post(
     "/books/{book_slug}/favourite",
@@ -390,30 +484,39 @@ async def get_public_profile_stats(
     responses={
         200: {"description": "Book marked as favourite"},
         401: {"description": "Not authenticated"},
-        404: {"description": "Book not found"}
-    }
+        404: {"description": "Book not found"},
+    },
 )
 @limiter.limit(app.middleware.rate_limit.get_default_limit())
 async def add_favourite(
     request: fastapi.Request,
     book_slug: str,
-    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(app.middleware.auth.require_user)
+    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
+        app.middleware.auth.require_user
+    ),
 ):
     try:
         response = await app.grpc_clients.user_data_client.toggle_favourite(
-            user_id=current_user["user_id"],
-            book_slug=book_slug,
-            is_favorite=True
+            user_id=current_user["user_id"], book_slug=book_slug, is_favorite=True
+        )
+        asyncio.create_task(
+            _refresh_personal_recommendations_after_user_write(current_user["user_id"])
         )
         return app.utils.responses.success_response(
-            {"is_favorite": response.is_favorite, "book_id": response.book_id, "book_slug": response.book_slug}
+            {
+                "is_favorite": response.is_favorite,
+                "book_id": response.book_id,
+                "book_slug": response.book_slug,
+            }
         )
     except grpc.RpcError as e:
         logger.error(f"gRPC error in add_favourite: {e.code()} - {e.details()}")
         return _grpc_error_response(e)
     except Exception as e:
         logger.error(f"Unexpected error in add_favourite: {e}")
-        return app.utils.responses.error_response("INTERNAL_ERROR", "An unexpected error occurred", status_code=500)
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
+        )
 
 
 @router.delete(
@@ -428,30 +531,39 @@ async def add_favourite(
     responses={
         200: {"description": "Book removed from favourites"},
         401: {"description": "Not authenticated"},
-        404: {"description": "Book not found"}
-    }
+        404: {"description": "Book not found"},
+    },
 )
 @limiter.limit(app.middleware.rate_limit.get_default_limit())
 async def remove_favourite(
     request: fastapi.Request,
     book_slug: str,
-    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(app.middleware.auth.require_user)
+    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
+        app.middleware.auth.require_user
+    ),
 ):
     try:
         response = await app.grpc_clients.user_data_client.toggle_favourite(
-            user_id=current_user["user_id"],
-            book_slug=book_slug,
-            is_favorite=False
+            user_id=current_user["user_id"], book_slug=book_slug, is_favorite=False
+        )
+        asyncio.create_task(
+            _refresh_personal_recommendations_after_user_write(current_user["user_id"])
         )
         return app.utils.responses.success_response(
-            {"is_favorite": response.is_favorite, "book_id": response.book_id, "book_slug": response.book_slug}
+            {
+                "is_favorite": response.is_favorite,
+                "book_id": response.book_id,
+                "book_slug": response.book_slug,
+            }
         )
     except grpc.RpcError as e:
         logger.error(f"gRPC error in remove_favourite: {e.code()} - {e.details()}")
         return _grpc_error_response(e)
     except Exception as e:
         logger.error(f"Unexpected error in remove_favourite: {e}")
-        return app.utils.responses.error_response("INTERNAL_ERROR", "An unexpected error occurred", status_code=500)
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
+        )
 
 
 @router.get(
@@ -465,37 +577,45 @@ async def remove_favourite(
     """,
     responses={
         200: {"description": "Favourites retrieved"},
-        401: {"description": "Not authenticated"}
-    }
+        401: {"description": "Not authenticated"},
+    },
 )
 @limiter.limit(app.middleware.rate_limit.get_default_limit())
 async def get_user_favourites(
     request: fastapi.Request,
     limit: int = fastapi.Query(10, ge=1, le=100),
     offset: int = fastapi.Query(0, ge=0),
-    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(app.middleware.auth.require_user)
+    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
+        app.middleware.auth.require_user
+    ),
 ):
     try:
         response = await app.grpc_clients.user_data_client.get_user_favourites(
-            user_id=current_user["user_id"],
-            limit=limit,
-            offset=offset
+            user_id=current_user["user_id"], limit=limit, offset=offset
         )
         items = [_bookshelf_proto_to_dict(b) for b in response.bookshelves]
         return app.utils.responses.success_response(
-            {"items": items, "total_count": response.total_count, "limit": limit, "offset": offset}
+            {
+                "items": items,
+                "total_count": response.total_count,
+                "limit": limit,
+                "offset": offset,
+            }
         )
     except grpc.RpcError as e:
         logger.error(f"gRPC error in get_user_favourites: {e.code()} - {e.details()}")
         return _grpc_error_response(e)
     except Exception as e:
         logger.error(f"Unexpected error in get_user_favourites: {e}")
-        return app.utils.responses.error_response("INTERNAL_ERROR", "An unexpected error occurred", status_code=500)
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
+        )
 
 
 # ============================================================
 # Ratings
 # ============================================================
+
 
 @router.post(
     "/books/{book_slug}/rate",
@@ -521,15 +641,17 @@ async def get_user_favourites(
     responses={
         201: {"description": "Rating submitted"},
         401: {"description": "Not authenticated"},
-        404: {"description": "Book not found"}
-    }
+        404: {"description": "Book not found"},
+    },
 )
 @limiter.limit(app.middleware.rate_limit.get_default_limit())
 async def upsert_rating(
     request: fastapi.Request,
     book_slug: str,
     body: app.models.user_data_responses.UpsertRatingRequest,
-    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(app.middleware.auth.require_user)
+    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
+        app.middleware.auth.require_user
+    ),
 ):
     try:
         response = await app.grpc_clients.user_data_client.upsert_rating(
@@ -544,18 +666,22 @@ async def upsert_rating(
             rereadability=body.rereadability,
             readability=body.readability,
             plot_complexity=body.plot_complexity,
-            humor=body.humor
+            humor=body.humor,
+        )
+        asyncio.create_task(
+            _refresh_personal_recommendations_after_user_write(current_user["user_id"])
         )
         return app.utils.responses.success_response(
-            {"rating": _rating_proto_to_dict(response.rating)},
-            status_code=201
+            {"rating": _rating_proto_to_dict(response.rating)}, status_code=201
         )
     except grpc.RpcError as e:
         logger.error(f"gRPC error in upsert_rating: {e.code()} - {e.details()}")
         return _grpc_error_response(e)
     except Exception as e:
         logger.error(f"Unexpected error in upsert_rating: {e}")
-        return app.utils.responses.error_response("INTERNAL_ERROR", "An unexpected error occurred", status_code=500)
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
+        )
 
 
 @router.delete(
@@ -572,19 +698,23 @@ async def upsert_rating(
     responses={
         204: {"description": "Rating deleted"},
         401: {"description": "Not authenticated"},
-        404: {"description": "Rating not found"}
-    }
+        404: {"description": "Rating not found"},
+    },
 )
 @limiter.limit(app.middleware.rate_limit.get_default_limit())
 async def delete_rating(
     request: fastapi.Request,
     book_slug: str,
-    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(app.middleware.auth.require_user)
+    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
+        app.middleware.auth.require_user
+    ),
 ):
     try:
         await app.grpc_clients.user_data_client.delete_rating(
-            user_id=current_user["user_id"],
-            book_slug=book_slug
+            user_id=current_user["user_id"], book_slug=book_slug
+        )
+        asyncio.create_task(
+            _refresh_personal_recommendations_after_user_write(current_user["user_id"])
         )
         return fastapi.Response(status_code=204)
     except grpc.RpcError as e:
@@ -592,7 +722,9 @@ async def delete_rating(
         return _grpc_error_response(e)
     except Exception as e:
         logger.error(f"Unexpected error in delete_rating: {e}")
-        return app.utils.responses.error_response("INTERNAL_ERROR", "An unexpected error occurred", status_code=500)
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
+        )
 
 
 @router.get(
@@ -610,19 +742,23 @@ async def delete_rating(
     """,
     responses={
         200: {"description": "Ratings retrieved"},
-        401: {"description": "Not authenticated"}
-    }
+        401: {"description": "Not authenticated"},
+    },
 )
 @limiter.limit(app.middleware.rate_limit.get_default_limit())
 async def get_user_ratings(
     request: fastapi.Request,
     limit: int = fastapi.Query(10, ge=1, le=100),
     offset: int = fastapi.Query(0, ge=0),
-    sort_by: typing.Literal["created_at", "overall_rating"] = fastapi.Query("created_at"),
+    sort_by: typing.Literal["created_at", "overall_rating"] = fastapi.Query(
+        "created_at"
+    ),
     order: typing.Literal["asc", "desc"] = fastapi.Query("desc"),
     min_rating: typing.Optional[float] = fastapi.Query(None, ge=0.5, le=5.0),
     max_rating: typing.Optional[float] = fastapi.Query(None, ge=0.5, le=5.0),
-    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(app.middleware.auth.require_user)
+    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
+        app.middleware.auth.require_user
+    ),
 ):
     try:
         response = await app.grpc_clients.user_data_client.get_user_ratings(
@@ -632,23 +768,31 @@ async def get_user_ratings(
             sort_by=sort_by,
             order=order,
             min_rating=min_rating or 0.0,
-            max_rating=max_rating or 0.0
+            max_rating=max_rating or 0.0,
         )
         items = [_rating_proto_to_dict(r) for r in response.ratings]
         return app.utils.responses.success_response(
-            {"items": items, "total_count": response.total_count, "limit": limit, "offset": offset}
+            {
+                "items": items,
+                "total_count": response.total_count,
+                "limit": limit,
+                "offset": offset,
+            }
         )
     except grpc.RpcError as e:
         logger.error(f"gRPC error in get_user_ratings: {e.code()} - {e.details()}")
         return _grpc_error_response(e)
     except Exception as e:
         logger.error(f"Unexpected error in get_user_ratings: {e}")
-        return app.utils.responses.error_response("INTERNAL_ERROR", "An unexpected error occurred", status_code=500)
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
+        )
 
 
 # ============================================================
 # Comments
 # ============================================================
+
 
 @router.post(
     "/books/{book_slug}/comments",
@@ -666,36 +810,41 @@ async def get_user_ratings(
     Requires a valid access token in the `Authorization: Bearer <token>` header.
     """,
     responses={
-        201: {"description": "Comment created. Response includes comment_id, user_id, username, body, is_spoiler, created_at, updated_at"},
+        201: {
+            "description": "Comment created. Response includes comment_id, user_id, username, body, is_spoiler, created_at, updated_at"
+        },
         401: {"description": "Not authenticated"},
         404: {"description": "Book not found"},
-        409: {"description": "Comment already exists for this book"}
-    }
+        409: {"description": "Comment already exists for this book"},
+    },
 )
 @limiter.limit(app.middleware.rate_limit.get_default_limit())
 async def create_comment(
     request: fastapi.Request,
     book_slug: str,
     body: app.models.user_data_responses.CreateCommentRequest,
-    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(app.middleware.auth.require_user)
+    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
+        app.middleware.auth.require_user
+    ),
 ):
     try:
         response = await app.grpc_clients.user_data_client.create_comment(
             user_id=current_user["user_id"],
             book_slug=book_slug,
             body=body.body,
-            is_spoiler=body.is_spoiler
+            is_spoiler=body.is_spoiler,
         )
         return app.utils.responses.success_response(
-            {"comment": _comment_proto_to_dict(response.comment)},
-            status_code=201
+            {"comment": _comment_proto_to_dict(response.comment)}, status_code=201
         )
     except grpc.RpcError as e:
         logger.error(f"gRPC error in create_comment: {e.code()} - {e.details()}")
         return _grpc_error_response(e)
     except Exception as e:
         logger.error(f"Unexpected error in create_comment: {e}")
-        return app.utils.responses.error_response("INTERNAL_ERROR", "An unexpected error occurred", status_code=500)
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
+        )
 
 
 @router.put(
@@ -711,8 +860,8 @@ async def create_comment(
         200: {"description": "Comment updated"},
         401: {"description": "Not authenticated"},
         403: {"description": "Not the comment owner"},
-        404: {"description": "Comment not found"}
-    }
+        404: {"description": "Comment not found"},
+    },
 )
 @limiter.limit(app.middleware.rate_limit.get_default_limit())
 async def update_comment(
@@ -720,14 +869,16 @@ async def update_comment(
     book_slug: str,
     comment_id: int,
     body: app.models.user_data_responses.UpdateCommentRequest,
-    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(app.middleware.auth.require_user)
+    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
+        app.middleware.auth.require_user
+    ),
 ):
     try:
         response = await app.grpc_clients.user_data_client.update_comment(
             comment_id=comment_id,
             user_id=current_user["user_id"],
             body=body.body,
-            is_spoiler=body.is_spoiler
+            is_spoiler=body.is_spoiler,
         )
         return app.utils.responses.success_response(
             {"comment": _comment_proto_to_dict(response.comment)}
@@ -737,7 +888,9 @@ async def update_comment(
         return _grpc_error_response(e)
     except Exception as e:
         logger.error(f"Unexpected error in update_comment: {e}")
-        return app.utils.responses.error_response("INTERNAL_ERROR", "An unexpected error occurred", status_code=500)
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
+        )
 
 
 @router.delete(
@@ -753,20 +906,21 @@ async def update_comment(
         204: {"description": "Comment deleted"},
         401: {"description": "Not authenticated"},
         403: {"description": "Not the comment owner"},
-        404: {"description": "Comment not found"}
-    }
+        404: {"description": "Comment not found"},
+    },
 )
 @limiter.limit(app.middleware.rate_limit.get_default_limit())
 async def delete_comment(
     request: fastapi.Request,
     book_slug: str,
     comment_id: int,
-    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(app.middleware.auth.require_user)
+    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
+        app.middleware.auth.require_user
+    ),
 ):
     try:
         await app.grpc_clients.user_data_client.delete_comment(
-            comment_id=comment_id,
-            user_id=current_user["user_id"]
+            comment_id=comment_id, user_id=current_user["user_id"]
         )
         return fastapi.Response(status_code=204)
     except grpc.RpcError as e:
@@ -774,7 +928,9 @@ async def delete_comment(
         return _grpc_error_response(e)
     except Exception as e:
         logger.error(f"Unexpected error in delete_comment: {e}")
-        return app.utils.responses.error_response("INTERNAL_ERROR", "An unexpected error occurred", status_code=500)
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
+        )
 
 
 @router.get(
@@ -792,8 +948,8 @@ async def delete_comment(
     """,
     responses={
         200: {"description": "Comments retrieved"},
-        401: {"description": "Not authenticated"}
-    }
+        401: {"description": "Not authenticated"},
+    },
 )
 @limiter.limit(app.middleware.rate_limit.get_default_limit())
 async def get_user_comments(
@@ -803,7 +959,9 @@ async def get_user_comments(
     sort_by: typing.Literal["created_at", "updated_at"] = fastapi.Query("created_at"),
     order: typing.Literal["asc", "desc"] = fastapi.Query("desc"),
     book_slug: typing.Optional[str] = fastapi.Query(None),
-    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(app.middleware.auth.require_user)
+    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
+        app.middleware.auth.require_user
+    ),
 ):
     try:
         response = await app.grpc_clients.user_data_client.get_user_comments(
@@ -812,15 +970,22 @@ async def get_user_comments(
             offset=offset,
             sort_by=sort_by,
             order=order,
-            book_slug=book_slug or ""
+            book_slug=book_slug or "",
         )
         items = [_comment_proto_to_dict(c) for c in response.comments]
         return app.utils.responses.success_response(
-            {"items": items, "total_count": response.total_count, "limit": limit, "offset": offset}
+            {
+                "items": items,
+                "total_count": response.total_count,
+                "limit": limit,
+                "offset": offset,
+            }
         )
     except grpc.RpcError as e:
         logger.error(f"gRPC error in get_user_comments: {e.code()} - {e.details()}")
         return _grpc_error_response(e)
     except Exception as e:
         logger.error(f"Unexpected error in get_user_comments: {e}")
-        return app.utils.responses.error_response("INTERNAL_ERROR", "An unexpected error occurred", status_code=500)
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
+        )

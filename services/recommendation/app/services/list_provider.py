@@ -17,7 +17,7 @@ async def get_list(
     item_type = cached.get("item_type", "book")
     items_key = "book_items" if item_type == "book" else "author_items"
     all_items = cached.get(items_key, [])
-    paginated = all_items[offset:offset + limit]
+    paginated = all_items[offset : offset + limit]
 
     return {
         **cached,
@@ -29,13 +29,24 @@ async def get_list(
 async def get_home_page(
     items_per_category: int,
     user_id: int = 0,
+    personal_cache_only: bool = False,
+    force_personal_refresh: bool = False,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     if user_id > 0:
-        return await _get_personal_home_page(user_id, items_per_category)
+        return await _get_personal_home_page(
+            user_id,
+            items_per_category,
+            cache_only=personal_cache_only,
+            force_refresh=force_personal_refresh,
+        )
 
     settings = app.config.settings
-    book_keys = [k.strip() for k in settings.home_book_categories.split(",") if k.strip()]
-    author_keys = [k.strip() for k in settings.home_author_categories.split(",") if k.strip()]
+    book_keys = [
+        k.strip() for k in settings.home_book_categories.split(",") if k.strip()
+    ]
+    author_keys = [
+        k.strip() for k in settings.home_author_categories.split(",") if k.strip()
+    ]
 
     sections = []
     for key in book_keys + author_keys:
@@ -49,17 +60,18 @@ async def get_home_page(
 async def _get_personal_home_page(
     user_id: int,
     items_per_section: int,
+    cache_only: bool,
+    force_refresh: bool,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     import app.services.personal_provider
-    import app.services.taste_profile
 
-    profile = await app.services.taste_profile.get_taste_profile(user_id)
-    if profile is None or profile.get("is_cold_start"):
-        return []
-
-    return await app.services.personal_provider.get_personal_home_sections(
-        user_id, items_per_section
+    sections = await app.services.personal_provider.get_personal_home_sections(
+        user_id,
+        items_per_section,
+        cache_only=cache_only,
+        force_refresh=force_refresh,
     )
+    return sections or []
 
 
 def get_available_categories() -> typing.List[typing.Dict[str, str]]:

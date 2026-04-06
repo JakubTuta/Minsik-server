@@ -15,7 +15,8 @@ async def _query_bookshelves(
     user_id: int,
 ) -> typing.Dict[str, typing.Any]:
     result = await session.execute(
-        sqlalchemy.text("""
+        sqlalchemy.text(
+            """
             SELECT
                 bs.book_id,
                 bs.status,
@@ -24,7 +25,8 @@ async def _query_bookshelves(
             FROM user_data.bookshelves bs
             LEFT JOIN books.book_authors ba ON bs.book_id = ba.book_id
             WHERE bs.user_id = :user_id
-        """),
+        """
+        ),
         {"user_id": user_id},
     )
     rows = result.fetchall()
@@ -60,7 +62,8 @@ async def _query_genre_scores(
     user_id: int,
 ) -> typing.Tuple[typing.Dict[str, float], typing.List[str]]:
     result = await session.execute(
-        sqlalchemy.text("""
+        sqlalchemy.text(
+            """
             WITH user_interactions AS (
                 SELECT
                     bs.book_id,
@@ -96,7 +99,8 @@ async def _query_genre_scores(
             JOIN books.genres g ON w.genre_id = g.genre_id
             WHERE w.raw_weight > 0
             ORDER BY w.raw_weight DESC
-        """),
+        """
+        ),
         {"user_id": user_id},
     )
     rows = result.fetchall()
@@ -118,9 +122,12 @@ async def _query_genre_scores(
 async def _query_ratings(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     user_id: int,
-) -> typing.Tuple[typing.Dict[str, float], typing.Optional[typing.Dict[str, typing.Any]]]:
+) -> typing.Tuple[
+    typing.Dict[str, float], typing.Optional[typing.Dict[str, typing.Any]]
+]:
     result = await session.execute(
-        sqlalchemy.text("""
+        sqlalchemy.text(
+            """
             SELECT
                 r.book_id,
                 b.title,
@@ -137,7 +144,8 @@ async def _query_ratings(
             JOIN books.books b ON r.book_id = b.book_id
             WHERE r.user_id = :user_id
             ORDER BY r.overall_rating DESC NULLS LAST
-        """),
+        """
+        ),
         {"user_id": user_id},
     )
     rows = result.fetchall()
@@ -147,8 +155,14 @@ async def _query_ratings(
     anchor_book = {"book_id": rows[0].book_id, "title": rows[0].title or ""}
 
     _dimensions = [
-        "emotional_impact", "intellectual_depth", "writing_quality",
-        "rereadability", "readability", "plot_complexity", "humor", "pacing",
+        "emotional_impact",
+        "intellectual_depth",
+        "writing_quality",
+        "rereadability",
+        "readability",
+        "plot_complexity",
+        "humor",
+        "pacing",
     ]
     totals: typing.Dict[str, float] = {d: 0.0 for d in _dimensions}
     counts: typing.Dict[str, int] = {d: 0 for d in _dimensions}
@@ -161,9 +175,7 @@ async def _query_ratings(
                 counts[dim] += 1
 
     dimension_preferences = {
-        dim: totals[dim] / counts[dim]
-        for dim in _dimensions
-        if counts[dim] >= 2
+        dim: totals[dim] / counts[dim] for dim in _dimensions if counts[dim] >= 2
     }
     return dimension_preferences, anchor_book
 
@@ -173,7 +185,8 @@ async def _query_series_in_progress(
     user_id: int,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     result = await session.execute(
-        sqlalchemy.text("""
+        sqlalchemy.text(
+            """
             WITH user_series AS (
                 SELECT
                     b.series_id,
@@ -197,7 +210,8 @@ async def _query_series_in_progress(
             FROM user_series us
             JOIN total_books tb ON us.series_id = tb.series_id
             WHERE us.read_count < tb.total
-        """),
+        """
+        ),
         {"user_id": user_id},
     )
     return [
@@ -223,16 +237,29 @@ async def build_taste_profile(
         return_exceptions=True,
     )
 
-    shelf_data = results[0] if not isinstance(results[0], Exception) else {
-        "read_book_ids": [], "want_to_read_book_ids": [],
-        "favorite_book_ids": [], "author_ids_read": [], "shelved_book_count": 0,
-    }
-    genre_scores, top_genre_slugs = results[1] if not isinstance(results[1], Exception) else ({}, [])
-    dimension_preferences, anchor_book = results[2] if not isinstance(results[2], Exception) else ({}, None)
+    shelf_data = (
+        results[0]
+        if not isinstance(results[0], Exception)
+        else {
+            "read_book_ids": [],
+            "want_to_read_book_ids": [],
+            "favorite_book_ids": [],
+            "author_ids_read": [],
+            "shelved_book_count": 0,
+        }
+    )
+    genre_scores, top_genre_slugs = (
+        results[1] if not isinstance(results[1], Exception) else ({}, [])
+    )
+    dimension_preferences, anchor_book = (
+        results[2] if not isinstance(results[2], Exception) else ({}, None)
+    )
     series_in_progress = results[3] if not isinstance(results[3], Exception) else []
 
     shelved_book_count = shelf_data["shelved_book_count"]
-    is_cold_start = shelved_book_count < app.config.settings.personal_cold_start_threshold
+    is_cold_start = (
+        shelved_book_count < app.config.settings.personal_cold_start_threshold
+    )
 
     return {
         "user_id": user_id,
@@ -250,16 +277,22 @@ async def build_taste_profile(
     }
 
 
-async def get_taste_profile(user_id: int) -> typing.Optional[typing.Dict[str, typing.Any]]:
+async def get_taste_profile(
+    user_id: int,
+    force_refresh: bool = False,
+) -> typing.Optional[typing.Dict[str, typing.Any]]:
     import app.db
 
     cache_key = f"rec:profile:{user_id}"
-    cached = await app.cache.get_cached(cache_key)
-    if cached is not None:
-        return cached
+    if not force_refresh:
+        cached = await app.cache.get_cached(cache_key)
+        if cached is not None:
+            return cached
 
     async with app.db.async_session_maker() as session:
         profile = await build_taste_profile(session, user_id)
 
-    await app.cache.set_cached(cache_key, profile, app.config.settings.cache_profile_ttl)
+    await app.cache.set_cached(
+        cache_key, profile, app.config.settings.cache_profile_ttl
+    )
     return profile
