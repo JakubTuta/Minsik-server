@@ -870,7 +870,6 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                 app.proto.books_pb2.Category(
                     slug=cat["slug"],
                     name=cat["name"],
-                    icon=cat["icon"],
                     sub_genres=sub_genres,
                 )
             )
@@ -896,7 +895,6 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
             category=app.proto.books_pb2.Category(
                 slug=cat["slug"],
                 name=cat["name"],
-                icon=cat["icon"],
                 sub_genres=sub_genres,
             )
         )
@@ -946,7 +944,6 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                 app.proto.books_pb2.Category(
                     slug=cat["slug"],
                     name=cat["name"],
-                    icon=cat["icon"],
                     sub_genres=sub_genres,
                 )
             )
@@ -972,7 +969,6 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
             category=app.proto.books_pb2.Category(
                 slug=cat["slug"],
                 name=cat["name"],
-                icon=cat["icon"],
                 sub_genres=sub_genres,
             )
         )

@@ -23,7 +23,7 @@ logger = logging.getLogger(__name__)
     This endpoint returns the curated taxonomy of books available in the system,
     which maps messy OpenLibrary tags into clean categories like "Fantasy", "Romance", etc.
 
-    Each category includes its slug, name, icon, and an array of popular sub-genres.
+    Each category includes its slug, name, and an array of popular sub-genres.
     """,
 )
 async def list_categories():

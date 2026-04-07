@@ -6,6 +6,64 @@ from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
+class ListCategoriesRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class Category(_message.Message):
+    __slots__ = ("slug", "name", "sub_genres")
+    SLUG_FIELD_NUMBER: _ClassVar[int]
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    SUB_GENRES_FIELD_NUMBER: _ClassVar[int]
+    slug: str
+    name: str
+    sub_genres: _containers.RepeatedCompositeFieldContainer[SubGenre]
+    def __init__(self, slug: _Optional[str] = ..., name: _Optional[str] = ..., sub_genres: _Optional[_Iterable[_Union[SubGenre, _Mapping]]] = ...) -> None: ...
+
+class SubGenre(_message.Message):
+    __slots__ = ("slug", "name")
+    SLUG_FIELD_NUMBER: _ClassVar[int]
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    slug: str
+    name: str
+    def __init__(self, slug: _Optional[str] = ..., name: _Optional[str] = ...) -> None: ...
+
+class ListCategoriesResponse(_message.Message):
+    __slots__ = ("categories",)
+    CATEGORIES_FIELD_NUMBER: _ClassVar[int]
+    categories: _containers.RepeatedCompositeFieldContainer[Category]
+    def __init__(self, categories: _Optional[_Iterable[_Union[Category, _Mapping]]] = ...) -> None: ...
+
+class GetCategoryRequest(_message.Message):
+    __slots__ = ("category_slug",)
+    CATEGORY_SLUG_FIELD_NUMBER: _ClassVar[int]
+    category_slug: str
+    def __init__(self, category_slug: _Optional[str] = ...) -> None: ...
+
+class CategoryResponse(_message.Message):
+    __slots__ = ("category",)
+    CATEGORY_FIELD_NUMBER: _ClassVar[int]
+    category: Category
+    def __init__(self, category: _Optional[_Union[Category, _Mapping]] = ...) -> None: ...
+
+class GetCategoryBooksRequest(_message.Message):
+    __slots__ = ("category_slug", "sub_genre_slug", "limit", "offset", "sort_by", "order", "language")
+    CATEGORY_SLUG_FIELD_NUMBER: _ClassVar[int]
+    SUB_GENRE_SLUG_FIELD_NUMBER: _ClassVar[int]
+    LIMIT_FIELD_NUMBER: _ClassVar[int]
+    OFFSET_FIELD_NUMBER: _ClassVar[int]
+    SORT_BY_FIELD_NUMBER: _ClassVar[int]
+    ORDER_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
+    category_slug: str
+    sub_genre_slug: str
+    limit: int
+    offset: int
+    sort_by: str
+    order: str
+    language: str
+    def __init__(self, category_slug: _Optional[str] = ..., sub_genre_slug: _Optional[str] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., sort_by: _Optional[str] = ..., order: _Optional[str] = ..., language: _Optional[str] = ...) -> None: ...
+
 class SearchRequest(_message.Message):
     __slots__ = ("query", "limit", "offset", "type_filter", "language")
     QUERY_FIELD_NUMBER: _ClassVar[int]

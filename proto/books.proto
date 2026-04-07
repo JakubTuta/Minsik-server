@@ -30,7 +30,6 @@ message ListCategoriesRequest {
 message Category {
   string slug = 1;
   string name = 2;
-  string icon = 3;
   repeated SubGenre sub_genres = 4;
 }
 

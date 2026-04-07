@@ -69,7 +69,6 @@ class CategoryService:
             {
                 "slug": cat.slug,
                 "name": cat.name,
-                "icon": cat.icon,
                 "sub_genres": [
                     {"slug": sg.slug, "name": sg.name} for sg in cat.sub_genres
                 ],
@@ -85,7 +84,6 @@ class CategoryService:
         return {
             "slug": cat.slug,
             "name": cat.name,
-            "icon": cat.icon,
             "sub_genres": [{"slug": sg.slug, "name": sg.name} for sg in cat.sub_genres],
         }
 

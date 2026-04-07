@@ -114,6 +114,21 @@ class BooksServiceStub(object):
                 request_serializer=books__pb2.DeleteSeriesRequest.SerializeToString,
                 response_deserializer=books__pb2.DeleteEntityResponse.FromString,
                 _registered_method=True)
+        self.ListCategories = channel.unary_unary(
+                '/books.v1.BooksService/ListCategories',
+                request_serializer=books__pb2.ListCategoriesRequest.SerializeToString,
+                response_deserializer=books__pb2.ListCategoriesResponse.FromString,
+                _registered_method=True)
+        self.GetCategory = channel.unary_unary(
+                '/books.v1.BooksService/GetCategory',
+                request_serializer=books__pb2.GetCategoryRequest.SerializeToString,
+                response_deserializer=books__pb2.CategoryResponse.FromString,
+                _registered_method=True)
+        self.GetCategoryBooks = channel.unary_unary(
+                '/books.v1.BooksService/GetCategoryBooks',
+                request_serializer=books__pb2.GetCategoryBooksRequest.SerializeToString,
+                response_deserializer=books__pb2.BooksListResponse.FromString,
+                _registered_method=True)
 
 
 class BooksServiceServicer(object):
@@ -215,6 +230,24 @@ class BooksServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ListCategories(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetCategory(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetCategoryBooks(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_BooksServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -297,6 +330,21 @@ def add_BooksServiceServicer_to_server(servicer, server):
                     servicer.DeleteSeries,
                     request_deserializer=books__pb2.DeleteSeriesRequest.FromString,
                     response_serializer=books__pb2.DeleteEntityResponse.SerializeToString,
+            ),
+            'ListCategories': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListCategories,
+                    request_deserializer=books__pb2.ListCategoriesRequest.FromString,
+                    response_serializer=books__pb2.ListCategoriesResponse.SerializeToString,
+            ),
+            'GetCategory': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetCategory,
+                    request_deserializer=books__pb2.GetCategoryRequest.FromString,
+                    response_serializer=books__pb2.CategoryResponse.SerializeToString,
+            ),
+            'GetCategoryBooks': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetCategoryBooks,
+                    request_deserializer=books__pb2.GetCategoryBooksRequest.FromString,
+                    response_serializer=books__pb2.BooksListResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -731,6 +779,87 @@ class BooksService(object):
             '/books.v1.BooksService/DeleteSeries',
             books__pb2.DeleteSeriesRequest.SerializeToString,
             books__pb2.DeleteEntityResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListCategories(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/books.v1.BooksService/ListCategories',
+            books__pb2.ListCategoriesRequest.SerializeToString,
+            books__pb2.ListCategoriesResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetCategory(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/books.v1.BooksService/GetCategory',
+            books__pb2.GetCategoryRequest.SerializeToString,
+            books__pb2.CategoryResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetCategoryBooks(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/books.v1.BooksService/GetCategoryBooks',
+            books__pb2.GetCategoryBooksRequest.SerializeToString,
+            books__pb2.BooksListResponse.FromString,
             options,
             channel_credentials,
             insecure,

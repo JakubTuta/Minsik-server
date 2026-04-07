@@ -187,7 +187,6 @@ class SubGenreSchema(pydantic.BaseModel):
 class CategorySchema(pydantic.BaseModel):
     slug: str
     name: str
-    icon: str
     sub_genres: typing.List[SubGenreSchema] = []
 
 
