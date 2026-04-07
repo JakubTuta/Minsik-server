@@ -109,7 +109,7 @@ async def _build_similar_authors_by_genre(
             LEFT JOIN books.book_authors ba ON a.author_id = ba.author_id
             LEFT JOIN books.books b ON ba.book_id = b.book_id
             WHERE ca.shared > 0
-                    GROUP BY a.author_id, a.name, a.slug, a.photo_url, ca.shared, ca.author_id
+                    GROUP BY a.author_id, a.name, a.slug, a.photo_url, ca.shared, ca.author_id, cgt.candidate_cnt
             ORDER BY score DESC NULLS LAST, book_count DESC
             LIMIT :limit
         """

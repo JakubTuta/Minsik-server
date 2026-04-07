@@ -10,7 +10,7 @@ import app.models.book_genre
 import app.models.genre
 import sqlalchemy
 import sqlalchemy.ext.asyncio
-from sqlalchemy import select
+from sqlalchemy import func, select
 
 logger = logging.getLogger(__name__)
 
@@ -210,7 +210,9 @@ async def _get_author_book_categories(
             app.models.book_author.BookAuthor.author_id == author_id,
             app.models.book.Book.language == language,
         )
-        .distinct()
+        .group_by(app.models.genre.Genre.name)
+        .having(func.count(func.distinct(app.models.book.Book.book_id)) >= 3)
+        .order_by(func.count(func.distinct(app.models.book.Book.book_id)).desc())
     )
 
     result = await session.execute(stmt)

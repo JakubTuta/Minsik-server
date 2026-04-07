@@ -315,27 +315,41 @@ async def cleanup_underrepresented_series(
         series_id_result = await session.execute(
             sqlalchemy.text(
                 """
-                SELECT s.series_id FROM books.series s
-                LEFT JOIN (
-                    SELECT series_id, COUNT(*) AS book_count
-                    FROM books.books
-                    WHERE series_id IS NOT NULL
-                    GROUP BY series_id
-                ) bc ON bc.series_id = s.series_id
-                WHERE COALESCE(bc.book_count, 0) <= :max_books
-                AND s.view_count = 0
-                AND s.created_at < NOW() - INTERVAL '1 day'
-                AND (
-                    SELECT COALESCE(SUM(b.rating_count + COALESCE(b.ol_rating_count, 0)), 0)
-                    FROM books.books b
-                    WHERE b.series_id = s.series_id
-                ) < 30
-                AND (
-                    SELECT COUNT(*)
+                WITH series_stats AS (
+                    SELECT
+                        s.series_id,
+                        COALESCE(COUNT(b.book_id), 0) AS book_count,
+                        COALESCE(SUM(COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0)), 0) AS ratings_count,
+                        COALESCE(SUM(
+                            COALESCE(b.ol_want_to_read_count, 0)
+                            + COALESCE(b.ol_currently_reading_count, 0)
+                            + COALESCE(b.ol_already_read_count, 0)
+                        ), 0) AS ol_readers,
+                        (
+                            TRIM(LOWER(COALESCE(s.name, ''))) = 'unknown'
+                            OR TRIM(LOWER(COALESCE(s.slug, ''))) = 'unknown'
+                            OR TRIM(LOWER(COALESCE(s.slug, ''))) LIKE 'unknown-%'
+                        ) AS is_unknown
+                    FROM books.series s
+                    LEFT JOIN books.books b ON b.series_id = s.series_id
+                    GROUP BY s.series_id, s.name, s.slug
+                ),
+                app_readers AS (
+                    SELECT b.series_id, COUNT(*) AS app_readers
                     FROM user_data.bookshelves bs
                     JOIN books.books b ON b.book_id = bs.book_id
-                    WHERE b.series_id = s.series_id
-                ) < 30
+                    WHERE b.series_id IS NOT NULL
+                    GROUP BY b.series_id
+                )
+                SELECT ss.series_id
+                FROM series_stats ss
+                LEFT JOIN app_readers ar ON ar.series_id = ss.series_id
+                WHERE ss.book_count <= :max_books
+                   OR (
+                       ss.is_unknown
+                       AND ss.ratings_count = 0
+                       AND (ss.ol_readers + COALESCE(ar.app_readers, 0)) = 0
+                   )
                 LIMIT :batch_size
                 """
             ),

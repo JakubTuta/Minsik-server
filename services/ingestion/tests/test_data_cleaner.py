@@ -16,7 +16,6 @@ async def test_cleanup_removes_low_quality_book(commit_session):
         language="en",
         slug="bad-book",
         formats=[],
-
         created_at=OLD_DATE,
     )
     commit_session.add(book)
@@ -47,7 +46,6 @@ async def test_cleanup_keeps_high_quality_book(commit_session):
         primary_cover_url="http://example.com/cover.jpg",
         original_publication_year=2020,
         formats=["hardcover"],
-
         created_at=OLD_DATE,
     )
     commit_session.add(book)
@@ -75,7 +73,6 @@ async def test_cleanup_keeps_book_with_views(commit_session):
         slug="viewed-book",
         view_count=5,
         formats=[],
-
         created_at=OLD_DATE,
     )
     commit_session.add(book)
@@ -99,7 +96,6 @@ async def test_cleanup_keeps_book_with_ratings(commit_session):
         slug="rated-book",
         rating_count=1,
         formats=[],
-
         created_at=OLD_DATE,
     )
     commit_session.add(book)
@@ -143,7 +139,6 @@ async def test_cleanup_keeps_author_with_books(commit_session):
             language="en",
             slug=f"book-{i}",
             formats=[],
-    
         )
         commit_session.add(book)
         await commit_session.flush()
@@ -178,13 +173,79 @@ async def test_cleanup_keeps_viewed_author(commit_session):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_cleanup_orphan_series(commit_session):
-    series = Series(name="Dead Series", slug="dead-series", created_at=OLD_DATE)
+async def test_cleanup_removes_short_series_without_deleting_books(commit_session):
+    series = Series(name="Short Series", slug="short-series", created_at=OLD_DATE)
     commit_session.add(series)
+    await commit_session.flush()
+
+    book = Book(
+        title="Short Book",
+        language="en",
+        slug="short-book",
+        series_id=series.series_id,
+        series_position=1,
+        formats=[],
+    )
+    commit_session.add(book)
     await commit_session.commit()
 
-    deleted = await data_cleaner.cleanup_orphan_series(commit_session, batch_size=100)
+    deleted = await data_cleaner.cleanup_underrepresented_series(
+        commit_session, max_books=2, batch_size=100
+    )
     assert deleted == 1
+
+    series_count = await commit_session.execute(
+        select(func.count()).select_from(Series)
+    )
+    assert series_count.scalar_one() == 0
+
+    remaining_book = await commit_session.execute(
+        select(Book.series_id, Book.series_position).where(Book.slug == "short-book")
+    )
+    detached_series_id, detached_series_position = remaining_book.one()
+    assert detached_series_id is None
+    assert detached_series_position is None
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_cleanup_removes_unknown_series_with_zero_readers_and_ratings(
+    commit_session,
+):
+    unknown_series = Series(name="unknown", slug="unknown", created_at=OLD_DATE)
+    commit_session.add(unknown_series)
+    await commit_session.commit()
+
+    deleted = await data_cleaner.cleanup_underrepresented_series(
+        commit_session, max_books=2, batch_size=100
+    )
+    assert deleted == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_cleanup_keeps_non_unknown_series_with_many_books(commit_session):
+    series = Series(name="Long Series", slug="long-series", created_at=OLD_DATE)
+    commit_session.add(series)
+    await commit_session.flush()
+
+    for i in range(3):
+        book = Book(
+            title=f"Long Book {i}",
+            language="en",
+            slug=f"long-book-{i}",
+            series_id=series.series_id,
+            series_position=i + 1,
+            formats=[],
+        )
+        commit_session.add(book)
+
+    await commit_session.commit()
+
+    deleted = await data_cleaner.cleanup_underrepresented_series(
+        commit_session, max_books=2, batch_size=100
+    )
+    assert deleted == 0
 
 
 @pytest.mark.asyncio
