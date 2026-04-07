@@ -858,120 +858,58 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
         request: app.proto.books_pb2.ListCategoriesRequest,
         context: grpc.aio.ServicerContext,
     ) -> app.proto.books_pb2.ListCategoriesResponse:
-        categories = category_service.get_categories()
+        try:
+            categories = category_service.get_categories()
 
-        category_protos = []
-        for cat in categories:
-            sub_genres = [
-                app.proto.books_pb2.SubGenre(slug=sg["slug"], name=sg["name"])
-                for sg in cat["sub_genres"]
-            ]
-            category_protos.append(
-                app.proto.books_pb2.Category(
-                    slug=cat["slug"],
-                    name=cat["name"],
-                    sub_genres=sub_genres,
+            category_protos = []
+            for cat in categories:
+                sub_genres = [
+                    app.proto.books_pb2.SubGenre(slug=sg["slug"], name=sg["name"])
+                    for sg in cat["sub_genres"]
+                ]
+                category_protos.append(
+                    app.proto.books_pb2.Category(
+                        slug=cat["slug"],
+                        name=cat["name"],
+                        sub_genres=sub_genres,
+                    )
                 )
-            )
 
-        return app.proto.books_pb2.ListCategoriesResponse(categories=category_protos)
+            return app.proto.books_pb2.ListCategoriesResponse(categories=category_protos)
+        except Exception as e:
+            logger.error(f"Error in ListCategories: {str(e)}")
+            await context.abort(
+                grpc.StatusCode.INTERNAL, f"List categories failed: {str(e)}"
+            )
 
     async def GetCategory(
         self,
         request: app.proto.books_pb2.GetCategoryRequest,
         context: grpc.aio.ServicerContext,
     ) -> app.proto.books_pb2.CategoryResponse:
-        cat = category_service.get_category(request.category_slug)
-        if not cat:
-            await context.abort(grpc.StatusCode.NOT_FOUND, "Category not found")
-            return
-
-        sub_genres = [
-            app.proto.books_pb2.SubGenre(slug=sg["slug"], name=sg["name"])
-            for sg in cat["sub_genres"]
-        ]
-
-        return app.proto.books_pb2.CategoryResponse(
-            category=app.proto.books_pb2.Category(
-                slug=cat["slug"],
-                name=cat["name"],
-                sub_genres=sub_genres,
-            )
-        )
-
-    async def GetCategoryBooks(
-        self,
-        request: app.proto.books_pb2.GetCategoryBooksRequest,
-        context: grpc.aio.ServicerContext,
-    ) -> app.proto.books_pb2.BooksListResponse:
         try:
-            books, total = await category_service.get_category_books(
-                category_slug=request.category_slug,
-                sub_genre_slug=(
-                    request.sub_genre_slug if request.sub_genre_slug else None
-                ),
-                limit=request.limit or 20,
-                offset=request.offset or 0,
-                language=request.language or "en",
-                sort_by=request.sort_by or "popularity",
-                order=request.order or "desc",
-            )
+            cat = category_service.get_category(request.category_slug)
+            if not cat:
+                await context.abort(grpc.StatusCode.NOT_FOUND, "Category not found")
+                return
 
-            book_summaries = [_build_book_summary_proto(book) for book in books]
-            return app.proto.books_pb2.BooksListResponse(
-                books=book_summaries, total_count=total
+            sub_genres = [
+                app.proto.books_pb2.SubGenre(slug=sg["slug"], name=sg["name"])
+                for sg in cat["sub_genres"]
+            ]
+
+            return app.proto.books_pb2.CategoryResponse(
+                category=app.proto.books_pb2.Category(
+                    slug=cat["slug"],
+                    name=cat["name"],
+                    sub_genres=sub_genres,
+                )
             )
         except Exception as e:
-            logger.error(f"Error in GetCategoryBooks: {str(e)}")
+            logger.error(f"Error in GetCategory: {str(e)}")
             await context.abort(
-                grpc.StatusCode.INTERNAL, f"Get category books failed: {str(e)}"
+                grpc.StatusCode.INTERNAL, f"Get category failed: {str(e)}"
             )
-
-    async def ListCategories(
-        self,
-        request: app.proto.books_pb2.ListCategoriesRequest,
-        context: grpc.aio.ServicerContext,
-    ) -> app.proto.books_pb2.ListCategoriesResponse:
-        categories = category_service.get_categories()
-
-        category_protos = []
-        for cat in categories:
-            sub_genres = [
-                app.proto.books_pb2.SubGenre(slug=sg["slug"], name=sg["name"])
-                for sg in cat["sub_genres"]
-            ]
-            category_protos.append(
-                app.proto.books_pb2.Category(
-                    slug=cat["slug"],
-                    name=cat["name"],
-                    sub_genres=sub_genres,
-                )
-            )
-
-        return app.proto.books_pb2.ListCategoriesResponse(categories=category_protos)
-
-    async def GetCategory(
-        self,
-        request: app.proto.books_pb2.GetCategoryRequest,
-        context: grpc.aio.ServicerContext,
-    ) -> app.proto.books_pb2.CategoryResponse:
-        cat = category_service.get_category(request.category_slug)
-        if not cat:
-            await context.abort(grpc.StatusCode.NOT_FOUND, "Category not found")
-            return
-
-        sub_genres = [
-            app.proto.books_pb2.SubGenre(slug=sg["slug"], name=sg["name"])
-            for sg in cat["sub_genres"]
-        ]
-
-        return app.proto.books_pb2.CategoryResponse(
-            category=app.proto.books_pb2.Category(
-                slug=cat["slug"],
-                name=cat["name"],
-                sub_genres=sub_genres,
-            )
-        )
 
     async def GetCategoryBooks(
         self,

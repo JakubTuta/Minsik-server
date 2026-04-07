@@ -2,12 +2,9 @@ import logging
 from typing import Optional
 
 import app.grpc_clients
-from app.models.books_responses import (
-    CategoryBooksResponse,
-    CategoryResponse,
-    ListCategoriesResponse,
-)
-from fastapi import APIRouter, HTTPException, Query, Request
+import app.models.books_responses
+from fastapi import APIRouter, HTTPException, Query
+from google.protobuf.json_format import MessageToDict
 
 router = APIRouter(prefix="/api/v1/categories", tags=["Categories"])
 logger = logging.getLogger(__name__)
@@ -15,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 @router.get(
     "",
-    response_model=ListCategoriesResponse,
+    response_model=app.models.books_responses.ListCategoriesResponse,
     summary="List all categories",
     description="""
     Get all available top-level categories and their sub-genres.
@@ -27,9 +24,6 @@ logger = logging.getLogger(__name__)
     """,
 )
 async def list_categories():
-    """
-    Get all available top-level categories and their sub-genres.
-    """
     try:
         response = await app.grpc_clients.books_client.list_categories()
         return {"success": True, "data": {"categories": response.get("categories", [])}}
@@ -40,7 +34,7 @@ async def list_categories():
 
 @router.get(
     "/{category_slug}",
-    response_model=CategoryResponse,
+    response_model=app.models.books_responses.CategoryResponse,
     summary="Get category details",
     description="""
     Get details of a specific category including its sub-genres.
@@ -53,9 +47,6 @@ async def list_categories():
 async def get_category(
     category_slug: str,
 ):
-    """
-    Get details of a specific category including its sub-genres.
-    """
     try:
         response = await app.grpc_clients.books_client.get_category(category_slug)
         return {"success": True, "data": response.get("category", {})}
@@ -68,7 +59,7 @@ async def get_category(
 
 @router.get(
     "/{category_slug}/books",
-    response_model=CategoryBooksResponse,
+    response_model=app.models.books_responses.CategoryBooksResponse,
     summary="Get category books",
     description="""
     Get books for a specific category, optionally filtered by sub-genre.
@@ -100,9 +91,6 @@ async def get_category_books(
         "en", description="ISO 639-1 language code (e.g., en, es, fr)"
     ),
 ):
-    """
-    Get books for a specific category, optionally filtered by sub-genre.
-    """
     try:
         response = await app.grpc_clients.books_client.get_category_books(
             category_slug=category_slug,
@@ -113,8 +101,6 @@ async def get_category_books(
             sort_by=sort_by,
             order=order,
         )
-
-        from google.protobuf.json_format import MessageToDict
 
         response_dict = MessageToDict(response, preserving_proto_field_name=True)
         return {

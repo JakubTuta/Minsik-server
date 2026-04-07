@@ -5,6 +5,7 @@ import app.config
 import app.proto.books_pb2 as books_pb2
 import app.proto.books_pb2_grpc as books_pb2_grpc
 import grpc
+from google.protobuf.json_format import MessageToDict
 
 logger = logging.getLogger(__name__)
 
@@ -331,8 +332,6 @@ class BooksClient:
             response = await self.stub.ListCategories(
                 request, timeout=app.config.settings.grpc_timeout
             )
-            from google.protobuf.json_format import MessageToDict
-
             return MessageToDict(response, preserving_proto_field_name=True)
         except grpc.RpcError as e:
             logger.error(f"gRPC error listing categories: {e.code()} - {e.details()}")
@@ -344,8 +343,6 @@ class BooksClient:
             response = await self.stub.GetCategory(
                 request, timeout=app.config.settings.grpc_timeout
             )
-            from google.protobuf.json_format import MessageToDict
-
             return MessageToDict(response, preserving_proto_field_name=True)
         except grpc.RpcError as e:
             logger.error(f"gRPC error getting category: {e.code()} - {e.details()}")

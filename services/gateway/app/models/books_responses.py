@@ -197,11 +197,13 @@ class ListCategoriesData(pydantic.BaseModel):
 class ListCategoriesResponse(pydantic.BaseModel):
     success: bool
     data: ListCategoriesData
+    error: typing.Optional[app.models.responses.ErrorDetail] = None
 
 
 class CategoryResponse(pydantic.BaseModel):
     success: bool
     data: CategorySchema
+    error: typing.Optional[app.models.responses.ErrorDetail] = None
 
 
 class CategoryBooksData(pydantic.BaseModel):
@@ -212,6 +214,7 @@ class CategoryBooksData(pydantic.BaseModel):
 class CategoryBooksResponse(pydantic.BaseModel):
     success: bool
     data: CategoryBooksData
+    error: typing.Optional[app.models.responses.ErrorDetail] = None
 
 
 class SeriesDetailData(pydantic.BaseModel):
@@ -433,7 +436,7 @@ class AdminUpdateSeriesRequest(pydantic.BaseModel):
 
 class UpdateSeriesResponse(pydantic.BaseModel):
     success: bool = True
-    data: typing.Optional[SeriesDetailSchema] = None
+    data: typing.Optional[SeriesDetailData] = None
     error: typing.Optional[app.models.responses.ErrorDetail] = None
 
 

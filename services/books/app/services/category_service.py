@@ -1,42 +1,39 @@
+import json
 import logging
 from typing import Dict, List, Optional, Set, Tuple
 
-from app.categories_config import CATEGORIES
-from app.db import async_session_maker
-from app.models.book import Book
-from app.models.book_genre import BookGenre
-from app.models.genre import Genre
-from sqlalchemy import select, text
+import app.categories_config
+import app.db
+import app.models.genre
+import sqlalchemy
 
 logger = logging.getLogger(__name__)
 
 
 class CategoryService:
     def __init__(self):
-        # Maps category_slug -> set of genre_ids
         self._category_genre_ids: Dict[str, Set[int]] = {}
-        # Maps (category_slug, sub_genre_slug) -> set of genre_ids
         self._sub_genre_ids: Dict[Tuple[str, str], Set[int]] = {}
         self._is_ready = False
 
     async def setup(self):
-        """Pre-calculate genre mappings on startup to ensure fast lookups later."""
         logger.info("Initializing CategoryService mappings...")
 
-        async with async_session_maker() as session:
-            # Fetch all genres (could be large, but acceptable for startup cache)
-            stmt = select(Genre.genre_id, Genre.name, Genre.slug)
+        async with app.db.async_session_maker() as session:
+            stmt = sqlalchemy.select(
+                app.models.genre.Genre.genre_id,
+                app.models.genre.Genre.name,
+                app.models.genre.Genre.slug,
+            )
             result = await session.execute(stmt)
             all_genres = result.all()
 
-            # Reset caches
             self._category_genre_ids.clear()
             self._sub_genre_ids.clear()
 
-            for cat_slug, config in CATEGORIES.items():
+            for cat_slug, config in app.categories_config.CATEGORIES.items():
                 cat_genre_ids = set()
 
-                # Match main category
                 for genre_id, name, slug in all_genres:
                     name_lower = name.lower()
                     if slug in config.exact_slugs or any(
@@ -46,7 +43,6 @@ class CategoryService:
 
                 self._category_genre_ids[cat_slug] = cat_genre_ids
 
-                # Match sub-genres
                 for sub_genre in config.sub_genres:
                     sub_genre_ids = set()
                     for genre_id, name, slug in all_genres:
@@ -64,7 +60,6 @@ class CategoryService:
             )
 
     def get_categories(self) -> List[dict]:
-        """Return all categories with their basic info."""
         return [
             {
                 "slug": cat.slug,
@@ -73,14 +68,14 @@ class CategoryService:
                     {"slug": sg.slug, "name": sg.name} for sg in cat.sub_genres
                 ],
             }
-            for cat in CATEGORIES.values()
+            for cat in app.categories_config.CATEGORIES.values()
         ]
 
     def get_category(self, slug: str) -> Optional[dict]:
-        if slug not in CATEGORIES:
+        if slug not in app.categories_config.CATEGORIES:
             return None
 
-        cat = CATEGORIES[slug]
+        cat = app.categories_config.CATEGORIES[slug]
         return {
             "slug": cat.slug,
             "name": cat.name,
@@ -98,14 +93,11 @@ class CategoryService:
         order: str = "desc",
     ) -> Tuple[List[dict], int]:
         if not self._is_ready:
-            # Fallback if not initialized
             await self.setup()
 
-        if category_slug not in CATEGORIES:
+        if category_slug not in app.categories_config.CATEGORIES:
             return [], 0
 
-        # Determine which set of genre IDs to use
-        genre_ids = set()
         if sub_genre_slug:
             genre_ids = self._sub_genre_ids.get((category_slug, sub_genre_slug), set())
         else:
@@ -114,22 +106,20 @@ class CategoryService:
         if not genre_ids:
             return [], 0
 
-        # Ensure array format for SQL IN clause
         genre_ids_list = list(genre_ids)
 
-        # Determine sort column
-        sort_col = "b.rating_count"
         if sort_by == "popularity":
-            # Approximation of popularity using total ratings
             sort_col = "b.rating_count + b.ol_rating_count"
         elif sort_by == "rating":
             sort_col = "b.avg_rating"
+        else:
+            sort_col = "b.rating_count"
 
         order_dir = "DESC" if order.lower() == "desc" else "ASC"
 
-        books_query = text(
+        books_query = sqlalchemy.text(
             f"""
-            SELECT 
+            SELECT
                 b.book_id,
                 b.title,
                 b.slug,
@@ -157,50 +147,39 @@ class CategoryService:
             FROM books.books b
             WHERE b.language = :language
             AND EXISTS (
-                SELECT 1 FROM books.book_genres bg 
+                SELECT 1 FROM books.book_genres bg
                 WHERE bg.book_id = b.book_id AND bg.genre_id = ANY(:genre_ids)
             )
-            ORDER BY {{sort_col}} {{order_dir}} NULLS LAST
+            ORDER BY {sort_col} {order_dir} NULLS LAST
             LIMIT :limit OFFSET :offset
-            """.replace(
-                "{sort_col}", sort_col
-            ).replace(
-                "{order_dir}", order_dir
-            )
+            """
         )
 
-        count_query = text(
+        count_query = sqlalchemy.text(
             """
-            SELECT COUNT(*) 
+            SELECT COUNT(*)
             FROM books.books b
             WHERE b.language = :language
             AND EXISTS (
-                SELECT 1 FROM books.book_genres bg 
+                SELECT 1 FROM books.book_genres bg
                 WHERE bg.book_id = b.book_id AND bg.genre_id = ANY(:genre_ids)
             )
             """
         )
 
-        async with async_session_maker() as session:
-            count_result = await session.execute(
-                count_query, {"language": language, "genre_ids": genre_ids_list}
-            )
+        base_params = {"language": language, "genre_ids": genre_ids_list}
+
+        async with app.db.async_session_maker() as session:
+            count_result = await session.execute(count_query, base_params)
             total_count = count_result.scalar() or 0
 
             books_result = await session.execute(
                 books_query,
-                {
-                    "language": language,
-                    "genre_ids": genre_ids_list,
-                    "limit": limit,
-                    "offset": offset,
-                },
+                {**base_params, "limit": limit, "offset": offset},
             )
 
             books_data = []
             for row in books_result.fetchall():
-                import json
-
                 authors_raw = row.authors
                 if isinstance(authors_raw, str):
                     authors_list = json.loads(authors_raw)
@@ -226,8 +205,7 @@ class CategoryService:
                             str(row.ol_avg_rating) if row.ol_avg_rating else "0.00"
                         ),
                         "ol_want_to_read_count": row.ol_want_to_read_count or 0,
-                        "ol_currently_reading_count": row.ol_currently_reading_count
-                        or 0,
+                        "ol_currently_reading_count": row.ol_currently_reading_count or 0,
                         "ol_already_read_count": row.ol_already_read_count or 0,
                         "authors": authors_list,
                     }
