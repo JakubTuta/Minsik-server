@@ -42,6 +42,7 @@ async def search_books_and_authors(
         results.extend(author_results)
         total_count += author_total
 
+    if type_filter == "all":
         for author_result in author_results:
             if author_result["relevance_score"] > 0.1:
                 author_books = await _get_author_top_books(
@@ -59,6 +60,7 @@ async def search_books_and_authors(
         results.extend(series_results)
         total_count += series_total
 
+    if type_filter == "all":
         for series_result in series_results:
             if series_result["relevance_score"] > 0.1:
                 series_books = await _get_series_top_books(
@@ -350,6 +352,7 @@ async def _search_books_by_category(
             b.avg_rating as app_avg_rating,
             COALESCE(b.ol_rating_count, 0) as ol_rating_count,
             b.ol_avg_rating,
+            ARRAY_AGG(DISTINCT a.name) FILTER (WHERE a.name IS NOT NULL) as authors_names,
             ARRAY_AGG(DISTINCT a.slug) FILTER (WHERE a.slug IS NOT NULL) as author_slugs,
             s.slug as series_slug
         FROM books.books b
@@ -390,7 +393,7 @@ async def _search_books_by_category(
                 "title": row.title,
                 "slug": row.slug,
                 "cover_url": row.primary_cover_url or "",
-                "authors": [],
+                "authors": row.authors_names or [],
                 "relevance_score": 1.0,
                 "author_slugs": row.author_slugs or [],
                 "series_slug": row.series_slug or "",
@@ -426,6 +429,7 @@ async def _get_author_top_books(
             b.avg_rating as app_avg_rating,
             COALESCE(b.ol_rating_count, 0) as ol_rating_count,
             b.ol_avg_rating,
+            ARRAY_AGG(a.name) FILTER (WHERE a.name IS NOT NULL) as authors_names,
             ARRAY_AGG(a.slug) FILTER (WHERE a.slug IS NOT NULL) as author_slugs,
             s.slug as series_slug
         FROM books.books b
@@ -455,7 +459,7 @@ async def _get_author_top_books(
                 "title": row.title,
                 "slug": row.slug,
                 "cover_url": row.primary_cover_url or "",
-                "authors": [],
+                "authors": row.authors_names or [],
                 "relevance_score": 0.4,
                 "author_slugs": row.author_slugs or [],
                 "series_slug": row.series_slug or "",
@@ -492,6 +496,7 @@ async def _get_series_top_books(
             b.avg_rating as app_avg_rating,
             COALESCE(b.ol_rating_count, 0) as ol_rating_count,
             b.ol_avg_rating,
+            ARRAY_AGG(a.name) FILTER (WHERE a.name IS NOT NULL) as authors_names,
             ARRAY_AGG(a.slug) FILTER (WHERE a.slug IS NOT NULL) as author_slugs,
             s.slug as series_slug
         FROM books.books b
@@ -520,7 +525,7 @@ async def _get_series_top_books(
                 "title": row.title,
                 "slug": row.slug,
                 "cover_url": row.primary_cover_url or "",
-                "authors": [],
+                "authors": row.authors_names or [],
                 "relevance_score": 0.4,
                 "author_slugs": row.author_slugs or [],
                 "series_slug": row.series_slug or "",
