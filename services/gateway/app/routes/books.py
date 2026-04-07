@@ -706,6 +706,9 @@ def _book_summary_proto_to_dict(item) -> typing.Dict[str, typing.Any]:
         "title": item.title,
         "slug": item.slug,
         "description": item.description or None,
+        "original_publication_year": (
+            item.original_publication_year if item.original_publication_year else None
+        ),
         "primary_cover_url": item.primary_cover_url or None,
         "authors": [
             {

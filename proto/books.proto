@@ -19,6 +19,46 @@ service BooksService {
   rpc DeleteBook(DeleteBookRequest) returns (DeleteEntityResponse);
   rpc DeleteAuthor(DeleteAuthorRequest) returns (DeleteEntityResponse);
   rpc DeleteSeries(DeleteSeriesRequest) returns (DeleteEntityResponse);
+  rpc ListCategories(ListCategoriesRequest) returns (ListCategoriesResponse);
+  rpc GetCategory(GetCategoryRequest) returns (CategoryResponse);
+  rpc GetCategoryBooks(GetCategoryBooksRequest) returns (BooksListResponse);
+}
+
+message ListCategoriesRequest {
+}
+
+message Category {
+  string slug = 1;
+  string name = 2;
+  string icon = 3;
+  repeated SubGenre sub_genres = 4;
+}
+
+message SubGenre {
+  string slug = 1;
+  string name = 2;
+}
+
+message ListCategoriesResponse {
+  repeated Category categories = 1;
+}
+
+message GetCategoryRequest {
+  string category_slug = 1;
+}
+
+message CategoryResponse {
+  Category category = 1;
+}
+
+message GetCategoryBooksRequest {
+  string category_slug = 1;
+  string sub_genre_slug = 2;
+  int32 limit = 3;
+  int32 offset = 4;
+  string sort_by = 5;
+  string order = 6;
+  string language = 7;
 }
 
 message SearchRequest {
@@ -185,6 +225,7 @@ message BookSummary {
   string title = 2;
   string slug = 3;
   string description = 4;
+  int32 original_publication_year = 19;
   string primary_cover_url = 5;
   repeated AuthorInfo authors = 6;
   int32 rating_count = 7;

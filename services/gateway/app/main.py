@@ -12,6 +12,7 @@ import app.middleware.rate_limit as rate_limit_middleware
 import app.routes.admin
 import app.routes.auth
 import app.routes.books
+import app.routes.categories
 import app.routes.health
 import app.routes.recommendations
 import app.routes.user_data
@@ -29,6 +30,7 @@ admin_router = app.routes.admin.router
 auth_router = app.routes.auth.router
 books_router = app.routes.books.router
 user_data_router = app.routes.user_data.router
+categories_router = app.routes.categories.router
 recommendations_router = app.routes.recommendations.router
 recommendations_admin_router = app.routes.recommendations.admin_router
 user_recommendations_router = app.routes.user_recommendations.router
@@ -134,6 +136,7 @@ app.include_router(health_router)
 app.include_router(admin_router)
 app.include_router(auth_router)
 app.include_router(books_router)
+app.include_router(categories_router)
 app.include_router(user_data_router)
 app.include_router(recommendations_router)
 app.include_router(recommendations_admin_router)

@@ -325,5 +325,62 @@ class BooksClient:
             logger.error(f"gRPC error opening pack: {e.code()} - {e.details()}")
             raise
 
+    async def list_categories(self) -> typing.Dict[str, typing.Any]:
+        request = books_pb2.ListCategoriesRequest()
+        try:
+            response = await self.stub.ListCategories(
+                request, timeout=app.config.settings.grpc_timeout
+            )
+            from google.protobuf.json_format import MessageToDict
+
+            return MessageToDict(response, preserving_proto_field_name=True)
+        except grpc.RpcError as e:
+            logger.error(f"gRPC error listing categories: {e.code()} - {e.details()}")
+            raise
+
+    async def get_category(self, category_slug: str) -> typing.Dict[str, typing.Any]:
+        request = books_pb2.GetCategoryRequest(category_slug=category_slug)
+        try:
+            response = await self.stub.GetCategory(
+                request, timeout=app.config.settings.grpc_timeout
+            )
+            from google.protobuf.json_format import MessageToDict
+
+            return MessageToDict(response, preserving_proto_field_name=True)
+        except grpc.RpcError as e:
+            logger.error(f"gRPC error getting category: {e.code()} - {e.details()}")
+            raise
+
+    async def get_category_books(
+        self,
+        category_slug: str,
+        sub_genre_slug: typing.Optional[str] = None,
+        limit: int = 20,
+        offset: int = 0,
+        sort_by: str = "popularity",
+        order: str = "desc",
+        language: str = "en",
+    ) -> books_pb2.BooksListResponse:
+        request = books_pb2.GetCategoryBooksRequest(
+            category_slug=category_slug,
+            sub_genre_slug=sub_genre_slug or "",
+            limit=limit,
+            offset=offset,
+            sort_by=sort_by,
+            order=order,
+            language=language,
+        )
+
+        try:
+            response = await self.stub.GetCategoryBooks(
+                request, timeout=app.config.settings.grpc_timeout
+            )
+            return response
+        except grpc.RpcError as e:
+            logger.error(
+                f"gRPC error getting category books: {e.code()} - {e.details()}"
+            )
+            raise
+
 
 books_client = BooksClient()

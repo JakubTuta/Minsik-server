@@ -13,6 +13,7 @@ import app.services.search_service
 import app.services.series_service
 import app.services.slots_service
 import grpc
+from app.services.category_service import category_service
 
 logger = logging.getLogger(__name__)
 
@@ -108,6 +109,7 @@ def _build_book_summary_proto(
         title=item["title"],
         slug=item["slug"],
         description=item.get("description", ""),
+        original_publication_year=item.get("original_publication_year", 0),
         primary_cover_url=item.get("primary_cover_url", ""),
         authors=authors,
         rating_count=item["rating_count"],
@@ -849,4 +851,156 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
             logger.error(f"Error in DeleteSeries: {str(e)}")
             await context.abort(
                 grpc.StatusCode.INTERNAL, f"Delete series failed: {str(e)}"
+            )
+
+    async def ListCategories(
+        self,
+        request: app.proto.books_pb2.ListCategoriesRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> app.proto.books_pb2.ListCategoriesResponse:
+        categories = category_service.get_categories()
+
+        category_protos = []
+        for cat in categories:
+            sub_genres = [
+                app.proto.books_pb2.SubGenre(slug=sg["slug"], name=sg["name"])
+                for sg in cat["sub_genres"]
+            ]
+            category_protos.append(
+                app.proto.books_pb2.Category(
+                    slug=cat["slug"],
+                    name=cat["name"],
+                    icon=cat["icon"],
+                    sub_genres=sub_genres,
+                )
+            )
+
+        return app.proto.books_pb2.ListCategoriesResponse(categories=category_protos)
+
+    async def GetCategory(
+        self,
+        request: app.proto.books_pb2.GetCategoryRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> app.proto.books_pb2.CategoryResponse:
+        cat = category_service.get_category(request.category_slug)
+        if not cat:
+            await context.abort(grpc.StatusCode.NOT_FOUND, "Category not found")
+            return
+
+        sub_genres = [
+            app.proto.books_pb2.SubGenre(slug=sg["slug"], name=sg["name"])
+            for sg in cat["sub_genres"]
+        ]
+
+        return app.proto.books_pb2.CategoryResponse(
+            category=app.proto.books_pb2.Category(
+                slug=cat["slug"],
+                name=cat["name"],
+                icon=cat["icon"],
+                sub_genres=sub_genres,
+            )
+        )
+
+    async def GetCategoryBooks(
+        self,
+        request: app.proto.books_pb2.GetCategoryBooksRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> app.proto.books_pb2.BooksListResponse:
+        try:
+            books, total = await category_service.get_category_books(
+                category_slug=request.category_slug,
+                sub_genre_slug=(
+                    request.sub_genre_slug if request.sub_genre_slug else None
+                ),
+                limit=request.limit or 20,
+                offset=request.offset or 0,
+                language=request.language or "en",
+                sort_by=request.sort_by or "popularity",
+                order=request.order or "desc",
+            )
+
+            book_summaries = [_build_book_summary_proto(book) for book in books]
+            return app.proto.books_pb2.BooksListResponse(
+                books=book_summaries, total_count=total
+            )
+        except Exception as e:
+            logger.error(f"Error in GetCategoryBooks: {str(e)}")
+            await context.abort(
+                grpc.StatusCode.INTERNAL, f"Get category books failed: {str(e)}"
+            )
+
+    async def ListCategories(
+        self,
+        request: app.proto.books_pb2.ListCategoriesRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> app.proto.books_pb2.ListCategoriesResponse:
+        categories = category_service.get_categories()
+
+        category_protos = []
+        for cat in categories:
+            sub_genres = [
+                app.proto.books_pb2.SubGenre(slug=sg["slug"], name=sg["name"])
+                for sg in cat["sub_genres"]
+            ]
+            category_protos.append(
+                app.proto.books_pb2.Category(
+                    slug=cat["slug"],
+                    name=cat["name"],
+                    icon=cat["icon"],
+                    sub_genres=sub_genres,
+                )
+            )
+
+        return app.proto.books_pb2.ListCategoriesResponse(categories=category_protos)
+
+    async def GetCategory(
+        self,
+        request: app.proto.books_pb2.GetCategoryRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> app.proto.books_pb2.CategoryResponse:
+        cat = category_service.get_category(request.category_slug)
+        if not cat:
+            await context.abort(grpc.StatusCode.NOT_FOUND, "Category not found")
+            return
+
+        sub_genres = [
+            app.proto.books_pb2.SubGenre(slug=sg["slug"], name=sg["name"])
+            for sg in cat["sub_genres"]
+        ]
+
+        return app.proto.books_pb2.CategoryResponse(
+            category=app.proto.books_pb2.Category(
+                slug=cat["slug"],
+                name=cat["name"],
+                icon=cat["icon"],
+                sub_genres=sub_genres,
+            )
+        )
+
+    async def GetCategoryBooks(
+        self,
+        request: app.proto.books_pb2.GetCategoryBooksRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> app.proto.books_pb2.BooksListResponse:
+        try:
+            books, total = await category_service.get_category_books(
+                category_slug=request.category_slug,
+                sub_genre_slug=(
+                    request.sub_genre_slug if request.sub_genre_slug else None
+                ),
+                limit=request.limit or 20,
+                offset=request.offset or 0,
+                language=request.language or "en",
+                sort_by=request.sort_by or "popularity",
+                order=request.order or "desc",
+            )
+
+            book_summaries = [_build_book_summary_proto(book) for book in books]
+            return app.proto.books_pb2.BooksListResponse(
+                books=book_summaries, total_count=total
+            )
+        except Exception as e:
+            logger.error(f"Error in GetCategoryBooks: {str(e)}")
+            await context.abort(
+                grpc.StatusCode.INTERNAL, f"Get category books failed: {str(e)}"
             )

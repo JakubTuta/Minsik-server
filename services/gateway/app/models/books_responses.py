@@ -149,6 +149,7 @@ class BookSummarySchema(pydantic.BaseModel):
     title: str
     slug: str
     description: typing.Optional[str] = None
+    original_publication_year: typing.Optional[int] = None
     primary_cover_url: typing.Optional[str] = None
     authors: typing.List[AuthorMinimalSchema] = []
     rating_count: int = 0
@@ -176,6 +177,42 @@ class AuthorBooksResponse(pydantic.BaseModel):
     success: bool = True
     data: AuthorBooksData
     error: typing.Optional[app.models.responses.ErrorDetail] = None
+
+
+class SubGenreSchema(pydantic.BaseModel):
+    slug: str
+    name: str
+
+
+class CategorySchema(pydantic.BaseModel):
+    slug: str
+    name: str
+    icon: str
+    sub_genres: typing.List[SubGenreSchema] = []
+
+
+class ListCategoriesData(pydantic.BaseModel):
+    categories: typing.List[CategorySchema]
+
+
+class ListCategoriesResponse(pydantic.BaseModel):
+    success: bool
+    data: ListCategoriesData
+
+
+class CategoryResponse(pydantic.BaseModel):
+    success: bool
+    data: CategorySchema
+
+
+class CategoryBooksData(pydantic.BaseModel):
+    books: typing.List[BookSummarySchema]
+    total_count: int
+
+
+class CategoryBooksResponse(pydantic.BaseModel):
+    success: bool
+    data: CategoryBooksData
 
 
 class SeriesDetailData(pydantic.BaseModel):

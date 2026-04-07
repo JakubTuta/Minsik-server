@@ -17,6 +17,7 @@ import app.services.book_service
 import elasticsearch.helpers
 import grpc
 import sqlalchemy
+from app.services.category_service import category_service
 from grpc_reflection.v1alpha import reflection
 
 logging.basicConfig(
@@ -362,6 +363,9 @@ async def start_server() -> None:
         app.config.settings.es_index_authors,
         app.config.settings.es_index_series,
     )
+
+    logger.info("Initializing Categories")
+    await category_service.setup()
 
     grpc_server = grpc.aio.server()
 

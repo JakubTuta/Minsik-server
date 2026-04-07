@@ -52,21 +52,21 @@ CREATE TABLE books.books (
 
     -- Denormalized statistics
     rating_count INT NOT NULL DEFAULT 0,
-    avg_rating DECIMAL(3,2),                 -- Average overall rating (0.00-5.00)
+    avg_rating DECIMAL(3,2),                 -- Average overall rating (0.5-5.0)
     -- Per-dimension aggregated stats. All 8 keys always present (default avg "0", count 0).
-    -- Each value: {"avg": "3.50", "count": 12}
+    -- Each value: {"avg": "3.5", "count": 12}
     --
-    -- Quality dimensions (1 = poor, 5 = excellent):
-    --   "emotional_impact"    - 1: leaves no impression       5: deeply moving
-    --   "intellectual_depth"  - 1: shallow / surface-level    5: profound / thought-provoking
-    --   "writing_quality"     - 1: poorly written             5: masterfully crafted prose
-    --   "rereadability"       - 1: no desire to revisit       5: would gladly reread
+    -- Quality dimensions (0.5 = poor, 5 = excellent):
+    --   "emotional_impact"    - 0.5: leaves no impression       5: deeply moving
+    --   "intellectual_depth"  - 0.5: shallow / surface-level    5: profound / thought-provoking
+    --   "writing_quality"     - 0.5: poorly written             5: masterfully crafted prose
+    --   "rereadability"       - 0.5: no desire to revisit       5: would gladly reread
     --
-    -- Spectrum dimensions (1 and 5 are opposite ends, neither is inherently better):
-    --   "pacing"              - 1: slow, deliberate           5: fast, action-packed
-    --   "readability"         - 1: dense, challenging         5: light, easy read
-    --   "plot_complexity"     - 1: simple, straightforward    5: complex, multi-layered
-    --   "humor"               - 1: serious, no humor          5: very funny, comedic
+    -- Spectrum dimensions (0.5 and 5 are opposite ends, neither is inherently better):
+    --   "pacing"              - 0.5: slow, deliberate           5: fast, action-packed
+    --   "readability"         - 0.5: dense, challenging         5: light, easy read
+    --   "plot_complexity"     - 0.5: simple, straightforward    5: complex, multi-layered
+    --   "humor"               - 0.5: serious, no humor          5: very funny, comedic
     sub_rating_stats JSONB NOT NULL DEFAULT '{}',
     rating_distribution JSONB NOT NULL DEFAULT '{}', -- Per-half-star rating counts e.g. {"1.0": 5, "4.5": 12}
 
