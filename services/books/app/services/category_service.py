@@ -149,11 +149,25 @@ class CategoryService:
         genre_ids_list = list(genre_ids)
 
         if sort_by == "popularity":
-            sort_col = "b.rating_count + b.ol_rating_count"
+            sort_col = (
+                "COALESCE(b.rating_count, 0)"
+                " + COALESCE(b.ol_rating_count, 0)"
+                " + COALESCE(b.ol_want_to_read_count, 0)"
+                " + COALESCE(b.ol_currently_reading_count, 0)"
+                " + COALESCE(b.ol_already_read_count, 0)"
+            )
         elif sort_by == "rating":
-            sort_col = "b.avg_rating"
+            sort_col = (
+                "CASE"
+                " WHEN COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0) = 0 THEN 0"
+                " ELSE ("
+                "   COALESCE(b.avg_rating, 0) * COALESCE(b.rating_count, 0)"
+                "   + COALESCE(b.ol_avg_rating, 0) * COALESCE(b.ol_rating_count, 0)"
+                " ) / (COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0))"
+                " END"
+            )
         else:
-            sort_col = "b.rating_count"
+            sort_col = "COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0)"
 
         order_dir = "DESC" if order.lower() == "desc" else "ASC"
 
