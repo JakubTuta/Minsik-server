@@ -3,19 +3,11 @@ from typing import List
 from pydantic import BaseModel
 
 
-class SubGenreConfig(BaseModel):
-    slug: str
-    name: str
-    keywords: List[str]
-    exact_slugs: List[str] = []
-
-
 class CategoryConfig(BaseModel):
     slug: str
     name: str
     keywords: List[str]
     exact_slugs: List[str] = []
-    sub_genres: List[SubGenreConfig] = []
 
 
 CATEGORIES = {
@@ -30,25 +22,12 @@ CATEGORIES = {
             "witches",
             "mythology",
             "fairies",
+            "epic fantasy",
+            "high fantasy",
+            "urban fantasy",
+            "sword and sorcery",
         ],
         exact_slugs=["fantasy", "high-fantasy", "urban-fantasy", "epic-fantasy"],
-        sub_genres=[
-            SubGenreConfig(
-                slug="high-fantasy",
-                name="High Fantasy",
-                keywords=["epic fantasy", "high fantasy", "sword and sorcery"],
-            ),
-            SubGenreConfig(
-                slug="urban-fantasy",
-                name="Urban Fantasy",
-                keywords=["urban fantasy", "paranormal", "vampires", "werewolves"],
-            ),
-            SubGenreConfig(
-                slug="magic",
-                name="Magic",
-                keywords=["magic", "witches", "wizards", "sorcery"],
-            ),
-        ],
     ),
     "science-fiction": CategoryConfig(
         slug="science-fiction",
@@ -62,136 +41,176 @@ CATEGORIES = {
             "dystopian",
             "futuristic",
             "time travel",
+            "space opera",
+            "post-apocalyptic",
         ],
         exact_slugs=["science-fiction", "sci-fi"],
-        sub_genres=[
-            SubGenreConfig(
-                slug="space-opera",
-                name="Space Opera",
-                keywords=["space opera", "galactic"],
-            ),
-            SubGenreConfig(
-                slug="cyberpunk",
-                name="Cyberpunk",
-                keywords=["cyberpunk", "hacker", "artificial intelligence"],
-            ),
-            SubGenreConfig(
-                slug="dystopian",
-                name="Dystopian",
-                keywords=["dystopia", "post-apocalyptic"],
-            ),
-        ],
     ),
     "romance": CategoryConfig(
         slug="romance",
         name="Romance",
-        keywords=["romance", "love", "contemporary romance", "historical romance"],
-        exact_slugs=["romance", "love-story"],
-        sub_genres=[
-            SubGenreConfig(
-                slug="contemporary-romance",
-                name="Contemporary",
-                keywords=["contemporary romance", "modern romance"],
-            ),
-            SubGenreConfig(
-                slug="historical-romance",
-                name="Historical Romance",
-                keywords=["historical romance", "regency", "victorian romance"],
-            ),
-            SubGenreConfig(
-                slug="romantasy",
-                name="Romantasy",
-                keywords=["romantic fantasy", "romantasy"],
-            ),
+        keywords=[
+            "romance",
+            "love",
+            "contemporary romance",
+            "historical romance",
+            "romantic fantasy",
+            "romantasy",
         ],
+        exact_slugs=["romance", "love-story"],
     ),
     "mystery-thriller": CategoryConfig(
         slug="mystery-thriller",
         name="Mystery & Thriller",
-        keywords=["mystery", "thriller", "suspense", "crime", "detective", "murder"],
-        exact_slugs=["mystery", "thriller", "crime", "suspense"],
-        sub_genres=[
-            SubGenreConfig(
-                slug="detective",
-                name="Detective",
-                keywords=["detective", "investigation", "police procedural"],
-            ),
-            SubGenreConfig(
-                slug="psychological-thriller",
-                name="Psychological Thriller",
-                keywords=["psychological thriller", "mind-bending"],
-            ),
-            SubGenreConfig(
-                slug="true-crime",
-                name="True Crime",
-                keywords=["true crime", "serial killer"],
-            ),
+        keywords=[
+            "mystery",
+            "thriller",
+            "suspense",
+            "crime",
+            "detective",
+            "murder",
+            "psychological thriller",
+            "true crime",
+            "police procedural",
         ],
+        exact_slugs=["mystery", "thriller", "crime", "suspense"],
     ),
     "horror": CategoryConfig(
         slug="horror",
         name="Horror",
-        keywords=["horror", "scary", "ghosts", "haunted", "macabre", "supernatural"],
-        exact_slugs=["horror", "supernatural-horror"],
-        sub_genres=[
-            SubGenreConfig(
-                slug="paranormal",
-                name="Paranormal",
-                keywords=["paranormal", "ghosts", "haunted"],
-            ),
-            SubGenreConfig(
-                slug="slasher", name="Slasher", keywords=["slasher", "gore", "splatter"]
-            ),
+        keywords=[
+            "horror",
+            "scary",
+            "ghosts",
+            "haunted",
+            "macabre",
+            "supernatural",
+            "paranormal",
+            "gothic",
         ],
+        exact_slugs=["horror", "supernatural-horror"],
     ),
     "historical-fiction": CategoryConfig(
         slug="historical-fiction",
         name="Historical Fiction",
-        keywords=["historical fiction", "history", "world war", "tudor", "ancient"],
-        exact_slugs=["historical-fiction", "history"],
-        sub_genres=[
-            SubGenreConfig(
-                slug="wwii",
-                name="World War II",
-                keywords=["world war ii", "ww2", "holocaust"],
-            ),
-            SubGenreConfig(
-                slug="ancient-history",
-                name="Ancient History",
-                keywords=["ancient rome", "ancient greece", "ancient egypt"],
-            ),
-        ],
-    ),
-    "non-fiction": CategoryConfig(
-        slug="non-fiction",
-        name="Non-Fiction",
         keywords=[
-            "non-fiction",
+            "historical fiction",
+            "history",
+            "world war",
+            "tudor",
+            "ancient",
+            "medieval",
+            "regency",
+            "victorian",
+        ],
+        exact_slugs=["historical-fiction", "history"],
+    ),
+    "young-adult": CategoryConfig(
+        slug="young-adult",
+        name="Young Adult",
+        keywords=[
+            "young adult",
+            "ya fiction",
+            "teen fiction",
+            "coming of age",
+            "high school",
+        ],
+        exact_slugs=["young-adult", "ya", "teen"],
+    ),
+    "classics": CategoryConfig(
+        slug="classics",
+        name="Classics",
+        keywords=[
+            "classic",
+            "literary fiction",
+            "literature",
+            "canonical",
+            "19th century",
+            "20th century literature",
+        ],
+        exact_slugs=["classics", "classic-literature", "literary-fiction"],
+    ),
+    "adventure": CategoryConfig(
+        slug="adventure",
+        name="Adventure",
+        keywords=[
+            "adventure",
+            "action",
+            "quest",
+            "exploration",
+            "survival",
+            "treasure hunt",
+        ],
+        exact_slugs=["adventure", "action-adventure"],
+    ),
+    "biography": CategoryConfig(
+        slug="biography",
+        name="Biography & Memoir",
+        keywords=[
             "biography",
             "memoir",
+            "autobiography",
+            "life story",
+            "true story",
+            "personal narrative",
+        ],
+        exact_slugs=["biography", "memoir", "autobiography", "biography-memoir"],
+    ),
+    "self-help": CategoryConfig(
+        slug="self-help",
+        name="Self-Help",
+        keywords=[
             "self-help",
+            "personal development",
+            "productivity",
+            "motivation",
+            "self-improvement",
+            "mindfulness",
+            "habits",
+        ],
+        exact_slugs=["self-help", "personal-development"],
+    ),
+    "business": CategoryConfig(
+        slug="business",
+        name="Business & Economics",
+        keywords=[
             "business",
+            "economics",
+            "entrepreneurship",
+            "finance",
+            "investing",
+            "management",
+            "leadership",
+            "marketing",
+        ],
+        exact_slugs=["business", "economics", "finance"],
+    ),
+    "science-nature": CategoryConfig(
+        slug="science-nature",
+        name="Science & Nature",
+        keywords=[
             "science",
-            "psychology",
-            "philosophy",
+            "physics",
+            "biology",
+            "chemistry",
+            "astronomy",
+            "nature",
+            "environment",
+            "popular science",
+            "natural history",
         ],
-        exact_slugs=["non-fiction", "biography", "memoir", "self-help"],
-        sub_genres=[
-            SubGenreConfig(
-                slug="biography-memoir",
-                name="Biography & Memoir",
-                keywords=["biography", "memoir", "autobiography"],
-            ),
-            SubGenreConfig(
-                slug="self-help",
-                name="Self-Help",
-                keywords=["self-help", "personal development", "productivity"],
-            ),
-            SubGenreConfig(
-                slug="science",
-                name="Science",
-                keywords=["science", "physics", "biology", "space"],
-            ),
+        exact_slugs=["science", "nature", "popular-science"],
+    ),
+    "graphic-novels": CategoryConfig(
+        slug="graphic-novels",
+        name="Graphic Novels & Comics",
+        keywords=[
+            "graphic novel",
+            "comics",
+            "manga",
+            "illustrated",
+            "sequential art",
         ],
+        exact_slugs=["graphic-novel", "graphic-novels", "comics", "manga"],
     ),
 }

@@ -32,6 +32,7 @@ logger = logging.getLogger(__name__)
 grpc_server: grpc.aio.Server = None
 view_count_flush_task: asyncio.Task = None
 reindex_task: asyncio.Task = None
+category_cache_task: asyncio.Task = None
 shutdown_event = asyncio.Event()
 
 ES_LAST_SYNC_KEY = "es:last_sync_ts"
@@ -345,6 +346,21 @@ async def reindex_periodically() -> None:
         await asyncio.sleep(app.config.settings.es_reindex_interval_hours * 3600)
 
 
+async def populate_category_cache_periodically() -> None:
+    logger.info("Starting category cache background task")
+    while not shutdown_event.is_set():
+        try:
+            await category_service.populate_category_top_books_cache()
+        except asyncio.CancelledError:
+            logger.info("Category cache task cancelled")
+            break
+        except Exception as e:
+            logger.error(f"[Category cache] Error: {str(e)}")
+        await asyncio.sleep(
+            app.config.settings.category_cache_refresh_interval_hours * 3600
+        )
+
+
 async def start_server() -> None:
     global grpc_server, view_count_flush_task, reindex_task
 
@@ -387,13 +403,14 @@ async def start_server() -> None:
 
     view_count_flush_task = asyncio.create_task(flush_view_counts_periodically())
     reindex_task = asyncio.create_task(reindex_periodically())
+    category_cache_task = asyncio.create_task(populate_category_cache_periodically())
     asyncio.create_task(_run_initial_reindex())
 
     logger.info("Books service is running")
 
 
 async def shutdown() -> None:
-    global grpc_server, view_count_flush_task, reindex_task
+    global grpc_server, view_count_flush_task, reindex_task, category_cache_task
 
     logger.info("Shutting down Books service")
 
@@ -415,6 +432,13 @@ async def shutdown() -> None:
         reindex_task.cancel()
         try:
             await reindex_task
+        except asyncio.CancelledError:
+            pass
+
+    if category_cache_task:
+        category_cache_task.cancel()
+        try:
+            await category_cache_task
         except asyncio.CancelledError:
             pass
 

@@ -11,16 +11,6 @@ class ListCategoriesRequest(_message.Message):
     def __init__(self) -> None: ...
 
 class Category(_message.Message):
-    __slots__ = ("slug", "name", "sub_genres")
-    SLUG_FIELD_NUMBER: _ClassVar[int]
-    NAME_FIELD_NUMBER: _ClassVar[int]
-    SUB_GENRES_FIELD_NUMBER: _ClassVar[int]
-    slug: str
-    name: str
-    sub_genres: _containers.RepeatedCompositeFieldContainer[SubGenre]
-    def __init__(self, slug: _Optional[str] = ..., name: _Optional[str] = ..., sub_genres: _Optional[_Iterable[_Union[SubGenre, _Mapping]]] = ...) -> None: ...
-
-class SubGenre(_message.Message):
     __slots__ = ("slug", "name")
     SLUG_FIELD_NUMBER: _ClassVar[int]
     NAME_FIELD_NUMBER: _ClassVar[int]
@@ -47,22 +37,20 @@ class CategoryResponse(_message.Message):
     def __init__(self, category: _Optional[_Union[Category, _Mapping]] = ...) -> None: ...
 
 class GetCategoryBooksRequest(_message.Message):
-    __slots__ = ("category_slug", "sub_genre_slug", "limit", "offset", "sort_by", "order", "language")
+    __slots__ = ("category_slug", "limit", "offset", "sort_by", "order", "language")
     CATEGORY_SLUG_FIELD_NUMBER: _ClassVar[int]
-    SUB_GENRE_SLUG_FIELD_NUMBER: _ClassVar[int]
     LIMIT_FIELD_NUMBER: _ClassVar[int]
     OFFSET_FIELD_NUMBER: _ClassVar[int]
     SORT_BY_FIELD_NUMBER: _ClassVar[int]
     ORDER_FIELD_NUMBER: _ClassVar[int]
     LANGUAGE_FIELD_NUMBER: _ClassVar[int]
     category_slug: str
-    sub_genre_slug: str
     limit: int
     offset: int
     sort_by: str
     order: str
     language: str
-    def __init__(self, category_slug: _Optional[str] = ..., sub_genre_slug: _Optional[str] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., sort_by: _Optional[str] = ..., order: _Optional[str] = ..., language: _Optional[str] = ...) -> None: ...
+    def __init__(self, category_slug: _Optional[str] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., sort_by: _Optional[str] = ..., order: _Optional[str] = ..., language: _Optional[str] = ...) -> None: ...
 
 class SearchRequest(_message.Message):
     __slots__ = ("query", "limit", "offset", "type_filter", "language")

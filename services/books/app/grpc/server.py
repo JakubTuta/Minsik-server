@@ -861,19 +861,10 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
         try:
             categories = category_service.get_categories()
 
-            category_protos = []
-            for cat in categories:
-                sub_genres = [
-                    app.proto.books_pb2.SubGenre(slug=sg["slug"], name=sg["name"])
-                    for sg in cat["sub_genres"]
-                ]
-                category_protos.append(
-                    app.proto.books_pb2.Category(
-                        slug=cat["slug"],
-                        name=cat["name"],
-                        sub_genres=sub_genres,
-                    )
-                )
+            category_protos = [
+                app.proto.books_pb2.Category(slug=cat["slug"], name=cat["name"])
+                for cat in categories
+            ]
 
             return app.proto.books_pb2.ListCategoriesResponse(categories=category_protos)
         except Exception as e:
@@ -893,16 +884,10 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                 await context.abort(grpc.StatusCode.NOT_FOUND, "Category not found")
                 return
 
-            sub_genres = [
-                app.proto.books_pb2.SubGenre(slug=sg["slug"], name=sg["name"])
-                for sg in cat["sub_genres"]
-            ]
-
             return app.proto.books_pb2.CategoryResponse(
                 category=app.proto.books_pb2.Category(
                     slug=cat["slug"],
                     name=cat["name"],
-                    sub_genres=sub_genres,
                 )
             )
         except Exception as e:
@@ -919,9 +904,6 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
         try:
             books, total = await category_service.get_category_books(
                 category_slug=request.category_slug,
-                sub_genre_slug=(
-                    request.sub_genre_slug if request.sub_genre_slug else None
-                ),
                 limit=request.limit or 20,
                 offset=request.offset or 0,
                 language=request.language or "en",

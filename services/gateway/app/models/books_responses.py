@@ -179,15 +179,9 @@ class AuthorBooksResponse(pydantic.BaseModel):
     error: typing.Optional[app.models.responses.ErrorDetail] = None
 
 
-class SubGenreSchema(pydantic.BaseModel):
-    slug: str
-    name: str
-
-
 class CategorySchema(pydantic.BaseModel):
     slug: str
     name: str
-    sub_genres: typing.List[SubGenreSchema] = []
 
 
 class ListCategoriesData(pydantic.BaseModel):

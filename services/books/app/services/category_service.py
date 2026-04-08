@@ -2,18 +2,23 @@ import json
 import logging
 from typing import Dict, List, Optional, Set, Tuple
 
+import app.cache
 import app.categories_config
+import app.config
 import app.db
 import app.models.genre
 import sqlalchemy
 
 logger = logging.getLogger(__name__)
 
+CATEGORY_TOP_BOOKS_CACHE_KEY = "category:top20:{category_slug}:{sort_by}:desc:{language}"
+CATEGORY_TOP_BOOKS_LANGUAGES = ["en"]
+CATEGORY_TOP_BOOKS_SORT_OPTIONS = ["popularity", "rating"]
+
 
 class CategoryService:
     def __init__(self):
         self._category_genre_ids: Dict[str, Set[int]] = {}
-        self._sub_genre_ids: Dict[Tuple[str, str], Set[int]] = {}
         self._is_ready = False
 
     async def setup(self):
@@ -29,7 +34,6 @@ class CategoryService:
             all_genres = result.all()
 
             self._category_genre_ids.clear()
-            self._sub_genre_ids.clear()
 
             for cat_slug, config in app.categories_config.CATEGORIES.items():
                 cat_genre_ids = set()
@@ -43,17 +47,6 @@ class CategoryService:
 
                 self._category_genre_ids[cat_slug] = cat_genre_ids
 
-                for sub_genre in config.sub_genres:
-                    sub_genre_ids = set()
-                    for genre_id, name, slug in all_genres:
-                        name_lower = name.lower()
-                        if slug in sub_genre.exact_slugs or any(
-                            kw in name_lower for kw in sub_genre.keywords
-                        ):
-                            sub_genre_ids.add(genre_id)
-
-                    self._sub_genre_ids[(cat_slug, sub_genre.slug)] = sub_genre_ids
-
             self._is_ready = True
             logger.info(
                 f"CategoryService mappings initialized. Cached {len(self._category_genre_ids)} categories."
@@ -61,13 +54,7 @@ class CategoryService:
 
     def get_categories(self) -> List[dict]:
         return [
-            {
-                "slug": cat.slug,
-                "name": cat.name,
-                "sub_genres": [
-                    {"slug": sg.slug, "name": sg.name} for sg in cat.sub_genres
-                ],
-            }
+            {"slug": cat.slug, "name": cat.name}
             for cat in app.categories_config.CATEGORIES.values()
         ]
 
@@ -76,16 +63,44 @@ class CategoryService:
             return None
 
         cat = app.categories_config.CATEGORIES[slug]
-        return {
-            "slug": cat.slug,
-            "name": cat.name,
-            "sub_genres": [{"slug": sg.slug, "name": sg.name} for sg in cat.sub_genres],
-        }
+        return {"slug": cat.slug, "name": cat.name}
+
+    async def populate_category_top_books_cache(self) -> None:
+        logger.info("Populating category top books cache...")
+
+        for category_slug in app.categories_config.CATEGORIES:
+            for language in CATEGORY_TOP_BOOKS_LANGUAGES:
+                for sort_by in CATEGORY_TOP_BOOKS_SORT_OPTIONS:
+                    try:
+                        books, total_count = await self._fetch_category_books_from_db(
+                            category_slug=category_slug,
+                            limit=20,
+                            offset=0,
+                            language=language,
+                            sort_by=sort_by,
+                            order="desc",
+                        )
+                        cache_key = CATEGORY_TOP_BOOKS_CACHE_KEY.format(
+                            category_slug=category_slug,
+                            sort_by=sort_by,
+                            language=language,
+                        )
+                        await app.cache.set_cached(
+                            cache_key,
+                            {"books": books, "total_count": total_count},
+                            app.config.settings.cache_category_top_books_ttl,
+                        )
+                    except Exception as e:
+                        logger.error(
+                            f"Error caching top books for category {category_slug} "
+                            f"sort={sort_by} lang={language}: {str(e)}"
+                        )
+
+        logger.info("Category top books cache populated.")
 
     async def get_category_books(
         self,
         category_slug: str,
-        sub_genre_slug: Optional[str] = None,
         limit: int = 20,
         offset: int = 0,
         language: str = "en",
@@ -98,10 +113,35 @@ class CategoryService:
         if category_slug not in app.categories_config.CATEGORIES:
             return [], 0
 
-        if sub_genre_slug:
-            genre_ids = self._sub_genre_ids.get((category_slug, sub_genre_slug), set())
-        else:
-            genre_ids = self._category_genre_ids.get(category_slug, set())
+        if offset == 0 and order == "desc":
+            cache_key = CATEGORY_TOP_BOOKS_CACHE_KEY.format(
+                category_slug=category_slug,
+                sort_by=sort_by,
+                language=language,
+            )
+            cached = await app.cache.get_cached(cache_key)
+            if cached is not None:
+                return cached["books"][:limit], cached["total_count"]
+
+        return await self._fetch_category_books_from_db(
+            category_slug=category_slug,
+            limit=limit,
+            offset=offset,
+            language=language,
+            sort_by=sort_by,
+            order=order,
+        )
+
+    async def _fetch_category_books_from_db(
+        self,
+        category_slug: str,
+        limit: int,
+        offset: int,
+        language: str,
+        sort_by: str,
+        order: str,
+    ) -> Tuple[List[dict], int]:
+        genre_ids = self._category_genre_ids.get(category_slug, set())
 
         if not genre_ids:
             return [], 0

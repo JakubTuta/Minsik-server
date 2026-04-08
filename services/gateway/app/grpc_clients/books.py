@@ -351,7 +351,6 @@ class BooksClient:
     async def get_category_books(
         self,
         category_slug: str,
-        sub_genre_slug: typing.Optional[str] = None,
         limit: int = 20,
         offset: int = 0,
         sort_by: str = "popularity",
@@ -360,7 +359,6 @@ class BooksClient:
     ) -> books_pb2.BooksListResponse:
         request = books_pb2.GetCategoryBooksRequest(
             category_slug=category_slug,
-            sub_genre_slug=sub_genre_slug or "",
             limit=limit,
             offset=offset,
             sort_by=sort_by,

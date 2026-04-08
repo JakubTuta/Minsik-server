@@ -30,12 +30,6 @@ message ListCategoriesRequest {
 message Category {
   string slug = 1;
   string name = 2;
-  repeated SubGenre sub_genres = 4;
-}
-
-message SubGenre {
-  string slug = 1;
-  string name = 2;
 }
 
 message ListCategoriesResponse {
@@ -52,7 +46,8 @@ message CategoryResponse {
 
 message GetCategoryBooksRequest {
   string category_slug = 1;
-  string sub_genre_slug = 2;
+  reserved 2;
+  reserved "sub_genre_slug";
   int32 limit = 3;
   int32 offset = 4;
   string sort_by = 5;

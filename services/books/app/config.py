@@ -29,6 +29,8 @@ class Settings(BaseSettings):
     cache_author_books_ttl: int = Field(default=1800)
     cache_search_ttl: int = Field(default=900)
     cache_popular_ttl: int = Field(default=21600)
+    cache_category_top_books_ttl: int = Field(default=93600)
+    category_cache_refresh_interval_hours: int = Field(default=24)
 
     view_count_flush_interval: int = Field(default=300)
     view_count_flush_batch_size: int = Field(default=100)

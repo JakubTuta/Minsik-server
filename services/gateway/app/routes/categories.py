@@ -1,5 +1,4 @@
 import logging
-from typing import Optional
 
 import app.grpc_clients
 import app.models.books_responses
@@ -15,12 +14,12 @@ logger = logging.getLogger(__name__)
     response_model=app.models.books_responses.ListCategoriesResponse,
     summary="List all categories",
     description="""
-    Get all available top-level categories and their sub-genres.
+    Get all available top-level categories.
 
     This endpoint returns the curated taxonomy of books available in the system,
-    which maps messy OpenLibrary tags into clean categories like "Fantasy", "Romance", etc.
+    which maps OpenLibrary genres into clean categories like "Fantasy", "Romance", etc.
 
-    Each category includes its slug, name, and an array of popular sub-genres.
+    Each category includes its slug and name.
     """,
 )
 async def list_categories():
@@ -37,7 +36,7 @@ async def list_categories():
     response_model=app.models.books_responses.CategoryResponse,
     summary="Get category details",
     description="""
-    Get details of a specific category including its sub-genres.
+    Get details of a specific category.
 
     **Examples:**
     - `/api/v1/categories/fantasy`
@@ -62,10 +61,13 @@ async def get_category(
     response_model=app.models.books_responses.CategoryBooksResponse,
     summary="Get category books",
     description="""
-    Get books for a specific category, optionally filtered by sub-genre.
+    Get books for a specific category.
 
     The results are paginated and can be sorted by popularity or rating.
-    By default, it sorts by popularity descending (which combines OpenLibrary and app reader counts).
+    By default, sorts by popularity descending.
+
+    When `offset` is 0, results are served from a pre-populated Redis cache
+    that refreshes every 24 hours, ensuring fast response times for the first page.
 
     **Sort Options (sort_by):**
     - `popularity` - Sorts by total number of readers/ratings (default)
@@ -76,13 +78,11 @@ async def get_category(
 
     **Examples:**
     - `/api/v1/categories/fantasy/books?limit=20`
-    - `/api/v1/categories/fantasy/books?sub_genre=high-fantasy`
     - `/api/v1/categories/romance/books?sort_by=rating&language=pl`
     """,
 )
 async def get_category_books(
     category_slug: str,
-    sub_genre: Optional[str] = Query(None, description="Filter by sub-genre slug"),
     limit: int = Query(20, ge=1, le=50),
     offset: int = Query(0, ge=0),
     sort_by: str = Query("popularity", regex="^(popularity|rating)$"),
@@ -94,7 +94,6 @@ async def get_category_books(
     try:
         response = await app.grpc_clients.books_client.get_category_books(
             category_slug=category_slug,
-            sub_genre_slug=sub_genre,
             limit=limit,
             offset=offset,
             language=language,
