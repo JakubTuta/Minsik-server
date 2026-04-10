@@ -158,8 +158,14 @@ async def _build_similar_by_genre(
                     (SELECT cnt FROM source_count) AS source_cnt
                 FROM books.book_genres bg
                 JOIN source_genres sg ON bg.genre_id = sg.genre_id
+                JOIN books.books bc ON bg.book_id = bc.book_id
                 WHERE bg.book_id != :book_id
+                  AND bc.language = 'en'
+                  AND (COALESCE(bc.rating_count, 0) + COALESCE(bc.ol_rating_count, 0)) >= 50
                 GROUP BY bg.book_id
+                HAVING COUNT(*) >= 2
+                ORDER BY shared DESC
+                LIMIT 500
             ),
             candidate_genre_counts AS (
                 SELECT bg2.book_id, COUNT(*) AS candidate_cnt
@@ -177,7 +183,7 @@ async def _build_similar_by_genre(
             {app.services.list_builder._BOOK_JOINS}
             WHERE {app.services.list_builder._BOOK_BASE_WHERE}
               AND c.shared > 0
-                    GROUP BY b.book_id, c.shared, c.source_cnt, c.book_id, cgc.candidate_cnt
+            GROUP BY b.book_id, c.shared, c.source_cnt, c.book_id, cgc.candidate_cnt
             ORDER BY score DESC NULLS LAST, b.rating_count DESC NULLS LAST
             LIMIT :limit
             """
@@ -211,13 +217,16 @@ async def _build_readers_also_enjoyed(
                 WHERE bs.book_id != :book_id
                   AND bs.status IN ('read', 'reading')
                 GROUP BY bs.book_id
-                HAVING COUNT(DISTINCT bs.user_id) >= 2
+                HAVING COUNT(DISTINCT bs.user_id) >= 3
+                ORDER BY co_count DESC
+                LIMIT 500
             )
             SELECT {app.services.list_builder._BOOK_FIELDS}, cb.co_count AS score
             FROM co_books cb
             JOIN books.books b ON cb.book_id = b.book_id
             {app.services.list_builder._BOOK_JOINS}
             WHERE {app.services.list_builder._BOOK_BASE_WHERE}
+              AND (COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0)) >= 50
             GROUP BY b.book_id, cb.co_count
             ORDER BY cb.co_count DESC, b.avg_rating DESC NULLS LAST
             LIMIT :limit

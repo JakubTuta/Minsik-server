@@ -33,12 +33,12 @@ _BOOK_FIELDS = """
 _BOOK_JOINS = """
     LEFT JOIN books.book_authors ba ON b.book_id = ba.book_id
     LEFT JOIN books.authors a ON ba.author_id = a.author_id
-    LEFT JOIN (
-        SELECT bs_r.book_id, COUNT(*) AS app_readers
+    LEFT JOIN LATERAL (
+        SELECT COUNT(*) AS app_readers
         FROM user_data.bookshelves bs_r
-        WHERE bs_r.status IN ('want_to_read', 'reading', 'read')
-        GROUP BY bs_r.book_id
-    ) bs_agg ON bs_agg.book_id = b.book_id
+        WHERE bs_r.book_id = b.book_id
+          AND bs_r.status IN ('want_to_read', 'reading', 'read')
+    ) bs_agg ON TRUE
 """
 
 _BOOK_BASE_WHERE = "b.primary_cover_url IS NOT NULL AND b.language = 'en'"

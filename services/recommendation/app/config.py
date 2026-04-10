@@ -28,7 +28,7 @@ class Settings(BaseSettings):
 
     list_default_size: int = Field(default=50)
     cache_recommendation_ttl: int = Field(default=86400)
-    cache_contextual_ttl: int = Field(default=3600)
+    cache_contextual_ttl: int = Field(default=21600)
     cache_profile_ttl: int = Field(default=86400)
     cache_personal_ttl: int = Field(default=86400)
     cache_personal_contextual_ttl: int = Field(default=1800)

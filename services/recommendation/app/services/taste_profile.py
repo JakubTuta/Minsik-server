@@ -17,13 +17,8 @@ async def _query_bookshelves(
     result = await session.execute(
         sqlalchemy.text(
             """
-            SELECT
-                bs.book_id,
-                bs.status,
-                bs.is_favorite,
-                ba.author_id
+            SELECT bs.book_id, bs.status, bs.is_favorite
             FROM user_data.bookshelves bs
-            LEFT JOIN books.book_authors ba ON bs.book_id = ba.book_id
             WHERE bs.user_id = :user_id
         """
         ),
@@ -34,7 +29,6 @@ async def _query_bookshelves(
     read_book_ids: typing.Set[int] = set()
     want_to_read_book_ids: typing.Set[int] = set()
     favorite_book_ids: typing.Set[int] = set()
-    author_ids_read: typing.Set[int] = set()
     all_book_ids: typing.Set[int] = set()
 
     for row in rows:
@@ -45,16 +39,32 @@ async def _query_bookshelves(
             want_to_read_book_ids.add(row.book_id)
         if row.is_favorite:
             favorite_book_ids.add(row.book_id)
-        if row.author_id and row.status in ("read", "reading"):
-            author_ids_read.add(row.author_id)
 
     return {
         "read_book_ids": list(read_book_ids),
         "want_to_read_book_ids": list(want_to_read_book_ids),
         "favorite_book_ids": list(favorite_book_ids),
-        "author_ids_read": list(author_ids_read),
         "shelved_book_count": len(all_book_ids),
     }
+
+
+async def _query_author_ids_read(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    user_id: int,
+) -> typing.List[int]:
+    result = await session.execute(
+        sqlalchemy.text(
+            """
+            SELECT DISTINCT ba.author_id
+            FROM user_data.bookshelves bs
+            JOIN books.book_authors ba ON ba.book_id = bs.book_id
+            WHERE bs.user_id = :user_id
+              AND bs.status IN ('read', 'reading')
+        """
+        ),
+        {"user_id": user_id},
+    )
+    return [row.author_id for row in result.fetchall()]
 
 
 async def _query_genre_scores(
@@ -238,6 +248,7 @@ async def build_taste_profile(
         run(_query_genre_scores, user_id),
         run(_query_ratings, user_id),
         run(_query_series_in_progress, user_id),
+        run(_query_author_ids_read, user_id),
         return_exceptions=True,
     )
 
@@ -248,7 +259,6 @@ async def build_taste_profile(
             "read_book_ids": [],
             "want_to_read_book_ids": [],
             "favorite_book_ids": [],
-            "author_ids_read": [],
             "shelved_book_count": 0,
         }
     )
@@ -259,6 +269,7 @@ async def build_taste_profile(
         results[2] if not isinstance(results[2], Exception) else ({}, None)
     )
     series_in_progress = results[3] if not isinstance(results[3], Exception) else []
+    author_ids_read = results[4] if not isinstance(results[4], Exception) else []
 
     shelved_book_count = shelf_data["shelved_book_count"]
     is_cold_start = (
@@ -271,7 +282,7 @@ async def build_taste_profile(
         "shelved_book_count": shelved_book_count,
         "want_to_read_book_ids": shelf_data["want_to_read_book_ids"],
         "favorite_book_ids": shelf_data["favorite_book_ids"],
-        "author_ids_read": shelf_data["author_ids_read"],
+        "author_ids_read": author_ids_read,
         "genre_scores": genre_scores,
         "top_genre_slugs": top_genre_slugs,
         "dimension_preferences": dimension_preferences,

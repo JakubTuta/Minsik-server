@@ -62,8 +62,13 @@ async def _build_similar_authors_by_genre(
                 FROM books.book_authors ba
                 JOIN books.book_genres bg ON ba.book_id = bg.book_id
                 JOIN author_genres ag ON bg.genre_id = ag.genre_id
+                JOIN books.books b_filt ON ba.book_id = b_filt.book_id
                 WHERE ba.author_id != :author_id
+                  AND b_filt.language = 'en'
                 GROUP BY ba.author_id
+                HAVING COUNT(DISTINCT bg.genre_id) >= 2
+                ORDER BY shared DESC
+                LIMIT 500
             ),
             candidate_genre_totals AS (
                 SELECT ba2.author_id, COUNT(DISTINCT bg2.genre_id) AS candidate_cnt
@@ -76,9 +81,8 @@ async def _build_similar_authors_by_genre(
                 SELECT ba_r.author_id, COUNT(*) AS app_readers
                 FROM user_data.bookshelves bs_a
                 JOIN books.book_authors ba_r ON bs_a.book_id = ba_r.book_id
-                JOIN books.books b_r ON ba_r.book_id = b_r.book_id
-                WHERE b_r.language = 'en'
-                  AND bs_a.status IN ('want_to_read', 'reading', 'read')
+                JOIN candidate_authors ca ON ca.author_id = ba_r.author_id
+                WHERE bs_a.status IN ('want_to_read', 'reading', 'read')
                 GROUP BY ba_r.author_id
             )
             SELECT
@@ -111,7 +115,7 @@ async def _build_similar_authors_by_genre(
             LEFT JOIN books.books b ON ba.book_id = b.book_id
             LEFT JOIN author_app_readers aar ON aar.author_id = a.author_id
             WHERE ca.shared > 0
-                    GROUP BY a.author_id, a.name, a.slug, a.photo_url, ca.shared, ca.author_id, cgt.candidate_cnt, aar.app_readers
+            GROUP BY a.author_id, a.name, a.slug, a.photo_url, ca.shared, ca.author_id, cgt.candidate_cnt, aar.app_readers
             ORDER BY score DESC NULLS LAST, book_count DESC
             LIMIT :limit
         """
@@ -146,15 +150,16 @@ async def _build_fans_also_read(
                 WHERE ba.author_id != :author_id
                   AND bs.status IN ('read', 'reading')
                 GROUP BY ba.author_id
-                HAVING COUNT(DISTINCT bs.user_id) >= 2
+                HAVING COUNT(DISTINCT bs.user_id) >= 3
+                ORDER BY co_count DESC
+                LIMIT 500
             ),
             author_app_readers AS (
                 SELECT ba_r.author_id, COUNT(*) AS app_readers
                 FROM user_data.bookshelves bs_a
                 JOIN books.book_authors ba_r ON bs_a.book_id = ba_r.book_id
-                JOIN books.books b_r ON ba_r.book_id = b_r.book_id
-                WHERE b_r.language = 'en'
-                  AND bs_a.status IN ('want_to_read', 'reading', 'read')
+                JOIN co_authors ca ON ca.author_id = ba_r.author_id
+                WHERE bs_a.status IN ('want_to_read', 'reading', 'read')
                 GROUP BY ba_r.author_id
             )
             SELECT
