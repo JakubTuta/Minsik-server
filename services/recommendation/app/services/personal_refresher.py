@@ -1,3 +1,4 @@
+import asyncio
 import logging
 import typing
 
@@ -32,8 +33,7 @@ async def _refresh_user(
     session_maker: typing.Any,
     user_id: int,
 ) -> None:
-    async with session_maker() as session:
-        profile = await app.services.taste_profile.build_taste_profile(session, user_id)
+    profile = await app.services.taste_profile.build_taste_profile(session_maker, user_id)
 
     profile_key = f"rec:profile:{user_id}"
     await app.cache.set_cached(profile_key, profile, app.config.settings.cache_profile_ttl)
@@ -57,15 +57,21 @@ async def refresh_all_personal(session_maker: typing.Any) -> None:
 
     logger.info(f"[rec:personal] Refreshing {len(user_ids)} users")
 
+    semaphore = asyncio.Semaphore(5)
     success_count = 0
     error_count = 0
-    for user_id in user_ids:
-        try:
-            await _refresh_user(session_maker, user_id)
-            success_count += 1
-        except Exception as e:
-            logger.error(f"[rec:personal] Error refreshing user {user_id}: {e}")
-            error_count += 1
+
+    async def refresh_with_limit(uid: int) -> None:
+        nonlocal success_count, error_count
+        async with semaphore:
+            try:
+                await _refresh_user(session_maker, uid)
+                success_count += 1
+            except Exception as e:
+                logger.error(f"[rec:personal] Error refreshing user {uid}: {e}")
+                error_count += 1
+
+    await asyncio.gather(*[refresh_with_limit(uid) for uid in user_ids])
 
     logger.info(
         f"[rec:personal] Refresh complete: {success_count} succeeded, {error_count} failed"

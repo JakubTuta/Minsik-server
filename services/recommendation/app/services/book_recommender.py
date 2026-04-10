@@ -282,11 +282,16 @@ def _make_book_section(
 
 
 async def build_book_recommendations(
-    session: sqlalchemy.ext.asyncio.AsyncSession,
+    session_maker: typing.Any,
     book_id: int,
     limit_per_section: int,
 ) -> typing.Optional[typing.List[typing.Dict[str, typing.Any]]]:
-    metadata = await _get_book_metadata(session, book_id)
+    async def run(fn: typing.Callable, *args: typing.Any) -> typing.Any:
+        async with session_maker() as session:
+            return await fn(session, *args)
+
+    async with session_maker() as session:
+        metadata = await _get_book_metadata(session, book_id)
     if metadata is None:
         return None
 
@@ -300,19 +305,19 @@ async def build_book_recommendations(
     prominent_dimensions = _determine_prominent_dimensions(sub_rating_stats)
 
     always_tasks = [
-        _build_more_by_author(session, book_id, limit_per_section),
-        _build_similar_by_genre(session, book_id, limit_per_section),
-        _build_readers_also_enjoyed(session, book_id, limit_per_section),
+        run(_build_more_by_author, book_id, limit_per_section),
+        run(_build_similar_by_genre, book_id, limit_per_section),
+        run(_build_readers_also_enjoyed, book_id, limit_per_section),
     ]
     dimension_tasks = [
-        _build_similar_by_dimension(session, book_id, dim, avg_val, limit_per_section)
+        run(_build_similar_by_dimension, book_id, dim, avg_val, limit_per_section)
         for dim, _, avg_val in prominent_dimensions
     ]
 
     all_results = await asyncio.gather(
         *always_tasks,
         *(
-            [_build_more_from_series(session, book_id, series_id, limit_per_section)]
+            [run(_build_more_from_series, book_id, series_id, limit_per_section)]
             if series_id is not None
             else []
         ),

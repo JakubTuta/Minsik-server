@@ -26,15 +26,19 @@ _BOOK_FIELDS = """
     COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0) AS rating_count,
     ARRAY_AGG(DISTINCT a.name) FILTER (WHERE a.name IS NOT NULL) AS author_names,
     ARRAY_AGG(DISTINCT a.slug) FILTER (WHERE a.slug IS NOT NULL) AS author_slugs,
-    COALESCE(b.ol_want_to_read_count, 0) + COALESCE(b.ol_currently_reading_count, 0) + COALESCE(b.ol_already_read_count, 0)
-        + COALESCE((SELECT COUNT(*) FROM user_data.bookshelves bs_r
-                     WHERE bs_r.book_id = b.book_id
-                     AND bs_r.status IN ('want_to_read', 'reading', 'read')), 0) AS readers
+    COALESCE(b.ol_want_to_read_count, 0) + COALESCE(b.ol_currently_reading_count, 0)
+        + COALESCE(b.ol_already_read_count, 0) + COALESCE(MAX(bs_agg.app_readers), 0) AS readers
 """
 
 _BOOK_JOINS = """
     LEFT JOIN books.book_authors ba ON b.book_id = ba.book_id
     LEFT JOIN books.authors a ON ba.author_id = a.author_id
+    LEFT JOIN (
+        SELECT bs_r.book_id, COUNT(*) AS app_readers
+        FROM user_data.bookshelves bs_r
+        WHERE bs_r.status IN ('want_to_read', 'reading', 'read')
+        GROUP BY bs_r.book_id
+    ) bs_agg ON bs_agg.book_id = b.book_id
 """
 
 _BOOK_BASE_WHERE = "b.primary_cover_url IS NOT NULL AND b.language = 'en'"
@@ -140,11 +144,19 @@ async def _build_highest_rated(
     result = await session.execute(
         sqlalchemy.text(
             f"""
-        SELECT {_BOOK_FIELDS}, b.avg_rating AS score
+        SELECT {_BOOK_FIELDS},
+               CASE
+                   WHEN (COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0)) = 0 THEN 0
+                   ELSE (
+                       COALESCE(b.avg_rating::numeric, 0) * COALESCE(b.rating_count, 0)
+                       + COALESCE(b.ol_avg_rating::numeric, 0) * COALESCE(b.ol_rating_count, 0)
+                   ) / (COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0))
+               END AS score
         FROM books.books b {_BOOK_JOINS}
-        WHERE {_BOOK_BASE_WHERE} AND b.rating_count >= 3
+        WHERE {_BOOK_BASE_WHERE}
+          AND (COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0)) >= 3
         {_BOOK_GROUP_BY}
-        ORDER BY b.avg_rating DESC NULLS LAST
+        ORDER BY score DESC NULLS LAST
         LIMIT :limit
     """
         ),
@@ -178,11 +190,12 @@ async def _build_most_rated(
     result = await session.execute(
         sqlalchemy.text(
             f"""
-        SELECT {_BOOK_FIELDS}, b.rating_count AS score
+        SELECT {_BOOK_FIELDS},
+               COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0) AS score
         FROM books.books b {_BOOK_JOINS}
         WHERE {_BOOK_BASE_WHERE}
         {_BOOK_GROUP_BY}
-        ORDER BY b.rating_count DESC NULLS LAST
+        ORDER BY score DESC NULLS LAST
         LIMIT :limit
     """
         ),
@@ -258,13 +271,13 @@ async def _build_recently_finished(
     result = await session.execute(
         sqlalchemy.text(
             f"""
-        SELECT DISTINCT ON (b.book_id) {_BOOK_FIELDS}, EXTRACT(EPOCH FROM MAX(bs.updated_at)) AS score
+        SELECT {_BOOK_FIELDS}, EXTRACT(EPOCH FROM MAX(bs.updated_at)) AS score
         FROM user_data.bookshelves bs
         JOIN books.books b ON bs.book_id = b.book_id
         {_BOOK_JOINS}
         WHERE bs.status = 'read' AND {_BOOK_BASE_WHERE}
         {_BOOK_GROUP_BY}
-        ORDER BY b.book_id, MAX(bs.updated_at) DESC
+        ORDER BY MAX(bs.updated_at) DESC
         LIMIT :limit
     """
         ),
@@ -359,6 +372,15 @@ async def _build_top_authors(
     result = await session.execute(
         sqlalchemy.text(
             """
+        WITH author_app_readers AS (
+            SELECT ba_r.author_id, COUNT(*) AS app_readers
+            FROM user_data.bookshelves bs_a
+            JOIN books.book_authors ba_r ON bs_a.book_id = ba_r.book_id
+            JOIN books.books b_r ON ba_r.book_id = b_r.book_id
+            WHERE b_r.language = 'en'
+              AND bs_a.status IN ('want_to_read', 'reading', 'read')
+            GROUP BY ba_r.author_id
+        )
         SELECT
             a.author_id,
             a.name,
@@ -377,21 +399,14 @@ async def _build_top_authors(
                 COALESCE(b.ol_want_to_read_count, 0) +
                 COALESCE(b.ol_currently_reading_count, 0) +
                 COALESCE(b.ol_already_read_count, 0)
-            ) FILTER (WHERE b.language = 'en'), 0) + COALESCE((
-                SELECT COUNT(*)
-                FROM user_data.bookshelves bs_a
-                JOIN books.book_authors ba3 ON bs_a.book_id = ba3.book_id
-                JOIN books.books b3 ON ba3.book_id = b3.book_id
-                WHERE ba3.author_id = a.author_id
-                  AND b3.language = 'en'
-                  AND bs_a.status IN ('want_to_read', 'reading', 'read')
-            ), 0) AS readers,
+            ) FILTER (WHERE b.language = 'en'), 0) + COALESCE(aar.app_readers, 0) AS readers,
             COALESCE(SUM(b.rating_count + b.ol_rating_count) FILTER (WHERE b.language = 'en'), 0) AS rating_count,
             COALESCE(SUM(b.ol_already_read_count) FILTER (WHERE b.language = 'en'), 0) AS score
         FROM books.authors a
         JOIN books.book_authors ba ON a.author_id = ba.author_id
         JOIN books.books b ON ba.book_id = b.book_id
-        GROUP BY a.author_id
+        LEFT JOIN author_app_readers aar ON aar.author_id = a.author_id
+        GROUP BY a.author_id, aar.app_readers
         ORDER BY score DESC
         LIMIT :limit
     """
@@ -420,6 +435,15 @@ async def _build_popular_authors(
     result = await session.execute(
         sqlalchemy.text(
             """
+        WITH author_app_readers AS (
+            SELECT ba_r.author_id, COUNT(*) AS app_readers
+            FROM user_data.bookshelves bs_a
+            JOIN books.book_authors ba_r ON bs_a.book_id = ba_r.book_id
+            JOIN books.books b_r ON ba_r.book_id = b_r.book_id
+            WHERE b_r.language = 'en'
+              AND bs_a.status IN ('want_to_read', 'reading', 'read')
+            GROUP BY ba_r.author_id
+        )
         SELECT
             a.author_id,
             a.name,
@@ -438,21 +462,14 @@ async def _build_popular_authors(
                 COALESCE(b.ol_want_to_read_count, 0) +
                 COALESCE(b.ol_currently_reading_count, 0) +
                 COALESCE(b.ol_already_read_count, 0)
-            ) FILTER (WHERE b.language = 'en'), 0) + COALESCE((
-                SELECT COUNT(*)
-                FROM user_data.bookshelves bs_a
-                JOIN books.book_authors ba3 ON bs_a.book_id = ba3.book_id
-                JOIN books.books b3 ON ba3.book_id = b3.book_id
-                WHERE ba3.author_id = a.author_id
-                  AND b3.language = 'en'
-                  AND bs_a.status IN ('want_to_read', 'reading', 'read')
-            ), 0) AS readers,
+            ) FILTER (WHERE b.language = 'en'), 0) + COALESCE(aar.app_readers, 0) AS readers,
             COALESCE(SUM(b.rating_count + b.ol_rating_count) FILTER (WHERE b.language = 'en'), 0) AS rating_count,
             COALESCE(a.view_count, 0) AS score
         FROM books.authors a
         LEFT JOIN books.book_authors ba ON a.author_id = ba.author_id
         LEFT JOIN books.books b ON ba.book_id = b.book_id
-        GROUP BY a.author_id
+        LEFT JOIN author_app_readers aar ON aar.author_id = a.author_id
+        GROUP BY a.author_id, aar.app_readers
         ORDER BY a.view_count DESC NULLS LAST
         LIMIT :limit
     """

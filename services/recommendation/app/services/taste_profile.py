@@ -226,14 +226,18 @@ async def _query_series_in_progress(
 
 
 async def build_taste_profile(
-    session: sqlalchemy.ext.asyncio.AsyncSession,
+    session_maker: typing.Any,
     user_id: int,
 ) -> typing.Dict[str, typing.Any]:
+    async def run(fn: typing.Callable, *args: typing.Any) -> typing.Any:
+        async with session_maker() as session:
+            return await fn(session, *args)
+
     results = await asyncio.gather(
-        _query_bookshelves(session, user_id),
-        _query_genre_scores(session, user_id),
-        _query_ratings(session, user_id),
-        _query_series_in_progress(session, user_id),
+        run(_query_bookshelves, user_id),
+        run(_query_genre_scores, user_id),
+        run(_query_ratings, user_id),
+        run(_query_series_in_progress, user_id),
         return_exceptions=True,
     )
 
@@ -289,8 +293,7 @@ async def get_taste_profile(
         if cached is not None:
             return cached
 
-    async with app.db.async_session_maker() as session:
-        profile = await build_taste_profile(session, user_id)
+    profile = await build_taste_profile(app.db.async_session_maker, user_id)
 
     await app.cache.set_cached(
         cache_key, profile, app.config.settings.cache_profile_ttl

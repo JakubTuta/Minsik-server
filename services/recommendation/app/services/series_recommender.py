@@ -192,11 +192,16 @@ def _make_book_section(
 
 
 async def build_series_recommendations(
-    session: sqlalchemy.ext.asyncio.AsyncSession,
+    session_maker: typing.Any,
     series_id: int,
     limit_per_section: int,
 ) -> typing.Optional[typing.List[typing.Dict[str, typing.Any]]]:
-    metadata = await _get_series_metadata(session, series_id)
+    async def run(fn: typing.Callable, *args: typing.Any) -> typing.Any:
+        async with session_maker() as session:
+            return await fn(session, *args)
+
+    async with session_maker() as session:
+        metadata = await _get_series_metadata(session, series_id)
     if metadata is None:
         return None
 
@@ -207,9 +212,9 @@ async def build_series_recommendations(
 
     more_by_author_result, similar_genre_result, readers_enjoyed_result = (
         await asyncio.gather(
-            _build_more_by_author(session, series_id, author_ids, limit_per_section),
-            _build_similar_by_genre(session, series_id, limit_per_section),
-            _build_readers_also_enjoyed(session, series_id, limit_per_section),
+            run(_build_more_by_author, series_id, author_ids, limit_per_section),
+            run(_build_similar_by_genre, series_id, limit_per_section),
+            run(_build_readers_also_enjoyed, series_id, limit_per_section),
             return_exceptions=True,
         )
     )

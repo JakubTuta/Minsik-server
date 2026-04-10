@@ -14,6 +14,8 @@ class Settings(BaseSettings):
     db_password: str = Field(default="postgres")
     db_pool_size: int = Field(default=5)
     db_max_overflow: int = Field(default=10)
+    recommendation_db_pool_size: int = Field(default=10)
+    recommendation_db_max_overflow: int = Field(default=20)
 
     redis_host: str = Field(default="localhost")
     redis_port: int = Field(default=6379)

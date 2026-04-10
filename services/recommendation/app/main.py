@@ -64,9 +64,6 @@ async def run_initial_jobs() -> None:
     logger.info("Waiting 15 seconds before running initial scheduled jobs...")
     await asyncio.sleep(15)
 
-    logger.info("[rec] Flushing stale recommendation caches")
-    await app.cache.flush_recommendation_caches()
-
     logger.info("[rec] Running initial recommendation list refresh at startup")
     try:
         await app.services.list_builder.refresh_all(app.db.async_session_maker)

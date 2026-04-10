@@ -24,10 +24,9 @@ async def get_book_recommendations(
     if cached is not None:
         return cached
 
-    async with app.db.async_session_maker() as session:
-        sections = await app.services.book_recommender.build_book_recommendations(
-            session, book_id, limit_per_section
-        )
+    sections = await app.services.book_recommender.build_book_recommendations(
+        app.db.async_session_maker, book_id, limit_per_section
+    )
 
     if sections is None:
         return None
@@ -65,10 +64,9 @@ async def get_author_recommendations(
     if cached is not None:
         return cached
 
-    async with app.db.async_session_maker() as session:
-        sections = await app.services.author_recommender.build_author_recommendations(
-            session, author_id, limit_per_section
-        )
+    sections = await app.services.author_recommender.build_author_recommendations(
+        app.db.async_session_maker, author_id, limit_per_section
+    )
 
     if sections is None:
         return None
@@ -100,10 +98,9 @@ async def get_series_recommendations(
     if cached is not None:
         return cached
 
-    async with app.db.async_session_maker() as session:
-        sections = await app.services.series_recommender.build_series_recommendations(
-            session, series_id, limit_per_section
-        )
+    sections = await app.services.series_recommender.build_series_recommendations(
+        app.db.async_session_maker, series_id, limit_per_section
+    )
 
     if sections is None:
         return None
