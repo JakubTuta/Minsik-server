@@ -33,6 +33,14 @@ async def get_home_page(
     personal_cache_only: bool = False,
     force_personal_refresh: bool = False,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
+    if user_id > 0:
+        return await _get_personal_home_page(
+            user_id,
+            items_per_category,
+            cache_only=personal_cache_only,
+            force_refresh=force_personal_refresh,
+        )
+
     settings = app.config.settings
     book_keys = [
         k.strip() for k in settings.home_book_categories.split(",") if k.strip()
@@ -45,21 +53,7 @@ async def get_home_page(
     results = await asyncio.gather(
         *[get_list(key, items_per_category, 0) for key in all_keys]
     )
-    generic_sections = [r for r in results if r is not None]
-
-    if user_id <= 0:
-        return generic_sections
-
-    personal_sections = await _get_personal_home_page(
-        user_id,
-        items_per_category,
-        cache_only=personal_cache_only,
-        force_refresh=force_personal_refresh,
-    )
-    if not personal_sections:
-        return generic_sections
-
-    return personal_sections + generic_sections
+    return [r for r in results if r is not None]
 
 
 async def _get_personal_home_page(
