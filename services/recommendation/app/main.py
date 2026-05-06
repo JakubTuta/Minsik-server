@@ -10,6 +10,7 @@ import app.grpc.server
 import app.proto.recommendation_pb2
 import app.proto.recommendation_pb2_grpc
 import app.services.case_pool_builder
+import app.services.contextual_precompute
 import app.services.list_builder
 import app.services.personal_refresher
 import grpc
@@ -49,6 +50,17 @@ async def _personal_refresh() -> None:
         logger.error(f"[rec:personal] 1AM personal refresh error: {str(e)}")
 
 
+async def _contextual_precompute_refresh() -> None:
+    logger.info("[rec:precompute] Running 2AM contextual precompute refresh")
+    try:
+        await app.services.contextual_precompute.refresh_contextual_recs(
+            app.db.async_session_maker
+        )
+        logger.info("[rec:precompute] 2AM contextual precompute refresh complete")
+    except Exception as e:
+        logger.error(f"[rec:precompute] 2AM contextual precompute error: {str(e)}")
+
+
 async def _case_pool_refresh() -> None:
     logger.info("[case] Running case pool refresh")
     try:
@@ -79,6 +91,15 @@ async def run_initial_jobs() -> None:
         logger.info("[rec:personal] Initial personal refresh complete")
     except Exception as e:
         logger.error(f"[rec:personal] Initial personal refresh failed: {str(e)}")
+
+    logger.info("[rec:precompute] Running initial contextual precompute at startup")
+    try:
+        await app.services.contextual_precompute.refresh_contextual_recs(
+            app.db.async_session_maker
+        )
+        logger.info("[rec:precompute] Initial contextual precompute complete")
+    except Exception as e:
+        logger.error(f"[rec:precompute] Initial contextual precompute failed: {str(e)}")
 
     logger.info("[case] Running initial case pool refresh at startup")
     try:
@@ -125,10 +146,12 @@ async def start_server() -> None:
     await scheduler.__aenter__()
     await scheduler.add_schedule(_midnight_refresh, CronTrigger(hour=0, minute=0))
     await scheduler.add_schedule(_personal_refresh, CronTrigger(hour=1, minute=0))
+    await scheduler.add_schedule(_contextual_precompute_refresh, CronTrigger(hour=2, minute=0))
     await scheduler.add_schedule(_case_pool_refresh, CronTrigger(minute=0))
     await scheduler.start_in_background()
     logger.info("[rec] Midnight refresh scheduled (cron: '0 0 * * *')")
     logger.info("[rec:personal] Personal refresh scheduled (cron: '0 1 * * *')")
+    logger.info("[rec:precompute] Contextual precompute scheduled (cron: '0 2 * * *')")
     logger.info("[case] Case pool refresh scheduled (cron: every hour)")
 
     logger.info("Recommendation service is running")

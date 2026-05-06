@@ -42,6 +42,9 @@ class Settings(BaseSettings):
     case_pool_refresh_hours: int = Field(default=1)
     cache_case_pool_ttl: int = Field(default=7200)
 
+    contextual_precompute_min_ratings: int = Field(default=50)
+    contextual_cold_ttl: int = Field(default=1800)
+
     class Config:
         env_file = ".env"
         case_sensitive = False

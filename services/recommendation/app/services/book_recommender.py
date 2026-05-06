@@ -8,20 +8,6 @@ import sqlalchemy.ext.asyncio
 
 logger = logging.getLogger(__name__)
 
-_SUB_RATING_DIMENSIONS: typing.Dict[str, str] = {
-    "emotional_impact": "Similarly moving",
-    "intellectual_depth": "Similarly thought-provoking",
-    "writing_quality": "Similarly well-written",
-    "rereadability": "Similarly rereadable",
-    "pacing": "Similarly paced",
-    "readability": "Similarly challenging",
-    "plot_complexity": "Similarly complex",
-    "humor": "Similarly funny",
-}
-
-_DIMENSION_THRESHOLD = 4.0
-_DIMENSION_MIN_COUNT = 3
-
 
 async def _get_book_metadata(
     session: sqlalchemy.ext.asyncio.AsyncSession,
@@ -35,7 +21,6 @@ async def _get_book_metadata(
                 b.title,
                 b.series_id,
                 s.name AS series_name,
-                b.sub_rating_stats,
                 ARRAY_AGG(DISTINCT a.name) FILTER (WHERE a.name IS NOT NULL) AS author_names
             FROM books.books b
             LEFT JOIN books.series s ON b.series_id = s.series_id
@@ -55,31 +40,9 @@ async def _get_book_metadata(
         "title": row.title or "",
         "series_id": row.series_id,
         "series_name": row.series_name or "",
-        "sub_rating_stats": row.sub_rating_stats or {},
         "author_names": list(row.author_names or []),
     }
 
-
-def _determine_prominent_dimensions(
-    sub_rating_stats: typing.Dict[str, typing.Any],
-) -> typing.List[typing.Tuple[str, str, float]]:
-    results = []
-    for dimension, display_name in _SUB_RATING_DIMENSIONS.items():
-        stats = sub_rating_stats.get(dimension)
-        if not stats:
-            continue
-        avg_str = stats.get("avg")
-        count_str = stats.get("count")
-        if not avg_str or not count_str:
-            continue
-        try:
-            avg_val = float(avg_str)
-            count_val = int(count_str)
-        except (ValueError, TypeError):
-            continue
-        if avg_val >= _DIMENSION_THRESHOLD and count_val >= _DIMENSION_MIN_COUNT:
-            results.append((dimension, display_name, avg_val))
-    return results
 
 
 async def _build_more_by_author(
@@ -240,41 +203,6 @@ async def _build_readers_also_enjoyed(
     ]
 
 
-async def _build_similar_by_dimension(
-    session: sqlalchemy.ext.asyncio.AsyncSession,
-    book_id: int,
-    dimension: str,
-    target_value: float,
-    limit: int,
-) -> typing.List[typing.Dict[str, typing.Any]]:
-    result = await session.execute(
-        sqlalchemy.text(
-            f"""
-            SELECT {app.services.list_builder._BOOK_FIELDS},
-                   ABS(CAST(b.sub_rating_stats->'{dimension}'->>'avg' AS FLOAT) - :target_value) AS score
-            FROM books.books b {app.services.list_builder._BOOK_JOINS}
-            WHERE {app.services.list_builder._BOOK_BASE_WHERE}
-              AND b.book_id != :book_id
-              AND b.sub_rating_stats->'{dimension}'->>'count' IS NOT NULL
-              AND CAST(b.sub_rating_stats->'{dimension}'->>'count' AS INTEGER) >= :min_count
-              AND ABS(CAST(b.sub_rating_stats->'{dimension}'->>'avg' AS FLOAT) - :target_value) <= 0.5
-            {app.services.list_builder._BOOK_GROUP_BY}
-            ORDER BY score ASC, b.rating_count DESC NULLS LAST
-            LIMIT :limit
-            """
-        ),
-        {
-            "book_id": book_id,
-            "target_value": target_value,
-            "min_count": _DIMENSION_MIN_COUNT,
-            "limit": limit,
-        },
-    )
-    return [
-        app.services.list_builder._row_to_book_item(row, float(row.score or 0))
-        for row in result
-    ]
-
 
 def _make_book_section(
     section_key: str,
@@ -308,109 +236,48 @@ async def build_book_recommendations(
     series_id = metadata["series_id"]
     series_name = metadata["series_name"]
     author_names = metadata["author_names"]
-    sub_rating_stats = metadata["sub_rating_stats"]
 
     author_label = ", ".join(author_names) if author_names else "this author"
-    prominent_dimensions = _determine_prominent_dimensions(sub_rating_stats)
 
-    always_tasks = [
+    tasks = [
         run(_build_more_by_author, book_id, limit_per_section),
         run(_build_similar_by_genre, book_id, limit_per_section),
         run(_build_readers_also_enjoyed, book_id, limit_per_section),
     ]
-    dimension_tasks = [
-        run(_build_similar_by_dimension, book_id, dim, avg_val, limit_per_section)
-        for dim, _, avg_val in prominent_dimensions
-    ]
+    if series_id is not None:
+        tasks.append(run(_build_more_from_series, book_id, series_id, limit_per_section))
 
-    all_results = await asyncio.gather(
-        *always_tasks,
-        *(
-            [run(_build_more_from_series, book_id, series_id, limit_per_section)]
-            if series_id is not None
-            else []
-        ),
-        *dimension_tasks,
-        return_exceptions=True,
-    )
+    all_results = await asyncio.gather(*tasks, return_exceptions=True)
 
     section_labels = ["more_by_author", "similar_by_genre", "readers_also_enjoyed"]
     for i, result in enumerate(all_results[:3]):
         if isinstance(result, Exception):
             logger.error(f"[rec:book:{book_id}] {section_labels[i]} failed: {result}")
 
-    more_by_author_items, similar_genre_items, readers_enjoyed_items = (
-        all_results[0] if not isinstance(all_results[0], Exception) else [],
-        all_results[1] if not isinstance(all_results[1], Exception) else [],
-        all_results[2] if not isinstance(all_results[2], Exception) else [],
-    )
+    more_by_author_items = all_results[0] if not isinstance(all_results[0], Exception) else []
+    similar_genre_items = all_results[1] if not isinstance(all_results[1], Exception) else []
+    readers_enjoyed_items = all_results[2] if not isinstance(all_results[2], Exception) else []
 
-    idx = 3
     series_items: typing.List[typing.Dict] = []
     if series_id is not None:
-        raw = all_results[idx]
+        raw = all_results[3]
         if isinstance(raw, Exception):
             logger.error(f"[rec:book:{book_id}] more_from_series failed: {raw}")
-            series_items = []
         else:
             series_items = raw
-        idx += 1
-
-    dimension_results = []
-    for i, (dim, display_name, _) in enumerate(prominent_dimensions):
-        raw = all_results[idx + i]
-        if isinstance(raw, Exception):
-            logger.error(f"[rec:book:{book_id}] similar_{dim} failed: {raw}")
-        dimension_results.append(
-            (dim, display_name, raw if not isinstance(raw, Exception) else [])
-        )
 
     sections: typing.List[typing.Dict[str, typing.Any]] = []
 
     if more_by_author_items:
-        sections.append(
-            _make_book_section(
-                "more_by_author",
-                f"More by {author_label}",
-                more_by_author_items,
-            )
-        )
+        sections.append(_make_book_section("more_by_author", f"More by {author_label}", more_by_author_items))
 
     if series_items:
-        sections.append(
-            _make_book_section(
-                "more_from_series",
-                f"More from {series_name}",
-                series_items,
-            )
-        )
+        sections.append(_make_book_section("more_from_series", f"More from {series_name}", series_items))
 
     if similar_genre_items:
-        sections.append(
-            _make_book_section(
-                "similar_by_genre",
-                f"Similar to {title}",
-                similar_genre_items,
-            )
-        )
+        sections.append(_make_book_section("similar_by_genre", f"Similar to {title}", similar_genre_items))
 
     if readers_enjoyed_items:
-        sections.append(
-            _make_book_section(
-                "readers_also_enjoyed",
-                "Readers also enjoyed",
-                readers_enjoyed_items,
-            )
-        )
-
-    for dim, display_name, items in dimension_results:
-        if items:
-            sections.append(
-                _make_book_section(
-                    f"similar_{dim}",
-                    display_name,
-                    items,
-                )
-            )
+        sections.append(_make_book_section("readers_also_enjoyed", "Readers also enjoyed", readers_enjoyed_items))
 
     return sections
