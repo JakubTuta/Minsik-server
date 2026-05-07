@@ -11,8 +11,9 @@ import sqlalchemy.orm
 
 logger = logging.getLogger(__name__)
 
-_SEMAPHORE_SIZE = 5
+_SEMAPHORE_SIZE = 2
 _BATCH_SIZE = 500
+_PER_ENTITY_TIMEOUT = 10.0
 
 
 async def _fetch_popular_book_ids(
@@ -133,9 +134,17 @@ async def _precompute_entities(
     async def _one(eid: int) -> typing.List[typing.Dict[str, typing.Any]]:
         async with sem:
             try:
-                sections = await builder_fn(session_maker, eid, limit)
+                sections = await asyncio.wait_for(
+                    builder_fn(session_maker, eid, limit),
+                    timeout=_PER_ENTITY_TIMEOUT,
+                )
                 if sections:
                     return _extract_section_rows(entity_type, eid, sections)
+            except asyncio.TimeoutError:
+                logger.warning(
+                    f"[rec:precompute] {entity_type} {eid} timed out after "
+                    f"{_PER_ENTITY_TIMEOUT}s, skipping"
+                )
             except Exception as e:
                 logger.error(f"[rec:precompute] {entity_type} {eid} failed: {e}")
             return []

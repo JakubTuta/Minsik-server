@@ -92,15 +92,6 @@ async def run_initial_jobs() -> None:
     except Exception as e:
         logger.error(f"[rec:personal] Initial personal refresh failed: {str(e)}")
 
-    logger.info("[rec:precompute] Running initial contextual precompute at startup")
-    try:
-        await app.services.contextual_precompute.refresh_contextual_recs(
-            app.db.async_session_maker
-        )
-        logger.info("[rec:precompute] Initial contextual precompute complete")
-    except Exception as e:
-        logger.error(f"[rec:precompute] Initial contextual precompute failed: {str(e)}")
-
     logger.info("[case] Running initial case pool refresh at startup")
     try:
         await app.services.case_pool_builder.refresh_case_pools(

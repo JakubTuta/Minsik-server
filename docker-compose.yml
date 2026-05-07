@@ -175,6 +175,7 @@ services:
       context: .
       dockerfile: services/ingestion/Dockerfile
     container_name: minsik-ingestion-service-dev
+    stop_grace_period: 30s
     command: sh -c "sh /app/scripts/dev-compile-protos.sh ingestion && exec watchfiles 'python -m app.main' /app/app"
     environment:
       ENV: development
@@ -204,12 +205,6 @@ services:
       CLEANUP_BATCH_SIZE: ${CLEANUP_BATCH_SIZE}
       CLEANUP_BOOK_MIN_QUALITY_SCORE: ${CLEANUP_BOOK_MIN_QUALITY_SCORE}
       CLEANUP_AUTHOR_MIN_BOOKS: ${CLEANUP_AUTHOR_MIN_BOOKS}
-      DUMP_COMMIT_INTERVAL: ${DUMP_COMMIT_INTERVAL}
-      DUMP_EDITION_BATCH_SIZE: ${DUMP_EDITION_BATCH_SIZE}
-      DUMP_EDITIONS_ENABLED: ${DUMP_EDITIONS_ENABLED}
-      DUMP_RATINGS_ENABLED: ${DUMP_RATINGS_ENABLED}
-      DUMP_READING_LOG_ENABLED: ${DUMP_READING_LOG_ENABLED}
-      DUMP_WIKIDATA_ENABLED: ${DUMP_WIKIDATA_ENABLED}
     ports:
       # EXPOSED for local access (gRPC debugging)
       - "${INGESTION_GRPC_PORT}:50054"
