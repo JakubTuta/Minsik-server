@@ -9,7 +9,7 @@ _ledger: typing.Optional[LedgerClient] = None
 _client_interceptor: typing.Optional["TracingClientInterceptor"] = None
 
 
-class _MutableClientCallDetails(grpc.aio.ClientCallDetails):
+class _MutableClientCallDetails:
     def __init__(self, details: grpc.aio.ClientCallDetails, metadata: list) -> None:
         self.method = details.method
         self.timeout = details.timeout
@@ -30,9 +30,9 @@ class TracingClientInterceptor(grpc.aio.UnaryUnaryClientInterceptor):
             method = method.decode()
 
         tracer = get_tracer()
-        with tracer.start_as_current_span(f"grpc.client{method}"):
+        with tracer.start_as_current_span(f"grpc.client{method}") as span:
             carrier: dict[str, str] = {}
-            propagation.inject(carrier)
+            propagation.inject(carrier, span)
 
             metadata = list(client_call_details.metadata or [])
             for k, v in carrier.items():

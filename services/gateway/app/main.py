@@ -35,6 +35,7 @@ recommendations_router = app.routes.recommendations.router
 recommendations_admin_router = app.routes.recommendations.admin_router
 user_recommendations_router = app.routes.user_recommendations.router
 grpc_clients_module = app.grpc_clients
+tracing_module = app.tracing
 limiter = rate_limit_middleware.limiter
 
 logging.basicConfig(
@@ -65,7 +66,7 @@ async def lifespan(app: fastapi.FastAPI):
     await grpc_clients_module.books_client.close()
     await grpc_clients_module.ingestion_client.close()
 
-    await app.tracing.shutdown()
+    await tracing_module.shutdown()
 
     logger.info("Gateway service shut down successfully")
 
@@ -113,7 +114,7 @@ app = fastapi.FastAPI(
     lifespan=lifespan,
 )
 
-ledger = app.tracing.init_ledger()
+ledger = tracing_module.init_ledger()
 
 if ledger:
     app.add_middleware(LedgerMiddleware, ledger_client=ledger)
