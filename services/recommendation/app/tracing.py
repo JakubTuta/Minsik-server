@@ -14,6 +14,10 @@ class TracingServerInterceptor(grpc.aio.ServerInterceptor):
         continuation: typing.Callable,
         handler_call_details: grpc.HandlerCallDetails,
     ) -> grpc.RpcMethodHandler:
+        tracer = get_tracer()
+        if tracer is None:
+            return await continuation(handler_call_details)
+
         metadata_dict = dict(handler_call_details.invocation_metadata)
         ctx = propagation.extract(metadata_dict)
         method = handler_call_details.method
@@ -21,8 +25,6 @@ class TracingServerInterceptor(grpc.aio.ServerInterceptor):
         handler = await continuation(handler_call_details)
         if handler is None:
             return None
-
-        tracer = get_tracer()
 
         if handler.unary_unary is not None:
             original = handler.unary_unary
@@ -41,7 +43,11 @@ class TracingServerInterceptor(grpc.aio.ServerInterceptor):
 def init_ledger() -> typing.Optional[LedgerClient]:
     global _ledger
     if app.config.settings.env == "production" and app.config.settings.ledger_api_key:
-        _ledger = LedgerClient(api_key=app.config.settings.ledger_api_key)
+        _ledger = LedgerClient(
+            api_key=app.config.settings.ledger_api_key,
+            base_url="https://ledger-server.jtuta.cloud",
+            service_name="recommendation",
+        )
     return _ledger
 
 

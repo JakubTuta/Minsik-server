@@ -25,11 +25,14 @@ class TracingClientInterceptor(grpc.aio.UnaryUnaryClientInterceptor):
         client_call_details: grpc.aio.ClientCallDetails,
         request: typing.Any,
     ) -> typing.Any:
+        tracer = get_tracer()
+        if tracer is None:
+            return await continuation(client_call_details, request)
+
         method = client_call_details.method
         if isinstance(method, bytes):
             method = method.decode()
 
-        tracer = get_tracer()
         with tracer.start_as_current_span(f"grpc.client{method}") as span:
             carrier: dict[str, str] = {}
             propagation.inject(carrier, span)
@@ -45,7 +48,11 @@ class TracingClientInterceptor(grpc.aio.UnaryUnaryClientInterceptor):
 def init_ledger() -> typing.Optional[LedgerClient]:
     global _ledger, _client_interceptor
     if app.config.settings.env == "production" and app.config.settings.ledger_api_key:
-        _ledger = LedgerClient(api_key=app.config.settings.ledger_api_key)
+        _ledger = LedgerClient(
+            api_key=app.config.settings.ledger_api_key,
+            base_url="https://ledger-server.jtuta.cloud",
+            service_name="gateway",
+        )
         _client_interceptor = TracingClientInterceptor()
     return _ledger
 
