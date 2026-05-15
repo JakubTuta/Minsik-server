@@ -66,6 +66,8 @@ class Settings(BaseSettings):
     cleanup_book_min_quality_score: int = Field(default=4)
     cleanup_author_min_books: int = Field(default=2)
 
+    ledger_api_key: str = Field(default="")
+
     class Config:
         env_file = ".env"
         case_sensitive = False

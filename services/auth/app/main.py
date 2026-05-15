@@ -9,6 +9,7 @@ import app.database
 import app.grpc.server
 import app.proto.auth_pb2
 import app.proto.auth_pb2_grpc
+import app.tracing
 
 logging.basicConfig(
     level=getattr(logging, app.config.settings.log_level.upper()),
@@ -28,7 +29,8 @@ async def start_server() -> None:
     logger.info("Initializing database connection")
     await app.database.init_db()
 
-    grpc_server = grpc.aio.server()
+    app.tracing.init_ledger()
+    grpc_server = grpc.aio.server(interceptors=app.tracing.get_server_interceptors())
 
     app.proto.auth_pb2_grpc.add_AuthServiceServicer_to_server(
         app.grpc.server.AuthServicer(),
@@ -62,6 +64,8 @@ async def shutdown() -> None:
 
     logger.info("Closing database connection")
     await app.database.close_db()
+
+    await app.tracing.shutdown()
 
     logger.info("Auth service stopped")
 

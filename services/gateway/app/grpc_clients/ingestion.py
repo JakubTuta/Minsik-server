@@ -4,6 +4,7 @@ import typing
 import app.config
 import app.proto.ingestion_pb2 as ingestion_pb2
 import app.proto.ingestion_pb2_grpc as ingestion_pb2_grpc
+import app.tracing
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,8 @@ class IngestionClient:
                 ("grpc.keepalive_timeout_ms", app.config.settings.grpc_keepalive_timeout_ms),
                 ("grpc.keepalive_permit_without_calls", 0),
                 ("grpc.http2.max_pings_without_data", 0),
-            ]
+            ],
+            interceptors=app.tracing.get_client_interceptors(),
         )
         self.stub = ingestion_pb2_grpc.IngestionServiceStub(self.channel)
         logger.info(f"Connected to ingestion service at {app.config.settings.ingestion_service_url}")

@@ -47,6 +47,8 @@ class Settings(BaseSettings):
     es_reindex_interval_hours: int = Field(default=6)
     es_reindex_batch_size: int = Field(default=1000)
 
+    ledger_api_key: str = Field(default="")
+
     class Config:
         env_file = ".env"
         case_sensitive = False

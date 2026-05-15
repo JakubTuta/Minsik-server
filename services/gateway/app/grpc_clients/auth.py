@@ -4,6 +4,7 @@ import typing
 import app.config
 import app.proto.auth_pb2 as auth_pb2
 import app.proto.auth_pb2_grpc as auth_pb2_grpc
+import app.tracing
 
 logger = logging.getLogger(__name__)
 
@@ -28,7 +29,8 @@ class AuthClient:
                 ("grpc.keepalive_timeout_ms", app.config.settings.grpc_keepalive_timeout_ms),
                 ("grpc.keepalive_permit_without_calls", 0),
                 ("grpc.http2.max_pings_without_data", 0),
-            ]
+            ],
+            interceptors=app.tracing.get_client_interceptors(),
         )
         self.stub = auth_pb2_grpc.AuthServiceStub(self.channel)
         logger.info(f"Connected to auth service at {app.config.settings.auth_service_url}")

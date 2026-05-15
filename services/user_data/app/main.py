@@ -10,6 +10,7 @@ import app.cache
 import app.grpc.server
 import app.proto.user_data_pb2
 import app.proto.user_data_pb2_grpc
+import app.tracing
 
 logging.basicConfig(
     level=getattr(logging, app.config.settings.log_level.upper()),
@@ -32,7 +33,8 @@ async def start_server() -> None:
     logger.info("Initializing Redis connection")
     await app.cache.init_redis()
 
-    grpc_server = grpc.aio.server()
+    app.tracing.init_ledger()
+    grpc_server = grpc.aio.server(interceptors=app.tracing.get_server_interceptors())
 
     app.proto.user_data_pb2_grpc.add_UserDataServiceServicer_to_server(
         app.grpc.server.UserDataServicer(),
@@ -69,6 +71,8 @@ async def shutdown() -> None:
 
     logger.info("Closing database connection")
     await app.database.close_db()
+
+    await app.tracing.shutdown()
 
     logger.info("User data service stopped")
 

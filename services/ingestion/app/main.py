@@ -6,6 +6,7 @@ import sys
 import app.config
 import app.grpc
 import app.models
+import app.tracing
 import app.workers.continuous_fetcher
 import app.workers.data_cleaner
 import app.workers.description_enricher
@@ -66,6 +67,7 @@ async def shutdown(signal_received=None):
         except BaseException:
             pass
     await app.models.engine.dispose()
+    await app.tracing.shutdown()
 
 
 async def run_initial_jobs() -> None:
@@ -172,6 +174,7 @@ async def main():
         else:
             asyncio.create_task(run_initial_jobs())
 
+        app.tracing.init_ledger()
         await app.grpc.serve()
 
     except KeyboardInterrupt:

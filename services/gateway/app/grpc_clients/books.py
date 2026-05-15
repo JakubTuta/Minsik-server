@@ -4,6 +4,7 @@ import typing
 import app.config
 import app.proto.books_pb2 as books_pb2
 import app.proto.books_pb2_grpc as books_pb2_grpc
+import app.tracing
 import grpc
 from google.protobuf.json_format import MessageToDict
 
@@ -34,6 +35,7 @@ class BooksClient:
                 ("grpc.keepalive_permit_without_calls", 0),
                 ("grpc.http2.max_pings_without_data", 0),
             ],
+            interceptors=app.tracing.get_client_interceptors(),
         )
         self.stub = books_pb2_grpc.BooksServiceStub(self.channel)
         logger.info(

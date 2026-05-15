@@ -32,6 +32,8 @@ class Settings(BaseSettings):
     google_token_url: str = Field(default="https://oauth2.googleapis.com/token")
     google_userinfo_url: str = Field(default="https://www.googleapis.com/oauth2/v3/userinfo")
 
+    ledger_api_key: str = Field(default="")
+
     class Config:
         env_file = ".env"
         case_sensitive = False

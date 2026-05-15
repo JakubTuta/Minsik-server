@@ -4,6 +4,7 @@ import typing
 import app.config
 import app.proto.recommendation_pb2 as recommendation_pb2
 import app.proto.recommendation_pb2_grpc as recommendation_pb2_grpc
+import app.tracing
 import grpc
 
 logger = logging.getLogger(__name__)
@@ -28,6 +29,7 @@ class RecommendationClient:
                 ("grpc.keepalive_permit_without_calls", 0),
                 ("grpc.http2.max_pings_without_data", 0),
             ],
+            interceptors=app.tracing.get_client_interceptors(),
         )
         self.stub = recommendation_pb2_grpc.RecommendationServiceStub(self.channel)
         logger.info(

@@ -14,6 +14,7 @@ import app.proto.books_pb2
 import app.proto.books_pb2_grpc
 import app.services.author_service
 import app.services.book_service
+import app.tracing
 import elasticsearch.helpers
 import grpc
 import sqlalchemy
@@ -383,7 +384,8 @@ async def start_server() -> None:
     logger.info("Initializing Categories")
     await category_service.setup()
 
-    grpc_server = grpc.aio.server()
+    app.tracing.init_ledger()
+    grpc_server = grpc.aio.server(interceptors=app.tracing.get_server_interceptors())
 
     app.proto.books_pb2_grpc.add_BooksServiceServicer_to_server(
         app.grpc.server.BooksServicer(), grpc_server
@@ -454,6 +456,8 @@ async def shutdown() -> None:
 
     logger.info("Closing database connection")
     await app.db.close_db()
+
+    await app.tracing.shutdown()
 
     logger.info("Books service stopped")
 

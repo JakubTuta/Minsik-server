@@ -11,6 +11,7 @@ import app.models
 import app.proto.ingestion_pb2 as ingestion_pb2
 import app.proto.ingestion_pb2_grpc as ingestion_pb2_grpc
 import app.services.book_service
+import app.tracing
 import app.workers.dump
 import app.workers.ingestion_worker
 import grpc
@@ -311,7 +312,10 @@ async def _fetch_ol_english_total() -> int:
 
 
 async def serve():
-    server = grpc.aio.server(concurrent.futures.ThreadPoolExecutor(max_workers=10))
+    server = grpc.aio.server(
+        concurrent.futures.ThreadPoolExecutor(max_workers=10),
+        interceptors=app.tracing.get_server_interceptors(),
+    )
     ingestion_pb2_grpc.add_IngestionServiceServicer_to_server(
         IngestionService(), server
     )

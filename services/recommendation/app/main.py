@@ -13,6 +13,7 @@ import app.services.case_pool_builder
 import app.services.contextual_precompute
 import app.services.list_builder
 import app.services.personal_refresher
+import app.tracing
 import grpc
 from apscheduler import AsyncScheduler
 from apscheduler.triggers.cron import CronTrigger
@@ -111,7 +112,8 @@ async def start_server() -> None:
     logger.info("Initializing Redis connection")
     await app.cache.init_redis()
 
-    grpc_server = grpc.aio.server()
+    app.tracing.init_ledger()
+    grpc_server = grpc.aio.server(interceptors=app.tracing.get_server_interceptors())
 
     app.proto.recommendation_pb2_grpc.add_RecommendationServiceServicer_to_server(
         app.grpc.server.RecommendationServicer(), grpc_server
@@ -173,6 +175,8 @@ async def shutdown() -> None:
 
     logger.info("Closing database connection")
     await app.db.close_db()
+
+    await app.tracing.shutdown()
 
     logger.info("Recommendation service stopped")
 

@@ -4,6 +4,7 @@ import typing
 import app.config
 import app.proto.user_data_pb2 as user_data_pb2
 import app.proto.user_data_pb2_grpc as user_data_pb2_grpc
+import app.tracing
 import grpc
 
 logger = logging.getLogger(__name__)
@@ -26,6 +27,7 @@ class UserDataClient:
                 ("grpc.keepalive_permit_without_calls", 0),
                 ("grpc.http2.max_pings_without_data", 0),
             ],
+            interceptors=app.tracing.get_client_interceptors(),
         )
         self.stub = user_data_pb2_grpc.UserDataServiceStub(self.channel)
         logger.info(

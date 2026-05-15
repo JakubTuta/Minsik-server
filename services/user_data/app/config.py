@@ -24,6 +24,8 @@ class Settings(BaseSettings):
     user_data_service_host: str = Field(default="0.0.0.0")
     user_data_grpc_port: int = Field(default=50053)
 
+    ledger_api_key: str = Field(default="")
+
     class Config:
         env_file = ".env"
         case_sensitive = False
