@@ -325,18 +325,12 @@ async def _bulk_index(es: object, docs: list) -> None:
         raise
 
 
-async def _run_initial_reindex() -> None:
-    try:
-        await reindex_all_to_es(full=True)
-    except Exception as e:
-        logger.error(
-            f"[ES] Initial full reindex failed, service will continue without fresh index: {str(e)}"
-        )
-
-
 async def reindex_periodically() -> None:
     logger.info("Starting ES reindex background task")
     while not shutdown_event.is_set():
+        await asyncio.sleep(app.config.settings.es_reindex_interval_hours * 3600)
+        if shutdown_event.is_set():
+            break
         try:
             await reindex_all_to_es(full=False)
         except asyncio.CancelledError:
@@ -344,12 +338,16 @@ async def reindex_periodically() -> None:
             break
         except Exception as e:
             logger.error(f"[ES] Reindex error: {str(e)}")
-        await asyncio.sleep(app.config.settings.es_reindex_interval_hours * 3600)
 
 
 async def populate_category_cache_periodically() -> None:
     logger.info("Starting category cache background task")
     while not shutdown_event.is_set():
+        await asyncio.sleep(
+            app.config.settings.category_cache_refresh_interval_hours * 3600
+        )
+        if shutdown_event.is_set():
+            break
         try:
             await category_service.populate_category_top_books_cache()
         except asyncio.CancelledError:
@@ -357,9 +355,6 @@ async def populate_category_cache_periodically() -> None:
             break
         except Exception as e:
             logger.error(f"[Category cache] Error: {str(e)}")
-        await asyncio.sleep(
-            app.config.settings.category_cache_refresh_interval_hours * 3600
-        )
 
 
 async def start_server() -> None:
@@ -406,7 +401,6 @@ async def start_server() -> None:
     view_count_flush_task = asyncio.create_task(flush_view_counts_periodically())
     reindex_task = asyncio.create_task(reindex_periodically())
     category_cache_task = asyncio.create_task(populate_category_cache_periodically())
-    asyncio.create_task(_run_initial_reindex())
 
     logger.info("Books service is running")
 
