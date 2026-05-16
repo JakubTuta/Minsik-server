@@ -405,4 +405,3 @@ class UserDataClient:
 
 
 user_data_client = UserDataClient()
-user_data_client = UserDataClient()
