@@ -1011,7 +1011,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
             sort_by = request.sort_by or "created_at"
             order_dir = "ASC" if (request.order or "desc") == "asc" else "DESC"
             include_spoilers = request.include_spoilers
-            rating_filter = request.rating_filter
+            rating_filters = list(request.rating_filters)
             sort_col = _VALID_SORT_COLS.get(sort_by, "c.created_at")
 
             async with app.database.async_session_maker() as session:
@@ -1030,7 +1030,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                     return
                 book_id = book_row.book_id
 
-                cache_key = f"{book_id}:{sort_by}:{order_dir}:{include_spoilers}:{rating_filter}:{limit}:{offset}"
+                cache_key = f"{book_id}:{sort_by}:{order_dir}:{include_spoilers}:{sorted(rating_filters)}:{limit}:{offset}"
                 cached = await _book_comments_cache.get(cache_key)
 
                 if cached is None:
@@ -1043,10 +1043,12 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                     }
                     if not include_spoilers:
                         where += " AND c.is_spoiler = FALSE"
-                    if rating_filter > 0.0:
+                    if rating_filters:
                         rating_join = "INNER JOIN"
-                        where += " AND r.overall_rating = :rating_filter"
-                        params["rating_filter"] = rating_filter
+                        placeholders = ", ".join(f":rf_{i}" for i in range(len(rating_filters)))
+                        where += f" AND r.overall_rating IN ({placeholders})"
+                        for i, v in enumerate(rating_filters):
+                            params[f"rf_{i}"] = v
 
                     count_result = await session.execute(
                         sqlalchemy.text(

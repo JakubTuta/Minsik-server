@@ -115,6 +115,11 @@ async def reindex_all_to_es(full: bool = False) -> None:
                 b.primary_cover_url,
                 b.rating_count AS app_rating_count, b.avg_rating AS app_avg_rating,
                 b.ol_rating_count, b.ol_avg_rating,
+                b.ol_want_to_read_count + b.ol_currently_reading_count
+                    + b.ol_already_read_count
+                    + (SELECT COUNT(*) FROM user_data.bookshelves bs
+                       WHERE bs.book_id = b.book_id
+                         AND bs.status != 'abandoned') AS readers,
                 ARRAY_AGG(DISTINCT a.name) FILTER (WHERE a.name IS NOT NULL) as authors_names,
                 ARRAY_AGG(DISTINCT a.slug) FILTER (WHERE a.slug IS NOT NULL) as author_slugs,
                 s.name as series_name, s.slug as series_slug
@@ -159,6 +164,7 @@ async def reindex_all_to_es(full: bool = False) -> None:
                     "app_rating_count": app_rating_count,
                     "ol_avg_rating": ol_avg if ol_rating_count > 0 else None,
                     "ol_rating_count": ol_rating_count,
+                    "readers": row.readers or 0,
                     "bayesian_score": _compute_bayesian_score(
                         total_ratings, combined_avg
                     ),
@@ -188,10 +194,20 @@ async def reindex_all_to_es(full: bool = False) -> None:
                 COALESCE(SUM(b.ol_rating_count), 0) as ol_rating_count,
                 CASE WHEN SUM(b.ol_rating_count) > 0
                      THEN SUM(b.ol_avg_rating * b.ol_rating_count) / SUM(b.ol_rating_count)
-                     ELSE NULL END as ol_avg_rating
+                     ELSE NULL END as ol_avg_rating,
+                COALESCE(SUM(
+                    b.ol_want_to_read_count + b.ol_currently_reading_count
+                    + b.ol_already_read_count + COALESCE(bs.bookshelf_count, 0)
+                ), 0) as readers
             FROM books.authors a
             JOIN books.book_authors ba ON a.author_id = ba.author_id
             JOIN books.books b ON ba.book_id = b.book_id
+            LEFT JOIN (
+                SELECT book_id, COUNT(*) AS bookshelf_count
+                FROM user_data.bookshelves
+                WHERE status != 'abandoned'
+                GROUP BY book_id
+            ) bs ON b.book_id = bs.book_id
             WHERE a.updated_at > :last_sync AND b.language IS NOT NULL
             GROUP BY a.author_id, a.name, a.slug, a.photo_url, b.language
             ORDER BY a.author_id, b.language
@@ -226,6 +242,7 @@ async def reindex_all_to_es(full: bool = False) -> None:
                     "app_rating_count": app_rating_count,
                     "ol_avg_rating": ol_avg if ol_rating_count > 0 else None,
                     "ol_rating_count": ol_rating_count,
+                    "readers": row.readers or 0,
                     "bayesian_score": _compute_bayesian_score(
                         total_ratings, combined_avg
                     ),
@@ -255,9 +272,19 @@ async def reindex_all_to_es(full: bool = False) -> None:
                 COALESCE(SUM(b.ol_rating_count), 0) as ol_rating_count,
                 CASE WHEN SUM(b.ol_rating_count) > 0
                      THEN SUM(b.ol_avg_rating * b.ol_rating_count) / SUM(b.ol_rating_count)
-                     ELSE NULL END as ol_avg_rating
+                     ELSE NULL END as ol_avg_rating,
+                COALESCE(SUM(
+                    b.ol_want_to_read_count + b.ol_currently_reading_count
+                    + b.ol_already_read_count + COALESCE(bs.bookshelf_count, 0)
+                ), 0) as readers
             FROM books.series s
             JOIN books.books b ON s.series_id = b.series_id
+            LEFT JOIN (
+                SELECT book_id, COUNT(*) AS bookshelf_count
+                FROM user_data.bookshelves
+                WHERE status != 'abandoned'
+                GROUP BY book_id
+            ) bs ON b.book_id = bs.book_id
             WHERE s.updated_at > :last_sync AND b.language IS NOT NULL
             GROUP BY s.series_id, s.name, s.slug, b.language
             ORDER BY s.series_id, b.language
@@ -291,6 +318,7 @@ async def reindex_all_to_es(full: bool = False) -> None:
                     "app_rating_count": app_rating_count,
                     "ol_avg_rating": ol_avg if ol_rating_count > 0 else None,
                     "ol_rating_count": ol_rating_count,
+                    "readers": row.readers or 0,
                     "bayesian_score": _compute_bayesian_score(
                         total_ratings, combined_avg
                     ),
@@ -327,6 +355,15 @@ async def _bulk_index(es: object, docs: list) -> None:
 
 async def reindex_periodically() -> None:
     logger.info("Starting ES reindex background task")
+    try:
+        logger.info("[ES] Starting initial full reindex")
+        await reindex_all_to_es(full=True)
+    except asyncio.CancelledError:
+        logger.info("ES reindex task cancelled during initial reindex")
+        return
+    except Exception as e:
+        logger.error(f"[ES] Initial reindex error: {str(e)}")
+
     while not shutdown_event.is_set():
         await asyncio.sleep(app.config.settings.es_reindex_interval_hours * 3600)
         if shutdown_event.is_set():
@@ -349,12 +386,25 @@ async def populate_category_cache_periodically() -> None:
         if shutdown_event.is_set():
             break
         try:
+            await category_service.setup()
             await category_service.populate_category_top_books_cache()
+            await category_service.populate_popular_categories_cache()
         except asyncio.CancelledError:
             logger.info("Category cache task cancelled")
             break
         except Exception as e:
             logger.error(f"[Category cache] Error: {str(e)}")
+
+
+async def _initial_populate_category_caches() -> None:
+    try:
+        await category_service.populate_popular_categories_cache()
+    except Exception as e:
+        logger.error(f"[Category cache] Initial popular categories populate failed: {str(e)}")
+    try:
+        await category_service.populate_category_top_books_cache()
+    except Exception as e:
+        logger.error(f"[Category cache] Initial top books populate failed: {str(e)}")
 
 
 async def start_server() -> None:
@@ -375,7 +425,6 @@ async def start_server() -> None:
         app.config.settings.es_index_authors,
         app.config.settings.es_index_series,
     )
-
     logger.info("Initializing Categories")
     await category_service.setup()
 
@@ -401,6 +450,7 @@ async def start_server() -> None:
     view_count_flush_task = asyncio.create_task(flush_view_counts_periodically())
     reindex_task = asyncio.create_task(reindex_periodically())
     category_cache_task = asyncio.create_task(populate_category_cache_periodically())
+    asyncio.create_task(_initial_populate_category_caches())
 
     logger.info("Books service is running")
 

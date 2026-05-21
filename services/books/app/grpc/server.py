@@ -141,7 +141,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                         request.query,
                         request.limit or 10,
                         request.offset or 0,
-                        request.type_filter or "both",
+                        request.type_filter or "all",
                         request.language or "en",
                     )
                 )
@@ -172,6 +172,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                             ),
                             ol_rating_count=result.get("ol_rating_count", 0),
                             book_count=result.get("book_count", 0),
+                            readers=result.get("readers", 0),
                         )
                     )
 
@@ -181,6 +182,49 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
         except Exception as e:
             logger.error(f"Error in SearchBooksAndAuthors: {str(e)}")
             await context.abort(grpc.StatusCode.INTERNAL, f"Search failed: {str(e)}")
+
+    async def SuggestSearch(
+        self,
+        request: app.proto.books_pb2.SuggestSearchRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> app.proto.books_pb2.SuggestSearchResponse:
+        try:
+            results = await app.services.search_service.suggest(
+                request.query,
+                request.limit or 8,
+                request.language or "en",
+            )
+
+            items = [
+                app.proto.books_pb2.SuggestionItem(
+                    type=result["type"],
+                    id=result["id"],
+                    title=result["title"],
+                    slug=result["slug"],
+                    cover_url=result["cover_url"],
+                    authors=result["authors"],
+                    score=result["relevance_score"],
+                    readers=result.get("readers", 0),
+                    app_avg_rating=(
+                        str(result["app_avg_rating"])
+                        if result.get("app_avg_rating") is not None
+                        else ""
+                    ),
+                    app_rating_count=result.get("app_rating_count", 0),
+                    ol_avg_rating=(
+                        str(result["ol_avg_rating"])
+                        if result.get("ol_avg_rating") is not None
+                        else ""
+                    ),
+                    ol_rating_count=result.get("ol_rating_count", 0),
+                )
+                for result in results
+            ]
+
+            return app.proto.books_pb2.SuggestSearchResponse(items=items)
+        except Exception as e:
+            logger.error(f"Error in SuggestSearch: {str(e)}")
+            await context.abort(grpc.StatusCode.INTERNAL, f"Suggest failed: {str(e)}")
 
     async def GetBook(
         self,
@@ -919,4 +963,28 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
             logger.error(f"Error in GetCategoryBooks: {str(e)}")
             await context.abort(
                 grpc.StatusCode.INTERNAL, f"Get category books failed: {str(e)}"
+            )
+
+    async def GetPopularCategories(
+        self,
+        request: app.proto.books_pb2.GetPopularCategoriesRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> app.proto.books_pb2.PopularCategoriesResponse:
+        try:
+            limit = request.limit if request.limit > 0 else 12
+            categories = await category_service.get_popular_categories(limit=limit)
+            response = app.proto.books_pb2.PopularCategoriesResponse()
+            for cat in categories:
+                response.categories.append(
+                    app.proto.books_pb2.PopularCategoryItem(
+                        slug=cat["slug"],
+                        name=cat["name"],
+                        book_count=cat["book_count"],
+                    )
+                )
+            return response
+        except Exception as e:
+            logger.error(f"Error in GetPopularCategories: {str(e)}")
+            await context.abort(
+                grpc.StatusCode.INTERNAL, f"Get popular categories failed: {str(e)}"
             )

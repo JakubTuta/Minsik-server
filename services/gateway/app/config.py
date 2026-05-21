@@ -46,6 +46,7 @@ class Settings(BaseSettings):
     rate_limit_per_minute: int = Field(default=60)
     rate_limit_burst: int = Field(default=10)
     rate_limit_admin_per_minute: int = Field(default=20)
+    rate_limit_suggest_per_minute: int = Field(default=120)
 
     ledger_api_key: str = Field(default="")
 

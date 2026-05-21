@@ -379,5 +379,39 @@ class BooksClient:
             )
             raise
 
+    async def suggest_search(
+        self,
+        query: str,
+        limit: int = 8,
+        language: str = "en",
+    ) -> books_pb2.SuggestSearchResponse:
+        request = books_pb2.SuggestSearchRequest(
+            query=query,
+            limit=limit,
+            language=language,
+        )
+        try:
+            response = await self.stub.SuggestSearch(
+                request, timeout=app.config.settings.grpc_timeout
+            )
+            return response
+        except grpc.RpcError as e:
+            logger.error(f"gRPC error suggesting search: {e.code()} - {e.details()}")
+            raise
+
+    async def get_popular_categories(
+        self, limit: int = 12
+    ) -> books_pb2.PopularCategoriesResponse:
+        request = books_pb2.GetPopularCategoriesRequest(limit=limit)
+        try:
+            return await self.stub.GetPopularCategories(
+                request, timeout=app.config.settings.grpc_timeout
+            )
+        except grpc.RpcError as e:
+            logger.error(
+                f"gRPC error getting popular categories: {e.code()} - {e.details()}"
+            )
+            raise
+
 
 books_client = BooksClient()

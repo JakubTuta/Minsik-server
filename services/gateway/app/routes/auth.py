@@ -116,7 +116,7 @@ async def register(
             status_code=201
         )
     except grpc.RpcError as e:
-        logger.error(f"gRPC error during register: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "during register", e)
         if e.code() == grpc.StatusCode.ALREADY_EXISTS:
             return app.utils.responses.error_response(
                 code="ALREADY_EXISTS",
@@ -217,7 +217,7 @@ async def login(
             status_code=200
         )
     except grpc.RpcError as e:
-        logger.error(f"gRPC error during login: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "during login", e)
         if e.code() == grpc.StatusCode.UNAUTHENTICATED:
             return app.utils.responses.error_response(
                 code="UNAUTHENTICATED",
@@ -283,7 +283,7 @@ async def logout(
             status_code=200
         )
     except grpc.RpcError as e:
-        logger.error(f"gRPC error during logout: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "during logout", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
             return app.utils.responses.error_response(
                 code="NOT_FOUND",
@@ -377,7 +377,7 @@ async def refresh_token(
             status_code=200
         )
     except grpc.RpcError as e:
-        logger.error(f"gRPC error during token refresh: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "during token refresh", e)
         if e.code() in (grpc.StatusCode.UNAUTHENTICATED, grpc.StatusCode.PERMISSION_DENIED):
             return app.utils.responses.error_response(
                 code="UNAUTHENTICATED",
@@ -457,7 +457,7 @@ async def get_current_user(
             status_code=200
         )
     except grpc.RpcError as e:
-        logger.error(f"gRPC error getting current user: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "getting current user", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
             return app.utils.responses.error_response(
                 code="NOT_FOUND",
@@ -542,7 +542,7 @@ async def update_profile(
             status_code=200
         )
     except grpc.RpcError as e:
-        logger.error(f"gRPC error updating profile: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "updating profile", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
             return app.utils.responses.error_response(
                 code="NOT_FOUND",
@@ -598,7 +598,7 @@ async def delete_account(
         await app.grpc_clients.auth_client.delete_account(user_id=user_id)
         return fastapi.Response(status_code=204)
     except grpc.RpcError as e:
-        logger.error(f"gRPC error in delete_account: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "in delete_account", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
             return app.utils.responses.error_response(
                 code="NOT_FOUND",
@@ -657,7 +657,7 @@ async def google_auth(
             status_code=200
         )
     except grpc.RpcError as e:
-        logger.error(f"gRPC error during google_auth: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "during google_auth", e)
         if e.code() == grpc.StatusCode.PERMISSION_DENIED:
             return app.utils.responses.error_response(
                 code="PERMISSION_DENIED",

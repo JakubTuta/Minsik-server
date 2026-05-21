@@ -52,6 +52,50 @@ class GetCategoryBooksRequest(_message.Message):
     language: str
     def __init__(self, category_slug: _Optional[str] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., sort_by: _Optional[str] = ..., order: _Optional[str] = ..., language: _Optional[str] = ...) -> None: ...
 
+class SuggestSearchRequest(_message.Message):
+    __slots__ = ("query", "limit", "language")
+    QUERY_FIELD_NUMBER: _ClassVar[int]
+    LIMIT_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
+    query: str
+    limit: int
+    language: str
+    def __init__(self, query: _Optional[str] = ..., limit: _Optional[int] = ..., language: _Optional[str] = ...) -> None: ...
+
+class SuggestionItem(_message.Message):
+    __slots__ = ("type", "id", "title", "slug", "cover_url", "authors", "score", "readers", "app_avg_rating", "app_rating_count", "ol_avg_rating", "ol_rating_count")
+    TYPE_FIELD_NUMBER: _ClassVar[int]
+    ID_FIELD_NUMBER: _ClassVar[int]
+    TITLE_FIELD_NUMBER: _ClassVar[int]
+    SLUG_FIELD_NUMBER: _ClassVar[int]
+    COVER_URL_FIELD_NUMBER: _ClassVar[int]
+    AUTHORS_FIELD_NUMBER: _ClassVar[int]
+    SCORE_FIELD_NUMBER: _ClassVar[int]
+    READERS_FIELD_NUMBER: _ClassVar[int]
+    APP_AVG_RATING_FIELD_NUMBER: _ClassVar[int]
+    APP_RATING_COUNT_FIELD_NUMBER: _ClassVar[int]
+    OL_AVG_RATING_FIELD_NUMBER: _ClassVar[int]
+    OL_RATING_COUNT_FIELD_NUMBER: _ClassVar[int]
+    type: str
+    id: int
+    title: str
+    slug: str
+    cover_url: str
+    authors: _containers.RepeatedScalarFieldContainer[str]
+    score: float
+    readers: int
+    app_avg_rating: str
+    app_rating_count: int
+    ol_avg_rating: str
+    ol_rating_count: int
+    def __init__(self, type: _Optional[str] = ..., id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., cover_url: _Optional[str] = ..., authors: _Optional[_Iterable[str]] = ..., score: _Optional[float] = ..., readers: _Optional[int] = ..., app_avg_rating: _Optional[str] = ..., app_rating_count: _Optional[int] = ..., ol_avg_rating: _Optional[str] = ..., ol_rating_count: _Optional[int] = ...) -> None: ...
+
+class SuggestSearchResponse(_message.Message):
+    __slots__ = ("items",)
+    ITEMS_FIELD_NUMBER: _ClassVar[int]
+    items: _containers.RepeatedCompositeFieldContainer[SuggestionItem]
+    def __init__(self, items: _Optional[_Iterable[_Union[SuggestionItem, _Mapping]]] = ...) -> None: ...
+
 class SearchRequest(_message.Message):
     __slots__ = ("query", "limit", "offset", "type_filter", "language")
     QUERY_FIELD_NUMBER: _ClassVar[int]
@@ -67,7 +111,7 @@ class SearchRequest(_message.Message):
     def __init__(self, query: _Optional[str] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., type_filter: _Optional[str] = ..., language: _Optional[str] = ...) -> None: ...
 
 class SearchResult(_message.Message):
-    __slots__ = ("type", "id", "title", "slug", "cover_url", "authors", "relevance_score", "author_slugs", "series_slug", "book_count", "app_avg_rating", "app_rating_count", "ol_avg_rating", "ol_rating_count")
+    __slots__ = ("type", "id", "title", "slug", "cover_url", "authors", "relevance_score", "author_slugs", "series_slug", "book_count", "app_avg_rating", "app_rating_count", "ol_avg_rating", "ol_rating_count", "readers")
     TYPE_FIELD_NUMBER: _ClassVar[int]
     ID_FIELD_NUMBER: _ClassVar[int]
     TITLE_FIELD_NUMBER: _ClassVar[int]
@@ -82,6 +126,7 @@ class SearchResult(_message.Message):
     APP_RATING_COUNT_FIELD_NUMBER: _ClassVar[int]
     OL_AVG_RATING_FIELD_NUMBER: _ClassVar[int]
     OL_RATING_COUNT_FIELD_NUMBER: _ClassVar[int]
+    READERS_FIELD_NUMBER: _ClassVar[int]
     type: str
     id: int
     title: str
@@ -96,7 +141,8 @@ class SearchResult(_message.Message):
     app_rating_count: int
     ol_avg_rating: str
     ol_rating_count: int
-    def __init__(self, type: _Optional[str] = ..., id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., cover_url: _Optional[str] = ..., authors: _Optional[_Iterable[str]] = ..., relevance_score: _Optional[float] = ..., author_slugs: _Optional[_Iterable[str]] = ..., series_slug: _Optional[str] = ..., book_count: _Optional[int] = ..., app_avg_rating: _Optional[str] = ..., app_rating_count: _Optional[int] = ..., ol_avg_rating: _Optional[str] = ..., ol_rating_count: _Optional[int] = ...) -> None: ...
+    readers: int
+    def __init__(self, type: _Optional[str] = ..., id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., cover_url: _Optional[str] = ..., authors: _Optional[_Iterable[str]] = ..., relevance_score: _Optional[float] = ..., author_slugs: _Optional[_Iterable[str]] = ..., series_slug: _Optional[str] = ..., book_count: _Optional[int] = ..., app_avg_rating: _Optional[str] = ..., app_rating_count: _Optional[int] = ..., ol_avg_rating: _Optional[str] = ..., ol_rating_count: _Optional[int] = ..., readers: _Optional[int] = ...) -> None: ...
 
 class SearchResponse(_message.Message):
     __slots__ = ("results", "total_count")
@@ -657,3 +703,25 @@ class DeleteEntityResponse(_message.Message):
     MESSAGE_FIELD_NUMBER: _ClassVar[int]
     message: str
     def __init__(self, message: _Optional[str] = ...) -> None: ...
+
+class GetPopularCategoriesRequest(_message.Message):
+    __slots__ = ("limit",)
+    LIMIT_FIELD_NUMBER: _ClassVar[int]
+    limit: int
+    def __init__(self, limit: _Optional[int] = ...) -> None: ...
+
+class PopularCategoryItem(_message.Message):
+    __slots__ = ("slug", "name", "book_count")
+    SLUG_FIELD_NUMBER: _ClassVar[int]
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    BOOK_COUNT_FIELD_NUMBER: _ClassVar[int]
+    slug: str
+    name: str
+    book_count: int
+    def __init__(self, slug: _Optional[str] = ..., name: _Optional[str] = ..., book_count: _Optional[int] = ...) -> None: ...
+
+class PopularCategoriesResponse(_message.Message):
+    __slots__ = ("categories",)
+    CATEGORIES_FIELD_NUMBER: _ClassVar[int]
+    categories: _containers.RepeatedCompositeFieldContainer[PopularCategoryItem]
+    def __init__(self, categories: _Optional[_Iterable[_Union[PopularCategoryItem, _Mapping]]] = ...) -> None: ...

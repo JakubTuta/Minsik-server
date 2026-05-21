@@ -4,6 +4,7 @@ package books.v1;
 
 service BooksService {
   rpc SearchBooksAndAuthors(SearchRequest) returns (SearchResponse);
+  rpc SuggestSearch(SuggestSearchRequest) returns (SuggestSearchResponse);
   rpc GetBook(GetBookRequest) returns (BookDetailResponse);
   rpc GetAuthor(GetAuthorRequest) returns (AuthorDetailResponse);
   rpc GetAuthorBooks(GetAuthorBooksRequest) returns (BooksListResponse);
@@ -22,6 +23,7 @@ service BooksService {
   rpc ListCategories(ListCategoriesRequest) returns (ListCategoriesResponse);
   rpc GetCategory(GetCategoryRequest) returns (CategoryResponse);
   rpc GetCategoryBooks(GetCategoryBooksRequest) returns (BooksListResponse);
+  rpc GetPopularCategories(GetPopularCategoriesRequest) returns (PopularCategoriesResponse);
 }
 
 message ListCategoriesRequest {
@@ -55,6 +57,31 @@ message GetCategoryBooksRequest {
   string language = 7;
 }
 
+message SuggestSearchRequest {
+  string query = 1;
+  int32 limit = 2;
+  string language = 3;
+}
+
+message SuggestionItem {
+  string type = 1;
+  int64 id = 2;
+  string title = 3;
+  string slug = 4;
+  string cover_url = 5;
+  repeated string authors = 6;
+  float score = 7;
+  int32 readers = 8;
+  string app_avg_rating = 9;
+  int32 app_rating_count = 10;
+  string ol_avg_rating = 11;
+  int32 ol_rating_count = 12;
+}
+
+message SuggestSearchResponse {
+  repeated SuggestionItem items = 1;
+}
+
 message SearchRequest {
   string query = 1;
   int32 limit = 2;
@@ -82,6 +109,7 @@ message SearchResult {
   int32 app_rating_count = 15;
   string ol_avg_rating = 16;
   int32 ol_rating_count = 17;
+  int32 readers = 18;
 }
 
 message SearchResponse {
@@ -382,4 +410,18 @@ message DeleteSeriesRequest { int64 series_id = 1; }
 
 message DeleteEntityResponse {
   string message = 1;
+}
+
+message GetPopularCategoriesRequest {
+  int32 limit = 1;
+}
+
+message PopularCategoryItem {
+  string slug = 1;
+  string name = 2;
+  int32 book_count = 3;
+}
+
+message PopularCategoriesResponse {
+  repeated PopularCategoryItem categories = 1;
 }

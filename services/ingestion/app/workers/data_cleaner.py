@@ -103,6 +103,7 @@ async def cleanup_low_quality_books(
 async def cleanup_orphan_authors(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     min_books: int,
+    max_books: int,
     batch_size: int,
     stop_check: typing.Callable[[], bool] = lambda: False,
 ) -> typing.Dict[str, int]:
@@ -115,24 +116,11 @@ async def cleanup_orphan_authors(
                 FROM books.book_authors
                 GROUP BY author_id
             ) ba ON ba.author_id = a.author_id
-            WHERE COALESCE(ba.book_count, 0) <= :min_books
-            AND a.view_count = 0
-            AND a.created_at < NOW() - INTERVAL '1 day'
-            AND (
-                SELECT COALESCE(SUM(b.rating_count + COALESCE(b.ol_rating_count, 0)), 0)
-                FROM books.books b
-                JOIN books.book_authors ba2 ON ba2.book_id = b.book_id
-                WHERE ba2.author_id = a.author_id
-            ) < 30
-            AND (
-                SELECT COUNT(*)
-                FROM user_data.bookshelves bs
-                JOIN books.book_authors ba2 ON ba2.book_id = bs.book_id
-                WHERE ba2.author_id = a.author_id
-            ) < 30
-        """
+            WHERE COALESCE(ba.book_count, 0) < :min_books
+               OR COALESCE(ba.book_count, 0) > :max_books
+            """
         ),
-        {"min_books": min_books},
+        {"min_books": min_books, "max_books": max_books},
     )
     total_eligible = result.scalar_one()
 
@@ -156,25 +144,12 @@ async def cleanup_orphan_authors(
                     FROM books.book_authors
                     GROUP BY author_id
                 ) ba ON ba.author_id = a.author_id
-                WHERE COALESCE(ba.book_count, 0) <= :min_books
-                AND a.view_count = 0
-                AND a.created_at < NOW() - INTERVAL '1 day'
-                AND (
-                    SELECT COALESCE(SUM(b.rating_count + COALESCE(b.ol_rating_count, 0)), 0)
-                    FROM books.books b
-                    JOIN books.book_authors ba2 ON ba2.book_id = b.book_id
-                    WHERE ba2.author_id = a.author_id
-                ) < 30
-                AND (
-                    SELECT COUNT(*)
-                    FROM user_data.bookshelves bs
-                    JOIN books.book_authors ba2 ON ba2.book_id = bs.book_id
-                    WHERE ba2.author_id = a.author_id
-                ) < 30
+                WHERE COALESCE(ba.book_count, 0) < :min_books
+                   OR COALESCE(ba.book_count, 0) > :max_books
                 LIMIT :batch_size
                 """
             ),
-            {"min_books": min_books, "batch_size": batch_size},
+            {"min_books": min_books, "max_books": max_books, "batch_size": batch_size},
         )
         author_ids = [row[0] for row in author_id_result.fetchall()]
 
@@ -302,6 +277,7 @@ async def cleanup_orphan_authors(
 
 async def cleanup_underrepresented_series(
     session: sqlalchemy.ext.asyncio.AsyncSession,
+    min_books: int,
     max_books: int,
     batch_size: int,
     stop_check: typing.Callable[[], bool] = lambda: False,
@@ -315,45 +291,20 @@ async def cleanup_underrepresented_series(
         series_id_result = await session.execute(
             sqlalchemy.text(
                 """
-                WITH series_stats AS (
-                    SELECT
-                        s.series_id,
-                        COALESCE(COUNT(b.book_id), 0) AS book_count,
-                        COALESCE(SUM(COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0)), 0) AS ratings_count,
-                        COALESCE(SUM(
-                            COALESCE(b.ol_want_to_read_count, 0)
-                            + COALESCE(b.ol_currently_reading_count, 0)
-                            + COALESCE(b.ol_already_read_count, 0)
-                        ), 0) AS ol_readers,
-                        (
-                            TRIM(LOWER(COALESCE(s.name, ''))) = 'unknown'
-                            OR TRIM(LOWER(COALESCE(s.slug, ''))) = 'unknown'
-                            OR TRIM(LOWER(COALESCE(s.slug, ''))) LIKE 'unknown-%'
-                        ) AS is_unknown
-                    FROM books.series s
-                    LEFT JOIN books.books b ON b.series_id = s.series_id
-                    GROUP BY s.series_id, s.name, s.slug
-                ),
-                app_readers AS (
-                    SELECT b.series_id, COUNT(*) AS app_readers
-                    FROM user_data.bookshelves bs
-                    JOIN books.books b ON b.book_id = bs.book_id
-                    WHERE b.series_id IS NOT NULL
-                    GROUP BY b.series_id
-                )
-                SELECT ss.series_id
-                FROM series_stats ss
-                LEFT JOIN app_readers ar ON ar.series_id = ss.series_id
-                WHERE ss.book_count <= :max_books
-                   OR (
-                       ss.is_unknown
-                       AND ss.ratings_count = 0
-                       AND (ss.ol_readers + COALESCE(ar.app_readers, 0)) = 0
-                   )
+                SELECT s.series_id
+                FROM books.series s
+                LEFT JOIN (
+                    SELECT series_id, COUNT(*) AS book_count
+                    FROM books.books
+                    WHERE series_id IS NOT NULL
+                    GROUP BY series_id
+                ) bc ON bc.series_id = s.series_id
+                WHERE COALESCE(bc.book_count, 0) < :min_books
+                   OR COALESCE(bc.book_count, 0) > :max_books
                 LIMIT :batch_size
                 """
             ),
-            {"max_books": max_books, "batch_size": batch_size},
+            {"min_books": min_books, "max_books": max_books, "batch_size": batch_size},
         )
         series_ids = [row[0] for row in series_id_result.fetchall()]
 
@@ -509,7 +460,10 @@ async def run_cleanup_cycle(
 ) -> typing.Dict[str, typing.Any]:
     batch_size = app.config.settings.cleanup_batch_size
     min_quality = app.config.settings.cleanup_book_min_quality_score
-    min_books = app.config.settings.cleanup_author_min_books
+    min_author_books = app.config.settings.cleanup_author_min_books
+    max_author_books = app.config.settings.cleanup_author_max_books
+    min_series_books = app.config.settings.cleanup_series_min_books
+    max_series_books = app.config.settings.cleanup_series_max_books
 
     book_stats = await cleanup_low_quality_books(
         session, min_quality, batch_size, stop_check
@@ -524,7 +478,7 @@ async def run_cleanup_cycle(
             "invalid_name_genres_deleted": 0,
         }
     author_stats = await cleanup_orphan_authors(
-        session, min_books, batch_size, stop_check
+        session, min_author_books, max_author_books, batch_size, stop_check
     )
     if stop_check():
         return {
@@ -536,7 +490,7 @@ async def run_cleanup_cycle(
             "invalid_name_genres_deleted": 0,
         }
     series_deleted = await cleanup_underrepresented_series(
-        session, 2, batch_size, stop_check
+        session, min_series_books, max_series_books, batch_size, stop_check
     )
     if stop_check():
         return {

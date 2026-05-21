@@ -193,3 +193,51 @@ class SeriesRecommendationsResponse(_message.Message):
     series_id: int
     sections: _containers.RepeatedCompositeFieldContainer[RecommendationSection]
     def __init__(self, series_id: _Optional[int] = ..., sections: _Optional[_Iterable[_Union[RecommendationSection, _Mapping]]] = ...) -> None: ...
+
+class GetBookOfTheWeekRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class BookOfTheWeekAuthor(_message.Message):
+    __slots__ = ("author_id", "name", "slug")
+    AUTHOR_ID_FIELD_NUMBER: _ClassVar[int]
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    SLUG_FIELD_NUMBER: _ClassVar[int]
+    author_id: int
+    name: str
+    slug: str
+    def __init__(self, author_id: _Optional[int] = ..., name: _Optional[str] = ..., slug: _Optional[str] = ...) -> None: ...
+
+class BookOfTheWeekCategory(_message.Message):
+    __slots__ = ("genre_id", "name", "slug")
+    GENRE_ID_FIELD_NUMBER: _ClassVar[int]
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    SLUG_FIELD_NUMBER: _ClassVar[int]
+    genre_id: int
+    name: str
+    slug: str
+    def __init__(self, genre_id: _Optional[int] = ..., name: _Optional[str] = ..., slug: _Optional[str] = ...) -> None: ...
+
+class BookOfTheWeekResponse(_message.Message):
+    __slots__ = ("book_id", "title", "slug", "language", "primary_cover_url", "first_sentence", "weighted_avg_rating", "rating_count", "authors", "categories")
+    BOOK_ID_FIELD_NUMBER: _ClassVar[int]
+    TITLE_FIELD_NUMBER: _ClassVar[int]
+    SLUG_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
+    PRIMARY_COVER_URL_FIELD_NUMBER: _ClassVar[int]
+    FIRST_SENTENCE_FIELD_NUMBER: _ClassVar[int]
+    WEIGHTED_AVG_RATING_FIELD_NUMBER: _ClassVar[int]
+    RATING_COUNT_FIELD_NUMBER: _ClassVar[int]
+    AUTHORS_FIELD_NUMBER: _ClassVar[int]
+    CATEGORIES_FIELD_NUMBER: _ClassVar[int]
+    book_id: int
+    title: str
+    slug: str
+    language: str
+    primary_cover_url: str
+    first_sentence: str
+    weighted_avg_rating: float
+    rating_count: int
+    authors: _containers.RepeatedCompositeFieldContainer[BookOfTheWeekAuthor]
+    categories: _containers.RepeatedCompositeFieldContainer[BookOfTheWeekCategory]
+    def __init__(self, book_id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., language: _Optional[str] = ..., primary_cover_url: _Optional[str] = ..., first_sentence: _Optional[str] = ..., weighted_avg_rating: _Optional[float] = ..., rating_count: _Optional[int] = ..., authors: _Optional[_Iterable[_Union[BookOfTheWeekAuthor, _Mapping]]] = ..., categories: _Optional[_Iterable[_Union[BookOfTheWeekCategory, _Mapping]]] = ...) -> None: ...

@@ -39,6 +39,11 @@ class BooksServiceStub(object):
                 request_serializer=books__pb2.SearchRequest.SerializeToString,
                 response_deserializer=books__pb2.SearchResponse.FromString,
                 _registered_method=True)
+        self.SuggestSearch = channel.unary_unary(
+                '/books.v1.BooksService/SuggestSearch',
+                request_serializer=books__pb2.SuggestSearchRequest.SerializeToString,
+                response_deserializer=books__pb2.SuggestSearchResponse.FromString,
+                _registered_method=True)
         self.GetBook = channel.unary_unary(
                 '/books.v1.BooksService/GetBook',
                 request_serializer=books__pb2.GetBookRequest.SerializeToString,
@@ -129,12 +134,23 @@ class BooksServiceStub(object):
                 request_serializer=books__pb2.GetCategoryBooksRequest.SerializeToString,
                 response_deserializer=books__pb2.BooksListResponse.FromString,
                 _registered_method=True)
+        self.GetPopularCategories = channel.unary_unary(
+                '/books.v1.BooksService/GetPopularCategories',
+                request_serializer=books__pb2.GetPopularCategoriesRequest.SerializeToString,
+                response_deserializer=books__pb2.PopularCategoriesResponse.FromString,
+                _registered_method=True)
 
 
 class BooksServiceServicer(object):
     """Missing associated documentation comment in .proto file."""
 
     def SearchBooksAndAuthors(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def SuggestSearch(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -248,6 +264,12 @@ class BooksServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetPopularCategories(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_BooksServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -255,6 +277,11 @@ def add_BooksServiceServicer_to_server(servicer, server):
                     servicer.SearchBooksAndAuthors,
                     request_deserializer=books__pb2.SearchRequest.FromString,
                     response_serializer=books__pb2.SearchResponse.SerializeToString,
+            ),
+            'SuggestSearch': grpc.unary_unary_rpc_method_handler(
+                    servicer.SuggestSearch,
+                    request_deserializer=books__pb2.SuggestSearchRequest.FromString,
+                    response_serializer=books__pb2.SuggestSearchResponse.SerializeToString,
             ),
             'GetBook': grpc.unary_unary_rpc_method_handler(
                     servicer.GetBook,
@@ -346,6 +373,11 @@ def add_BooksServiceServicer_to_server(servicer, server):
                     request_deserializer=books__pb2.GetCategoryBooksRequest.FromString,
                     response_serializer=books__pb2.BooksListResponse.SerializeToString,
             ),
+            'GetPopularCategories': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetPopularCategories,
+                    request_deserializer=books__pb2.GetPopularCategoriesRequest.FromString,
+                    response_serializer=books__pb2.PopularCategoriesResponse.SerializeToString,
+            ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
             'books.v1.BooksService', rpc_method_handlers)
@@ -374,6 +406,33 @@ class BooksService(object):
             '/books.v1.BooksService/SearchBooksAndAuthors',
             books__pb2.SearchRequest.SerializeToString,
             books__pb2.SearchResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def SuggestSearch(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/books.v1.BooksService/SuggestSearch',
+            books__pb2.SuggestSearchRequest.SerializeToString,
+            books__pb2.SuggestSearchResponse.FromString,
             options,
             channel_credentials,
             insecure,
@@ -860,6 +919,33 @@ class BooksService(object):
             '/books.v1.BooksService/GetCategoryBooks',
             books__pb2.GetCategoryBooksRequest.SerializeToString,
             books__pb2.BooksListResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetPopularCategories(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/books.v1.BooksService/GetPopularCategories',
+            books__pb2.GetPopularCategoriesRequest.SerializeToString,
+            books__pb2.PopularCategoriesResponse.FromString,
             options,
             channel_credentials,
             insecure,

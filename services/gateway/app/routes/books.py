@@ -6,6 +6,7 @@ import app.grpc_clients
 import app.middleware.auth
 import app.middleware.rate_limit as rate_limit_middleware
 import app.models.books_responses
+import app.utils.responses
 import fastapi
 import grpc
 from fastapi import Path, Query
@@ -15,6 +16,70 @@ logger = logging.getLogger(__name__)
 router = fastapi.APIRouter(prefix="/api/v1", tags=["Books"])
 
 limiter = rate_limit_middleware.limiter
+
+
+@router.get(
+    "/search/suggest",
+    response_model=app.models.books_responses.SuggestResponse,
+    summary="Typeahead suggestions for app bar search",
+    description="""
+    Fast prefix-based suggestions for the app bar quick search field.
+
+    Returns a mixed list of books, authors, and series ranked by relevance and popularity.
+    Designed for low-latency typeahead — results are cached for 60 seconds.
+
+    **Examples:**
+    - `/api/v1/search/suggest?q=har` → Harry Potter books + J.K. Rowling
+    - `/api/v1/search/suggest?q=tolkien` → Tolkien author + his books/series
+    """,
+)
+@limiter.limit(f"{app.config.settings.rate_limit_suggest_per_minute}/minute")
+async def suggest_search(
+    request: fastapi.Request,
+    q: str = Query(..., min_length=1, description="Search query (partial input)"),
+    limit: int = Query(8, ge=1, le=20, description="Max suggestions to return"),
+    language: str = Query(
+        "en", min_length=2, max_length=10, description="Language preference"
+    ),
+):
+    try:
+        response = await app.grpc_clients.books_client.suggest_search(
+            query=q, limit=limit, language=language
+        )
+
+        items = [
+            {
+                "type": item.type,
+                "id": item.id,
+                "title": item.title,
+                "slug": item.slug,
+                "cover_url": item.cover_url or None,
+                "authors": list(item.authors),
+                "score": item.score,
+                "readers": item.readers,
+                "app_avg_rating": (
+                    float(item.app_avg_rating) if item.app_avg_rating else 0.0
+                ),
+                "app_rating_count": item.app_rating_count,
+                "ol_avg_rating": (
+                    float(item.ol_avg_rating) if item.ol_avg_rating else 0.0
+                ),
+                "ol_rating_count": item.ol_rating_count,
+            }
+            for item in response.items
+        ]
+
+        return {
+            "success": True,
+            "data": {"items": items},
+            "error": None,
+        }
+    except grpc.RpcError as e:
+        app.utils.responses.log_grpc_error(logger, "in suggest", e)
+        raise fastapi.HTTPException(
+            status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
+            detail=f"Suggest failed: {e.details()}",
+        )
 
 
 @router.get(
@@ -92,6 +157,7 @@ async def search_books_and_authors(
                     ),
                     "ol_rating_count": result.ol_rating_count,
                     "book_count": result.book_count,
+                    "readers": result.readers,
                 }
             )
 
@@ -106,7 +172,7 @@ async def search_books_and_authors(
             "error": None,
         }
     except grpc.RpcError as e:
-        logger.error(f"gRPC error in search: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "in search", e)
         raise fastapi.HTTPException(
             status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
             detail=f"Search failed: {e.details()}",
@@ -169,7 +235,7 @@ async def get_book(
             "error": None,
         }
     except grpc.RpcError as e:
-        logger.error(f"gRPC error getting book: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "getting book", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
             raise fastapi.HTTPException(
                 status_code=404, detail=f"Book not found: {slug}"
@@ -262,7 +328,7 @@ async def get_author(
             "error": None,
         }
     except grpc.RpcError as e:
-        logger.error(f"gRPC error getting author: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "getting author", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
             raise fastapi.HTTPException(
                 status_code=404, detail=f"Author not found: {slug}"
@@ -341,7 +407,7 @@ async def get_author_books(
             "error": None,
         }
     except grpc.RpcError as e:
-        logger.error(f"gRPC error getting author books: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "getting author books", e)
         raise fastapi.HTTPException(
             status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
             detail=f"Get author books failed: {e.details()}",
@@ -414,7 +480,7 @@ async def get_series(
             "error": None,
         }
     except grpc.RpcError as e:
-        logger.error(f"gRPC error getting series: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "getting series", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
             raise fastapi.HTTPException(
                 status_code=404, detail=f"Series not found: {slug}"
@@ -483,15 +549,15 @@ def _comment_with_rating_to_dict(c) -> typing.Dict[str, typing.Any]:
     regardless of the current page, so the frontend can pin it at the top.
 
     **Rating Filter (`rating_filter`):**
-    When provided, only returns comments from users who rated the book with that exact value.
-    Accepts half-star increments from 1.0 to 5.0 (e.g. `1.0`, `1.5`, `2.0`, ..., `5.0`).
+    When provided, only returns comments from users who rated the book with one of the given values.
+    Accepts half-star increments from 1.0 to 5.0. Repeat the param to filter multiple ratings.
     Omit to return all comments regardless of rating.
 
     **Examples:**
     - `/api/v1/books/the-hobbit/comments?sort_by=overall_rating&order=desc`
     - `/api/v1/books/the-hobbit/comments?include_spoilers=true&limit=20`
     - `/api/v1/books/the-hobbit/comments?rating_filter=5.0`
-    - `/api/v1/books/the-hobbit/comments?rating_filter=4.5&sort_by=overall_rating`
+    - `/api/v1/books/the-hobbit/comments?rating_filter=4.0&rating_filter=4.5&rating_filter=5.0`
     """,
 )
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
@@ -507,11 +573,11 @@ async def get_book_comments(
         regex="^(created_at|overall_rating|pacing|emotional_impact|intellectual_depth|writing_quality|rereadability|readability|plot_complexity|humor)$",
         description="Sort field",
     ),
-    rating_filter: typing.Optional[float] = Query(
+    rating_filter: typing.Optional[typing.List[float]] = Query(
         None,
         ge=0.0,
         le=5.0,
-        description="Filter by exact overall rating (e.g. 5.0, 4.5)",
+        description="Filter by overall rating(s) (e.g. 5.0, 4.5). Repeat param to filter multiple ratings.",
     ),
     user: typing.Optional[typing.Dict[str, typing.Any]] = fastapi.Depends(
         app.middleware.auth.get_current_user_optional
@@ -527,7 +593,7 @@ async def get_book_comments(
             include_spoilers=include_spoilers,
             sort_by=sort_by,
             requesting_user_id=requesting_user_id,
-            rating_filter=rating_filter or 0.0,
+            rating_filters=rating_filter or [],
         )
         my_entry = (
             _comment_with_rating_to_dict(response.my_entry)
@@ -546,7 +612,7 @@ async def get_book_comments(
             "error": None,
         }
     except grpc.RpcError as e:
-        logger.error(f"gRPC error getting book comments: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "getting book comments", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
             raise fastapi.HTTPException(
                 status_code=404, detail=f"Book not found: {slug}"
@@ -625,7 +691,7 @@ async def get_series_books(
             "error": None,
         }
     except grpc.RpcError as e:
-        logger.error(f"gRPC error getting series books: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "getting series books", e)
         raise fastapi.HTTPException(
             status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
             detail=f"Get series books failed: {e.details()}",
@@ -782,7 +848,7 @@ async def open_case(
             "error": None,
         }
     except grpc.RpcError as e:
-        logger.error(f"gRPC error opening case: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "opening case", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
             raise fastapi.HTTPException(
                 status_code=404,
@@ -840,7 +906,7 @@ async def open_pack(
             "error": None,
         }
     except grpc.RpcError as e:
-        logger.error(f"gRPC error opening pack: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "opening pack", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
             raise fastapi.HTTPException(
                 status_code=404,
@@ -896,7 +962,7 @@ async def spin_slots(
             "error": None,
         }
     except grpc.RpcError as e:
-        logger.error(f"gRPC error spinning slots: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "spinning slots", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
             raise fastapi.HTTPException(
                 status_code=404,
@@ -972,7 +1038,7 @@ async def discover_book(
             "error": None,
         }
     except grpc.RpcError as e:
-        logger.error(f"gRPC error discovering book: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "discovering book", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
             return {
                 "success": True,

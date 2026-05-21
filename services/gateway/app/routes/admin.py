@@ -145,7 +145,7 @@ async def trigger_ingestion(
             )
 
     except grpc.RpcError as e:
-        logger.error(f"gRPC error: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "admin", e)
 
         if e.code() == grpc.StatusCode.INVALID_ARGUMENT:
             return app.utils.responses.error_response(
@@ -206,7 +206,7 @@ async def get_ingestion_status(request: fastapi.Request, job_id: str):
             return app.utils.responses.success_response(data.model_dump())
 
     except grpc.RpcError as e:
-        logger.error(f"gRPC error: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "admin", e)
 
         if e.code() == grpc.StatusCode.NOT_FOUND:
             return app.utils.responses.error_response(
@@ -259,7 +259,7 @@ async def cancel_ingestion(request: fastapi.Request, job_id: str):
             return app.utils.responses.success_response(data.model_dump())
 
     except grpc.RpcError as e:
-        logger.error(f"gRPC error: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "admin", e)
 
         if e.code() == grpc.StatusCode.NOT_FOUND:
             return app.utils.responses.error_response(
@@ -336,7 +336,7 @@ async def get_data_coverage(request: fastapi.Request):
             )
 
     except grpc.RpcError as e:
-        logger.error(f"gRPC error: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "admin", e)
         return app.utils.responses.error_response(
             code="INTERNAL_ERROR",
             message="Failed to communicate with ingestion service",
@@ -408,7 +408,7 @@ async def search_book(
             return app.utils.responses.success_response(data, status_code=200)
 
     except grpc.RpcError as e:
-        logger.error(f"gRPC error: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "admin", e)
 
         if e.code() == grpc.StatusCode.INVALID_ARGUMENT:
             return app.utils.responses.error_response(
@@ -491,7 +491,7 @@ async def import_dump(request: fastapi.Request):
             )
 
     except grpc.RpcError as e:
-        logger.error(f"gRPC error: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "admin", e)
         return app.utils.responses.error_response(
             code="INTERNAL_ERROR",
             message="Failed to start dump import",
@@ -602,7 +602,7 @@ async def update_book(
                 }
             )
     except grpc.RpcError as e:
-        logger.error(f"gRPC error updating book: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "updating book", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
             return app.utils.responses.error_response(
                 code="NOT_FOUND", message=e.details(), status_code=404
@@ -693,7 +693,7 @@ async def update_author(
                 }
             )
     except grpc.RpcError as e:
-        logger.error(f"gRPC error updating author: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "updating author", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
             return app.utils.responses.error_response(
                 code="NOT_FOUND", message=e.details(), status_code=404
@@ -770,7 +770,7 @@ async def update_series(
                 }
             )
     except grpc.RpcError as e:
-        logger.error(f"gRPC error updating series: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "updating series", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
             return app.utils.responses.error_response(
                 code="NOT_FOUND", message=e.details(), status_code=404
@@ -818,7 +818,7 @@ async def delete_book(request: fastapi.Request, book_id: int):
             response = await client.delete_book(book_id=book_id)
             return app.utils.responses.success_response({"message": response.message})
     except grpc.RpcError as e:
-        logger.error(f"gRPC error deleting book: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "deleting book", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
             return app.utils.responses.error_response(
                 code="NOT_FOUND", message=e.details(), status_code=404
@@ -865,7 +865,7 @@ async def delete_author(request: fastapi.Request, author_id: int):
             response = await client.delete_author(author_id=author_id)
             return app.utils.responses.success_response({"message": response.message})
     except grpc.RpcError as e:
-        logger.error(f"gRPC error deleting author: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "deleting author", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
             return app.utils.responses.error_response(
                 code="NOT_FOUND", message=e.details(), status_code=404
@@ -912,7 +912,7 @@ async def delete_series(request: fastapi.Request, series_id: int):
             response = await client.delete_series(series_id=series_id)
             return app.utils.responses.success_response({"message": response.message})
     except grpc.RpcError as e:
-        logger.error(f"gRPC error deleting series: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "deleting series", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
             return app.utils.responses.error_response(
                 code="NOT_FOUND", message=e.details(), status_code=404

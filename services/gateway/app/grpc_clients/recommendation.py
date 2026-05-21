@@ -194,5 +194,20 @@ class RecommendationClient:
             )
             raise
 
+    async def get_book_of_the_week(
+        self,
+    ) -> recommendation_pb2.BookOfTheWeekResponse:
+        request = recommendation_pb2.GetBookOfTheWeekRequest()
+        try:
+            return await self.stub.GetBookOfTheWeek(
+                request,
+                timeout=app.config.settings.grpc_recommendation_timeout,
+            )
+        except grpc.RpcError as e:
+            logger.error(
+                f"gRPC error in get_book_of_the_week: {e.code()} - {e.details()}"
+            )
+            raise
+
 
 recommendation_client = RecommendationClient()

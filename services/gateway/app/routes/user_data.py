@@ -185,7 +185,7 @@ async def get_user_book_info(
         }
         return app.utils.responses.success_response(data)
     except grpc.RpcError as e:
-        logger.error(f"gRPC error in get_user_book_info: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "in get_user_book_info", e)
         return _grpc_error_response(e)
     except Exception as e:
         logger.error(f"Unexpected error in get_user_book_info: {e}")
@@ -238,7 +238,7 @@ async def upsert_bookshelf(
             {"bookshelf": _bookshelf_proto_to_dict(response.bookshelf)}, status_code=200
         )
     except grpc.RpcError as e:
-        logger.error(f"gRPC error in upsert_bookshelf: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "in upsert_bookshelf", e)
         return _grpc_error_response(e)
     except Exception as e:
         logger.error(f"Unexpected error in upsert_bookshelf: {e}")
@@ -280,7 +280,7 @@ async def delete_bookshelf(
         )
         return fastapi.Response(status_code=204)
     except grpc.RpcError as e:
-        logger.error(f"gRPC error in delete_bookshelf: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "in delete_bookshelf", e)
         return _grpc_error_response(e)
     except Exception as e:
         logger.error(f"Unexpected error in delete_bookshelf: {e}")
@@ -344,7 +344,7 @@ async def get_user_bookshelves(
             }
         )
     except grpc.RpcError as e:
-        logger.error(f"gRPC error in get_user_bookshelves: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "in get_user_bookshelves", e)
         return _grpc_error_response(e)
     except Exception as e:
         logger.error(f"Unexpected error in get_user_bookshelves: {e}")
@@ -510,7 +510,7 @@ async def add_favourite(
             }
         )
     except grpc.RpcError as e:
-        logger.error(f"gRPC error in add_favourite: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "in add_favourite", e)
         return _grpc_error_response(e)
     except Exception as e:
         logger.error(f"Unexpected error in add_favourite: {e}")
@@ -557,7 +557,7 @@ async def remove_favourite(
             }
         )
     except grpc.RpcError as e:
-        logger.error(f"gRPC error in remove_favourite: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "in remove_favourite", e)
         return _grpc_error_response(e)
     except Exception as e:
         logger.error(f"Unexpected error in remove_favourite: {e}")
@@ -603,7 +603,7 @@ async def get_user_favourites(
             }
         )
     except grpc.RpcError as e:
-        logger.error(f"gRPC error in get_user_favourites: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "in get_user_favourites", e)
         return _grpc_error_response(e)
     except Exception as e:
         logger.error(f"Unexpected error in get_user_favourites: {e}")
@@ -675,7 +675,7 @@ async def upsert_rating(
             {"rating": _rating_proto_to_dict(response.rating)}, status_code=201
         )
     except grpc.RpcError as e:
-        logger.error(f"gRPC error in upsert_rating: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "in upsert_rating", e)
         return _grpc_error_response(e)
     except Exception as e:
         logger.error(f"Unexpected error in upsert_rating: {e}")
@@ -718,7 +718,7 @@ async def delete_rating(
         )
         return fastapi.Response(status_code=204)
     except grpc.RpcError as e:
-        logger.error(f"gRPC error in delete_rating: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "in delete_rating", e)
         return _grpc_error_response(e)
     except Exception as e:
         logger.error(f"Unexpected error in delete_rating: {e}")
@@ -780,7 +780,7 @@ async def get_user_ratings(
             }
         )
     except grpc.RpcError as e:
-        logger.error(f"gRPC error in get_user_ratings: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "in get_user_ratings", e)
         return _grpc_error_response(e)
     except Exception as e:
         logger.error(f"Unexpected error in get_user_ratings: {e}")
@@ -838,7 +838,7 @@ async def create_comment(
             {"comment": _comment_proto_to_dict(response.comment)}, status_code=201
         )
     except grpc.RpcError as e:
-        logger.error(f"gRPC error in create_comment: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "in create_comment", e)
         return _grpc_error_response(e)
     except Exception as e:
         logger.error(f"Unexpected error in create_comment: {e}")
@@ -884,7 +884,7 @@ async def update_comment(
             {"comment": _comment_proto_to_dict(response.comment)}
         )
     except grpc.RpcError as e:
-        logger.error(f"gRPC error in update_comment: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "in update_comment", e)
         return _grpc_error_response(e)
     except Exception as e:
         logger.error(f"Unexpected error in update_comment: {e}")
@@ -924,7 +924,7 @@ async def delete_comment(
         )
         return fastapi.Response(status_code=204)
     except grpc.RpcError as e:
-        logger.error(f"gRPC error in delete_comment: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "in delete_comment", e)
         return _grpc_error_response(e)
     except Exception as e:
         logger.error(f"Unexpected error in delete_comment: {e}")
@@ -982,7 +982,7 @@ async def get_user_comments(
             }
         )
     except grpc.RpcError as e:
-        logger.error(f"gRPC error in get_user_comments: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "in get_user_comments", e)
         return _grpc_error_response(e)
     except Exception as e:
         logger.error(f"Unexpected error in get_user_comments: {e}")

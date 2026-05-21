@@ -1,8 +1,10 @@
 import logging
 
+import app.cache
 import app.db
 import app.proto.recommendation_pb2 as recommendation_pb2
 import app.proto.recommendation_pb2_grpc as recommendation_pb2_grpc
+import app.services.book_of_week_builder
 import app.services.contextual_provider
 import app.services.list_builder
 import app.services.list_provider
@@ -264,4 +266,53 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
             raise
         except Exception as e:
             logger.error(f"Error in GetSeriesRecommendations: {str(e)}")
+            await context.abort(grpc.StatusCode.INTERNAL, f"Internal error: {str(e)}")
+
+    async def GetBookOfTheWeek(
+        self,
+        request: recommendation_pb2.GetBookOfTheWeekRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> recommendation_pb2.BookOfTheWeekResponse:
+        try:
+            book = await app.cache.get_cached(app.services.book_of_week_builder.BOW_CACHE_KEY)
+            if not book:
+                book = await app.services.book_of_week_builder.refresh_book_of_the_week(
+                    app.db.async_session_maker
+                )
+            if not book:
+                await context.abort(
+                    grpc.StatusCode.UNAVAILABLE, "Book of the week not yet available"
+                )
+                return
+            response = recommendation_pb2.BookOfTheWeekResponse(
+                book_id=book["book_id"],
+                title=book["title"],
+                slug=book["slug"],
+                language=book["language"],
+                primary_cover_url=book["primary_cover_url"],
+                first_sentence=book["first_sentence"],
+                weighted_avg_rating=book["weighted_avg_rating"],
+                rating_count=book["rating_count"],
+            )
+            for a in book.get("authors", []):
+                response.authors.append(
+                    recommendation_pb2.BookOfTheWeekAuthor(
+                        author_id=a["author_id"],
+                        name=a["name"],
+                        slug=a["slug"],
+                    )
+                )
+            for c in book.get("categories", []):
+                response.categories.append(
+                    recommendation_pb2.BookOfTheWeekCategory(
+                        genre_id=c["genre_id"],
+                        name=c["name"],
+                        slug=c["slug"],
+                    )
+                )
+            return response
+        except grpc.aio.AbortError:
+            raise
+        except Exception as e:
+            logger.error(f"Error in GetBookOfTheWeek: {str(e)}")
             await context.abort(grpc.StatusCode.INTERNAL, f"Internal error: {str(e)}")

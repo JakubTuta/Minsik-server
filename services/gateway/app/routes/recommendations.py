@@ -100,7 +100,7 @@ async def get_home_page(
         sections = [_to_section_dict(cat.category, cat) for cat in response.categories]
         return app.utils.responses.success_response({"sections": sections})
     except grpc.RpcError as e:
-        logger.error(f"gRPC error in get_home_page: {e.code()} - {e.details()}")
+        app.utils.responses.log_grpc_error(logger, "in get_home_page", e)
         if e.code() == grpc.StatusCode.UNAVAILABLE:
             return app.utils.responses.error_response(
                 "UNAVAILABLE", "Recommendations not yet available", status_code=503
@@ -157,6 +157,65 @@ async def get_available_categories(request: fastapi.Request):
         )
     except Exception as e:
         logger.error(f"Unexpected error in get_available_categories: {str(e)}")
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
+        )
+
+
+@router.get(
+    "/recommendations/book-of-the-week",
+    response_model=app.models.recommendation_responses.BookOfTheWeekResponse,
+    summary="Get book of the week",
+    description="""
+    Returns the curated book of the week.
+
+    Selected every Monday at 03:00 UTC. Cached for 7 days with history tracking
+    to ensure a different book is picked each week (last 12 weeks excluded).
+
+    Eligibility criteria: has cover image, first sentence, at least 1 author and
+    1 genre, weighted average rating >= 4.0, total rating count >= 100, language = en.
+
+    Returns `503` if not yet populated (e.g. first startup before Monday).
+    """,
+    responses={
+        503: {"description": "Book of the week not yet available"},
+        500: {"description": "Internal server error"},
+    },
+)
+@limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
+async def get_book_of_the_week(request: fastapi.Request):
+    try:
+        response = await app.grpc_clients.recommendation_client.get_book_of_the_week()
+        data = {
+            "book_id": response.book_id,
+            "title": response.title,
+            "slug": response.slug,
+            "language": response.language,
+            "primary_cover_url": response.primary_cover_url,
+            "first_sentence": response.first_sentence,
+            "weighted_avg_rating": response.weighted_avg_rating,
+            "rating_count": response.rating_count,
+            "authors": [
+                {"author_id": a.author_id, "name": a.name, "slug": a.slug}
+                for a in response.authors
+            ],
+            "categories": [
+                {"genre_id": c.genre_id, "name": c.name, "slug": c.slug}
+                for c in response.categories
+            ],
+        }
+        return app.utils.responses.success_response(data)
+    except grpc.RpcError as e:
+        app.utils.responses.log_grpc_error(logger, "in get_book_of_the_week", e)
+        if e.code() == grpc.StatusCode.UNAVAILABLE:
+            return app.utils.responses.error_response(
+                "UNAVAILABLE", "Book of the week not yet available", status_code=503
+            )
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "Failed to fetch book of the week", status_code=500
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error in get_book_of_the_week: {str(e)}")
         return app.utils.responses.error_response(
             "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
         )

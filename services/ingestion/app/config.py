@@ -63,8 +63,11 @@ class Settings(BaseSettings):
     cleanup_enabled: bool = Field(default=True)
     cleanup_cron: str = Field(default="0 3,15 * * *")
     cleanup_batch_size: int = Field(default=1000)
-    cleanup_book_min_quality_score: int = Field(default=4)
-    cleanup_author_min_books: int = Field(default=2)
+    cleanup_book_min_quality_score: int = Field(default=6)
+    cleanup_author_min_books: int = Field(default=5)
+    cleanup_author_max_books: int = Field(default=500)
+    cleanup_series_min_books: int = Field(default=3)
+    cleanup_series_max_books: int = Field(default=30)
 
     ledger_api_key: str = Field(default="")
 

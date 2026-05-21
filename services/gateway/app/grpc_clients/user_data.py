@@ -359,7 +359,7 @@ class UserDataClient:
         include_spoilers: bool = False,
         sort_by: str = "created_at",
         requesting_user_id: int = 0,
-        rating_filter: float = 0.0,
+        rating_filters: typing.List[float] = [],
     ) -> user_data_pb2.BookCommentsResponse:
         request = user_data_pb2.GetBookCommentsRequest(
             book_slug=book_slug,
@@ -369,7 +369,7 @@ class UserDataClient:
             include_spoilers=include_spoilers,
             sort_by=sort_by,
             requesting_user_id=requesting_user_id,
-            rating_filter=rating_filter,
+            rating_filters=rating_filters,
         )
         try:
             return await self.stub.GetBookComments(

@@ -69,6 +69,11 @@ class RecommendationServiceStub(object):
                 request_serializer=recommendation__pb2.GetSeriesRecommendationsRequest.SerializeToString,
                 response_deserializer=recommendation__pb2.SeriesRecommendationsResponse.FromString,
                 _registered_method=True)
+        self.GetBookOfTheWeek = channel.unary_unary(
+                '/recommendation.v1.RecommendationService/GetBookOfTheWeek',
+                request_serializer=recommendation__pb2.GetBookOfTheWeekRequest.SerializeToString,
+                response_deserializer=recommendation__pb2.BookOfTheWeekResponse.FromString,
+                _registered_method=True)
 
 
 class RecommendationServiceServicer(object):
@@ -116,6 +121,12 @@ class RecommendationServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetBookOfTheWeek(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_RecommendationServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -153,6 +164,11 @@ def add_RecommendationServiceServicer_to_server(servicer, server):
                     servicer.GetSeriesRecommendations,
                     request_deserializer=recommendation__pb2.GetSeriesRecommendationsRequest.FromString,
                     response_serializer=recommendation__pb2.SeriesRecommendationsResponse.SerializeToString,
+            ),
+            'GetBookOfTheWeek': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetBookOfTheWeek,
+                    request_deserializer=recommendation__pb2.GetBookOfTheWeekRequest.FromString,
+                    response_serializer=recommendation__pb2.BookOfTheWeekResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -344,6 +360,33 @@ class RecommendationService(object):
             '/recommendation.v1.RecommendationService/GetSeriesRecommendations',
             recommendation__pb2.GetSeriesRecommendationsRequest.SerializeToString,
             recommendation__pb2.SeriesRecommendationsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetBookOfTheWeek(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/recommendation.v1.RecommendationService/GetBookOfTheWeek',
+            recommendation__pb2.GetBookOfTheWeekRequest.SerializeToString,
+            recommendation__pb2.BookOfTheWeekResponse.FromString,
             options,
             channel_credentials,
             insecure,

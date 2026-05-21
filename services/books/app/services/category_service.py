@@ -1,5 +1,6 @@
 import json
 import logging
+import re
 from typing import Dict, List, Optional, Set, Tuple
 
 import app.cache
@@ -8,12 +9,15 @@ import app.config
 import app.db
 import app.models.genre
 import sqlalchemy
+import sqlalchemy.ext.asyncio
 
 logger = logging.getLogger(__name__)
 
 CATEGORY_TOP_BOOKS_CACHE_KEY = "category:top20:{category_slug}:{sort_by}:desc:{language}"
 CATEGORY_TOP_BOOKS_LANGUAGES = ["en"]
 CATEGORY_TOP_BOOKS_SORT_OPTIONS = ["popularity", "rating"]
+POPULAR_CATEGORIES_CACHE_KEY = "categories:popular:v2"
+POPULAR_CATEGORIES_CACHE_TTL = 172800
 
 
 class CategoryService:
@@ -41,7 +45,8 @@ class CategoryService:
                 for genre_id, name, slug in all_genres:
                     name_lower = name.lower()
                     if slug in config.exact_slugs or any(
-                        kw in name_lower for kw in config.keywords
+                        re.search(r"\b" + re.escape(kw) + r"\b", name_lower)
+                        for kw in config.keywords
                     ):
                         cat_genre_ids.add(genre_id)
 
@@ -113,7 +118,7 @@ class CategoryService:
         if category_slug not in app.categories_config.CATEGORIES:
             return [], 0
 
-        if offset == 0 and order == "desc":
+        if offset == 0 and limit <= 20 and order == "desc":
             cache_key = CATEGORY_TOP_BOOKS_CACHE_KEY.format(
                 category_slug=category_slug,
                 sort_by=sort_by,
@@ -146,6 +151,9 @@ class CategoryService:
         if not genre_ids:
             return [], 0
 
+        if sort_by not in {"popularity", "rating"}:
+            sort_by = "popularity"
+
         genre_ids_list = list(genre_ids)
 
         if sort_by == "popularity":
@@ -156,7 +164,7 @@ class CategoryService:
                 " + COALESCE(b.ol_currently_reading_count, 0)"
                 " + COALESCE(b.ol_already_read_count, 0)"
             )
-        elif sort_by == "rating":
+        else:
             sort_col = (
                 "CASE"
                 " WHEN COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0) = 0 THEN 0"
@@ -166,8 +174,6 @@ class CategoryService:
                 " ) / (COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0))"
                 " END"
             )
-        else:
-            sort_col = "COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0)"
 
         order_dir = "DESC" if order.lower() == "desc" else "ASC"
 
@@ -200,11 +206,12 @@ class CategoryService:
                 ) AS authors
             FROM books.books b
             WHERE b.language = :language
-            AND EXISTS (
+              AND b.primary_cover_url IS NOT NULL
+              AND EXISTS (
                 SELECT 1 FROM books.book_genres bg
                 WHERE bg.book_id = b.book_id AND bg.genre_id = ANY(:genre_ids)
             )
-            ORDER BY {sort_col} {order_dir} NULLS LAST
+            ORDER BY {sort_col} {order_dir} NULLS LAST, b.book_id DESC
             LIMIT :limit OFFSET :offset
             """
         )
@@ -214,7 +221,8 @@ class CategoryService:
             SELECT COUNT(*)
             FROM books.books b
             WHERE b.language = :language
-            AND EXISTS (
+              AND b.primary_cover_url IS NOT NULL
+              AND EXISTS (
                 SELECT 1 FROM books.book_genres bg
                 WHERE bg.book_id = b.book_id AND bg.genre_id = ANY(:genre_ids)
             )
@@ -224,48 +232,134 @@ class CategoryService:
         base_params = {"language": language, "genre_ids": genre_ids_list}
 
         async with app.db.async_session_maker() as session:
-            count_result = await session.execute(count_query, base_params)
-            total_count = count_result.scalar() or 0
+            async with session.begin():
+                count_result = await session.execute(count_query, base_params)
+                total_count = count_result.scalar() or 0
 
-            books_result = await session.execute(
-                books_query,
-                {**base_params, "limit": limit, "offset": offset},
+                books_result = await session.execute(
+                    books_query,
+                    {**base_params, "limit": limit, "offset": offset},
+                )
+                raw_rows = books_result.fetchall()
+
+        books_data = []
+        for row in raw_rows:
+            authors_raw = row.authors
+            if isinstance(authors_raw, str):
+                authors_list = json.loads(authors_raw)
+            elif authors_raw is None:
+                authors_list = []
+            else:
+                authors_list = authors_raw
+
+            books_data.append(
+                {
+                    "book_id": row.book_id,
+                    "title": row.title,
+                    "slug": row.slug,
+                    "description": row.description or "",
+                    "original_publication_year": int(
+                        row.original_publication_year or 0
+                    ),
+                    "primary_cover_url": row.primary_cover_url or "",
+                    "rating_count": row.rating_count or 0,
+                    "avg_rating": str(row.avg_rating) if row.avg_rating else "0.00",
+                    "ol_rating_count": row.ol_rating_count or 0,
+                    "ol_avg_rating": (
+                        str(row.ol_avg_rating) if row.ol_avg_rating else "0.00"
+                    ),
+                    "ol_want_to_read_count": row.ol_want_to_read_count or 0,
+                    "ol_currently_reading_count": row.ol_currently_reading_count or 0,
+                    "ol_already_read_count": row.ol_already_read_count or 0,
+                    "authors": authors_list,
+                }
             )
 
-            books_data = []
-            for row in books_result.fetchall():
-                authors_raw = row.authors
-                if isinstance(authors_raw, str):
-                    authors_list = json.loads(authors_raw)
-                elif authors_raw is None:
-                    authors_list = []
-                else:
-                    authors_list = authors_raw
+        return books_data, total_count
 
-                books_data.append(
-                    {
-                        "book_id": row.book_id,
-                        "title": row.title,
-                        "slug": row.slug,
-                        "description": row.description or "",
-                        "original_publication_year": int(
-                            row.original_publication_year or 0
-                        ),
-                        "primary_cover_url": row.primary_cover_url or "",
-                        "rating_count": row.rating_count or 0,
-                        "avg_rating": str(row.avg_rating) if row.avg_rating else "0.00",
-                        "ol_rating_count": row.ol_rating_count or 0,
-                        "ol_avg_rating": (
-                            str(row.ol_avg_rating) if row.ol_avg_rating else "0.00"
-                        ),
-                        "ol_want_to_read_count": row.ol_want_to_read_count or 0,
-                        "ol_currently_reading_count": row.ol_currently_reading_count or 0,
-                        "ol_already_read_count": row.ol_already_read_count or 0,
-                        "authors": authors_list,
-                    }
-                )
 
-            return books_data, total_count
+    async def _compute_popular_categories(self) -> List[dict]:
+        slug_to_genre_ids: Dict[str, List[int]] = {
+            slug: list(genre_ids)
+            for slug, genre_ids in self._category_genre_ids.items()
+            if genre_ids and slug in app.categories_config.CATEGORIES
+        }
+
+        if not slug_to_genre_ids:
+            return []
+
+        mapping_rows: List[Tuple[str, int]] = []
+        for slug, genre_ids in slug_to_genre_ids.items():
+            for gid in genre_ids:
+                mapping_rows.append((slug, gid))
+
+        if not mapping_rows:
+            return []
+
+        slugs_array = [row[0] for row in mapping_rows]
+        gids_array = [row[1] for row in mapping_rows]
+
+        query = sqlalchemy.text(
+            """
+            WITH cat_map AS (
+                SELECT t.slug, t.genre_id
+                FROM UNNEST(CAST(:slugs AS text[]), CAST(:gids AS int[])) AS t(slug, genre_id)
+            )
+            SELECT cm.slug, COUNT(DISTINCT b.book_id) AS book_count
+            FROM cat_map cm
+            JOIN books.book_genres bg ON bg.genre_id = cm.genre_id
+            JOIN books.books b ON b.book_id = bg.book_id
+            WHERE b.primary_cover_url IS NOT NULL
+            GROUP BY cm.slug
+            """
+        )
+
+        async with app.db.async_session_maker() as session:
+            result = await session.execute(
+                query, {"slugs": slugs_array, "gids": gids_array}
+            )
+            counts: Dict[str, int] = {row.slug: int(row.book_count) for row in result.fetchall()}
+
+        results: List[dict] = []
+        for slug in slug_to_genre_ids:
+            cat = app.categories_config.CATEGORIES[slug]
+            results.append({
+                "slug": slug,
+                "name": cat.name,
+                "book_count": counts.get(slug, 0),
+            })
+
+        results.sort(key=lambda x: x["book_count"], reverse=True)
+        return results
+
+    async def populate_popular_categories_cache(self) -> None:
+        logger.info("Populating popular categories cache...")
+        if not self._is_ready:
+            await self.setup()
+        try:
+            results = await self._compute_popular_categories()
+            await app.cache.set_cached(
+                POPULAR_CATEGORIES_CACHE_KEY, results, POPULAR_CATEGORIES_CACHE_TTL
+            )
+            logger.info(f"Popular categories cache populated ({len(results)} entries).")
+        except Exception as e:
+            logger.error(f"Error populating popular categories cache: {str(e)}")
+            raise
+
+    async def get_popular_categories(self, limit: int = 12) -> List[dict]:
+        if not self._is_ready:
+            await self.setup()
+
+        cached = await app.cache.get_cached(POPULAR_CATEGORIES_CACHE_KEY)
+        if cached is not None:
+            return cached[:limit]
+
+        logger.warning("Popular categories cache miss - computing on demand")
+        results = await self._compute_popular_categories()
+        await app.cache.set_cached(
+            POPULAR_CATEGORIES_CACHE_KEY, results, POPULAR_CATEGORIES_CACHE_TTL
+        )
+        return results[:limit]
 
 
 category_service = CategoryService()

@@ -9,6 +9,7 @@ import app.db
 import app.grpc.server
 import app.proto.recommendation_pb2
 import app.proto.recommendation_pb2_grpc
+import app.services.book_of_week_builder
 import app.services.case_pool_builder
 import app.services.contextual_precompute
 import app.services.list_builder
@@ -73,6 +74,17 @@ async def _case_pool_refresh() -> None:
         logger.error(f"[case] Case pool refresh error: {str(e)}")
 
 
+async def _book_of_week_refresh() -> None:
+    logger.info("[bow] Running book of the week refresh")
+    try:
+        await app.services.book_of_week_builder.refresh_book_of_the_week(
+            app.db.async_session_maker
+        )
+        logger.info("[bow] Book of the week refresh complete")
+    except Exception as e:
+        logger.error(f"[bow] Book of the week refresh error: {str(e)}")
+
+
 async def start_server() -> None:
     global grpc_server, scheduler
 
@@ -109,11 +121,20 @@ async def start_server() -> None:
     await scheduler.add_schedule(_personal_refresh, CronTrigger(hour=1, minute=0))
     await scheduler.add_schedule(_contextual_precompute_refresh, CronTrigger(hour=2, minute=0))
     await scheduler.add_schedule(_case_pool_refresh, CronTrigger(minute=0))
+    await scheduler.add_schedule(
+        _book_of_week_refresh, CronTrigger(day_of_week="mon", hour=3, minute=0)
+    )
     await scheduler.start_in_background()
     logger.info("[rec] Midnight refresh scheduled (cron: '0 0 * * *')")
     logger.info("[rec:personal] Personal refresh scheduled (cron: '0 1 * * *')")
     logger.info("[rec:precompute] Contextual precompute scheduled (cron: '0 2 * * *')")
     logger.info("[case] Case pool refresh scheduled (cron: every hour)")
+    logger.info("[bow] Book of the week refresh scheduled (cron: '0 3 * * 1')")
+
+    bow_cached = await app.cache.get_cached(app.services.book_of_week_builder.BOW_CACHE_KEY)
+    if not bow_cached:
+        logger.info("[bow] Cache empty on startup, running initial book of the week selection")
+        await _book_of_week_refresh()
 
     logger.info("Recommendation service is running")
 

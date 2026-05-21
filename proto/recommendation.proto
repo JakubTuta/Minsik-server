@@ -10,6 +10,7 @@ service RecommendationService {
   rpc GetBookRecommendations(GetBookRecommendationsRequest) returns (BookRecommendationsResponse);
   rpc GetAuthorRecommendations(GetAuthorRecommendationsRequest) returns (AuthorRecommendationsResponse);
   rpc GetSeriesRecommendations(GetSeriesRecommendationsRequest) returns (SeriesRecommendationsResponse);
+  rpc GetBookOfTheWeek(GetBookOfTheWeekRequest) returns (BookOfTheWeekResponse);
 }
 
 message GetRecommendationListRequest {
@@ -120,4 +121,31 @@ message GetSeriesRecommendationsRequest {
 message SeriesRecommendationsResponse {
   int64 series_id = 1;
   repeated RecommendationSection sections = 2;
+}
+
+message GetBookOfTheWeekRequest {}
+
+message BookOfTheWeekAuthor {
+  int64 author_id = 1;
+  string name = 2;
+  string slug = 3;
+}
+
+message BookOfTheWeekCategory {
+  int64 genre_id = 1;
+  string name = 2;
+  string slug = 3;
+}
+
+message BookOfTheWeekResponse {
+  int64 book_id = 1;
+  string title = 2;
+  string slug = 3;
+  string language = 4;
+  string primary_cover_url = 5;
+  string first_sentence = 6;
+  double weighted_avg_rating = 7;
+  int32 rating_count = 8;
+  repeated BookOfTheWeekAuthor authors = 9;
+  repeated BookOfTheWeekCategory categories = 10;
 }

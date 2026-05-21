@@ -2,11 +2,41 @@ import logging
 
 import app.grpc_clients
 import app.models.books_responses
+import app.utils.responses
+import grpc
 from fastapi import APIRouter, HTTPException, Query
 from google.protobuf.json_format import MessageToDict
 
 router = APIRouter(prefix="/api/v1/categories", tags=["Categories"])
 logger = logging.getLogger(__name__)
+
+
+@router.get(
+    "/popular",
+    response_model=app.models.books_responses.PopularCategoriesResponse,
+    summary="Get popular categories",
+    description="""
+    Returns top categories ranked by book count (English books with cover image).
+
+    Results are cached for 24 hours.
+    """,
+)
+async def get_popular_categories(
+    limit: int = Query(12, ge=1, le=20, description="Number of categories to return"),
+):
+    try:
+        response = await app.grpc_clients.books_client.get_popular_categories(limit=limit)
+        categories = [
+            {"slug": c.slug, "name": c.name, "book_count": c.book_count}
+            for c in response.categories
+        ]
+        return app.utils.responses.success_response({"categories": categories})
+    except grpc.RpcError as e:
+        app.utils.responses.log_grpc_error(logger, "in get_popular_categories", e)
+        raise HTTPException(status_code=500, detail="Failed to fetch popular categories")
+    except Exception as e:
+        logger.error(f"Unexpected error in get_popular_categories: {str(e)}")
+        raise HTTPException(status_code=500, detail="Failed to fetch popular categories")
 
 
 @router.get(

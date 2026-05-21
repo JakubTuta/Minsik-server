@@ -117,3 +117,34 @@ class SeriesRecommendationsResponse(pydantic.BaseModel):
     success: bool = True
     data: SeriesRecommendationsData
     error: typing.Optional[app.models.responses.ErrorDetail] = None
+
+
+class BookOfTheWeekAuthorSchema(pydantic.BaseModel):
+    author_id: int
+    name: str
+    slug: str
+
+
+class BookOfTheWeekCategorySchema(pydantic.BaseModel):
+    genre_id: int
+    name: str
+    slug: str
+
+
+class BookOfTheWeekData(pydantic.BaseModel):
+    book_id: int
+    title: str
+    slug: str
+    language: str
+    primary_cover_url: str
+    first_sentence: str
+    weighted_avg_rating: float
+    rating_count: int
+    authors: typing.List[BookOfTheWeekAuthorSchema]
+    categories: typing.List[BookOfTheWeekCategorySchema]
+
+
+class BookOfTheWeekResponse(pydantic.BaseModel):
+    success: bool = True
+    data: BookOfTheWeekData
+    error: typing.Optional[app.models.responses.ErrorDetail] = None

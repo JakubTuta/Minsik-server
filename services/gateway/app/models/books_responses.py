@@ -24,6 +24,31 @@ class SeriesMinimalSchema(pydantic.BaseModel):
     total_books: typing.Optional[int] = None
 
 
+class SuggestionItemSchema(pydantic.BaseModel):
+    type: str
+    id: int
+    title: str
+    slug: str
+    cover_url: typing.Optional[str] = None
+    authors: typing.List[str] = []
+    score: float = 0.0
+    readers: int = 0
+    app_avg_rating: float = 0.0
+    app_rating_count: int = 0
+    ol_avg_rating: float = 0.0
+    ol_rating_count: int = 0
+
+
+class SuggestData(pydantic.BaseModel):
+    items: typing.List[SuggestionItemSchema]
+
+
+class SuggestResponse(pydantic.BaseModel):
+    success: bool = True
+    data: SuggestData
+    error: typing.Optional[app.models.responses.ErrorDetail] = None
+
+
 class SearchResultSchema(pydantic.BaseModel):
     type: str
     id: int
@@ -39,6 +64,7 @@ class SearchResultSchema(pydantic.BaseModel):
     ol_avg_rating: float = 0.0
     ol_rating_count: int = 0
     book_count: int = 0
+    readers: int = 0
 
 
 class SearchResultsData(pydantic.BaseModel):
@@ -208,6 +234,22 @@ class CategoryBooksData(pydantic.BaseModel):
 class CategoryBooksResponse(pydantic.BaseModel):
     success: bool
     data: CategoryBooksData
+    error: typing.Optional[app.models.responses.ErrorDetail] = None
+
+
+class PopularCategoryItemSchema(pydantic.BaseModel):
+    slug: str
+    name: str
+    book_count: int
+
+
+class PopularCategoriesData(pydantic.BaseModel):
+    categories: typing.List[PopularCategoryItemSchema]
+
+
+class PopularCategoriesResponse(pydantic.BaseModel):
+    success: bool = True
+    data: PopularCategoriesData
     error: typing.Optional[app.models.responses.ErrorDetail] = None
 
 
