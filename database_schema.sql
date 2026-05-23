@@ -221,6 +221,27 @@ CREATE INDEX idx_book_genres_genre_id ON books.book_genres(genre_id);
 
 COMMENT ON TABLE books.book_genres IS 'Many-to-many: books <-> genres. Books can have multiple genres';
 
+-- ----------------------------------------------------------------------------
+-- books.genre_co_occurrences - Precomputed genre co-occurrence graph
+-- Source: services/books/app/models/genre_co_occurrence.py
+-- Rebuilt weekly by genre_bubble_builder worker (ingestion service)
+-- ----------------------------------------------------------------------------
+CREATE TABLE books.genre_co_occurrences (
+    genre_id_a          BIGINT NOT NULL REFERENCES books.genres(genre_id) ON DELETE CASCADE,
+    genre_id_b          BIGINT NOT NULL REFERENCES books.genres(genre_id) ON DELETE CASCADE,
+    co_occurrence_count INT    NOT NULL,           -- Number of books sharing both genres
+    strength            REAL   NOT NULL,           -- Jaccard coefficient: |A∩B| / |A∪B|
+    updated_at          TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+
+    PRIMARY KEY (genre_id_a, genre_id_b),
+    CHECK (genre_id_a < genre_id_b)               -- Canonical ordering, no duplicate pairs
+);
+
+CREATE INDEX idx_gco_a_strength ON books.genre_co_occurrences (genre_id_a, strength DESC);
+CREATE INDEX idx_gco_b_strength ON books.genre_co_occurrences (genre_id_b, strength DESC);
+
+COMMENT ON TABLE books.genre_co_occurrences IS 'Precomputed genre co-occurrence pairs with Jaccard strength. Powers genre bubble UI and adjacent-genre recommendations. Rebuilt weekly via TRUNCATE + bulk INSERT.';
+
 -- ============================================================================
 -- AUTH SCHEMA - Authentication and user management
 -- ============================================================================

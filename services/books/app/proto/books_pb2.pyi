@@ -297,6 +297,32 @@ class SeriesInfo(_message.Message):
     total_books: int
     def __init__(self, series_id: _Optional[int] = ..., name: _Optional[str] = ..., slug: _Optional[str] = ..., total_books: _Optional[int] = ...) -> None: ...
 
+class GenreCoOccurrence(_message.Message):
+    __slots__ = ("genre", "co_occurrence_count", "strength")
+    GENRE_FIELD_NUMBER: _ClassVar[int]
+    CO_OCCURRENCE_COUNT_FIELD_NUMBER: _ClassVar[int]
+    STRENGTH_FIELD_NUMBER: _ClassVar[int]
+    genre: GenreInfo
+    co_occurrence_count: int
+    strength: float
+    def __init__(self, genre: _Optional[_Union[GenreInfo, _Mapping]] = ..., co_occurrence_count: _Optional[int] = ..., strength: _Optional[float] = ...) -> None: ...
+
+class GetGenreBubbleRequest(_message.Message):
+    __slots__ = ("slug", "limit")
+    SLUG_FIELD_NUMBER: _ClassVar[int]
+    LIMIT_FIELD_NUMBER: _ClassVar[int]
+    slug: str
+    limit: int
+    def __init__(self, slug: _Optional[str] = ..., limit: _Optional[int] = ...) -> None: ...
+
+class GetGenreBubbleResponse(_message.Message):
+    __slots__ = ("source", "related")
+    SOURCE_FIELD_NUMBER: _ClassVar[int]
+    RELATED_FIELD_NUMBER: _ClassVar[int]
+    source: GenreInfo
+    related: _containers.RepeatedCompositeFieldContainer[GenreCoOccurrence]
+    def __init__(self, source: _Optional[_Union[GenreInfo, _Mapping]] = ..., related: _Optional[_Iterable[_Union[GenreCoOccurrence, _Mapping]]] = ...) -> None: ...
+
 class BookDetailResponse(_message.Message):
     __slots__ = ("book",)
     BOOK_FIELD_NUMBER: _ClassVar[int]
@@ -725,3 +751,15 @@ class PopularCategoriesResponse(_message.Message):
     CATEGORIES_FIELD_NUMBER: _ClassVar[int]
     categories: _containers.RepeatedCompositeFieldContainer[PopularCategoryItem]
     def __init__(self, categories: _Optional[_Iterable[_Union[PopularCategoryItem, _Mapping]]] = ...) -> None: ...
+
+class ReindexAllRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class ReindexAllResponse(_message.Message):
+    __slots__ = ("status", "message")
+    STATUS_FIELD_NUMBER: _ClassVar[int]
+    MESSAGE_FIELD_NUMBER: _ClassVar[int]
+    status: str
+    message: str
+    def __init__(self, status: _Optional[str] = ..., message: _Optional[str] = ...) -> None: ...

@@ -413,5 +413,29 @@ class BooksClient:
             )
             raise
 
+    async def trigger_reindex(self) -> books_pb2.ReindexAllResponse:
+        request = books_pb2.ReindexAllRequest()
+        try:
+            return await self.stub.ReindexAll(
+                request, timeout=app.config.settings.grpc_admin_timeout
+            )
+        except grpc.RpcError as e:
+            logger.error(f"gRPC error triggering reindex: {e.code()} - {e.details()}")
+            raise
+
+    async def get_genre_bubble(
+        self,
+        slug: str,
+        limit: int = 10,
+    ) -> books_pb2.GetGenreBubbleResponse:
+        request = books_pb2.GetGenreBubbleRequest(slug=slug, limit=limit)
+        try:
+            return await self.stub.GetGenreBubble(
+                request, timeout=app.config.settings.grpc_timeout
+            )
+        except grpc.RpcError as e:
+            logger.error(f"gRPC error getting genre bubble: {e.code()} - {e.details()}")
+            raise
+
 
 books_client = BooksClient()

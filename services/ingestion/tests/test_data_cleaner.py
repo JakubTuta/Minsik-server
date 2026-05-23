@@ -10,7 +10,7 @@ OLD_DATE = datetime.datetime(2020, 1, 1)
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_cleanup_removes_low_quality_book(commit_session):
+async def test_cleanup_removes_low_quality_book(commit_session, session_factory_for_testing):
     book = Book(
         title="Bad Book",
         language="en",
@@ -22,7 +22,11 @@ async def test_cleanup_removes_low_quality_book(commit_session):
     await commit_session.commit()
 
     stats = await data_cleaner.cleanup_low_quality_books(
-        commit_session, min_quality_score=3, batch_size=100
+        session_factory_for_testing,
+        min_quality_score=3,
+        engagement_threshold=10,
+        min_publication_year=1450,
+        batch_size=100,
     )
 
     result = await commit_session.execute(select(func.count()).select_from(Book))
@@ -32,7 +36,7 @@ async def test_cleanup_removes_low_quality_book(commit_session):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_cleanup_keeps_high_quality_book(commit_session):
+async def test_cleanup_keeps_high_quality_book(commit_session, session_factory_for_testing):
     author = Author(name="Real Author", slug="real-author")
     genre = Genre(name="Fiction", slug="fiction")
     commit_session.add_all([author, genre])
@@ -56,7 +60,11 @@ async def test_cleanup_keeps_high_quality_book(commit_session):
     await commit_session.commit()
 
     stats = await data_cleaner.cleanup_low_quality_books(
-        commit_session, min_quality_score=3, batch_size=100
+        session_factory_for_testing,
+        min_quality_score=3,
+        engagement_threshold=10,
+        min_publication_year=1450,
+        batch_size=100,
     )
 
     result = await commit_session.execute(select(func.count()).select_from(Book))
@@ -66,7 +74,7 @@ async def test_cleanup_keeps_high_quality_book(commit_session):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_cleanup_keeps_book_with_views(commit_session):
+async def test_cleanup_keeps_book_with_views(commit_session, session_factory_for_testing):
     book = Book(
         title="Viewed Book",
         language="en",
@@ -79,7 +87,11 @@ async def test_cleanup_keeps_book_with_views(commit_session):
     await commit_session.commit()
 
     stats = await data_cleaner.cleanup_low_quality_books(
-        commit_session, min_quality_score=3, batch_size=100
+        session_factory_for_testing,
+        min_quality_score=3,
+        engagement_threshold=10,
+        min_publication_year=1450,
+        batch_size=100,
     )
 
     result = await commit_session.execute(select(func.count()).select_from(Book))
@@ -89,20 +101,33 @@ async def test_cleanup_keeps_book_with_views(commit_session):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_cleanup_keeps_book_with_ratings(commit_session):
+async def test_cleanup_keeps_book_with_high_ratings(commit_session, session_factory_for_testing):
+    author = Author(name="Popular Author", slug="popular-author")
+    genre = Genre(name="Thriller", slug="thriller")
+    commit_session.add_all([author, genre])
+    await commit_session.flush()
+
     book = Book(
         title="Rated Book",
         language="en",
         slug="rated-book",
-        rating_count=1,
+        rating_count=20,
         formats=[],
         created_at=OLD_DATE,
     )
     commit_session.add(book)
+    await commit_session.flush()
+
+    commit_session.add(BookAuthor(book_id=book.book_id, author_id=author.author_id))
+    commit_session.add(BookGenre(book_id=book.book_id, genre_id=genre.genre_id))
     await commit_session.commit()
 
     stats = await data_cleaner.cleanup_low_quality_books(
-        commit_session, min_quality_score=3, batch_size=100
+        session_factory_for_testing,
+        min_quality_score=3,
+        engagement_threshold=10,
+        min_publication_year=1450,
+        batch_size=100,
     )
 
     result = await commit_session.execute(select(func.count()).select_from(Book))
@@ -112,13 +137,13 @@ async def test_cleanup_keeps_book_with_ratings(commit_session):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_cleanup_orphan_authors(commit_session):
+async def test_cleanup_orphan_authors(commit_session, session_factory_for_testing):
     orphan = Author(name="Nobody", slug="nobody", created_at=OLD_DATE)
     commit_session.add(orphan)
     await commit_session.commit()
 
     stats = await data_cleaner.cleanup_orphan_authors(
-        commit_session, min_books=2, batch_size=100
+        session_factory_for_testing, min_books=2, max_books=1000, batch_size=100
     )
 
     result = await commit_session.execute(select(func.count()).select_from(Author))
@@ -128,7 +153,7 @@ async def test_cleanup_orphan_authors(commit_session):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_cleanup_keeps_author_with_books(commit_session):
+async def test_cleanup_keeps_author_with_books(commit_session, session_factory_for_testing):
     author = Author(name="Prolific Author", slug="prolific-author")
     commit_session.add(author)
     await commit_session.flush()
@@ -147,7 +172,7 @@ async def test_cleanup_keeps_author_with_books(commit_session):
     await commit_session.commit()
 
     stats = await data_cleaner.cleanup_orphan_authors(
-        commit_session, min_books=2, batch_size=100
+        session_factory_for_testing, min_books=2, max_books=1000, batch_size=100
     )
 
     result = await commit_session.execute(select(func.count()).select_from(Author))
@@ -157,23 +182,9 @@ async def test_cleanup_keeps_author_with_books(commit_session):
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_cleanup_keeps_viewed_author(commit_session):
-    author = Author(name="Famous Author", slug="famous-author", view_count=10)
-    commit_session.add(author)
-    await commit_session.commit()
-
-    stats = await data_cleaner.cleanup_orphan_authors(
-        commit_session, min_books=2, batch_size=100
-    )
-
-    result = await commit_session.execute(select(func.count()).select_from(Author))
-    assert result.scalar_one() == 1
-    assert stats["deleted"] == 0
-
-
-@pytest.mark.asyncio
-@pytest.mark.integration
-async def test_cleanup_removes_short_series_without_deleting_books(commit_session):
+async def test_cleanup_removes_short_series_without_deleting_books(
+    commit_session, session_factory_for_testing
+):
     series = Series(name="Short Series", slug="short-series", created_at=OLD_DATE)
     commit_session.add(series)
     await commit_session.flush()
@@ -190,7 +201,7 @@ async def test_cleanup_removes_short_series_without_deleting_books(commit_sessio
     await commit_session.commit()
 
     deleted = await data_cleaner.cleanup_underrepresented_series(
-        commit_session, max_books=2, batch_size=100
+        session_factory_for_testing, min_books=2, max_books=100, batch_size=100
     )
     assert deleted == 1
 
@@ -209,22 +220,22 @@ async def test_cleanup_removes_short_series_without_deleting_books(commit_sessio
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_cleanup_removes_unknown_series_with_zero_readers_and_ratings(
-    commit_session,
-):
-    unknown_series = Series(name="unknown", slug="unknown", created_at=OLD_DATE)
-    commit_session.add(unknown_series)
+async def test_cleanup_removes_empty_series(commit_session, session_factory_for_testing):
+    empty_series = Series(name="Empty Series", slug="empty-series", created_at=OLD_DATE)
+    commit_session.add(empty_series)
     await commit_session.commit()
 
     deleted = await data_cleaner.cleanup_underrepresented_series(
-        commit_session, max_books=2, batch_size=100
+        session_factory_for_testing, min_books=2, max_books=100, batch_size=100
     )
     assert deleted == 1
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_cleanup_keeps_non_unknown_series_with_many_books(commit_session):
+async def test_cleanup_keeps_series_with_many_books(
+    commit_session, session_factory_for_testing
+):
     series = Series(name="Long Series", slug="long-series", created_at=OLD_DATE)
     commit_session.add(series)
     await commit_session.flush()
@@ -243,17 +254,112 @@ async def test_cleanup_keeps_non_unknown_series_with_many_books(commit_session):
     await commit_session.commit()
 
     deleted = await data_cleaner.cleanup_underrepresented_series(
-        commit_session, max_books=2, batch_size=100
+        session_factory_for_testing, min_books=2, max_books=100, batch_size=100
     )
     assert deleted == 0
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_cleanup_orphan_genres(commit_session):
+async def test_normalize_genres_merges_variant_into_canonical(
+    commit_session, session_factory_for_testing
+):
+    canonical = Genre(name="science fiction", slug="science-fiction")
+    variant = Genre(name="Sci-Fi", slug="sci-fi")
+    commit_session.add_all([canonical, variant])
+    await commit_session.flush()
+
+    book1 = Book(title="Book A", language="en", slug="book-a", formats=[])
+    book2 = Book(title="Book B", language="en", slug="book-b", formats=[])
+    commit_session.add_all([book1, book2])
+    await commit_session.flush()
+
+    commit_session.add(
+        BookGenre(book_id=book1.book_id, genre_id=canonical.genre_id)
+    )
+    commit_session.add(
+        BookGenre(book_id=book2.book_id, genre_id=variant.genre_id)
+    )
+    await commit_session.commit()
+
+    merged = await data_cleaner.normalize_and_merge_genres(
+        session_factory_for_testing, batch_size=100
+    )
+
+    await commit_session.reset()
+
+    genre_count = await commit_session.execute(
+        select(func.count()).select_from(Genre)
+    )
+    assert genre_count.scalar_one() == 1
+
+    bk_genre_count = await commit_session.execute(
+        select(func.count()).select_from(BookGenre)
+    )
+    assert bk_genre_count.scalar_one() == 2
+
+    assert merged >= 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_normalize_genres_renames_variant_when_no_canonical_exists(
+    commit_session, session_factory_for_testing
+):
+    variant = Genre(name="Sci-Fi", slug="sci-fi")
+    commit_session.add(variant)
+    await commit_session.flush()
+
+    book = Book(title="Some Sci-Fi Book", language="en", slug="some-sci-fi-book", formats=[])
+    commit_session.add(book)
+    await commit_session.flush()
+
+    commit_session.add(BookGenre(book_id=book.book_id, genre_id=variant.genre_id))
+    await commit_session.commit()
+
+    merged = await data_cleaner.normalize_and_merge_genres(
+        session_factory_for_testing, batch_size=100
+    )
+
+    await commit_session.reset()
+
+    result = await commit_session.execute(
+        select(Genre).where(Genre.slug == "science-fiction")
+    )
+    assert result.scalar_one_or_none() is not None
+    assert merged >= 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_normalize_genres_skips_already_canonical(
+    commit_session, session_factory_for_testing
+):
+    genre = Genre(name="science fiction", slug="science-fiction")
+    commit_session.add(genre)
+    await commit_session.commit()
+
+    merged = await data_cleaner.normalize_and_merge_genres(
+        session_factory_for_testing, batch_size=100
+    )
+
+    await commit_session.reset()
+
+    count = await commit_session.execute(
+        select(func.count()).select_from(Genre)
+    )
+    assert count.scalar_one() == 1
+    assert merged == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_cleanup_orphan_genres(commit_session, session_factory_for_testing):
     genre = Genre(name="Dead Genre", slug="dead-genre", created_at=OLD_DATE)
     commit_session.add(genre)
     await commit_session.commit()
 
-    deleted = await data_cleaner.cleanup_orphan_genres(commit_session, batch_size=100)
+    deleted = await data_cleaner.cleanup_orphan_genres(
+        session_factory_for_testing, batch_size=100
+    )
     assert deleted == 1

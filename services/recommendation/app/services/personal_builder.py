@@ -559,6 +559,81 @@ async def _build_unread_by_author(
     ]
 
 
+async def _build_explore_adjacent_genres(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    profile: typing.Dict[str, typing.Any],
+    limit: int,
+) -> typing.Tuple[typing.List[typing.Dict[str, typing.Any]], str]:
+    genre_scores = profile.get("genre_scores", {})
+    if not genre_scores:
+        return [], ""
+
+    top_genre_slugs = sorted(genre_scores, key=lambda s: genre_scores[s], reverse=True)[:3]
+    exclude_ids = profile.get("read_book_ids", []) or [-1]
+
+    result = await session.execute(
+        sqlalchemy.text(
+            f"""
+            WITH user_top_genres AS (
+                SELECT g.genre_id, g.slug
+                FROM books.genres g
+                WHERE g.slug = ANY(CAST(:top_slugs AS text[]))
+            ),
+            adjacent_genres AS (
+                SELECT
+                    CASE
+                        WHEN gco.genre_id_a = utg.genre_id THEN gco.genre_id_b
+                        ELSE gco.genre_id_a
+                    END AS adj_genre_id,
+                    MAX(gco.strength) AS max_strength
+                FROM books.genre_co_occurrences gco
+                JOIN user_top_genres utg
+                    ON gco.genre_id_a = utg.genre_id OR gco.genre_id_b = utg.genre_id
+                WHERE gco.strength >= 0.05
+                GROUP BY 1
+            ),
+            adj_not_top AS (
+                SELECT ag.adj_genre_id, ag.max_strength, g.slug AS adj_slug
+                FROM adjacent_genres ag
+                JOIN books.genres g ON g.genre_id = ag.adj_genre_id
+                WHERE NOT (g.slug = ANY(CAST(:top_slugs AS text[])))
+                ORDER BY ag.max_strength DESC
+                LIMIT 5
+            )
+            SELECT {app.services.list_builder._BOOK_FIELDS},
+                   ant.max_strength AS score,
+                   ant.adj_slug AS source_genre_slug
+            FROM adj_not_top ant
+            JOIN books.book_genres bg ON bg.genre_id = ant.adj_genre_id
+            JOIN books.books b ON b.book_id = bg.book_id
+            {app.services.list_builder._BOOK_JOINS}
+            WHERE {app.services.list_builder._BOOK_BASE_WHERE}
+              AND NOT (b.book_id = ANY(CAST(:exclude_ids AS bigint[])))
+            GROUP BY b.book_id, ant.max_strength, ant.adj_slug
+            ORDER BY ant.max_strength DESC, b.avg_rating DESC NULLS LAST
+            LIMIT :limit
+            """
+        ),
+        {
+            "top_slugs": top_genre_slugs,
+            "exclude_ids": exclude_ids,
+            "limit": limit,
+        },
+    )
+
+    rows = result.fetchall()
+    if not rows:
+        return [], ""
+
+    items = [
+        app.services.list_builder._row_to_book_item(row, float(row.score or 0))
+        for row in rows
+    ]
+    source_slug: str = rows[0].source_genre_slug if rows else ""
+    display_genre = source_slug.replace("-", " ").title()
+    return items, display_genre
+
+
 async def build_personal_home_sections(
     session_maker: typing.Any,
     profile: typing.Dict[str, typing.Any],
@@ -577,6 +652,7 @@ async def build_personal_home_sections(
         run(_build_want_to_read_picks, profile, limit_per_section),
         run(_build_readers_like_you, profile, limit_per_section),
         run(_build_hidden_gems, profile, limit_per_section),
+        run(_build_explore_adjacent_genres, profile, limit_per_section),
         return_exceptions=True,
     )
 
@@ -584,6 +660,7 @@ async def build_personal_home_sections(
     section_names = [
         "for_you", "because_you_liked", "continue_series", "from_favorite_authors",
         "top_in_your_genres", "want_to_read_picks", "readers_like_you", "hidden_gems",
+        "explore_adjacent_genres",
     ]
     for i, result in enumerate(results):
         if isinstance(result, Exception):
@@ -602,6 +679,8 @@ async def build_personal_home_sections(
     want_to_read_items = safe(results[5]) or []
     readers_like_items = safe(results[6]) or []
     hidden_gems_items = safe(results[7]) or []
+    adjacent_result = safe(results[8])
+    adjacent_items, adjacent_genre = adjacent_result if adjacent_result else ([], "")
 
     sections: typing.List[typing.Dict[str, typing.Any]] = []
 
@@ -662,6 +741,15 @@ async def build_personal_home_sections(
         sections.append(
             _make_home_section(
                 "hidden_gems", "Hidden Gems For You", "book", hidden_gems_items
+            )
+        )
+    if adjacent_items and adjacent_genre:
+        sections.append(
+            _make_home_section(
+                "explore_adjacent_genres",
+                f"Explore {adjacent_genre}",
+                "book",
+                adjacent_items,
             )
         )
 

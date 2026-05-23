@@ -205,6 +205,29 @@ class AuthorBooksResponse(pydantic.BaseModel):
     error: typing.Optional[app.models.responses.ErrorDetail] = None
 
 
+class AuthorQuoteData(pydantic.BaseModel):
+    first_sentence: str
+    book_title: str
+    book_slug: str
+    publication_year: typing.Optional[int] = None
+
+
+class AuthorQuoteResponse(pydantic.BaseModel):
+    success: bool = True
+    data: typing.Optional[AuthorQuoteData] = None
+    error: typing.Optional[app.models.responses.ErrorDetail] = None
+
+
+class AuthorTopBooksData(pydantic.BaseModel):
+    books: typing.List[BookSummarySchema]
+
+
+class AuthorTopBooksResponse(pydantic.BaseModel):
+    success: bool = True
+    data: AuthorTopBooksData
+    error: typing.Optional[app.models.responses.ErrorDetail] = None
+
+
 class CategorySchema(pydantic.BaseModel):
     slug: str
     name: str

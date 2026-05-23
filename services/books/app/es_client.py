@@ -10,6 +10,7 @@ logger = logging.getLogger(__name__)
 _es_client: typing.Optional[elasticsearch.AsyncElasticsearch] = None
 
 _ANALYSIS_SETTINGS: typing.Dict[str, typing.Any] = {
+    "number_of_replicas": 0,
     "analysis": {
         "analyzer": {
             "book_analyzer": {
@@ -144,7 +145,12 @@ SERIES_INDEX_MAPPING: typing.Dict[str, typing.Any] = {
 async def init_es(host: str, port: int, max_retries: int = 10) -> None:
     global _es_client
     es_url = f"http://{host}:{port}"
-    _es_client = elasticsearch.AsyncElasticsearch([es_url])
+    _es_client = elasticsearch.AsyncElasticsearch(
+        [es_url],
+        request_timeout=120,
+        retry_on_timeout=True,
+        max_retries=3,
+    )
 
     for attempt in range(max_retries):
         try:
@@ -179,16 +185,26 @@ async def create_indexes(
             try:
                 exists = await _es_client.indices.exists(index=index)
                 if exists:
-                    await _es_client.indices.delete(index=index)
-                    logger.info(f"[ES] Deleted existing index: {index}")
+                    logger.info(f"[ES] Index already exists, skipping: {index}")
+                    continue
                 await _es_client.indices.create(index=index, body=mapping)
                 logger.info(f"[ES] Created index: {index}")
             except Exception as e:
-                logger.error(f"[ES] Error recreating index {index}: {e}")
+                logger.error(f"[ES] Error creating index {index}: {e}")
                 raise
     except Exception as e:
         logger.error(f"[ES] Failed to create indexes: {e}")
         raise
+
+
+async def set_index_refresh(index: str, interval: str) -> None:
+    await _es_client.indices.put_settings(
+        index=index, settings={"refresh_interval": interval}
+    )
+
+
+async def refresh_index(index: str) -> None:
+    await _es_client.indices.refresh(index=index)
 
 
 async def close_es() -> None:

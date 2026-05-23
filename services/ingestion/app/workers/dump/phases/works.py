@@ -111,14 +111,13 @@ async def process_works_dump(file_path: str) -> int:
                     genres_list = []
                     for subject in subjects[:5]:
                         if isinstance(subject, str):
-                            genre_name = subject.lower()[:100]
-                            genre_slug = app.utils.slugify(genre_name)[:150]
-                            if not genre_slug:
+                            canonical_name, canonical_slug = app.utils.canonicalize_genre_name(subject)
+                            if not canonical_slug:
                                 continue
                             genres_list.append(
                                 {
-                                    "name": genre_name,
-                                    "slug": genre_slug,
+                                    "name": canonical_name,
+                                    "slug": canonical_slug,
                                 }
                             )
 

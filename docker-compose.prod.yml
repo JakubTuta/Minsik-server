@@ -38,12 +38,16 @@ services:
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false
-      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+      - ES_JAVA_OPTS=-Xms768m -Xmx768m
     # NO EXPOSED PORTS - internal network only (security)
     volumes:
       - es_data:/usr/share/elasticsearch/data
     healthcheck:
-      test: ["CMD-SHELL", "curl -sf http://localhost:9200/_cluster/health || exit 1"]
+      test:
+        [
+          "CMD-SHELL",
+          "curl -sf http://localhost:9200/_cluster/health || exit 1",
+        ]
       interval: 60s
       timeout: 10s
       retries: 3
@@ -645,11 +649,6 @@ volumes:
   postgres_data:
     name: minsik-postgres-data
     driver: local
-    # In production with Docker Swarm/K8s, use named volumes with backup strategy
-    # driver_opts:
-    #   type: nfs
-    #   o: addr=10.0.0.10,rw
-    #   device: ":/path/to/postgres/data"
 
   redis_data:
     name: minsik-redis-data
@@ -669,8 +668,6 @@ networks:
   minsik-internal:
     driver: bridge
     name: minsik-prod-network
-    # Set to true for complete isolation (services can't access internet)
-    # Only use if services don't need external API access
     internal: false
     ipam:
       driver: default

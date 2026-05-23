@@ -8,6 +8,8 @@ import uuid
 from dateutil import parser as date_parser
 from text_unidecode import unidecode
 
+import app.data.genre_synonyms as genre_synonyms
+
 
 def slugify(text: str, max_length: int = 200) -> str:
     if not text:
@@ -124,6 +126,17 @@ def clean_description(description: typing.Optional[str]) -> typing.Optional[str]
     description = description.strip()
 
     return description if description else None
+
+
+def canonicalize_genre_name(name: str) -> tuple[str, str]:
+    cleaned = genre_synonyms.strip_genre_noise(name)
+    base_slug = slugify(cleaned, max_length=150)
+    canonical_slug = genre_synonyms.GENRE_SYNONYMS.get(base_slug, base_slug)
+    if canonical_slug != base_slug:
+        canonical_name = canonical_slug.replace("-", " ")
+    else:
+        canonical_name = cleaned.lower()[:100] if cleaned else name.lower()[:100]
+    return canonical_name, canonical_slug
 
 
 def clamp_series_position(value: typing.Any) -> typing.Optional[float]:

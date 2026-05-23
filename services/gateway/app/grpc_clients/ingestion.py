@@ -40,38 +40,6 @@ class IngestionClient:
             await self.channel.close()
             logger.info("Closed ingestion service connection")
 
-    async def trigger_ingestion(self, total_books: int, source: str, language: str) -> ingestion_pb2.TriggerIngestionResponse:
-        request = ingestion_pb2.TriggerIngestionRequest(
-            total_books=total_books,
-            source=source,
-            language=language
-        )
-
-        try:
-            response = await self.stub.TriggerIngestion(request, timeout=None)
-            return response
-        except grpc.RpcError as e:
-            logger.error(f"gRPC error triggering ingestion: {e.code()} - {e.details()}")
-            raise
-
-    async def search_book(self, title: str, author: str = "", source: str = "both", limit: int = 10) -> ingestion_pb2.SearchBookResponse:
-        request = ingestion_pb2.SearchBookRequest(
-            title=title,
-            author=author,
-            source=source,
-            limit=limit
-        )
-
-        try:
-            response = await self.stub.SearchBook(
-                request,
-                timeout=app.config.settings.grpc_admin_timeout
-            )
-            return response
-        except grpc.RpcError as e:
-            logger.error(f"gRPC error searching for book: {e.code()} - {e.details()}")
-            raise
-
     async def get_data_coverage(self) -> ingestion_pb2.GetDataCoverageResponse:
         request = ingestion_pb2.GetDataCoverageRequest()
 
@@ -96,6 +64,19 @@ class IngestionClient:
             return response
         except grpc.RpcError as e:
             logger.error(f"gRPC error starting dump import: {e.code()} - {e.details()}")
+            raise
+
+    async def run_cleanup(self) -> ingestion_pb2.RunCleanupResponse:
+        request = ingestion_pb2.RunCleanupRequest()
+
+        try:
+            response = await self.stub.RunCleanup(
+                request,
+                timeout=app.config.settings.grpc_admin_timeout
+            )
+            return response
+        except grpc.RpcError as e:
+            logger.error(f"gRPC error triggering cleanup: {e.code()} - {e.details()}")
             raise
 
 

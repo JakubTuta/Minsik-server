@@ -10,6 +10,7 @@ import app.tracing
 import app.workers.continuous_fetcher
 import app.workers.data_cleaner
 import app.workers.description_enricher
+import app.workers.genre_bubble_builder
 from apscheduler import AsyncScheduler
 from apscheduler.triggers.cron import CronTrigger
 
@@ -118,6 +119,15 @@ async def main():
             )
             logger.info(
                 f"[ingestion] Cleanup scheduled (cron: '{app.config.settings.cleanup_cron}')"
+            )
+
+        if app.config.settings.genre_bubble_enabled:
+            await scheduler.add_schedule(
+                app.workers.genre_bubble_builder.run_genre_bubble_job,
+                CronTrigger.from_crontab(app.config.settings.genre_bubble_cron),
+            )
+            logger.info(
+                f"[ingestion] Genre bubble builder scheduled (cron: '{app.config.settings.genre_bubble_cron}')"
             )
 
         await scheduler.start_in_background()

@@ -5,6 +5,7 @@ from app.models.genre import Genre
 from app.models.series import Series
 from app.models.book_author import BookAuthor
 from app.models.book_genre import BookGenre
+from app.models.genre_co_occurrence import GenreCoOccurrence
 
 __all__ = [
     "Base",
@@ -14,4 +15,5 @@ __all__ = [
     "Series",
     "BookAuthor",
     "BookGenre",
+    "GenreCoOccurrence",
 ]

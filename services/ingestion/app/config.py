@@ -66,11 +66,18 @@ class Settings(BaseSettings):
     cleanup_author_batch_size: int = Field(default=50)
     cleanup_series_batch_size: int = Field(default=500)
     cleanup_genre_batch_size: int = Field(default=1000)
-    cleanup_book_min_quality_score: int = Field(default=6)
+    cleanup_book_min_quality_score: int = Field(default=7)
+    cleanup_book_engagement_threshold: int = Field(default=10)
+    cleanup_book_min_publication_year: int = Field(default=1450)
+    cleanup_genre_min_book_count: int = Field(default=10)
     cleanup_author_min_books: int = Field(default=5)
     cleanup_author_max_books: int = Field(default=500)
     cleanup_series_min_books: int = Field(default=3)
     cleanup_series_max_books: int = Field(default=30)
+
+    genre_bubble_enabled: bool = Field(default=True)
+    genre_bubble_cron: str = Field(default="0 4 * * 0")
+    genre_bubble_min_pair_count: int = Field(default=5)
 
     ledger_api_key: str = Field(default="")
 

@@ -485,15 +485,6 @@ async def _bulk_insert_relationships(
         await session.execute(stmt)
 
 
-async def insert_books(books_data: List[Dict[str, Any]]) -> Dict[str, int]:
-    async with app.models.AsyncSessionLocal() as session:
-        try:
-            return await insert_books_batch(session, books_data, commit=True)
-        except Exception as e:
-            logger.error(f"Error in insert_books: {str(e)}")
-            raise
-
-
 async def process_single_book(
     session: sqlalchemy.ext.asyncio.AsyncSession, book_data: Dict[str, Any]
 ) -> None:

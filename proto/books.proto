@@ -24,6 +24,8 @@ service BooksService {
   rpc GetCategory(GetCategoryRequest) returns (CategoryResponse);
   rpc GetCategoryBooks(GetCategoryBooksRequest) returns (BooksListResponse);
   rpc GetPopularCategories(GetPopularCategoriesRequest) returns (PopularCategoriesResponse);
+  rpc ReindexAll(ReindexAllRequest) returns (ReindexAllResponse);
+  rpc GetGenreBubble(GetGenreBubbleRequest) returns (GetGenreBubbleResponse);
 }
 
 message ListCategoriesRequest {
@@ -185,6 +187,22 @@ message SeriesInfo {
   string name = 2;
   string slug = 3;
   int32 total_books = 4;
+}
+
+message GenreCoOccurrence {
+  GenreInfo genre = 1;
+  int32 co_occurrence_count = 2;
+  float strength = 3;
+}
+
+message GetGenreBubbleRequest {
+  string slug = 1;
+  int32 limit = 2;
+}
+
+message GetGenreBubbleResponse {
+  GenreInfo source = 1;
+  repeated GenreCoOccurrence related = 2;
 }
 
 message BookDetailResponse {
@@ -424,4 +442,11 @@ message PopularCategoryItem {
 
 message PopularCategoriesResponse {
   repeated PopularCategoryItem categories = 1;
+}
+
+message ReindexAllRequest {}
+
+message ReindexAllResponse {
+  string status = 1;
+  string message = 2;
 }

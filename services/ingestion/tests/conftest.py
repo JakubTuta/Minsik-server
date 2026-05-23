@@ -1,4 +1,5 @@
 import asyncio
+import contextlib
 from typing import AsyncGenerator
 
 import pytest
@@ -90,6 +91,18 @@ async def commit_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
             )
         )
         await session.commit()
+
+
+@pytest.fixture
+def session_factory_for_testing(commit_session):
+    """Wraps commit_session as a session factory for cleanup function tests."""
+    class _Factory:
+        def __call__(self):
+            @contextlib.asynccontextmanager
+            async def _ctx():
+                yield commit_session
+            return _ctx()
+    return _Factory()
 
 
 @pytest.fixture

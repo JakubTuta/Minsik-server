@@ -415,6 +415,113 @@ async def get_author_books(
 
 
 @router.get(
+    "/authors/{slug}/quote",
+    response_model=app.models.books_responses.AuthorQuoteResponse,
+    summary="Get author quote",
+    description="""
+    Get a representative quote (first sentence) from the author's most-read book.
+
+    Returns the first sentence of the most-read book that has a first_sentence available.
+    Returns null data if no book with a first sentence is found.
+
+    **Examples:**
+    - `/api/v1/authors/j-r-r-tolkien/quote`
+    """,
+)
+@limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
+async def get_author_quote(
+    request: fastapi.Request,
+    slug: str = Path(..., description="Author slug"),
+    language: str = Query(
+        "en", min_length=2, max_length=10, description="Language code (e.g. en, pl, de)"
+    ),
+):
+    try:
+        books_response = await app.grpc_clients.books_client.get_author_books(
+            author_slug=slug,
+            limit=20,
+            offset=0,
+            sort_by="readers_count",
+            order="desc",
+            language=language,
+        )
+
+        for book_summary in books_response.books:
+            try:
+                book_response = await app.grpc_clients.books_client.get_book(
+                    book_summary.slug, language=language
+                )
+                book = book_response.book
+                if book.first_sentence:
+                    return {
+                        "success": True,
+                        "data": {
+                            "first_sentence": book.first_sentence,
+                            "book_title": book.title,
+                            "book_slug": book.slug,
+                            "publication_year": (
+                                book.original_publication_year
+                                if book.original_publication_year
+                                else None
+                            ),
+                        },
+                        "error": None,
+                    }
+            except grpc.RpcError:
+                continue
+
+        return {"success": True, "data": None, "error": None}
+    except grpc.RpcError as e:
+        app.utils.responses.log_grpc_error(logger, "getting author quote", e)
+        raise fastapi.HTTPException(
+            status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
+            detail=f"Get author quote failed: {e.details()}",
+        )
+
+
+@router.get(
+    "/authors/{slug}/top-books",
+    response_model=app.models.books_responses.AuthorTopBooksResponse,
+    summary="Get author top books",
+    description="""
+    Get the top 3 most-read books by an author.
+
+    Returns up to 3 books sorted by combined readers count (descending).
+
+    **Examples:**
+    - `/api/v1/authors/j-r-r-tolkien/top-books`
+    """,
+)
+@limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
+async def get_author_top_books(
+    request: fastapi.Request,
+    slug: str = Path(..., description="Author slug"),
+    language: str = Query(
+        "en", min_length=2, max_length=10, description="Language code (e.g. en, pl, de)"
+    ),
+):
+    try:
+        response = await app.grpc_clients.books_client.get_author_books(
+            author_slug=slug,
+            limit=3,
+            offset=0,
+            sort_by="readers_count",
+            order="desc",
+            language=language,
+        )
+
+        books = [_book_summary_proto_to_dict(book) for book in response.books]
+
+        return {"success": True, "data": {"books": books}, "error": None}
+    except grpc.RpcError as e:
+        app.utils.responses.log_grpc_error(logger, "getting author top books", e)
+        raise fastapi.HTTPException(
+            status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
+            detail=f"Get author top books failed: {e.details()}",
+        )
+
+
+@router.get(
     "/series/{slug}",
     response_model=app.models.books_responses.SeriesDetailResponse,
     summary="Get series details",
@@ -1052,4 +1159,65 @@ async def discover_book(
         raise fastapi.HTTPException(
             status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
             detail=f"Discover book failed: {e.details()}",
+        )
+
+
+@router.get(
+    "/genres/{slug}/bubble",
+    summary="Get genres that co-occur with a given genre",
+    description="""
+    Returns genres that frequently appear together with the requested genre across books.
+
+    Results are ordered by co-occurrence strength (Jaccard coefficient).
+    Useful for building genre exploration bubbles / related-genre UI.
+
+    **Example:** `/api/v1/genres/science-fiction/bubble?limit=8`
+    """,
+)
+@limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
+async def get_genre_bubble(
+    request: fastapi.Request,
+    slug: str = Path(..., description="Genre slug"),
+    limit: int = Query(10, ge=1, le=50, description="Max related genres to return"),
+):
+    try:
+        response = await app.grpc_clients.books_client.get_genre_bubble(
+            slug=slug,
+            limit=limit,
+        )
+
+        source = {
+            "genre_id": response.source.genre_id,
+            "name": response.source.name,
+            "slug": response.source.slug,
+        }
+        related = [
+            {
+                "genre_id": r.genre.genre_id,
+                "name": r.genre.name,
+                "slug": r.genre.slug,
+                "co_occurrence_count": r.co_occurrence_count,
+                "strength": r.strength,
+            }
+            for r in response.related
+        ]
+
+        return {
+            "success": True,
+            "data": {
+                "source": source,
+                "related": related,
+            },
+            "error": None,
+        }
+    except grpc.RpcError as e:
+        app.utils.responses.log_grpc_error(logger, "getting genre bubble", e)
+        if e.code() == grpc.StatusCode.NOT_FOUND:
+            raise fastapi.HTTPException(
+                status_code=404,
+                detail=f"Genre '{slug}' not found",
+            )
+        raise fastapi.HTTPException(
+            status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
+            detail=f"Genre bubble failed: {e.details()}",
         )

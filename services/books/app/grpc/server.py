@@ -1,6 +1,8 @@
+import asyncio
 import logging
 import typing
 
+import app.cache
 import app.db
 import app.proto.books_pb2
 import app.proto.books_pb2_grpc
@@ -8,6 +10,7 @@ import app.services.author_service
 import app.services.book_service
 import app.services.case_service
 import app.services.discovery_service
+import app.services.genre_service
 import app.services.pack_service
 import app.services.search_service
 import app.services.series_service
@@ -151,7 +154,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                     search_results.append(
                         app.proto.books_pb2.SearchResult(
                             type=result["type"],
-                            id=result["id"],
+                            id=int(result["id"]),
                             title=result["title"],
                             slug=result["slug"],
                             cover_url=result["cover_url"],
@@ -164,15 +167,15 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                                 if result.get("app_avg_rating") is not None
                                 else ""
                             ),
-                            app_rating_count=result.get("app_rating_count", 0),
+                            app_rating_count=int(result.get("app_rating_count") or 0),
                             ol_avg_rating=(
                                 str(result["ol_avg_rating"])
                                 if result.get("ol_avg_rating") is not None
                                 else ""
                             ),
-                            ol_rating_count=result.get("ol_rating_count", 0),
-                            book_count=result.get("book_count", 0),
-                            readers=result.get("readers", 0),
+                            ol_rating_count=int(result.get("ol_rating_count") or 0),
+                            book_count=int(result.get("book_count") or 0),
+                            readers=int(result.get("readers") or 0),
                         )
                     )
 
@@ -198,25 +201,25 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
             items = [
                 app.proto.books_pb2.SuggestionItem(
                     type=result["type"],
-                    id=result["id"],
+                    id=int(result["id"]),
                     title=result["title"],
                     slug=result["slug"],
                     cover_url=result["cover_url"],
                     authors=result["authors"],
                     score=result["relevance_score"],
-                    readers=result.get("readers", 0),
+                    readers=int(result.get("readers") or 0),
                     app_avg_rating=(
                         str(result["app_avg_rating"])
                         if result.get("app_avg_rating") is not None
                         else ""
                     ),
-                    app_rating_count=result.get("app_rating_count", 0),
+                    app_rating_count=int(result.get("app_rating_count") or 0),
                     ol_avg_rating=(
                         str(result["ol_avg_rating"])
                         if result.get("ol_avg_rating") is not None
                         else ""
                     ),
-                    ol_rating_count=result.get("ol_rating_count", 0),
+                    ol_rating_count=int(result.get("ol_rating_count") or 0),
                 )
                 for result in results
             ]
@@ -236,20 +239,20 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                 book = await app.services.book_service.get_book_by_slug(
                     session, request.slug, request.language or "en"
                 )
-
-                if not book:
-                    await context.abort(
-                        grpc.StatusCode.NOT_FOUND, f"Book not found: {request.slug}"
-                    )
-                    return
-
-                return app.proto.books_pb2.BookDetailResponse(
-                    book=_build_book_detail_proto(book)
-                )
         except Exception as e:
             logger.error(f"Error in GetBook: {str(e)}")
-            # context.abort may have already been called, so just log and return
+            await context.abort(grpc.StatusCode.INTERNAL, f"Get book failed: {str(e)}")
             return
+
+        if not book:
+            await context.abort(
+                grpc.StatusCode.NOT_FOUND, f"Book not found: {request.slug}"
+            )
+            return
+
+        return app.proto.books_pb2.BookDetailResponse(
+            book=_build_book_detail_proto(book)
+        )
 
     async def GetAuthor(
         self,
@@ -261,51 +264,53 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                 author = await app.services.author_service.get_author_by_slug(
                     session, request.slug, request.language or "en"
                 )
-
-                if not author:
-                    await context.abort(
-                        grpc.StatusCode.NOT_FOUND, f"Author not found: {request.slug}"
-                    )
-                    return
-
-                author_detail = app.proto.books_pb2.AuthorDetail(
-                    author_id=author["author_id"],
-                    name=author["name"],
-                    slug=author["slug"],
-                    bio=author["bio"] or "",
-                    birth_date=author["birth_date"] or "",
-                    death_date=author["death_date"] or "",
-                    photo_url=author["photo_url"] or "",
-                    view_count=author["view_count"],
-                    last_viewed_at=author["last_viewed_at"] or "",
-                    books_count=author["books_count"],
-                    open_library_id=author["open_library_id"] or "",
-                    created_at=author["created_at"],
-                    updated_at=author["updated_at"],
-                    birth_place=author["birth_place"] or "",
-                    nationality=author["nationality"] or "",
-                    book_categories=author["book_categories"],
-                    books_avg_rating=author["books_avg_rating"],
-                    books_total_ratings=author["books_total_ratings"],
-                    wikidata_id=author["wikidata_id"] or "",
-                    wikipedia_url=author["wikipedia_url"] or "",
-                    remote_ids=author.get("remote_ids", {}),
-                    alternate_names=author.get("alternate_names", []),
-                    books_ol_avg_rating=author["books_ol_avg_rating"],
-                    books_ol_total_ratings=author["books_ol_total_ratings"],
-                    app_want_to_read_count=author["app_want_to_read_count"],
-                    app_reading_count=author["app_reading_count"],
-                    app_read_count=author["app_read_count"],
-                    ol_want_to_read_count=author["ol_want_to_read_count"],
-                    ol_currently_reading_count=author["ol_currently_reading_count"],
-                    ol_already_read_count=author["ol_already_read_count"],
-                )
-
-                return app.proto.books_pb2.AuthorDetailResponse(author=author_detail)
         except Exception as e:
             logger.error(f"Error in GetAuthor: {str(e)}")
-            # context.abort may have already been called, so just log and return
+            await context.abort(
+                grpc.StatusCode.INTERNAL, f"Get author failed: {str(e)}"
+            )
             return
+
+        if not author:
+            await context.abort(
+                grpc.StatusCode.NOT_FOUND, f"Author not found: {request.slug}"
+            )
+            return
+
+        author_detail = app.proto.books_pb2.AuthorDetail(
+            author_id=author["author_id"],
+            name=author["name"],
+            slug=author["slug"],
+            bio=author["bio"] or "",
+            birth_date=author["birth_date"] or "",
+            death_date=author["death_date"] or "",
+            photo_url=author["photo_url"] or "",
+            view_count=author["view_count"],
+            last_viewed_at=author["last_viewed_at"] or "",
+            books_count=author["books_count"],
+            open_library_id=author["open_library_id"] or "",
+            created_at=author["created_at"],
+            updated_at=author["updated_at"],
+            birth_place=author["birth_place"] or "",
+            nationality=author["nationality"] or "",
+            book_categories=author["book_categories"],
+            books_avg_rating=author["books_avg_rating"],
+            books_total_ratings=author["books_total_ratings"],
+            wikidata_id=author["wikidata_id"] or "",
+            wikipedia_url=author["wikipedia_url"] or "",
+            remote_ids=author.get("remote_ids", {}),
+            alternate_names=author.get("alternate_names", []),
+            books_ol_avg_rating=author["books_ol_avg_rating"],
+            books_ol_total_ratings=author["books_ol_total_ratings"],
+            app_want_to_read_count=author["app_want_to_read_count"],
+            app_reading_count=author["app_reading_count"],
+            app_read_count=author["app_read_count"],
+            ol_want_to_read_count=author["ol_want_to_read_count"],
+            ol_currently_reading_count=author["ol_currently_reading_count"],
+            ol_already_read_count=author["ol_already_read_count"],
+        )
+
+        return app.proto.books_pb2.AuthorDetailResponse(author=author_detail)
 
     async def GetAuthorBooks(
         self,
@@ -345,40 +350,42 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                 series = await app.services.series_service.get_series_by_slug(
                     session, request.slug, request.language or "en"
                 )
-
-                if not series:
-                    await context.abort(
-                        grpc.StatusCode.NOT_FOUND, f"Series not found: {request.slug}"
-                    )
-
-                series_detail = app.proto.books_pb2.SeriesDetail(
-                    series_id=series["series_id"],
-                    name=series["name"],
-                    slug=series["slug"],
-                    description=series["description"],
-                    total_books=series["total_books"],
-                    view_count=series["view_count"],
-                    last_viewed_at=series["last_viewed_at"] or "",
-                    created_at=series["created_at"] or "",
-                    updated_at=series["updated_at"] or "",
-                    avg_rating=series["avg_rating"] or "",
-                    rating_count=series["rating_count"],
-                    ol_avg_rating=series["ol_avg_rating"] or "",
-                    ol_rating_count=series["ol_rating_count"],
-                    app_want_to_read_count=series["app_want_to_read_count"],
-                    app_reading_count=series["app_reading_count"],
-                    app_read_count=series["app_read_count"],
-                    ol_want_to_read_count=series["ol_want_to_read_count"],
-                    ol_currently_reading_count=series["ol_currently_reading_count"],
-                    ol_already_read_count=series["ol_already_read_count"],
-                )
-
-                return app.proto.books_pb2.SeriesDetailResponse(series=series_detail)
         except Exception as e:
             logger.error(f"Error in GetSeries: {str(e)}")
             await context.abort(
                 grpc.StatusCode.INTERNAL, f"Get series failed: {str(e)}"
             )
+            return
+
+        if not series:
+            await context.abort(
+                grpc.StatusCode.NOT_FOUND, f"Series not found: {request.slug}"
+            )
+            return
+
+        series_detail = app.proto.books_pb2.SeriesDetail(
+            series_id=series["series_id"],
+            name=series["name"],
+            slug=series["slug"],
+            description=series["description"],
+            total_books=series["total_books"],
+            view_count=series["view_count"],
+            last_viewed_at=series["last_viewed_at"] or "",
+            created_at=series["created_at"] or "",
+            updated_at=series["updated_at"] or "",
+            avg_rating=series["avg_rating"] or "",
+            rating_count=series["rating_count"],
+            ol_avg_rating=series["ol_avg_rating"] or "",
+            ol_rating_count=series["ol_rating_count"],
+            app_want_to_read_count=series["app_want_to_read_count"],
+            app_reading_count=series["app_reading_count"],
+            app_read_count=series["app_read_count"],
+            ol_want_to_read_count=series["ol_want_to_read_count"],
+            ol_currently_reading_count=series["ol_currently_reading_count"],
+            ol_already_read_count=series["ol_already_read_count"],
+        )
+
+        return app.proto.books_pb2.SeriesDetailResponse(series=series_detail)
 
     async def GetSeriesBooks(
         self,
@@ -463,91 +470,92 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                 book = await app.services.book_service.update_book(
                     session, request.book_id, updates
                 )
-
-                if not book:
-                    await context.abort(
-                        grpc.StatusCode.NOT_FOUND,
-                        f"Book with id {request.book_id} not found",
-                    )
-                    return
-
-                authors = [
-                    app.proto.books_pb2.AuthorInfo(
-                        author_id=a["author_id"],
-                        name=a["name"],
-                        slug=a["slug"],
-                        photo_url=a.get("photo_url", ""),
-                    )
-                    for a in book.get("authors", [])
-                ]
-                genres = [
-                    app.proto.books_pb2.GenreInfo(
-                        genre_id=g["genre_id"], name=g["name"], slug=g["slug"]
-                    )
-                    for g in book.get("genres", [])
-                ]
-                series_info = None
-                if book.get("series"):
-                    s = book["series"]
-                    series_info = app.proto.books_pb2.SeriesInfo(
-                        series_id=s["series_id"],
-                        name=s["name"],
-                        slug=s["slug"],
-                        total_books=s.get("total_books", 0),
-                    )
-
-                sub_rating_stats = {
-                    k: app.proto.books_pb2.SubRatingStat(
-                        avg=v.get("avg", "0"), count=v.get("count", 0)
-                    )
-                    for k, v in book.get("sub_rating_stats", {}).items()
-                }
-
-                book_detail = app.proto.books_pb2.BookDetail(
-                    book_id=book["book_id"],
-                    title=book["title"],
-                    slug=book["slug"],
-                    description=book.get("description", ""),
-                    first_sentence=book.get("first_sentence", ""),
-                    language=book["language"],
-                    original_publication_year=book.get("original_publication_year", 0),
-                    formats=book.get("formats", []),
-                    primary_cover_url=book.get("primary_cover_url", ""),
-                    rating_count=book.get("rating_count", 0),
-                    avg_rating=book.get("avg_rating", "0.00"),
-                    sub_rating_stats=sub_rating_stats,
-                    view_count=book.get("view_count", 0),
-                    last_viewed_at=book.get("last_viewed_at", ""),
-                    authors=authors,
-                    genres=genres,
-                    open_library_id=book.get("open_library_id", ""),
-                    google_books_id=book.get("google_books_id", ""),
-                    created_at=book.get("created_at", ""),
-                    updated_at=book.get("updated_at", ""),
-                    series=series_info,
-                    series_position=book.get("series_position", ""),
-                    isbn=book.get("isbn", []),
-                    publisher=book.get("publisher", ""),
-                    number_of_pages=book.get("number_of_pages", 0),
-                    external_ids=book.get("external_ids", {}),
-                    ol_rating_count=book.get("ol_rating_count", 0),
-                    ol_avg_rating=book.get("ol_avg_rating", "0.00"),
-                    ol_want_to_read_count=book.get("ol_want_to_read_count", 0),
-                    ol_currently_reading_count=book.get(
-                        "ol_currently_reading_count", 0
-                    ),
-                    ol_already_read_count=book.get("ol_already_read_count", 0),
-                    app_want_to_read_count=book.get("app_want_to_read_count", 0),
-                    app_reading_count=book.get("app_reading_count", 0),
-                    app_read_count=book.get("app_read_count", 0),
-                )
-
-                return app.proto.books_pb2.BookDetailResponse(book=book_detail)
         except Exception as e:
             logger.error(f"Error in UpdateBook: {str(e)}")
             await context.abort(
                 grpc.StatusCode.INTERNAL, f"Update book failed: {str(e)}"
             )
+            return
+
+        if not book:
+            await context.abort(
+                grpc.StatusCode.NOT_FOUND,
+                f"Book with id {request.book_id} not found",
+            )
+            return
+
+        authors = [
+            app.proto.books_pb2.AuthorInfo(
+                author_id=a["author_id"],
+                name=a["name"],
+                slug=a["slug"],
+                photo_url=a.get("photo_url", ""),
+            )
+            for a in book.get("authors", [])
+        ]
+        genres = [
+            app.proto.books_pb2.GenreInfo(
+                genre_id=g["genre_id"], name=g["name"], slug=g["slug"]
+            )
+            for g in book.get("genres", [])
+        ]
+        series_info = None
+        if book.get("series"):
+            s = book["series"]
+            series_info = app.proto.books_pb2.SeriesInfo(
+                series_id=s["series_id"],
+                name=s["name"],
+                slug=s["slug"],
+                total_books=s.get("total_books", 0),
+            )
+
+        sub_rating_stats = {
+            k: app.proto.books_pb2.SubRatingStat(
+                avg=v.get("avg", "0"), count=v.get("count", 0)
+            )
+            for k, v in book.get("sub_rating_stats", {}).items()
+        }
+
+        book_detail = app.proto.books_pb2.BookDetail(
+            book_id=book["book_id"],
+            title=book["title"],
+            slug=book["slug"],
+            description=book.get("description", ""),
+            first_sentence=book.get("first_sentence", ""),
+            language=book["language"],
+            original_publication_year=book.get("original_publication_year", 0),
+            formats=book.get("formats", []),
+            primary_cover_url=book.get("primary_cover_url", ""),
+            rating_count=book.get("rating_count", 0),
+            avg_rating=book.get("avg_rating", "0.00"),
+            sub_rating_stats=sub_rating_stats,
+            view_count=book.get("view_count", 0),
+            last_viewed_at=book.get("last_viewed_at", ""),
+            authors=authors,
+            genres=genres,
+            open_library_id=book.get("open_library_id", ""),
+            google_books_id=book.get("google_books_id", ""),
+            created_at=book.get("created_at", ""),
+            updated_at=book.get("updated_at", ""),
+            series=series_info,
+            series_position=book.get("series_position", ""),
+            isbn=book.get("isbn", []),
+            publisher=book.get("publisher", ""),
+            number_of_pages=book.get("number_of_pages", 0),
+            external_ids=book.get("external_ids", {}),
+            ol_rating_count=book.get("ol_rating_count", 0),
+            ol_avg_rating=book.get("ol_avg_rating", "0.00"),
+            ol_want_to_read_count=book.get("ol_want_to_read_count", 0),
+            ol_currently_reading_count=book.get(
+                "ol_currently_reading_count", 0
+            ),
+            ol_already_read_count=book.get("ol_already_read_count", 0),
+            app_want_to_read_count=book.get("app_want_to_read_count", 0),
+            app_reading_count=book.get("app_reading_count", 0),
+            app_read_count=book.get("app_read_count", 0),
+        )
+
+        return app.proto.books_pb2.BookDetailResponse(book=book_detail)
 
     async def UpdateAuthor(
         self,
@@ -601,55 +609,56 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                 author = await app.services.author_service.update_author(
                     session, request.author_id, updates
                 )
-
-                if not author:
-                    await context.abort(
-                        grpc.StatusCode.NOT_FOUND,
-                        f"Author with id {request.author_id} not found",
-                    )
-                    return
-
-                return app.proto.books_pb2.AuthorDetailResponse(
-                    author=app.proto.books_pb2.AuthorDetail(
-                        author_id=author["author_id"],
-                        name=author["name"],
-                        slug=author["slug"],
-                        bio=author.get("bio") or "",
-                        birth_date=author.get("birth_date") or "",
-                        death_date=author.get("death_date") or "",
-                        birth_place=author.get("birth_place") or "",
-                        nationality=author.get("nationality") or "",
-                        photo_url=author.get("photo_url") or "",
-                        view_count=author.get("view_count", 0),
-                        last_viewed_at=author.get("last_viewed_at") or "",
-                        books_count=author.get("books_count", 0),
-                        open_library_id=author.get("open_library_id") or "",
-                        created_at=author.get("created_at", ""),
-                        updated_at=author.get("updated_at", ""),
-                        book_categories=author.get("book_categories", []),
-                        books_avg_rating=author.get("books_avg_rating", "0.00"),
-                        books_total_ratings=author.get("books_total_ratings", 0),
-                        wikidata_id=author.get("wikidata_id") or "",
-                        wikipedia_url=author.get("wikipedia_url") or "",
-                        remote_ids=author.get("remote_ids", {}),
-                        alternate_names=author.get("alternate_names", []),
-                        books_ol_avg_rating=author.get("books_ol_avg_rating") or "",
-                        books_ol_total_ratings=author.get("books_ol_total_ratings", 0),
-                        app_want_to_read_count=author.get("app_want_to_read_count", 0),
-                        app_reading_count=author.get("app_reading_count", 0),
-                        app_read_count=author.get("app_read_count", 0),
-                        ol_want_to_read_count=author.get("ol_want_to_read_count", 0),
-                        ol_currently_reading_count=author.get(
-                            "ol_currently_reading_count", 0
-                        ),
-                        ol_already_read_count=author.get("ol_already_read_count", 0),
-                    )
-                )
         except Exception as e:
             logger.error(f"Error in UpdateAuthor: {str(e)}")
             await context.abort(
                 grpc.StatusCode.INTERNAL, f"Update author failed: {str(e)}"
             )
+            return
+
+        if not author:
+            await context.abort(
+                grpc.StatusCode.NOT_FOUND,
+                f"Author with id {request.author_id} not found",
+            )
+            return
+
+        return app.proto.books_pb2.AuthorDetailResponse(
+            author=app.proto.books_pb2.AuthorDetail(
+                author_id=author["author_id"],
+                name=author["name"],
+                slug=author["slug"],
+                bio=author.get("bio") or "",
+                birth_date=author.get("birth_date") or "",
+                death_date=author.get("death_date") or "",
+                birth_place=author.get("birth_place") or "",
+                nationality=author.get("nationality") or "",
+                photo_url=author.get("photo_url") or "",
+                view_count=author.get("view_count", 0),
+                last_viewed_at=author.get("last_viewed_at") or "",
+                books_count=author.get("books_count", 0),
+                open_library_id=author.get("open_library_id") or "",
+                created_at=author.get("created_at", ""),
+                updated_at=author.get("updated_at", ""),
+                book_categories=author.get("book_categories", []),
+                books_avg_rating=author.get("books_avg_rating", "0.00"),
+                books_total_ratings=author.get("books_total_ratings", 0),
+                wikidata_id=author.get("wikidata_id") or "",
+                wikipedia_url=author.get("wikipedia_url") or "",
+                remote_ids=author.get("remote_ids", {}),
+                alternate_names=author.get("alternate_names", []),
+                books_ol_avg_rating=author.get("books_ol_avg_rating") or "",
+                books_ol_total_ratings=author.get("books_ol_total_ratings", 0),
+                app_want_to_read_count=author.get("app_want_to_read_count", 0),
+                app_reading_count=author.get("app_reading_count", 0),
+                app_read_count=author.get("app_read_count", 0),
+                ol_want_to_read_count=author.get("ol_want_to_read_count", 0),
+                ol_currently_reading_count=author.get(
+                    "ol_currently_reading_count", 0
+                ),
+                ol_already_read_count=author.get("ol_already_read_count", 0),
+            )
+        )
 
     async def UpdateSeries(
         self,
@@ -672,44 +681,45 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                 series = await app.services.series_service.update_series(
                     session, request.series_id, updates
                 )
-
-                if not series:
-                    await context.abort(
-                        grpc.StatusCode.NOT_FOUND,
-                        f"Series with id {request.series_id} not found",
-                    )
-                    return
-
-                return app.proto.books_pb2.SeriesDetailResponse(
-                    series=app.proto.books_pb2.SeriesDetail(
-                        series_id=series["series_id"],
-                        name=series["name"],
-                        slug=series["slug"],
-                        description=series.get("description") or "",
-                        total_books=series.get("total_books", 0),
-                        view_count=series.get("view_count", 0),
-                        last_viewed_at=series.get("last_viewed_at") or "",
-                        created_at=series.get("created_at") or "",
-                        updated_at=series.get("updated_at") or "",
-                        avg_rating=series.get("avg_rating") or "",
-                        rating_count=series.get("rating_count", 0),
-                        ol_avg_rating=series.get("ol_avg_rating") or "",
-                        ol_rating_count=series.get("ol_rating_count", 0),
-                        app_want_to_read_count=series.get("app_want_to_read_count", 0),
-                        app_reading_count=series.get("app_reading_count", 0),
-                        app_read_count=series.get("app_read_count", 0),
-                        ol_want_to_read_count=series.get("ol_want_to_read_count", 0),
-                        ol_currently_reading_count=series.get(
-                            "ol_currently_reading_count", 0
-                        ),
-                        ol_already_read_count=series.get("ol_already_read_count", 0),
-                    )
-                )
         except Exception as e:
             logger.error(f"Error in UpdateSeries: {str(e)}")
             await context.abort(
                 grpc.StatusCode.INTERNAL, f"Update series failed: {str(e)}"
             )
+            return
+
+        if not series:
+            await context.abort(
+                grpc.StatusCode.NOT_FOUND,
+                f"Series with id {request.series_id} not found",
+            )
+            return
+
+        return app.proto.books_pb2.SeriesDetailResponse(
+            series=app.proto.books_pb2.SeriesDetail(
+                series_id=series["series_id"],
+                name=series["name"],
+                slug=series["slug"],
+                description=series.get("description") or "",
+                total_books=series.get("total_books", 0),
+                view_count=series.get("view_count", 0),
+                last_viewed_at=series.get("last_viewed_at") or "",
+                created_at=series.get("created_at") or "",
+                updated_at=series.get("updated_at") or "",
+                avg_rating=series.get("avg_rating") or "",
+                rating_count=series.get("rating_count", 0),
+                ol_avg_rating=series.get("ol_avg_rating") or "",
+                ol_rating_count=series.get("ol_rating_count", 0),
+                app_want_to_read_count=series.get("app_want_to_read_count", 0),
+                app_reading_count=series.get("app_reading_count", 0),
+                app_read_count=series.get("app_read_count", 0),
+                ol_want_to_read_count=series.get("ol_want_to_read_count", 0),
+                ol_currently_reading_count=series.get(
+                    "ol_currently_reading_count", 0
+                ),
+                ol_already_read_count=series.get("ol_already_read_count", 0),
+            )
+        )
 
     async def OpenCase(
         self,
@@ -795,24 +805,27 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                     exclude_ids=list(request.exclude_ids),
                 )
 
-                if result is None:
-                    await context.abort(
-                        grpc.StatusCode.NOT_FOUND,
-                        "No books match the provided filters",
-                    )
-                    return
-
-                return app.proto.books_pb2.DiscoverBookResponse(
-                    book=_build_book_summary_proto(result["book"]),
-                    matching_count=result["matching_count"],
-                )
         except ValueError as e:
             await context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(e))
+            return
         except Exception as e:
             logger.error(f"Error in DiscoverBook: {str(e)}")
             await context.abort(
                 grpc.StatusCode.INTERNAL, f"Discover book failed: {str(e)}"
             )
+            return
+
+        if result is None:
+            await context.abort(
+                grpc.StatusCode.NOT_FOUND,
+                "No books match the provided filters",
+            )
+            return
+
+        return app.proto.books_pb2.DiscoverBookResponse(
+            book=_build_book_summary_proto(result["book"]),
+            matching_count=result["matching_count"],
+        )
 
     async def DeleteBook(
         self,
@@ -924,21 +937,23 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
     ) -> app.proto.books_pb2.CategoryResponse:
         try:
             cat = category_service.get_category(request.category_slug)
-            if not cat:
-                await context.abort(grpc.StatusCode.NOT_FOUND, "Category not found")
-                return
-
-            return app.proto.books_pb2.CategoryResponse(
-                category=app.proto.books_pb2.Category(
-                    slug=cat["slug"],
-                    name=cat["name"],
-                )
-            )
         except Exception as e:
             logger.error(f"Error in GetCategory: {str(e)}")
             await context.abort(
                 grpc.StatusCode.INTERNAL, f"Get category failed: {str(e)}"
             )
+            return
+
+        if not cat:
+            await context.abort(grpc.StatusCode.NOT_FOUND, "Category not found")
+            return
+
+        return app.proto.books_pb2.CategoryResponse(
+            category=app.proto.books_pb2.Category(
+                slug=cat["slug"],
+                name=cat["name"],
+            )
+        )
 
     async def GetCategoryBooks(
         self,
@@ -988,3 +1003,65 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
             await context.abort(
                 grpc.StatusCode.INTERNAL, f"Get popular categories failed: {str(e)}"
             )
+
+    async def GetGenreBubble(self, request, context):
+        try:
+            limit = request.limit if request.limit > 0 else 10
+            result = await app.services.genre_service.get_genre_bubble(
+                slug=request.slug,
+                limit=limit,
+            )
+
+            if result is None:
+                context.set_code(grpc.StatusCode.NOT_FOUND)
+                context.set_details(f"Genre '{request.slug}' not found")
+                return app.proto.books_pb2.GetGenreBubbleResponse()
+
+            source = app.proto.books_pb2.GenreInfo(
+                genre_id=result["source"]["genre_id"],
+                name=result["source"]["name"],
+                slug=result["source"]["slug"],
+            )
+            related = [
+                app.proto.books_pb2.GenreCoOccurrence(
+                    genre=app.proto.books_pb2.GenreInfo(
+                        genre_id=r["genre_id"],
+                        name=r["name"],
+                        slug=r["slug"],
+                    ),
+                    co_occurrence_count=r["co_occurrence_count"],
+                    strength=r["strength"],
+                )
+                for r in result["related"]
+            ]
+            return app.proto.books_pb2.GetGenreBubbleResponse(
+                source=source,
+                related=related,
+            )
+        except Exception as e:
+            logger.error(f"Error in GetGenreBubble: {str(e)}")
+            context.set_code(grpc.StatusCode.INTERNAL)
+            context.set_details(str(e))
+            return app.proto.books_pb2.GetGenreBubbleResponse()
+
+    async def ReindexAll(self, request, context):
+        import app.main
+        try:
+            flag = await app.cache.redis_client.get("es_reindex_running")
+            if flag:
+                return app.proto.books_pb2.ReindexAllResponse(
+                    status="already_running",
+                    message="Reindex is already in progress",
+                )
+
+            asyncio.create_task(app.main.reindex_all_to_es(full=True))
+
+            return app.proto.books_pb2.ReindexAllResponse(
+                status="started",
+                message="Full reindex started. Check service logs for progress.",
+            )
+        except Exception as e:
+            logger.error(f"Error triggering reindex: {str(e)}")
+            context.set_code(grpc.StatusCode.INTERNAL)
+            context.set_details(str(e))
+            return app.proto.books_pb2.ReindexAllResponse()
