@@ -126,6 +126,72 @@ class RefreshRecommendationsResponse(_message.Message):
     message: str
     def __init__(self, success: bool = ..., message: _Optional[str] = ...) -> None: ...
 
+class RefreshBookOfTheWeekRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class RefreshBookOfTheWeekResponse(_message.Message):
+    __slots__ = ("success", "message")
+    SUCCESS_FIELD_NUMBER: _ClassVar[int]
+    MESSAGE_FIELD_NUMBER: _ClassVar[int]
+    success: bool
+    message: str
+    def __init__(self, success: bool = ..., message: _Optional[str] = ...) -> None: ...
+
+class RefreshPersonalRecommendationsRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class RefreshPersonalRecommendationsResponse(_message.Message):
+    __slots__ = ("success", "message")
+    SUCCESS_FIELD_NUMBER: _ClassVar[int]
+    MESSAGE_FIELD_NUMBER: _ClassVar[int]
+    success: bool
+    message: str
+    def __init__(self, success: bool = ..., message: _Optional[str] = ...) -> None: ...
+
+class RefreshUserPersonalRecommendationsRequest(_message.Message):
+    __slots__ = ("username",)
+    USERNAME_FIELD_NUMBER: _ClassVar[int]
+    username: str
+    def __init__(self, username: _Optional[str] = ...) -> None: ...
+
+class RefreshUserPersonalRecommendationsResponse(_message.Message):
+    __slots__ = ("success", "message")
+    SUCCESS_FIELD_NUMBER: _ClassVar[int]
+    MESSAGE_FIELD_NUMBER: _ClassVar[int]
+    success: bool
+    message: str
+    def __init__(self, success: bool = ..., message: _Optional[str] = ...) -> None: ...
+
+class RefreshContextualRecommendationsRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class RefreshContextualRecommendationsResponse(_message.Message):
+    __slots__ = ("success", "message")
+    SUCCESS_FIELD_NUMBER: _ClassVar[int]
+    MESSAGE_FIELD_NUMBER: _ClassVar[int]
+    success: bool
+    message: str
+    def __init__(self, success: bool = ..., message: _Optional[str] = ...) -> None: ...
+
+class InvalidateContextualCacheRequest(_message.Message):
+    __slots__ = ("entity_type", "slug")
+    ENTITY_TYPE_FIELD_NUMBER: _ClassVar[int]
+    SLUG_FIELD_NUMBER: _ClassVar[int]
+    entity_type: str
+    slug: str
+    def __init__(self, entity_type: _Optional[str] = ..., slug: _Optional[str] = ...) -> None: ...
+
+class InvalidateContextualCacheResponse(_message.Message):
+    __slots__ = ("success", "message")
+    SUCCESS_FIELD_NUMBER: _ClassVar[int]
+    MESSAGE_FIELD_NUMBER: _ClassVar[int]
+    success: bool
+    message: str
+    def __init__(self, success: bool = ..., message: _Optional[str] = ...) -> None: ...
+
 class GetBookRecommendationsRequest(_message.Message):
     __slots__ = ("book_id", "limit_per_section", "user_id")
     BOOK_ID_FIELD_NUMBER: _ClassVar[int]

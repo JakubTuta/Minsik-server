@@ -177,7 +177,21 @@ async def update_book(
         setattr(book, field, value)
 
     await session.commit()
-    await session.refresh(book)
+
+    fresh_stmt = (
+        select(app.models.book.Book)
+        .options(
+            selectinload(app.models.book.Book.authors),
+            selectinload(app.models.book.Book.genres),
+            selectinload(app.models.book.Book.series),
+        )
+        .filter(app.models.book.Book.book_id == book_id)
+    )
+    fresh_result = await session.execute(fresh_stmt)
+    book = fresh_result.scalars().first()
+
+    if not book:
+        return None
 
     await app.cache.delete_cached(old_cache_key)
     if "slug" in updates or "language" in updates:

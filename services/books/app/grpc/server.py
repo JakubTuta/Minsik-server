@@ -14,6 +14,7 @@ import app.services.genre_service
 import app.services.pack_service
 import app.services.search_service
 import app.services.series_service
+import app.services.es_sync_service
 import app.services.slots_service
 import grpc
 from app.services.category_service import category_service
@@ -47,7 +48,7 @@ def _build_book_detail_proto(
             series_id=book["series"]["series_id"],
             name=book["series"]["name"],
             slug=book["series"]["slug"],
-            total_books=book["series"].get("total_books", 0),
+            total_books=int(book["series"].get("total_books") or 0),
         )
     sub_rating_stats = {
         key: app.proto.books_pb2.SubRatingStat(
@@ -506,7 +507,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                 series_id=s["series_id"],
                 name=s["name"],
                 slug=s["slug"],
-                total_books=s.get("total_books", 0),
+                total_books=int(s.get("total_books") or 0),
             )
 
         sub_rating_stats = {
@@ -1054,7 +1055,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                     message="Reindex is already in progress",
                 )
 
-            asyncio.create_task(app.main.reindex_all_to_es(full=True))
+            asyncio.create_task(app.services.es_sync_service.reindex_all_to_es(full=True))
 
             return app.proto.books_pb2.ReindexAllResponse(
                 status="started",

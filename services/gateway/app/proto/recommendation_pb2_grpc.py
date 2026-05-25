@@ -54,6 +54,31 @@ class RecommendationServiceStub(object):
                 request_serializer=recommendation__pb2.RefreshRecommendationsRequest.SerializeToString,
                 response_deserializer=recommendation__pb2.RefreshRecommendationsResponse.FromString,
                 _registered_method=True)
+        self.RefreshBookOfTheWeek = channel.unary_unary(
+                '/recommendation.v1.RecommendationService/RefreshBookOfTheWeek',
+                request_serializer=recommendation__pb2.RefreshBookOfTheWeekRequest.SerializeToString,
+                response_deserializer=recommendation__pb2.RefreshBookOfTheWeekResponse.FromString,
+                _registered_method=True)
+        self.RefreshPersonalRecommendations = channel.unary_unary(
+                '/recommendation.v1.RecommendationService/RefreshPersonalRecommendations',
+                request_serializer=recommendation__pb2.RefreshPersonalRecommendationsRequest.SerializeToString,
+                response_deserializer=recommendation__pb2.RefreshPersonalRecommendationsResponse.FromString,
+                _registered_method=True)
+        self.RefreshUserPersonalRecommendations = channel.unary_unary(
+                '/recommendation.v1.RecommendationService/RefreshUserPersonalRecommendations',
+                request_serializer=recommendation__pb2.RefreshUserPersonalRecommendationsRequest.SerializeToString,
+                response_deserializer=recommendation__pb2.RefreshUserPersonalRecommendationsResponse.FromString,
+                _registered_method=True)
+        self.RefreshContextualRecommendations = channel.unary_unary(
+                '/recommendation.v1.RecommendationService/RefreshContextualRecommendations',
+                request_serializer=recommendation__pb2.RefreshContextualRecommendationsRequest.SerializeToString,
+                response_deserializer=recommendation__pb2.RefreshContextualRecommendationsResponse.FromString,
+                _registered_method=True)
+        self.InvalidateContextualCache = channel.unary_unary(
+                '/recommendation.v1.RecommendationService/InvalidateContextualCache',
+                request_serializer=recommendation__pb2.InvalidateContextualCacheRequest.SerializeToString,
+                response_deserializer=recommendation__pb2.InvalidateContextualCacheResponse.FromString,
+                _registered_method=True)
         self.GetBookRecommendations = channel.unary_unary(
                 '/recommendation.v1.RecommendationService/GetBookRecommendations',
                 request_serializer=recommendation__pb2.GetBookRecommendationsRequest.SerializeToString,
@@ -98,6 +123,36 @@ class RecommendationServiceServicer(object):
         raise NotImplementedError('Method not implemented!')
 
     def RefreshRecommendations(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RefreshBookOfTheWeek(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RefreshPersonalRecommendations(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RefreshUserPersonalRecommendations(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def RefreshContextualRecommendations(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def InvalidateContextualCache(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -149,6 +204,31 @@ def add_RecommendationServiceServicer_to_server(servicer, server):
                     servicer.RefreshRecommendations,
                     request_deserializer=recommendation__pb2.RefreshRecommendationsRequest.FromString,
                     response_serializer=recommendation__pb2.RefreshRecommendationsResponse.SerializeToString,
+            ),
+            'RefreshBookOfTheWeek': grpc.unary_unary_rpc_method_handler(
+                    servicer.RefreshBookOfTheWeek,
+                    request_deserializer=recommendation__pb2.RefreshBookOfTheWeekRequest.FromString,
+                    response_serializer=recommendation__pb2.RefreshBookOfTheWeekResponse.SerializeToString,
+            ),
+            'RefreshPersonalRecommendations': grpc.unary_unary_rpc_method_handler(
+                    servicer.RefreshPersonalRecommendations,
+                    request_deserializer=recommendation__pb2.RefreshPersonalRecommendationsRequest.FromString,
+                    response_serializer=recommendation__pb2.RefreshPersonalRecommendationsResponse.SerializeToString,
+            ),
+            'RefreshUserPersonalRecommendations': grpc.unary_unary_rpc_method_handler(
+                    servicer.RefreshUserPersonalRecommendations,
+                    request_deserializer=recommendation__pb2.RefreshUserPersonalRecommendationsRequest.FromString,
+                    response_serializer=recommendation__pb2.RefreshUserPersonalRecommendationsResponse.SerializeToString,
+            ),
+            'RefreshContextualRecommendations': grpc.unary_unary_rpc_method_handler(
+                    servicer.RefreshContextualRecommendations,
+                    request_deserializer=recommendation__pb2.RefreshContextualRecommendationsRequest.FromString,
+                    response_serializer=recommendation__pb2.RefreshContextualRecommendationsResponse.SerializeToString,
+            ),
+            'InvalidateContextualCache': grpc.unary_unary_rpc_method_handler(
+                    servicer.InvalidateContextualCache,
+                    request_deserializer=recommendation__pb2.InvalidateContextualCacheRequest.FromString,
+                    response_serializer=recommendation__pb2.InvalidateContextualCacheResponse.SerializeToString,
             ),
             'GetBookRecommendations': grpc.unary_unary_rpc_method_handler(
                     servicer.GetBookRecommendations,
@@ -279,6 +359,141 @@ class RecommendationService(object):
             '/recommendation.v1.RecommendationService/RefreshRecommendations',
             recommendation__pb2.RefreshRecommendationsRequest.SerializeToString,
             recommendation__pb2.RefreshRecommendationsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RefreshBookOfTheWeek(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/recommendation.v1.RecommendationService/RefreshBookOfTheWeek',
+            recommendation__pb2.RefreshBookOfTheWeekRequest.SerializeToString,
+            recommendation__pb2.RefreshBookOfTheWeekResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RefreshPersonalRecommendations(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/recommendation.v1.RecommendationService/RefreshPersonalRecommendations',
+            recommendation__pb2.RefreshPersonalRecommendationsRequest.SerializeToString,
+            recommendation__pb2.RefreshPersonalRecommendationsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RefreshUserPersonalRecommendations(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/recommendation.v1.RecommendationService/RefreshUserPersonalRecommendations',
+            recommendation__pb2.RefreshUserPersonalRecommendationsRequest.SerializeToString,
+            recommendation__pb2.RefreshUserPersonalRecommendationsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RefreshContextualRecommendations(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/recommendation.v1.RecommendationService/RefreshContextualRecommendations',
+            recommendation__pb2.RefreshContextualRecommendationsRequest.SerializeToString,
+            recommendation__pb2.RefreshContextualRecommendationsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def InvalidateContextualCache(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/recommendation.v1.RecommendationService/InvalidateContextualCache',
+            recommendation__pb2.InvalidateContextualCacheRequest.SerializeToString,
+            recommendation__pb2.InvalidateContextualCacheResponse.FromString,
             options,
             channel_credentials,
             insecure,

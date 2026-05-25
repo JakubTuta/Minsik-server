@@ -52,7 +52,18 @@ async def get_series_by_slug(
             COALESCE(SUM(b.ol_already_read_count), 0) AS ol_already_read_count,
             COALESCE(SUM(bs_counts.want_to_read_count), 0) AS app_want_to_read_count,
             COALESCE(SUM(bs_counts.reading_count), 0) AS app_reading_count,
-            COALESCE(SUM(bs_counts.read_count), 0) AS app_read_count
+            COALESCE(SUM(bs_counts.read_count), 0) AS app_read_count,
+            COALESCE(SUM(b.number_of_pages), 0) AS total_pages,
+            (
+                SELECT b2.description
+                FROM books.books b2
+                WHERE b2.series_id = :series_id
+                  AND b2.language = :language
+                  AND b2.description IS NOT NULL
+                  AND length(trim(b2.description)) > 0
+                ORDER BY b2.series_position ASC NULLS LAST, b2.created_at ASC
+                LIMIT 1
+            ) AS fallback_description
         FROM books.books b
         LEFT JOIN (
             SELECT
@@ -134,6 +145,7 @@ async def get_series_books(
             b.ol_currently_reading_count,
             b.ol_already_read_count,
             b.series_position,
+            b.number_of_pages,
             COALESCE(bs.want_to_read_count, 0) AS app_want_to_read_count,
             COALESCE(bs.reading_count, 0) AS app_reading_count,
             COALESCE(bs.read_count, 0) AS app_read_count,
@@ -220,7 +232,7 @@ def _series_to_dict(
         "series_id": series.series_id,
         "name": series.name,
         "slug": series.slug,
-        "description": series.description,
+        "description": series.description or (stats.fallback_description if stats else None),
         "total_books": int(stats.total_books) if stats.total_books else 0,
         "view_count": series.view_count,
         "last_viewed_at": (
@@ -250,6 +262,7 @@ def _series_to_dict(
             int(stats.app_reading_count) if stats.app_reading_count else 0
         ),
         "app_read_count": int(stats.app_read_count) if stats.app_read_count else 0,
+        "total_pages": int(stats.total_pages) if stats.total_pages else 0,
     }
 
 
@@ -280,6 +293,7 @@ def _series_book_row_to_dict(row: typing.Any) -> typing.Dict[str, typing.Any]:
         "app_reading_count": row.app_reading_count or 0,
         "app_read_count": row.app_read_count or 0,
         "series_position": str(row.series_position) if row.series_position else None,
+        "number_of_pages": row.number_of_pages or 0,
         "authors": authors_list,
     }
 
@@ -334,7 +348,18 @@ async def update_series(
             COALESCE(SUM(b.ol_already_read_count), 0) AS ol_already_read_count,
             COALESCE(SUM(COALESCE(bs.want_to_read_count, 0)), 0) AS app_want_to_read_count,
             COALESCE(SUM(COALESCE(bs.reading_count, 0)), 0) AS app_reading_count,
-            COALESCE(SUM(COALESCE(bs.read_count, 0)), 0) AS app_read_count
+            COALESCE(SUM(COALESCE(bs.read_count, 0)), 0) AS app_read_count,
+            COALESCE(SUM(b.number_of_pages), 0) AS total_pages,
+            (
+                SELECT b2.description
+                FROM books.books b2
+                WHERE b2.series_id = :series_id
+                  AND b2.language = :language
+                  AND b2.description IS NOT NULL
+                  AND length(trim(b2.description)) > 0
+                ORDER BY b2.series_position ASC NULLS LAST, b2.created_at ASC
+                LIMIT 1
+            ) AS fallback_description
         FROM books.books b
         LEFT JOIN (
             SELECT

@@ -39,8 +39,18 @@ class Settings(BaseSettings):
     )
     home_author_categories: str = Field(default="top_authors,popular_authors")
 
-    case_pool_refresh_hours: int = Field(default=1)
     cache_case_pool_ttl: int = Field(default=7200)
+
+    general_refresh_enabled: bool = Field(default=True)
+    general_refresh_cron: str = Field(default="0 0 * * *")
+    personal_refresh_enabled: bool = Field(default=True)
+    personal_refresh_cron: str = Field(default="0 1 * * *")
+    contextual_precompute_enabled: bool = Field(default=True)
+    contextual_precompute_cron: str = Field(default="0 2 * * *")
+    case_pool_refresh_enabled: bool = Field(default=True)
+    case_pool_refresh_cron: str = Field(default="30 * * * *")
+    book_of_week_enabled: bool = Field(default=True)
+    book_of_week_cron: str = Field(default="30 3 * * 1")
 
     contextual_precompute_min_ratings: int = Field(default=500)
     contextual_cold_ttl: int = Field(default=1800)

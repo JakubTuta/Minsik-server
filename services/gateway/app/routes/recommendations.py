@@ -464,19 +464,16 @@ async def get_series_recommendations(
 @admin_router.post(
     "/recommendations/refresh",
     response_model=app.models.recommendation_responses.RefreshRecommendationsResponse,
-    summary="Refresh recommendation lists",
+    summary="Flush home cache and rebuild home lists",
     description="""
-    Triggers an immediate synchronous refresh of all recommendation sections.
+    Triggers an immediate synchronous rebuild of home recommendation lists:
 
-    Runs all SQL queries, builds the ranked lists, and writes them to Redis
-    with a 24h TTL. This replaces the next scheduled background run.
+    1. Flushes `rec:{category}` cache keys for each known home category.
+    2. Re-runs the home recommendation list builder (writes lists with 24h TTL).
 
-    **Use cases:**
-    - Force a refresh after a large data import
-    - Re-populate cache after a Redis flush
+    Does not touch personal recs, contextual recs, or the book of the week — each has its own endpoint.
 
-    Requires a valid JWT with `role=admin`. The operation may take several
-    seconds depending on database size.
+    Requires a valid JWT with `role=admin`. May take several seconds.
     """,
     dependencies=[fastapi.Depends(app.middleware.auth.require_admin)],
     responses={
@@ -502,6 +499,253 @@ async def refresh_recommendations(request: fastapi.Request):
         )
     except Exception as e:
         logger.error(f"Unexpected error in refresh_recommendations: {str(e)}")
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
+        )
+
+
+@admin_router.post(
+    "/recommendations/personal/refresh",
+    response_model=app.models.recommendation_responses.RefreshRecommendationsResponse,
+    summary="Flush personal cache and rebuild personal recommendations",
+    description="""
+    Triggers an immediate synchronous rebuild of personal recommendation state:
+
+    1. Deletes all `rec:profile:*` and `rec:personal:*` Redis keys.
+    2. Re-runs the personal refresher for active users.
+
+    Requires a valid JWT with `role=admin`.
+    """,
+    dependencies=[fastapi.Depends(app.middleware.auth.require_admin)],
+    responses={
+        403: {"description": "Admin role required"},
+        500: {"description": "Internal server error"},
+    },
+)
+@limiter.limit(app.middleware.rate_limit.get_admin_limit())
+async def refresh_personal_recommendations(request: fastapi.Request):
+    try:
+        response = (
+            await app.grpc_clients.recommendation_client.refresh_personal_recommendations()
+        )
+        return app.utils.responses.success_response(
+            {"success": response.success, "message": response.message}
+        )
+    except grpc.RpcError as e:
+        logger.error(
+            f"gRPC error in refresh_personal_recommendations: {e.code()} - {e.details()}"
+        )
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "Failed to refresh personal recommendations", status_code=500
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error in refresh_personal_recommendations: {str(e)}")
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
+        )
+
+
+@admin_router.post(
+    "/recommendations/personal/refresh/{username}",
+    response_model=app.models.recommendation_responses.RefreshRecommendationsResponse,
+    summary="Flush personal cache and rebuild for a single user",
+    description="""
+    Triggers an immediate synchronous rebuild of one user's personal recommendation state:
+
+    1. Deletes the user's `rec:profile:{user_id}`, `rec:personal:{user_id}`,
+       `rec:personal:book:{user_id}:*`, and `rec:personal:author:{user_id}:*` keys.
+    2. Re-runs the personal refresher for that user only.
+
+    Requires a valid JWT with `role=admin`.
+    """,
+    dependencies=[fastapi.Depends(app.middleware.auth.require_admin)],
+    responses={
+        403: {"description": "Admin role required"},
+        404: {"description": "User not found"},
+        500: {"description": "Internal server error"},
+    },
+)
+@limiter.limit(app.middleware.rate_limit.get_admin_limit())
+async def refresh_user_personal_recommendations(
+    request: fastapi.Request,
+    username: str = fastapi.Path(..., description="Username (nickname) of the user"),
+):
+    try:
+        response = (
+            await app.grpc_clients.recommendation_client.refresh_user_personal_recommendations(
+                username=username,
+            )
+        )
+        return app.utils.responses.success_response(
+            {"success": response.success, "message": response.message}
+        )
+    except grpc.RpcError as e:
+        logger.error(
+            f"gRPC error in refresh_user_personal_recommendations: {e.code()} - {e.details()}"
+        )
+        if e.code() == grpc.StatusCode.NOT_FOUND:
+            return app.utils.responses.error_response(
+                "NOT_FOUND", f"User '{username}' not found", status_code=404
+            )
+        if e.code() == grpc.StatusCode.INVALID_ARGUMENT:
+            return app.utils.responses.error_response(
+                "INVALID_ARGUMENT", e.details(), status_code=400
+            )
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR",
+            "Failed to refresh personal recommendations for user",
+            status_code=500,
+        )
+    except Exception as e:
+        logger.error(
+            f"Unexpected error in refresh_user_personal_recommendations: {str(e)}"
+        )
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
+        )
+
+
+@admin_router.post(
+    "/recommendations/contextual/refresh",
+    response_model=app.models.recommendation_responses.RefreshRecommendationsResponse,
+    summary="Flush contextual cache and rebuild contextual recommendations",
+    description="""
+    Triggers an immediate synchronous rebuild of contextual recommendation state:
+
+    1. Deletes all `rec:book:*`, `rec:author:*`, and `rec:series:*` Redis keys.
+    2. Re-runs the contextual precompute job.
+
+    Requires a valid JWT with `role=admin`.
+    """,
+    dependencies=[fastapi.Depends(app.middleware.auth.require_admin)],
+    responses={
+        403: {"description": "Admin role required"},
+        500: {"description": "Internal server error"},
+    },
+)
+@limiter.limit(app.middleware.rate_limit.get_admin_limit())
+async def refresh_contextual_recommendations(request: fastapi.Request):
+    try:
+        response = (
+            await app.grpc_clients.recommendation_client.refresh_contextual_recommendations()
+        )
+        return app.utils.responses.success_response(
+            {"success": response.success, "message": response.message}
+        )
+    except grpc.RpcError as e:
+        logger.error(
+            f"gRPC error in refresh_contextual_recommendations: {e.code()} - {e.details()}"
+        )
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "Failed to refresh contextual recommendations", status_code=500
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error in refresh_contextual_recommendations: {str(e)}")
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
+        )
+
+
+@admin_router.post(
+    "/recommendations/contextual/invalidate/{entity_type}/{slug}",
+    response_model=app.models.recommendation_responses.RefreshRecommendationsResponse,
+    summary="Invalidate contextual cache for a single book/author/series",
+    description="""
+    Deletes the cached contextual recommendation entry for a single entity. The
+    cache will be lazily rebuilt on the next request.
+
+    `entity_type` must be one of: `book`, `author`, `series`.
+
+    Requires a valid JWT with `role=admin`.
+    """,
+    dependencies=[fastapi.Depends(app.middleware.auth.require_admin)],
+    responses={
+        400: {"description": "Invalid entity_type or slug"},
+        403: {"description": "Admin role required"},
+        404: {"description": "Entity not found"},
+        500: {"description": "Internal server error"},
+    },
+)
+@limiter.limit(app.middleware.rate_limit.get_admin_limit())
+async def invalidate_contextual_cache(
+    request: fastapi.Request,
+    entity_type: str = fastapi.Path(
+        ..., description="Entity type: book | author | series"
+    ),
+    slug: str = fastapi.Path(..., description="Entity slug"),
+):
+    try:
+        response = (
+            await app.grpc_clients.recommendation_client.invalidate_contextual_cache(
+                entity_type=entity_type,
+                slug=slug,
+            )
+        )
+        return app.utils.responses.success_response(
+            {"success": response.success, "message": response.message}
+        )
+    except grpc.RpcError as e:
+        logger.error(
+            f"gRPC error in invalidate_contextual_cache: {e.code()} - {e.details()}"
+        )
+        if e.code() == grpc.StatusCode.NOT_FOUND:
+            return app.utils.responses.error_response(
+                "NOT_FOUND", e.details(), status_code=404
+            )
+        if e.code() == grpc.StatusCode.INVALID_ARGUMENT:
+            return app.utils.responses.error_response(
+                "INVALID_ARGUMENT", e.details(), status_code=400
+            )
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR",
+            "Failed to invalidate contextual cache",
+            status_code=500,
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error in invalidate_contextual_cache: {str(e)}")
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
+        )
+
+
+@admin_router.post(
+    "/recommendations/book-of-the-week/refresh",
+    response_model=app.models.recommendation_responses.RefreshRecommendationsResponse,
+    summary="Flush book-of-the-week cache and re-select",
+    description="""
+    Triggers an immediate synchronous refresh of the book of the week:
+
+    1. Deletes the `bow:current` Redis key.
+    2. Re-runs the selection logic and caches the new pick (7d TTL).
+
+    Does not touch home recommendation lists.
+
+    Requires a valid JWT with `role=admin`.
+    """,
+    dependencies=[fastapi.Depends(app.middleware.auth.require_admin)],
+    responses={
+        403: {"description": "Admin role required"},
+        500: {"description": "Internal server error"},
+    },
+)
+@limiter.limit(app.middleware.rate_limit.get_admin_limit())
+async def refresh_book_of_the_week(request: fastapi.Request):
+    try:
+        response = (
+            await app.grpc_clients.recommendation_client.refresh_book_of_the_week()
+        )
+        return app.utils.responses.success_response(
+            {"success": response.success, "message": response.message}
+        )
+    except grpc.RpcError as e:
+        logger.error(
+            f"gRPC error in refresh_book_of_the_week: {e.code()} - {e.details()}"
+        )
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "Failed to refresh book of the week", status_code=500
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error in refresh_book_of_the_week: {str(e)}")
         return app.utils.responses.error_response(
             "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
         )

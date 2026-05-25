@@ -130,6 +130,89 @@ class RecommendationClient:
             )
             raise
 
+    async def refresh_personal_recommendations(
+        self,
+    ) -> recommendation_pb2.RefreshPersonalRecommendationsResponse:
+        request = recommendation_pb2.RefreshPersonalRecommendationsRequest()
+        try:
+            return await self.stub.RefreshPersonalRecommendations(
+                request,
+                timeout=app.config.settings.grpc_admin_timeout,
+            )
+        except grpc.RpcError as e:
+            logger.error(
+                f"gRPC error in refresh_personal_recommendations: {e.code()} - {e.details()}"
+            )
+            raise
+
+    async def refresh_user_personal_recommendations(
+        self,
+        username: str,
+    ) -> recommendation_pb2.RefreshUserPersonalRecommendationsResponse:
+        request = recommendation_pb2.RefreshUserPersonalRecommendationsRequest(
+            username=username,
+        )
+        try:
+            return await self.stub.RefreshUserPersonalRecommendations(
+                request,
+                timeout=app.config.settings.grpc_admin_timeout,
+            )
+        except grpc.RpcError as e:
+            logger.error(
+                f"gRPC error in refresh_user_personal_recommendations: {e.code()} - {e.details()}"
+            )
+            raise
+
+    async def refresh_contextual_recommendations(
+        self,
+    ) -> recommendation_pb2.RefreshContextualRecommendationsResponse:
+        request = recommendation_pb2.RefreshContextualRecommendationsRequest()
+        try:
+            return await self.stub.RefreshContextualRecommendations(
+                request,
+                timeout=app.config.settings.grpc_admin_timeout,
+            )
+        except grpc.RpcError as e:
+            logger.error(
+                f"gRPC error in refresh_contextual_recommendations: {e.code()} - {e.details()}"
+            )
+            raise
+
+    async def invalidate_contextual_cache(
+        self,
+        entity_type: str,
+        slug: str,
+    ) -> recommendation_pb2.InvalidateContextualCacheResponse:
+        request = recommendation_pb2.InvalidateContextualCacheRequest(
+            entity_type=entity_type,
+            slug=slug,
+        )
+        try:
+            return await self.stub.InvalidateContextualCache(
+                request,
+                timeout=app.config.settings.grpc_admin_timeout,
+            )
+        except grpc.RpcError as e:
+            logger.error(
+                f"gRPC error in invalidate_contextual_cache: {e.code()} - {e.details()}"
+            )
+            raise
+
+    async def refresh_book_of_the_week(
+        self,
+    ) -> recommendation_pb2.RefreshBookOfTheWeekResponse:
+        request = recommendation_pb2.RefreshBookOfTheWeekRequest()
+        try:
+            return await self.stub.RefreshBookOfTheWeek(
+                request,
+                timeout=app.config.settings.grpc_admin_timeout,
+            )
+        except grpc.RpcError as e:
+            logger.error(
+                f"gRPC error in refresh_book_of_the_week: {e.code()} - {e.details()}"
+            )
+            raise
+
     async def get_book_recommendations(
         self,
         book_id: int,

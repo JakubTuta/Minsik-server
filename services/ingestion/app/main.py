@@ -26,24 +26,22 @@ shutdown_event = asyncio.Event()
 scheduler: AsyncScheduler = None
 
 
-async def clear_stale_import_flag() -> bool:
-    try:
-        import redis as redis_lib
+def _check_stale_import_flag_sync() -> bool:
+    import redis as redis_lib
+    from app.workers import dump
 
-        r = redis_lib.Redis(
-            host=app.config.settings.redis_host,
-            port=app.config.settings.redis_port,
-            db=app.config.settings.redis_db,
-            password=app.config.settings.redis_password or None,
-        )
+    r = redis_lib.Redis(
+        host=app.config.settings.redis_host,
+        port=app.config.settings.redis_port,
+        db=app.config.settings.redis_db,
+        password=app.config.settings.redis_password or None,
+    )
+    try:
         if r.exists("dump_import_running"):
             r.delete("dump_import_running")
             logger.info("Cleared stale dump_import_running flag from previous run")
 
-        from app.workers import dump
-
         state = dump.get_job_state(r)
-        r.close()
 
         if state and len(state.get("completed_phases", [])) < 6:
             logger.info(
@@ -53,6 +51,13 @@ async def clear_stale_import_flag() -> bool:
             )
             return True
         return False
+    finally:
+        r.close()
+
+
+async def clear_stale_import_flag() -> bool:
+    try:
+        return await asyncio.to_thread(_check_stale_import_flag_sync)
     except Exception:
         return False
 

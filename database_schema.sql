@@ -442,8 +442,8 @@ COMMENT ON TABLE user_data.user_stats IS 'Denormalized per-user activity counter
 -- ============================================================================
 -- Full-text search via Elasticsearch (removed from PostgreSQL in migration 003)
 -- ES indexes: books, authors, series (created and managed by books service on startup)
--- Periodic re-index every ES_REINDEX_INTERVAL_HOURS hours (default: 6h)
--- Initial full index on first books-service startup (no es:last_sync_ts in Redis)
+-- Periodic re-index via ES_REINDEX_CRON (default: '0 */6 * * *', every 6h)
+-- Initial full index on first scheduled run (no es:last_sync_ts in Redis)
 
 -- ============================================================================
 -- TRIGGERS - Automated field updates

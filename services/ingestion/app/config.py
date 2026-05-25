@@ -39,7 +39,7 @@ class Settings(BaseSettings):
     continuous_fetch_enabled: bool = Field(default=True)
     continuous_ol_cron: str = Field(default="0 * * * *")
     continuous_ol_books_per_run: int = Field(default=100)
-    continuous_gb_cron: str = Field(default="0 */6 * * *")
+    continuous_gb_cron: str = Field(default="0 4,10,16,22 * * *")
     continuous_gb_books_per_run: int = Field(default=40)
 
     description_enrich_enabled: bool = Field(default=True)
@@ -76,7 +76,7 @@ class Settings(BaseSettings):
     cleanup_series_max_books: int = Field(default=30)
 
     genre_bubble_enabled: bool = Field(default=True)
-    genre_bubble_cron: str = Field(default="0 4 * * 0")
+    genre_bubble_cron: str = Field(default="0 6 * * 0")
     genre_bubble_min_pair_count: int = Field(default=5)
 
     ledger_api_key: str = Field(default="")

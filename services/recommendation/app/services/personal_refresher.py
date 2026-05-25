@@ -29,7 +29,7 @@ async def _get_active_user_ids(
     return [row.user_id for row in result.fetchall()]
 
 
-async def _refresh_user(
+async def refresh_user_personal(
     session_maker: typing.Any,
     user_id: int,
 ) -> None:
@@ -65,7 +65,7 @@ async def refresh_all_personal(session_maker: typing.Any) -> None:
         nonlocal success_count, error_count
         async with semaphore:
             try:
-                await _refresh_user(session_maker, uid)
+                await refresh_user_personal(session_maker, uid)
                 success_count += 1
             except Exception as e:
                 logger.error(f"[rec:personal] Error refreshing user {uid}: {e}")

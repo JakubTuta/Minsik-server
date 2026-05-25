@@ -7,13 +7,9 @@ import app.cache
 import app.config
 import app.db
 import app.grpc.server
+import app.jobs
 import app.proto.recommendation_pb2
 import app.proto.recommendation_pb2_grpc
-import app.services.book_of_week_builder
-import app.services.case_pool_builder
-import app.services.contextual_precompute
-import app.services.list_builder
-import app.services.personal_refresher
 import app.tracing
 import grpc
 from apscheduler import AsyncScheduler
@@ -30,59 +26,7 @@ logger = logging.getLogger(__name__)
 
 grpc_server: grpc.aio.Server = None
 scheduler: AsyncScheduler = None
-
-
-async def _midnight_refresh() -> None:
-    logger.info("[rec] Running midnight recommendation refresh")
-    try:
-        await app.services.list_builder.refresh_all(app.db.async_session_maker)
-        logger.info("[rec] Midnight refresh complete")
-    except Exception as e:
-        logger.error(f"[rec] Midnight refresh error: {str(e)}")
-
-
-async def _personal_refresh() -> None:
-    logger.info("[rec:personal] Running 1AM personalized recommendation refresh")
-    try:
-        await app.services.personal_refresher.refresh_all_personal(
-            app.db.async_session_maker
-        )
-        logger.info("[rec:personal] 1AM personal refresh complete")
-    except Exception as e:
-        logger.error(f"[rec:personal] 1AM personal refresh error: {str(e)}")
-
-
-async def _contextual_precompute_refresh() -> None:
-    logger.info("[rec:precompute] Running 2AM contextual precompute refresh")
-    try:
-        await app.services.contextual_precompute.refresh_contextual_recs(
-            app.db.async_session_maker
-        )
-        logger.info("[rec:precompute] 2AM contextual precompute refresh complete")
-    except Exception as e:
-        logger.error(f"[rec:precompute] 2AM contextual precompute error: {str(e)}")
-
-
-async def _case_pool_refresh() -> None:
-    logger.info("[case] Running case pool refresh")
-    try:
-        await app.services.case_pool_builder.refresh_case_pools(
-            app.db.async_session_maker
-        )
-        logger.info("[case] Case pool refresh complete")
-    except Exception as e:
-        logger.error(f"[case] Case pool refresh error: {str(e)}")
-
-
-async def _book_of_week_refresh() -> None:
-    logger.info("[bow] Running book of the week refresh")
-    try:
-        await app.services.book_of_week_builder.refresh_book_of_the_week(
-            app.db.async_session_maker
-        )
-        logger.info("[bow] Book of the week refresh complete")
-    except Exception as e:
-        logger.error(f"[bow] Book of the week refresh error: {str(e)}")
+_shutdown_event: asyncio.Event = None
 
 
 async def start_server() -> None:
@@ -117,29 +61,55 @@ async def start_server() -> None:
 
     scheduler = AsyncScheduler()
     await scheduler.__aenter__()
-    await scheduler.add_schedule(_midnight_refresh, CronTrigger(hour=0, minute=0))
-    await scheduler.add_schedule(_personal_refresh, CronTrigger(hour=1, minute=0))
-    await scheduler.add_schedule(_contextual_precompute_refresh, CronTrigger(hour=2, minute=0))
-    await scheduler.add_schedule(_case_pool_refresh, CronTrigger(minute=0))
-    await scheduler.add_schedule(
-        _book_of_week_refresh, CronTrigger(day_of_week="mon", hour=3, minute=0)
-    )
-    await scheduler.start_in_background()
-    logger.info("[rec] Midnight refresh scheduled (cron: '0 0 * * *')")
-    logger.info("[rec:personal] Personal refresh scheduled (cron: '0 1 * * *')")
-    logger.info("[rec:precompute] Contextual precompute scheduled (cron: '0 2 * * *')")
-    logger.info("[case] Case pool refresh scheduled (cron: every hour)")
-    logger.info("[bow] Book of the week refresh scheduled (cron: '0 3 * * 1')")
 
-    bow_cached = await app.cache.get_cached(app.services.book_of_week_builder.BOW_CACHE_KEY)
-    if not bow_cached:
-        logger.info("[bow] Cache empty on startup, running initial book of the week selection")
-        await _book_of_week_refresh()
+    if app.config.settings.general_refresh_enabled:
+        await scheduler.add_schedule(
+            app.jobs.general_refresh_job,
+            CronTrigger.from_crontab(app.config.settings.general_refresh_cron),
+        )
+        logger.info(
+            f"[rec] General refresh scheduled (cron: '{app.config.settings.general_refresh_cron}')"
+        )
+
+    if app.config.settings.personal_refresh_enabled:
+        await scheduler.add_schedule(
+            app.jobs.personal_refresh_job,
+            CronTrigger.from_crontab(app.config.settings.personal_refresh_cron),
+        )
+        logger.info(
+            f"[rec:personal] Personal refresh scheduled (cron: '{app.config.settings.personal_refresh_cron}')"
+        )
+
+    if app.config.settings.contextual_precompute_enabled:
+        await scheduler.add_schedule(
+            app.jobs.contextual_precompute_job,
+            CronTrigger.from_crontab(app.config.settings.contextual_precompute_cron),
+        )
+        logger.info(
+            f"[rec:precompute] Contextual precompute scheduled (cron: '{app.config.settings.contextual_precompute_cron}')"
+        )
+
+    if app.config.settings.case_pool_refresh_enabled:
+        await scheduler.add_schedule(
+            app.jobs.case_pool_refresh_job,
+            CronTrigger.from_crontab(app.config.settings.case_pool_refresh_cron),
+        )
+        logger.info(
+            f"[rec:case] Case pool refresh scheduled (cron: '{app.config.settings.case_pool_refresh_cron}')"
+        )
+
+    if app.config.settings.book_of_week_enabled:
+        await scheduler.add_schedule(
+            app.jobs.book_of_week_job,
+            CronTrigger.from_crontab(app.config.settings.book_of_week_cron),
+        )
+        logger.info(
+            f"[rec:bow] Book of the week scheduled (cron: '{app.config.settings.book_of_week_cron}')"
+        )
+
+    await scheduler.start_in_background()
 
     logger.info("Recommendation service is running")
-
-
-_shutdown_event: asyncio.Event = None
 
 
 async def shutdown() -> None:

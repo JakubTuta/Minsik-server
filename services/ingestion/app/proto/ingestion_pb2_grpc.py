@@ -34,16 +34,6 @@ class IngestionServiceStub(object):
         Args:
             channel: A grpc.Channel.
         """
-        self.TriggerIngestion = channel.unary_unary(
-                '/ingestion.v1.IngestionService/TriggerIngestion',
-                request_serializer=ingestion__pb2.TriggerIngestionRequest.SerializeToString,
-                response_deserializer=ingestion__pb2.TriggerIngestionResponse.FromString,
-                _registered_method=True)
-        self.SearchBook = channel.unary_unary(
-                '/ingestion.v1.IngestionService/SearchBook',
-                request_serializer=ingestion__pb2.SearchBookRequest.SerializeToString,
-                response_deserializer=ingestion__pb2.SearchBookResponse.FromString,
-                _registered_method=True)
         self.GetDataCoverage = channel.unary_unary(
                 '/ingestion.v1.IngestionService/GetDataCoverage',
                 request_serializer=ingestion__pb2.GetDataCoverageRequest.SerializeToString,
@@ -54,22 +44,15 @@ class IngestionServiceStub(object):
                 request_serializer=ingestion__pb2.ImportDumpRequest.SerializeToString,
                 response_deserializer=ingestion__pb2.ImportDumpResponse.FromString,
                 _registered_method=True)
+        self.RunCleanup = channel.unary_unary(
+                '/ingestion.v1.IngestionService/RunCleanup',
+                request_serializer=ingestion__pb2.RunCleanupRequest.SerializeToString,
+                response_deserializer=ingestion__pb2.RunCleanupResponse.FromString,
+                _registered_method=True)
 
 
 class IngestionServiceServicer(object):
     """Missing associated documentation comment in .proto file."""
-
-    def TriggerIngestion(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
-
-    def SearchBook(self, request, context):
-        """Missing associated documentation comment in .proto file."""
-        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
-        context.set_details('Method not implemented!')
-        raise NotImplementedError('Method not implemented!')
 
     def GetDataCoverage(self, request, context):
         """Missing associated documentation comment in .proto file."""
@@ -83,19 +66,15 @@ class IngestionServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def RunCleanup(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_IngestionServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
-            'TriggerIngestion': grpc.unary_unary_rpc_method_handler(
-                    servicer.TriggerIngestion,
-                    request_deserializer=ingestion__pb2.TriggerIngestionRequest.FromString,
-                    response_serializer=ingestion__pb2.TriggerIngestionResponse.SerializeToString,
-            ),
-            'SearchBook': grpc.unary_unary_rpc_method_handler(
-                    servicer.SearchBook,
-                    request_deserializer=ingestion__pb2.SearchBookRequest.FromString,
-                    response_serializer=ingestion__pb2.SearchBookResponse.SerializeToString,
-            ),
             'GetDataCoverage': grpc.unary_unary_rpc_method_handler(
                     servicer.GetDataCoverage,
                     request_deserializer=ingestion__pb2.GetDataCoverageRequest.FromString,
@@ -105,6 +84,11 @@ def add_IngestionServiceServicer_to_server(servicer, server):
                     servicer.ImportDump,
                     request_deserializer=ingestion__pb2.ImportDumpRequest.FromString,
                     response_serializer=ingestion__pb2.ImportDumpResponse.SerializeToString,
+            ),
+            'RunCleanup': grpc.unary_unary_rpc_method_handler(
+                    servicer.RunCleanup,
+                    request_deserializer=ingestion__pb2.RunCleanupRequest.FromString,
+                    response_serializer=ingestion__pb2.RunCleanupResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -116,60 +100,6 @@ def add_IngestionServiceServicer_to_server(servicer, server):
  # This class is part of an EXPERIMENTAL API.
 class IngestionService(object):
     """Missing associated documentation comment in .proto file."""
-
-    @staticmethod
-    def TriggerIngestion(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/ingestion.v1.IngestionService/TriggerIngestion',
-            ingestion__pb2.TriggerIngestionRequest.SerializeToString,
-            ingestion__pb2.TriggerIngestionResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
-
-    @staticmethod
-    def SearchBook(request,
-            target,
-            options=(),
-            channel_credentials=None,
-            call_credentials=None,
-            insecure=False,
-            compression=None,
-            wait_for_ready=None,
-            timeout=None,
-            metadata=None):
-        return grpc.experimental.unary_unary(
-            request,
-            target,
-            '/ingestion.v1.IngestionService/SearchBook',
-            ingestion__pb2.SearchBookRequest.SerializeToString,
-            ingestion__pb2.SearchBookResponse.FromString,
-            options,
-            channel_credentials,
-            insecure,
-            call_credentials,
-            compression,
-            wait_for_ready,
-            timeout,
-            metadata,
-            _registered_method=True)
 
     @staticmethod
     def GetDataCoverage(request,
@@ -215,6 +145,33 @@ class IngestionService(object):
             '/ingestion.v1.IngestionService/ImportDump',
             ingestion__pb2.ImportDumpRequest.SerializeToString,
             ingestion__pb2.ImportDumpResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def RunCleanup(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/ingestion.v1.IngestionService/RunCleanup',
+            ingestion__pb2.RunCleanupRequest.SerializeToString,
+            ingestion__pb2.RunCleanupResponse.FromString,
             options,
             channel_credentials,
             insecure,

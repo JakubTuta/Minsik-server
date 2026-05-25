@@ -5,9 +5,11 @@ import app.db
 import app.proto.recommendation_pb2 as recommendation_pb2
 import app.proto.recommendation_pb2_grpc as recommendation_pb2_grpc
 import app.services.book_of_week_builder
+import app.services.contextual_precompute
 import app.services.contextual_provider
 import app.services.list_builder
 import app.services.list_provider
+import app.services.personal_refresher
 import grpc
 
 logger = logging.getLogger(__name__)
@@ -167,15 +169,190 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
         context: grpc.aio.ServicerContext,
     ) -> recommendation_pb2.RefreshRecommendationsResponse:
         try:
+            home_keys = [
+                f"rec:{cat['key']}" for cat in app.services.list_builder.CATEGORIES
+            ]
+            deleted = await app.cache.delete_keys(*home_keys)
             await app.services.list_builder.refresh_all(app.db.async_session_maker)
             return recommendation_pb2.RefreshRecommendationsResponse(
                 success=True,
-                message="Recommendation lists refreshed successfully",
+                message=f"Flushed {deleted} home cache keys, rebuilt home recommendation lists",
             )
         except grpc.aio.AbortError:
             raise
         except Exception as e:
             logger.error(f"Error in RefreshRecommendations: {str(e)}")
+            await context.abort(grpc.StatusCode.INTERNAL, f"Refresh failed: {str(e)}")
+
+    async def RefreshPersonalRecommendations(
+        self,
+        request: recommendation_pb2.RefreshPersonalRecommendationsRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> recommendation_pb2.RefreshPersonalRecommendationsResponse:
+        try:
+            deleted = await app.cache.delete_by_pattern("rec:profile:*")
+            deleted += await app.cache.delete_by_pattern("rec:personal:*")
+            await app.services.personal_refresher.refresh_all_personal(
+                app.db.async_session_maker
+            )
+            return recommendation_pb2.RefreshPersonalRecommendationsResponse(
+                success=True,
+                message=f"Flushed {deleted} personal cache keys, rebuilt personal recommendations",
+            )
+        except grpc.aio.AbortError:
+            raise
+        except Exception as e:
+            logger.error(f"Error in RefreshPersonalRecommendations: {str(e)}")
+            await context.abort(grpc.StatusCode.INTERNAL, f"Refresh failed: {str(e)}")
+
+    async def RefreshUserPersonalRecommendations(
+        self,
+        request: recommendation_pb2.RefreshUserPersonalRecommendationsRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> recommendation_pb2.RefreshUserPersonalRecommendationsResponse:
+        import sqlalchemy
+
+        username = (request.username or "").strip()
+        if not username:
+            await context.abort(
+                grpc.StatusCode.INVALID_ARGUMENT, "username is required"
+            )
+            return
+        try:
+            async with app.db.async_session_maker() as session:
+                result = await session.execute(
+                    sqlalchemy.text(
+                        "SELECT user_id FROM auth.users WHERE username = :username"
+                    ),
+                    {"username": username},
+                )
+                row = result.first()
+            if not row:
+                await context.abort(
+                    grpc.StatusCode.NOT_FOUND, f"User '{username}' not found"
+                )
+                return
+            user_id = int(row.user_id)
+            deleted = await app.cache.invalidate_user_personal_recommendations(user_id)
+            await app.services.personal_refresher.refresh_user_personal(
+                app.db.async_session_maker, user_id
+            )
+            return recommendation_pb2.RefreshUserPersonalRecommendationsResponse(
+                success=True,
+                message=(
+                    f"Flushed {deleted} cache keys for user '{username}' "
+                    f"(id={user_id}), rebuilt personal recommendations"
+                ),
+            )
+        except grpc.aio.AbortError:
+            raise
+        except Exception as e:
+            logger.error(f"Error in RefreshUserPersonalRecommendations: {str(e)}")
+            await context.abort(grpc.StatusCode.INTERNAL, f"Refresh failed: {str(e)}")
+
+    async def RefreshContextualRecommendations(
+        self,
+        request: recommendation_pb2.RefreshContextualRecommendationsRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> recommendation_pb2.RefreshContextualRecommendationsResponse:
+        try:
+            deleted = await app.cache.delete_by_pattern("rec:book:*")
+            deleted += await app.cache.delete_by_pattern("rec:author:*")
+            deleted += await app.cache.delete_by_pattern("rec:series:*")
+            await app.services.contextual_precompute.refresh_contextual_recs(
+                app.db.async_session_maker
+            )
+            return recommendation_pb2.RefreshContextualRecommendationsResponse(
+                success=True,
+                message=f"Flushed {deleted} contextual cache keys, rebuilt contextual recommendations",
+            )
+        except grpc.aio.AbortError:
+            raise
+        except Exception as e:
+            logger.error(f"Error in RefreshContextualRecommendations: {str(e)}")
+            await context.abort(grpc.StatusCode.INTERNAL, f"Refresh failed: {str(e)}")
+
+    async def InvalidateContextualCache(
+        self,
+        request: recommendation_pb2.InvalidateContextualCacheRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> recommendation_pb2.InvalidateContextualCacheResponse:
+        import sqlalchemy
+
+        entity_type = (request.entity_type or "").strip().lower()
+        slug = (request.slug or "").strip()
+        if entity_type not in ("book", "author", "series"):
+            await context.abort(
+                grpc.StatusCode.INVALID_ARGUMENT,
+                "entity_type must be 'book', 'author', or 'series'",
+            )
+            return
+        if not slug:
+            await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "slug is required")
+            return
+
+        table_by_type = {
+            "book": ("books", "book_id"),
+            "author": ("authors", "author_id"),
+            "series": ("series", "series_id"),
+        }
+        table, pk = table_by_type[entity_type]
+        try:
+            async with app.db.async_session_maker() as session:
+                result = await session.execute(
+                    sqlalchemy.text(
+                        f"SELECT {pk} AS id FROM {table} WHERE slug = :slug"
+                    ),
+                    {"slug": slug},
+                )
+                row = result.first()
+            if not row:
+                await context.abort(
+                    grpc.StatusCode.NOT_FOUND,
+                    f"{entity_type} with slug '{slug}' not found",
+                )
+                return
+            entity_id = int(row.id)
+            cache_key = f"rec:{entity_type}:{entity_id}"
+            deleted = await app.cache.delete_keys(cache_key)
+            return recommendation_pb2.InvalidateContextualCacheResponse(
+                success=True,
+                message=(
+                    f"Deleted {deleted} key for {entity_type} '{slug}' "
+                    f"(id={entity_id}, key={cache_key})"
+                ),
+            )
+        except grpc.aio.AbortError:
+            raise
+        except Exception as e:
+            logger.error(f"Error in InvalidateContextualCache: {str(e)}")
+            await context.abort(grpc.StatusCode.INTERNAL, f"Invalidate failed: {str(e)}")
+
+    async def RefreshBookOfTheWeek(
+        self,
+        request: recommendation_pb2.RefreshBookOfTheWeekRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> recommendation_pb2.RefreshBookOfTheWeekResponse:
+        try:
+            deleted = await app.cache.delete_keys(
+                app.services.book_of_week_builder.BOW_CACHE_KEY
+            )
+            book = await app.services.book_of_week_builder.refresh_book_of_the_week(
+                app.db.async_session_maker
+            )
+            if not book:
+                return recommendation_pb2.RefreshBookOfTheWeekResponse(
+                    success=False,
+                    message=f"Flushed {deleted} bow cache key, no eligible candidate found",
+                )
+            return recommendation_pb2.RefreshBookOfTheWeekResponse(
+                success=True,
+                message=f"Flushed {deleted} bow cache key, selected '{book['title']}' (id={book['book_id']})",
+            )
+        except grpc.aio.AbortError:
+            raise
+        except Exception as e:
+            logger.error(f"Error in RefreshBookOfTheWeek: {str(e)}")
             await context.abort(grpc.StatusCode.INTERNAL, f"Refresh failed: {str(e)}")
 
     async def GetBookRecommendations(

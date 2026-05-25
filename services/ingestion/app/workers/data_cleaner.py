@@ -135,6 +135,7 @@ async def cleanup_low_quality_books(
     """
 
     total_deleted = 0
+    consecutive_failures = 0
     while True:
         if stop_check():
             logger.info("[cleanup] Stopping book cleanup: dump import started")
@@ -192,8 +193,13 @@ async def cleanup_low_quality_books(
                 await session.commit()
         except Exception as e:
             logger.error(f"[cleanup] Book cleanup batch failed: {e}")
-            break
+            consecutive_failures += 1
+            if consecutive_failures >= 3:
+                break
+            await asyncio.sleep(5)
+            continue
 
+        consecutive_failures = 0
         if deleted == 0:
             break
 
@@ -210,6 +216,7 @@ async def cleanup_duplicate_books(
     stop_check: typing.Callable[[], bool] = lambda: False,
 ) -> typing.Dict[str, int]:
     total_deleted = 0
+    consecutive_failures = 0
     while True:
         if stop_check():
             logger.info("[cleanup] Stopping duplicate book cleanup: dump import started")
@@ -260,8 +267,13 @@ async def cleanup_duplicate_books(
                 await session.commit()
         except Exception as e:
             logger.error(f"[cleanup] Duplicate book cleanup batch failed: {e}")
-            break
+            consecutive_failures += 1
+            if consecutive_failures >= 3:
+                break
+            await asyncio.sleep(5)
+            continue
 
+        consecutive_failures = 0
         if deleted == 0:
             break
 
@@ -280,6 +292,7 @@ async def cleanup_orphan_authors(
     stop_check: typing.Callable[[], bool] = lambda: False,
 ) -> typing.Dict[str, int]:
     total_deleted = 0
+    consecutive_failures = 0
     while True:
         if stop_check():
             logger.info("[cleanup] Stopping author cleanup: dump import started")
@@ -345,8 +358,13 @@ async def cleanup_orphan_authors(
                 await session.commit()
         except Exception as e:
             logger.error(f"[cleanup] Author cleanup batch failed: {e}")
-            break
+            consecutive_failures += 1
+            if consecutive_failures >= 3:
+                break
+            await asyncio.sleep(5)
+            continue
 
+        consecutive_failures = 0
         total_deleted += deleted
         logger.info(f"[cleanup] Deleted {total_deleted} low-relevance authors so far")
         await asyncio.sleep(0.5)
@@ -362,6 +380,7 @@ async def cleanup_underrepresented_series(
     stop_check: typing.Callable[[], bool] = lambda: False,
 ) -> int:
     total_deleted = 0
+    consecutive_failures = 0
     while True:
         if stop_check():
             logger.info("[cleanup] Stopping series cleanup: dump import started")
@@ -416,8 +435,13 @@ async def cleanup_underrepresented_series(
                 await session.commit()
         except Exception as e:
             logger.error(f"[cleanup] Series cleanup batch failed: {e}")
-            break
+            consecutive_failures += 1
+            if consecutive_failures >= 3:
+                break
+            await asyncio.sleep(5)
+            continue
 
+        consecutive_failures = 0
         total_deleted += deleted
         logger.info(f"[cleanup] Deleted {total_deleted} series so far")
         await asyncio.sleep(0.5)
@@ -535,6 +559,7 @@ async def cleanup_orphan_genres(
     stop_check: typing.Callable[[], bool] = lambda: False,
 ) -> int:
     total_deleted = 0
+    consecutive_failures = 0
     while True:
         if stop_check():
             logger.info("[cleanup] Stopping genre cleanup: dump import started")
@@ -561,8 +586,13 @@ async def cleanup_orphan_genres(
                 await session.commit()
         except Exception as e:
             logger.error(f"[cleanup] Orphan genre cleanup batch failed: {e}")
-            break
+            consecutive_failures += 1
+            if consecutive_failures >= 3:
+                break
+            await asyncio.sleep(5)
+            continue
 
+        consecutive_failures = 0
         if deleted == 0:
             break
 
@@ -579,6 +609,7 @@ async def cleanup_underrepresented_genres(
     stop_check: typing.Callable[[], bool] = lambda: False,
 ) -> int:
     total_deleted = 0
+    consecutive_failures = 0
     while True:
         if stop_check():
             logger.info(
@@ -610,8 +641,13 @@ async def cleanup_underrepresented_genres(
                 await session.commit()
         except Exception as e:
             logger.error(f"[cleanup] Underrepresented genre cleanup batch failed: {e}")
-            break
+            consecutive_failures += 1
+            if consecutive_failures >= 3:
+                break
+            await asyncio.sleep(5)
+            continue
 
+        consecutive_failures = 0
         if deleted == 0:
             break
 
@@ -627,6 +663,7 @@ async def cleanup_invalid_genre_names(
     stop_check: typing.Callable[[], bool] = lambda: False,
 ) -> int:
     total_deleted = 0
+    consecutive_failures = 0
     while True:
         if stop_check():
             logger.info(
@@ -655,8 +692,13 @@ async def cleanup_invalid_genre_names(
                 await session.commit()
         except Exception as e:
             logger.error(f"[cleanup] Invalid genre name cleanup batch failed: {e}")
-            break
+            consecutive_failures += 1
+            if consecutive_failures >= 3:
+                break
+            await asyncio.sleep(5)
+            continue
 
+        consecutive_failures = 0
         if deleted == 0:
             break
 

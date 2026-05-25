@@ -31,9 +31,12 @@ class Settings(BaseSettings):
     cache_popular_ttl: int = Field(default=21600)
     cache_category_top_books_ttl: int = Field(default=93600)
     cache_genre_bubble_ttl: int = Field(default=21600)
-    category_cache_refresh_interval_hours: int = Field(default=24)
 
-    view_count_flush_interval: int = Field(default=300)
+    category_cache_refresh_enabled: bool = Field(default=True)
+    category_cache_refresh_cron: str = Field(default="0 7 * * *")
+
+    view_count_flush_enabled: bool = Field(default=True)
+    view_count_flush_cron: str = Field(default="*/5 * * * *")
     view_count_flush_batch_size: int = Field(default=100)
 
     search_default_limit: int = Field(default=10)
@@ -45,7 +48,8 @@ class Settings(BaseSettings):
     es_index_books: str = Field(default="books")
     es_index_authors: str = Field(default="authors")
     es_index_series: str = Field(default="series")
-    es_reindex_interval_hours: int = Field(default=6)
+    es_reindex_enabled: bool = Field(default=True)
+    es_reindex_cron: str = Field(default="0 5,11,17,23 * * *")
     es_reindex_batch_size: int = Field(default=1000)
 
     ledger_api_key: str = Field(default="")

@@ -75,7 +75,7 @@ The full reference is in `.env.example` — every variable is commented. Below i
 
 - **Cache TTLs** — how long book, author, and search results are cached in Redis (`CACHE_*_TTL`)
 - **Rate limiting** — requests per minute for regular and admin endpoints (`RATE_LIMIT_*`)
-- **Elasticsearch reindex** — how often the search index is rebuilt (`ES_REINDEX_INTERVAL_HOURS`)
+- **Elasticsearch reindex** — cron schedule for search index rebuilds (`ES_REINDEX_CRON`)
 - **Continuous ingestion** — toggle and configure polling intervals and batch sizes for Open Library and Google Books (`CONTINUOUS_*`)
 - **Data cleanup** — minimum quality score and author book count thresholds for automatic pruning (`CLEANUP_*`)
 

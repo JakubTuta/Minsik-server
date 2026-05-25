@@ -7,6 +7,11 @@ service RecommendationService {
   rpc GetHomePage(GetHomePageRequest) returns (HomePageResponse);
   rpc GetAvailableCategories(GetAvailableCategoriesRequest) returns (AvailableCategoriesResponse);
   rpc RefreshRecommendations(RefreshRecommendationsRequest) returns (RefreshRecommendationsResponse);
+  rpc RefreshBookOfTheWeek(RefreshBookOfTheWeekRequest) returns (RefreshBookOfTheWeekResponse);
+  rpc RefreshPersonalRecommendations(RefreshPersonalRecommendationsRequest) returns (RefreshPersonalRecommendationsResponse);
+  rpc RefreshUserPersonalRecommendations(RefreshUserPersonalRecommendationsRequest) returns (RefreshUserPersonalRecommendationsResponse);
+  rpc RefreshContextualRecommendations(RefreshContextualRecommendationsRequest) returns (RefreshContextualRecommendationsResponse);
+  rpc InvalidateContextualCache(InvalidateContextualCacheRequest) returns (InvalidateContextualCacheResponse);
   rpc GetBookRecommendations(GetBookRecommendationsRequest) returns (BookRecommendationsResponse);
   rpc GetAuthorRecommendations(GetAuthorRecommendationsRequest) returns (AuthorRecommendationsResponse);
   rpc GetSeriesRecommendations(GetSeriesRecommendationsRequest) returns (SeriesRecommendationsResponse);
@@ -78,6 +83,46 @@ message CategoryInfo {
 message RefreshRecommendationsRequest {}
 
 message RefreshRecommendationsResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message RefreshBookOfTheWeekRequest {}
+
+message RefreshBookOfTheWeekResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message RefreshPersonalRecommendationsRequest {}
+
+message RefreshPersonalRecommendationsResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message RefreshUserPersonalRecommendationsRequest {
+  string username = 1;
+}
+
+message RefreshUserPersonalRecommendationsResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message RefreshContextualRecommendationsRequest {}
+
+message RefreshContextualRecommendationsResponse {
+  bool success = 1;
+  string message = 2;
+}
+
+message InvalidateContextualCacheRequest {
+  string entity_type = 1;
+  string slug = 2;
+}
+
+message InvalidateContextualCacheResponse {
   bool success = 1;
   string message = 2;
 }
