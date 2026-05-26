@@ -581,7 +581,7 @@ class GetSeriesBooksRequest(_message.Message):
     def __init__(self, series_slug: _Optional[str] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., language: _Optional[str] = ..., sort_by: _Optional[str] = ..., order: _Optional[str] = ...) -> None: ...
 
 class UpdateBookRequest(_message.Message):
-    __slots__ = ("book_id", "title", "slug", "description", "first_sentence", "language", "original_publication_year", "primary_cover_url", "formats_json", "isbn_json", "publisher", "number_of_pages", "external_ids_json", "open_library_id", "google_books_id", "series_id", "series_position")
+    __slots__ = ("book_id", "title", "slug", "description", "first_sentence", "language", "original_publication_year", "primary_cover_url", "formats_json", "isbn_json", "publisher", "number_of_pages", "external_ids_json", "open_library_id", "google_books_id", "series_id", "series_position", "remove_author_id")
     BOOK_ID_FIELD_NUMBER: _ClassVar[int]
     TITLE_FIELD_NUMBER: _ClassVar[int]
     SLUG_FIELD_NUMBER: _ClassVar[int]
@@ -599,6 +599,7 @@ class UpdateBookRequest(_message.Message):
     GOOGLE_BOOKS_ID_FIELD_NUMBER: _ClassVar[int]
     SERIES_ID_FIELD_NUMBER: _ClassVar[int]
     SERIES_POSITION_FIELD_NUMBER: _ClassVar[int]
+    REMOVE_AUTHOR_ID_FIELD_NUMBER: _ClassVar[int]
     book_id: int
     title: str
     slug: str
@@ -616,7 +617,8 @@ class UpdateBookRequest(_message.Message):
     google_books_id: str
     series_id: int
     series_position: str
-    def __init__(self, book_id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., description: _Optional[str] = ..., first_sentence: _Optional[str] = ..., language: _Optional[str] = ..., original_publication_year: _Optional[int] = ..., primary_cover_url: _Optional[str] = ..., formats_json: _Optional[str] = ..., isbn_json: _Optional[str] = ..., publisher: _Optional[str] = ..., number_of_pages: _Optional[int] = ..., external_ids_json: _Optional[str] = ..., open_library_id: _Optional[str] = ..., google_books_id: _Optional[str] = ..., series_id: _Optional[int] = ..., series_position: _Optional[str] = ...) -> None: ...
+    remove_author_id: int
+    def __init__(self, book_id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., description: _Optional[str] = ..., first_sentence: _Optional[str] = ..., language: _Optional[str] = ..., original_publication_year: _Optional[int] = ..., primary_cover_url: _Optional[str] = ..., formats_json: _Optional[str] = ..., isbn_json: _Optional[str] = ..., publisher: _Optional[str] = ..., number_of_pages: _Optional[int] = ..., external_ids_json: _Optional[str] = ..., open_library_id: _Optional[str] = ..., google_books_id: _Optional[str] = ..., series_id: _Optional[int] = ..., series_position: _Optional[str] = ..., remove_author_id: _Optional[int] = ...) -> None: ...
 
 class UpdateAuthorRequest(_message.Message):
     __slots__ = ("author_id", "name", "slug", "bio", "birth_date", "death_date", "birth_place", "nationality", "photo_url", "wikidata_id", "wikipedia_url", "remote_ids_json", "alternate_names_json", "open_library_id")

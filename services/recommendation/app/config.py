@@ -55,6 +55,8 @@ class Settings(BaseSettings):
     contextual_precompute_min_ratings: int = Field(default=500)
     contextual_cold_ttl: int = Field(default=1800)
 
+    available_languages: str = Field(default="en")
+
     ledger_api_key: str = Field(default="")
 
     class Config:

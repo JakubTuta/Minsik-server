@@ -6,6 +6,96 @@ from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
+class ListCategoriesRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class Category(_message.Message):
+    __slots__ = ("slug", "name")
+    SLUG_FIELD_NUMBER: _ClassVar[int]
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    slug: str
+    name: str
+    def __init__(self, slug: _Optional[str] = ..., name: _Optional[str] = ...) -> None: ...
+
+class ListCategoriesResponse(_message.Message):
+    __slots__ = ("categories",)
+    CATEGORIES_FIELD_NUMBER: _ClassVar[int]
+    categories: _containers.RepeatedCompositeFieldContainer[Category]
+    def __init__(self, categories: _Optional[_Iterable[_Union[Category, _Mapping]]] = ...) -> None: ...
+
+class GetCategoryRequest(_message.Message):
+    __slots__ = ("category_slug",)
+    CATEGORY_SLUG_FIELD_NUMBER: _ClassVar[int]
+    category_slug: str
+    def __init__(self, category_slug: _Optional[str] = ...) -> None: ...
+
+class CategoryResponse(_message.Message):
+    __slots__ = ("category",)
+    CATEGORY_FIELD_NUMBER: _ClassVar[int]
+    category: Category
+    def __init__(self, category: _Optional[_Union[Category, _Mapping]] = ...) -> None: ...
+
+class GetCategoryBooksRequest(_message.Message):
+    __slots__ = ("category_slug", "limit", "offset", "sort_by", "order", "language")
+    CATEGORY_SLUG_FIELD_NUMBER: _ClassVar[int]
+    LIMIT_FIELD_NUMBER: _ClassVar[int]
+    OFFSET_FIELD_NUMBER: _ClassVar[int]
+    SORT_BY_FIELD_NUMBER: _ClassVar[int]
+    ORDER_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
+    category_slug: str
+    limit: int
+    offset: int
+    sort_by: str
+    order: str
+    language: str
+    def __init__(self, category_slug: _Optional[str] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., sort_by: _Optional[str] = ..., order: _Optional[str] = ..., language: _Optional[str] = ...) -> None: ...
+
+class SuggestSearchRequest(_message.Message):
+    __slots__ = ("query", "limit", "language")
+    QUERY_FIELD_NUMBER: _ClassVar[int]
+    LIMIT_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
+    query: str
+    limit: int
+    language: str
+    def __init__(self, query: _Optional[str] = ..., limit: _Optional[int] = ..., language: _Optional[str] = ...) -> None: ...
+
+class SuggestionItem(_message.Message):
+    __slots__ = ("type", "id", "title", "slug", "cover_url", "authors", "score", "readers", "app_avg_rating", "app_rating_count", "ol_avg_rating", "ol_rating_count")
+    TYPE_FIELD_NUMBER: _ClassVar[int]
+    ID_FIELD_NUMBER: _ClassVar[int]
+    TITLE_FIELD_NUMBER: _ClassVar[int]
+    SLUG_FIELD_NUMBER: _ClassVar[int]
+    COVER_URL_FIELD_NUMBER: _ClassVar[int]
+    AUTHORS_FIELD_NUMBER: _ClassVar[int]
+    SCORE_FIELD_NUMBER: _ClassVar[int]
+    READERS_FIELD_NUMBER: _ClassVar[int]
+    APP_AVG_RATING_FIELD_NUMBER: _ClassVar[int]
+    APP_RATING_COUNT_FIELD_NUMBER: _ClassVar[int]
+    OL_AVG_RATING_FIELD_NUMBER: _ClassVar[int]
+    OL_RATING_COUNT_FIELD_NUMBER: _ClassVar[int]
+    type: str
+    id: int
+    title: str
+    slug: str
+    cover_url: str
+    authors: _containers.RepeatedScalarFieldContainer[str]
+    score: float
+    readers: int
+    app_avg_rating: str
+    app_rating_count: int
+    ol_avg_rating: str
+    ol_rating_count: int
+    def __init__(self, type: _Optional[str] = ..., id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., cover_url: _Optional[str] = ..., authors: _Optional[_Iterable[str]] = ..., score: _Optional[float] = ..., readers: _Optional[int] = ..., app_avg_rating: _Optional[str] = ..., app_rating_count: _Optional[int] = ..., ol_avg_rating: _Optional[str] = ..., ol_rating_count: _Optional[int] = ...) -> None: ...
+
+class SuggestSearchResponse(_message.Message):
+    __slots__ = ("items",)
+    ITEMS_FIELD_NUMBER: _ClassVar[int]
+    items: _containers.RepeatedCompositeFieldContainer[SuggestionItem]
+    def __init__(self, items: _Optional[_Iterable[_Union[SuggestionItem, _Mapping]]] = ...) -> None: ...
+
 class SearchRequest(_message.Message):
     __slots__ = ("query", "limit", "offset", "type_filter", "language")
     QUERY_FIELD_NUMBER: _ClassVar[int]
@@ -21,7 +111,7 @@ class SearchRequest(_message.Message):
     def __init__(self, query: _Optional[str] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., type_filter: _Optional[str] = ..., language: _Optional[str] = ...) -> None: ...
 
 class SearchResult(_message.Message):
-    __slots__ = ("type", "id", "title", "slug", "cover_url", "authors", "relevance_score", "author_slugs", "series_slug", "book_count", "app_avg_rating", "app_rating_count", "ol_avg_rating", "ol_rating_count")
+    __slots__ = ("type", "id", "title", "slug", "cover_url", "authors", "relevance_score", "author_slugs", "series_slug", "book_count", "app_avg_rating", "app_rating_count", "ol_avg_rating", "ol_rating_count", "readers")
     TYPE_FIELD_NUMBER: _ClassVar[int]
     ID_FIELD_NUMBER: _ClassVar[int]
     TITLE_FIELD_NUMBER: _ClassVar[int]
@@ -36,6 +126,7 @@ class SearchResult(_message.Message):
     APP_RATING_COUNT_FIELD_NUMBER: _ClassVar[int]
     OL_AVG_RATING_FIELD_NUMBER: _ClassVar[int]
     OL_RATING_COUNT_FIELD_NUMBER: _ClassVar[int]
+    READERS_FIELD_NUMBER: _ClassVar[int]
     type: str
     id: int
     title: str
@@ -50,7 +141,8 @@ class SearchResult(_message.Message):
     app_rating_count: int
     ol_avg_rating: str
     ol_rating_count: int
-    def __init__(self, type: _Optional[str] = ..., id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., cover_url: _Optional[str] = ..., authors: _Optional[_Iterable[str]] = ..., relevance_score: _Optional[float] = ..., author_slugs: _Optional[_Iterable[str]] = ..., series_slug: _Optional[str] = ..., book_count: _Optional[int] = ..., app_avg_rating: _Optional[str] = ..., app_rating_count: _Optional[int] = ..., ol_avg_rating: _Optional[str] = ..., ol_rating_count: _Optional[int] = ...) -> None: ...
+    readers: int
+    def __init__(self, type: _Optional[str] = ..., id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., cover_url: _Optional[str] = ..., authors: _Optional[_Iterable[str]] = ..., relevance_score: _Optional[float] = ..., author_slugs: _Optional[_Iterable[str]] = ..., series_slug: _Optional[str] = ..., book_count: _Optional[int] = ..., app_avg_rating: _Optional[str] = ..., app_rating_count: _Optional[int] = ..., ol_avg_rating: _Optional[str] = ..., ol_rating_count: _Optional[int] = ..., readers: _Optional[int] = ...) -> None: ...
 
 class SearchResponse(_message.Message):
     __slots__ = ("results", "total_count")
@@ -67,6 +159,34 @@ class GetBookRequest(_message.Message):
     slug: str
     language: str
     def __init__(self, slug: _Optional[str] = ..., language: _Optional[str] = ...) -> None: ...
+
+class GetBookLanguageVariantsRequest(_message.Message):
+    __slots__ = ("slug", "exclude_language")
+    SLUG_FIELD_NUMBER: _ClassVar[int]
+    EXCLUDE_LANGUAGE_FIELD_NUMBER: _ClassVar[int]
+    slug: str
+    exclude_language: str
+    def __init__(self, slug: _Optional[str] = ..., exclude_language: _Optional[str] = ...) -> None: ...
+
+class BookLanguageVariant(_message.Message):
+    __slots__ = ("book_id", "slug", "language", "title", "primary_cover_url")
+    BOOK_ID_FIELD_NUMBER: _ClassVar[int]
+    SLUG_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
+    TITLE_FIELD_NUMBER: _ClassVar[int]
+    PRIMARY_COVER_URL_FIELD_NUMBER: _ClassVar[int]
+    book_id: int
+    slug: str
+    language: str
+    title: str
+    primary_cover_url: str
+    def __init__(self, book_id: _Optional[int] = ..., slug: _Optional[str] = ..., language: _Optional[str] = ..., title: _Optional[str] = ..., primary_cover_url: _Optional[str] = ...) -> None: ...
+
+class BookLanguageVariantsResponse(_message.Message):
+    __slots__ = ("items",)
+    ITEMS_FIELD_NUMBER: _ClassVar[int]
+    items: _containers.RepeatedCompositeFieldContainer[BookLanguageVariant]
+    def __init__(self, items: _Optional[_Iterable[_Union[BookLanguageVariant, _Mapping]]] = ...) -> None: ...
 
 class SubRatingStat(_message.Message):
     __slots__ = ("avg", "count")
@@ -205,6 +325,32 @@ class SeriesInfo(_message.Message):
     total_books: int
     def __init__(self, series_id: _Optional[int] = ..., name: _Optional[str] = ..., slug: _Optional[str] = ..., total_books: _Optional[int] = ...) -> None: ...
 
+class GenreCoOccurrence(_message.Message):
+    __slots__ = ("genre", "co_occurrence_count", "strength")
+    GENRE_FIELD_NUMBER: _ClassVar[int]
+    CO_OCCURRENCE_COUNT_FIELD_NUMBER: _ClassVar[int]
+    STRENGTH_FIELD_NUMBER: _ClassVar[int]
+    genre: GenreInfo
+    co_occurrence_count: int
+    strength: float
+    def __init__(self, genre: _Optional[_Union[GenreInfo, _Mapping]] = ..., co_occurrence_count: _Optional[int] = ..., strength: _Optional[float] = ...) -> None: ...
+
+class GetGenreBubbleRequest(_message.Message):
+    __slots__ = ("slug", "limit")
+    SLUG_FIELD_NUMBER: _ClassVar[int]
+    LIMIT_FIELD_NUMBER: _ClassVar[int]
+    slug: str
+    limit: int
+    def __init__(self, slug: _Optional[str] = ..., limit: _Optional[int] = ...) -> None: ...
+
+class GetGenreBubbleResponse(_message.Message):
+    __slots__ = ("source", "related")
+    SOURCE_FIELD_NUMBER: _ClassVar[int]
+    RELATED_FIELD_NUMBER: _ClassVar[int]
+    source: GenreInfo
+    related: _containers.RepeatedCompositeFieldContainer[GenreCoOccurrence]
+    def __init__(self, source: _Optional[_Union[GenreInfo, _Mapping]] = ..., related: _Optional[_Iterable[_Union[GenreCoOccurrence, _Mapping]]] = ...) -> None: ...
+
 class BookDetailResponse(_message.Message):
     __slots__ = ("book",)
     BOOK_FIELD_NUMBER: _ClassVar[int]
@@ -313,11 +459,12 @@ class GetAuthorBooksRequest(_message.Message):
     def __init__(self, author_slug: _Optional[str] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., sort_by: _Optional[str] = ..., order: _Optional[str] = ..., language: _Optional[str] = ...) -> None: ...
 
 class BookSummary(_message.Message):
-    __slots__ = ("book_id", "title", "slug", "description", "primary_cover_url", "authors", "rating_count", "avg_rating", "ol_rating_count", "ol_avg_rating", "ol_want_to_read_count", "ol_currently_reading_count", "ol_already_read_count", "app_want_to_read_count", "app_reading_count", "app_read_count", "series_position", "rarity")
+    __slots__ = ("book_id", "title", "slug", "description", "original_publication_year", "primary_cover_url", "authors", "rating_count", "avg_rating", "ol_rating_count", "ol_avg_rating", "ol_want_to_read_count", "ol_currently_reading_count", "ol_already_read_count", "app_want_to_read_count", "app_reading_count", "app_read_count", "series_position", "rarity")
     BOOK_ID_FIELD_NUMBER: _ClassVar[int]
     TITLE_FIELD_NUMBER: _ClassVar[int]
     SLUG_FIELD_NUMBER: _ClassVar[int]
     DESCRIPTION_FIELD_NUMBER: _ClassVar[int]
+    ORIGINAL_PUBLICATION_YEAR_FIELD_NUMBER: _ClassVar[int]
     PRIMARY_COVER_URL_FIELD_NUMBER: _ClassVar[int]
     AUTHORS_FIELD_NUMBER: _ClassVar[int]
     RATING_COUNT_FIELD_NUMBER: _ClassVar[int]
@@ -336,6 +483,7 @@ class BookSummary(_message.Message):
     title: str
     slug: str
     description: str
+    original_publication_year: int
     primary_cover_url: str
     authors: _containers.RepeatedCompositeFieldContainer[AuthorInfo]
     rating_count: int
@@ -350,7 +498,7 @@ class BookSummary(_message.Message):
     app_read_count: int
     series_position: str
     rarity: str
-    def __init__(self, book_id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., description: _Optional[str] = ..., primary_cover_url: _Optional[str] = ..., authors: _Optional[_Iterable[_Union[AuthorInfo, _Mapping]]] = ..., rating_count: _Optional[int] = ..., avg_rating: _Optional[str] = ..., ol_rating_count: _Optional[int] = ..., ol_avg_rating: _Optional[str] = ..., ol_want_to_read_count: _Optional[int] = ..., ol_currently_reading_count: _Optional[int] = ..., ol_already_read_count: _Optional[int] = ..., app_want_to_read_count: _Optional[int] = ..., app_reading_count: _Optional[int] = ..., app_read_count: _Optional[int] = ..., series_position: _Optional[str] = ..., rarity: _Optional[str] = ...) -> None: ...
+    def __init__(self, book_id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., description: _Optional[str] = ..., original_publication_year: _Optional[int] = ..., primary_cover_url: _Optional[str] = ..., authors: _Optional[_Iterable[_Union[AuthorInfo, _Mapping]]] = ..., rating_count: _Optional[int] = ..., avg_rating: _Optional[str] = ..., ol_rating_count: _Optional[int] = ..., ol_avg_rating: _Optional[str] = ..., ol_want_to_read_count: _Optional[int] = ..., ol_currently_reading_count: _Optional[int] = ..., ol_already_read_count: _Optional[int] = ..., app_want_to_read_count: _Optional[int] = ..., app_reading_count: _Optional[int] = ..., app_read_count: _Optional[int] = ..., series_position: _Optional[str] = ..., rarity: _Optional[str] = ...) -> None: ...
 
 class BooksListResponse(_message.Message):
     __slots__ = ("books", "total_count")
@@ -433,7 +581,7 @@ class GetSeriesBooksRequest(_message.Message):
     def __init__(self, series_slug: _Optional[str] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., language: _Optional[str] = ..., sort_by: _Optional[str] = ..., order: _Optional[str] = ...) -> None: ...
 
 class UpdateBookRequest(_message.Message):
-    __slots__ = ("book_id", "title", "slug", "description", "first_sentence", "language", "original_publication_year", "primary_cover_url", "formats_json", "isbn_json", "publisher", "number_of_pages", "external_ids_json", "open_library_id", "google_books_id", "series_id", "series_position")
+    __slots__ = ("book_id", "title", "slug", "description", "first_sentence", "language", "original_publication_year", "primary_cover_url", "formats_json", "isbn_json", "publisher", "number_of_pages", "external_ids_json", "open_library_id", "google_books_id", "series_id", "series_position", "remove_author_id")
     BOOK_ID_FIELD_NUMBER: _ClassVar[int]
     TITLE_FIELD_NUMBER: _ClassVar[int]
     SLUG_FIELD_NUMBER: _ClassVar[int]
@@ -451,6 +599,7 @@ class UpdateBookRequest(_message.Message):
     GOOGLE_BOOKS_ID_FIELD_NUMBER: _ClassVar[int]
     SERIES_ID_FIELD_NUMBER: _ClassVar[int]
     SERIES_POSITION_FIELD_NUMBER: _ClassVar[int]
+    REMOVE_AUTHOR_ID_FIELD_NUMBER: _ClassVar[int]
     book_id: int
     title: str
     slug: str
@@ -468,7 +617,8 @@ class UpdateBookRequest(_message.Message):
     google_books_id: str
     series_id: int
     series_position: str
-    def __init__(self, book_id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., description: _Optional[str] = ..., first_sentence: _Optional[str] = ..., language: _Optional[str] = ..., original_publication_year: _Optional[int] = ..., primary_cover_url: _Optional[str] = ..., formats_json: _Optional[str] = ..., isbn_json: _Optional[str] = ..., publisher: _Optional[str] = ..., number_of_pages: _Optional[int] = ..., external_ids_json: _Optional[str] = ..., open_library_id: _Optional[str] = ..., google_books_id: _Optional[str] = ..., series_id: _Optional[int] = ..., series_position: _Optional[str] = ...) -> None: ...
+    remove_author_id: int
+    def __init__(self, book_id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., description: _Optional[str] = ..., first_sentence: _Optional[str] = ..., language: _Optional[str] = ..., original_publication_year: _Optional[int] = ..., primary_cover_url: _Optional[str] = ..., formats_json: _Optional[str] = ..., isbn_json: _Optional[str] = ..., publisher: _Optional[str] = ..., number_of_pages: _Optional[int] = ..., external_ids_json: _Optional[str] = ..., open_library_id: _Optional[str] = ..., google_books_id: _Optional[str] = ..., series_id: _Optional[int] = ..., series_position: _Optional[str] = ..., remove_author_id: _Optional[int] = ...) -> None: ...
 
 class UpdateAuthorRequest(_message.Message):
     __slots__ = ("author_id", "name", "slug", "bio", "birth_date", "death_date", "birth_place", "nationality", "photo_url", "wikidata_id", "wikipedia_url", "remote_ids_json", "alternate_names_json", "open_library_id")
@@ -523,14 +673,10 @@ class OpenCaseRequest(_message.Message):
     def __init__(self, language: _Optional[str] = ...) -> None: ...
 
 class OpenCaseResponse(_message.Message):
-    __slots__ = ("display_list", "winning_index", "winner")
-    DISPLAY_LIST_FIELD_NUMBER: _ClassVar[int]
-    WINNING_INDEX_FIELD_NUMBER: _ClassVar[int]
+    __slots__ = ("winner",)
     WINNER_FIELD_NUMBER: _ClassVar[int]
-    display_list: _containers.RepeatedCompositeFieldContainer[BookSummary]
-    winning_index: int
     winner: BookSummary
-    def __init__(self, display_list: _Optional[_Iterable[_Union[BookSummary, _Mapping]]] = ..., winning_index: _Optional[int] = ..., winner: _Optional[_Union[BookSummary, _Mapping]] = ...) -> None: ...
+    def __init__(self, winner: _Optional[_Union[BookSummary, _Mapping]] = ...) -> None: ...
 
 class OpenPackRequest(_message.Message):
     __slots__ = ("language", "length")
@@ -576,6 +722,20 @@ class DiscoverBookResponse(_message.Message):
     matching_count: int
     def __init__(self, book: _Optional[_Union[BookSummary, _Mapping]] = ..., matching_count: _Optional[int] = ...) -> None: ...
 
+class SpinSlotsRequest(_message.Message):
+    __slots__ = ("language",)
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
+    language: str
+    def __init__(self, language: _Optional[str] = ...) -> None: ...
+
+class SpinSlotsResponse(_message.Message):
+    __slots__ = ("items", "winner")
+    ITEMS_FIELD_NUMBER: _ClassVar[int]
+    WINNER_FIELD_NUMBER: _ClassVar[int]
+    items: _containers.RepeatedScalarFieldContainer[str]
+    winner: BookSummary
+    def __init__(self, items: _Optional[_Iterable[str]] = ..., winner: _Optional[_Union[BookSummary, _Mapping]] = ...) -> None: ...
+
 class DeleteBookRequest(_message.Message):
     __slots__ = ("book_id",)
     BOOK_ID_FIELD_NUMBER: _ClassVar[int]
@@ -599,3 +759,37 @@ class DeleteEntityResponse(_message.Message):
     MESSAGE_FIELD_NUMBER: _ClassVar[int]
     message: str
     def __init__(self, message: _Optional[str] = ...) -> None: ...
+
+class GetPopularCategoriesRequest(_message.Message):
+    __slots__ = ("limit",)
+    LIMIT_FIELD_NUMBER: _ClassVar[int]
+    limit: int
+    def __init__(self, limit: _Optional[int] = ...) -> None: ...
+
+class PopularCategoryItem(_message.Message):
+    __slots__ = ("slug", "name", "book_count")
+    SLUG_FIELD_NUMBER: _ClassVar[int]
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    BOOK_COUNT_FIELD_NUMBER: _ClassVar[int]
+    slug: str
+    name: str
+    book_count: int
+    def __init__(self, slug: _Optional[str] = ..., name: _Optional[str] = ..., book_count: _Optional[int] = ...) -> None: ...
+
+class PopularCategoriesResponse(_message.Message):
+    __slots__ = ("categories",)
+    CATEGORIES_FIELD_NUMBER: _ClassVar[int]
+    categories: _containers.RepeatedCompositeFieldContainer[PopularCategoryItem]
+    def __init__(self, categories: _Optional[_Iterable[_Union[PopularCategoryItem, _Mapping]]] = ...) -> None: ...
+
+class ReindexAllRequest(_message.Message):
+    __slots__ = ()
+    def __init__(self) -> None: ...
+
+class ReindexAllResponse(_message.Message):
+    __slots__ = ("status", "message")
+    STATUS_FIELD_NUMBER: _ClassVar[int]
+    MESSAGE_FIELD_NUMBER: _ClassVar[int]
+    status: str
+    message: str
+    def __init__(self, status: _Optional[str] = ..., message: _Optional[str] = ...) -> None: ...

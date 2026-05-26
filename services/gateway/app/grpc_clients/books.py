@@ -243,6 +243,21 @@ class BooksClient:
             logger.error(f"gRPC error updating series: {e.code()} - {e.details()}")
             raise
 
+    async def remove_book_author(
+        self, book_id: int, author_id: int
+    ) -> books_pb2.BookDetailResponse:
+        request = books_pb2.UpdateBookRequest(
+            book_id=book_id, remove_author_id=author_id
+        )
+        try:
+            response = await self.stub.UpdateBook(
+                request, timeout=app.config.settings.grpc_admin_timeout
+            )
+            return response
+        except grpc.RpcError as e:
+            logger.error(f"gRPC error removing book author: {e.code()} - {e.details()}")
+            raise
+
     async def delete_book(self, book_id: int) -> books_pb2.DeleteEntityResponse:
         request = books_pb2.DeleteBookRequest(book_id=book_id)
         try:

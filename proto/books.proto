@@ -368,6 +368,7 @@ message UpdateBookRequest {
   optional string google_books_id = 16;
   optional int64 series_id = 17;
   optional string series_position = 18;
+  optional int64 remove_author_id = 19;
 }
 
 message UpdateAuthorRequest {

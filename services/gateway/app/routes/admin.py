@@ -575,6 +575,62 @@ async def update_series(
 
 
 @router.delete(
+    "/books/{book_id}/authors/{author_id}",
+    response_model=app.models.responses.APIResponse,
+    summary="Remove an author from a book",
+    description="Remove the author-book association. Neither the book nor the author is deleted.",
+    dependencies=[
+        fastapi.Depends(lambda: limiter),
+        fastapi.Depends(app.middleware.auth.require_admin),
+    ],
+    responses={
+        200: {"description": "Author removed from book"},
+        404: {"description": "Book or author-book association not found"},
+        **_AUTH_RESPONSES,
+        500: {"description": "Internal server error"},
+    },
+)
+@limiter.limit(app.middleware.rate_limit.get_admin_limit())
+async def remove_book_author(request: fastapi.Request, book_id: int, author_id: int):
+    try:
+        async with app.grpc_clients.BooksClient() as client:
+            response = await client.remove_book_author(
+                book_id=book_id, author_id=author_id
+            )
+            book = response.book
+            return app.utils.responses.success_response(
+                {
+                    "book_id": book.book_id,
+                    "title": book.title,
+                    "authors": [
+                        {"author_id": a.author_id, "name": a.name, "slug": a.slug}
+                        for a in book.authors
+                    ],
+                }
+            )
+    except grpc.RpcError as e:
+        app.utils.responses.log_grpc_error(logger, "removing book author", e)
+        if e.code() == grpc.StatusCode.NOT_FOUND:
+            return app.utils.responses.error_response(
+                code="NOT_FOUND", message=e.details(), status_code=404
+            )
+        return app.utils.responses.error_response(
+            code="INTERNAL_ERROR",
+            message="Failed to remove author from book",
+            details={"grpc_code": e.code().name, "grpc_details": e.details()},
+            status_code=500,
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error removing book author: {str(e)}")
+        return app.utils.responses.error_response(
+            code="INTERNAL_ERROR",
+            message="An unexpected error occurred",
+            details={"error": str(e)},
+            status_code=500,
+        )
+
+
+@router.delete(
     "/books/{book_id}",
     response_model=app.models.responses.APIResponse,
     summary="Delete a book",

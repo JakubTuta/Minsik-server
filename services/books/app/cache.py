@@ -66,6 +66,23 @@ async def delete_cached(key: str) -> bool:
         return False
 
 
+async def delete_by_pattern(pattern: str) -> int:
+    try:
+        cursor = 0
+        deleted = 0
+        while True:
+            cursor, keys = await redis_client.scan(cursor, match=pattern, count=100)
+            if keys:
+                await redis_client.delete(*keys)
+                deleted += len(keys)
+            if cursor == 0:
+                break
+        return deleted
+    except Exception as e:
+        logger.error(f"Redis DELETE pattern error for {pattern}: {str(e)}")
+        return 0
+
+
 async def increment_view_count(entity_type: str, entity_id: int) -> None:
     try:
         key = f"view_count:{entity_type}:{entity_id}"

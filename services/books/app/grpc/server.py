@@ -495,9 +495,23 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                         else None
                     )
 
-                book = await app.services.book_service.update_book(
-                    session, request.book_id, updates
+                if request.HasField("remove_author_id"):
+                    book = await app.services.book_service.remove_book_author(
+                        session, request.book_id, request.remove_author_id
+                    )
+                else:
+                    book = await app.services.book_service.update_book(
+                        session, request.book_id, updates
+                    )
+        except ValueError as e:
+            if str(e) == "author_not_on_book":
+                await context.abort(
+                    grpc.StatusCode.NOT_FOUND,
+                    f"Author {request.remove_author_id} not found on book {request.book_id}",
                 )
+            else:
+                await context.abort(grpc.StatusCode.INTERNAL, str(e))
+            return
         except Exception as e:
             logger.error(f"Error in UpdateBook: {str(e)}")
             await context.abort(
