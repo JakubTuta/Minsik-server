@@ -3,6 +3,7 @@ import random
 import typing
 
 import app.cache
+import app.services._language_boost
 import sqlalchemy
 import sqlalchemy.ext.asyncio
 from sqlalchemy import text
@@ -48,6 +49,7 @@ _BOOK_SELECT = """
         b.slug,
         b.description,
         b.primary_cover_url,
+        b.language,
         b.rating_count,
         b.avg_rating,
         b.ol_rating_count,
@@ -88,7 +90,7 @@ _BOOK_SELECT = """
 
 _BOOK_GROUP_BY = """
     GROUP BY b.book_id, b.title, b.slug, b.description, b.primary_cover_url,
-             b.rating_count, b.avg_rating, b.ol_rating_count, b.ol_avg_rating,
+             b.language, b.rating_count, b.avg_rating, b.ol_rating_count, b.ol_avg_rating,
              b.ol_want_to_read_count, b.ol_currently_reading_count,
              b.ol_already_read_count, bs.app_want_to_read_count,
              bs.app_reading_count, bs.app_read_count
@@ -109,10 +111,9 @@ _COMBINED_RATING_FILTER = """
 async def open_case(
     session: sqlalchemy.ext.asyncio.AsyncSession, language: str
 ) -> typing.Dict[str, typing.Any]:
-    if language == "en":
-        cached_result = await _try_open_from_cache(language)
-        if cached_result is not None:
-            return cached_result
+    cached_result = await _try_open_from_cache(language)
+    if cached_result is not None:
+        return cached_result
 
     tier = _pick_winning_tier()
     winner_row = await _fetch_random_book_from_tier(
@@ -123,7 +124,7 @@ async def open_case(
         winner_row = await _fallback_book(session, language, tier)
 
     if winner_row is None:
-        raise ValueError(f"No rated books found for language '{language}'")
+        raise ValueError("No rated books found")
 
     winner_item = _row_to_case_item(winner_row)
 
@@ -137,9 +138,7 @@ async def _try_open_from_cache(
 ) -> typing.Optional[typing.Dict[str, typing.Any]]:
     tier_pools: typing.Dict[str, typing.List[typing.Dict[str, typing.Any]]] = {}
     for tier_name, _, _, _ in RARITY_TIERS:
-        pool = await app.cache.get_cached(
-            f"{CACHE_POOL_KEY_PREFIX}:{tier_name}:{language}"
-        )
+        pool = await app.cache.get_cached(f"{CACHE_POOL_KEY_PREFIX}:{tier_name}")
         if pool is None:
             return None
         tier_pools[tier_name] = pool
@@ -164,8 +163,11 @@ async def _try_open_from_cache(
         if not winner_pool:
             return None
 
-    winner = random.choice(winner_pool)
-    # Ensure rarity is set based on the book, or fallback to the tier we found it in
+    weights = [
+        app.services._language_boost.lang_boost_weight(b.get("language", ""), language)
+        for b in winner_pool
+    ]
+    winner = random.choices(winner_pool, weights=weights, k=1)[0]
     if "rarity" not in winner:
         winner["rarity"] = winning_tier[0]
 
@@ -191,16 +193,16 @@ async def _fetch_random_book_from_tier(
     max_rating: float,
     min_ratings: int,
 ) -> typing.Optional[typing.Any]:
+    boost = app.services._language_boost.lang_boost_sql()
     query = text(
         _BOOK_SELECT
         + f"""
-        WHERE b.language = :language
-          AND (b.rating_count + b.ol_rating_count) >= :min_ratings
+        WHERE (b.rating_count + b.ol_rating_count) >= :min_ratings
           AND {_COMBINED_RATING_FILTER}
         """
         + _BOOK_GROUP_BY
-        + """
-        ORDER BY RANDOM()
+        + f"""
+        ORDER BY RANDOM() * {boost} DESC
         LIMIT 1
         """
     )
@@ -278,8 +280,9 @@ async def _fetch_all_display_books(
     language: str,
     winner_book_id: int,
 ) -> typing.List[typing.Any]:
+    boost = app.services._language_boost.lang_boost_sql()
     query = text(
-        """
+        f"""
         WITH book_stats AS (
             SELECT
                 b.book_id,
@@ -287,6 +290,7 @@ async def _fetch_all_display_books(
                 b.slug,
                 b.description,
                 b.primary_cover_url,
+                b.language,
                 b.rating_count,
                 b.avg_rating,
                 b.ol_rating_count,
@@ -319,11 +323,10 @@ async def _fetch_all_display_books(
                 WHERE status != 'abandoned'
                 GROUP BY book_id
             ) bs ON b.book_id = bs.book_id
-            WHERE b.language = :language
-              AND b.book_id != :exclude_book_id
+            WHERE b.book_id != :exclude_book_id
               AND (b.rating_count + b.ol_rating_count) >= 1
             GROUP BY b.book_id, b.title, b.slug, b.description, b.primary_cover_url,
-                     b.rating_count, b.avg_rating, b.ol_rating_count, b.ol_avg_rating,
+                     b.language, b.rating_count, b.avg_rating, b.ol_rating_count, b.ol_avg_rating,
                      b.ol_want_to_read_count, b.ol_currently_reading_count,
                      b.ol_already_read_count, bs.app_want_to_read_count,
                      bs.app_reading_count, bs.app_read_count
@@ -343,7 +346,7 @@ async def _fetch_all_display_books(
         ),
         sampled AS (
             SELECT *,
-                ROW_NUMBER() OVER (PARTITION BY bucket ORDER BY RANDOM()) AS rn
+                ROW_NUMBER() OVER (PARTITION BY bucket ORDER BY RANDOM() * {boost} DESC) AS rn
             FROM bucketed
             WHERE bucket IS NOT NULL
         )
@@ -369,17 +372,17 @@ async def _fetch_any_rated_books(
     exclude_book_id: int,
     also_exclude_ids: typing.List[int],
 ) -> typing.List[typing.Dict[str, typing.Any]]:
+    boost = app.services._language_boost.lang_boost_sql()
     exclude_ids = [exclude_book_id] + also_exclude_ids
     query = text(
         _BOOK_SELECT
         + """
-        WHERE b.language = :language
-          AND b.book_id != ALL(:exclude_ids)
+        WHERE b.book_id != ALL(:exclude_ids)
           AND (b.rating_count + b.ol_rating_count) > 0
         """
         + _BOOK_GROUP_BY
-        + """
-        ORDER BY RANDOM()
+        + f"""
+        ORDER BY RANDOM() * {boost} DESC
         LIMIT :limit
         """
     )
@@ -429,6 +432,7 @@ def _row_to_case_item(row: typing.Any) -> typing.Dict[str, typing.Any]:
         "slug": row.slug,
         "description": row.description or "",
         "primary_cover_url": row.primary_cover_url or "",
+        "language": getattr(row, "language", "") or "",
         "authors": authors,
         "rarity": _compute_rarity(combined),
         "avg_rating": str(row.avg_rating) if row.avg_rating else "0.00",

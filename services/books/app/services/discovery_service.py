@@ -4,6 +4,7 @@ import typing
 
 import sqlalchemy.ext.asyncio
 from sqlalchemy import text
+import app.services._language_boost
 
 logger = logging.getLogger(__name__)
 
@@ -175,7 +176,6 @@ def _build_filter_clauses(
     having_clauses: typing.List[str] = []
     params: typing.Dict[str, typing.Any] = {}
 
-    where_clauses.append("b.language = :language")
     params["language"] = language
 
     where_clauses.append(
@@ -321,7 +321,8 @@ async def _fetch_random_matching_book(
     query += _DISCOVERY_GROUP_BY
     if having_clauses:
         query += " HAVING " + " AND ".join(having_clauses)
-    query += " ORDER BY RANDOM() LIMIT 1"
+    boost = app.services._language_boost.lang_boost_sql()
+    query += f" ORDER BY RANDOM() * {boost} DESC LIMIT 1"
 
     result = await session.execute(text(query), params)
     row = result.first()

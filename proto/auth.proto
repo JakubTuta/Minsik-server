@@ -51,6 +51,7 @@ message UpdateProfileRequest {
   string display_name = 2;
   string bio = 3;
   string avatar_url = 4;
+  string preferred_language = 5;
 }
 
 message DeleteAccountRequest {
@@ -72,6 +73,7 @@ message User {
   string role = 7;
   bool is_active = 8;
   string created_at = 9;
+  string preferred_language = 10;
 }
 
 message AuthResponse {

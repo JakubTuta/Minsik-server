@@ -38,7 +38,6 @@ POOL_SIZES: typing.Dict[str, int] = {
 }
 
 CACHE_KEY_PREFIX = "case:pool"
-LANGUAGE = "en"
 
 _POOL_QUERY = text(
     """
@@ -49,6 +48,7 @@ _POOL_QUERY = text(
             b.slug,
             b.description,
             b.primary_cover_url,
+            b.language,
             b.rating_count,
             b.avg_rating,
             b.ol_rating_count,
@@ -81,10 +81,9 @@ _POOL_QUERY = text(
             WHERE status != 'abandoned'
             GROUP BY book_id
         ) bs ON b.book_id = bs.book_id
-        WHERE b.language = 'en'
-          AND (b.rating_count + b.ol_rating_count) >= 1
+        WHERE (b.rating_count + b.ol_rating_count) >= 1
         GROUP BY b.book_id, b.title, b.slug, b.description, b.primary_cover_url,
-                 b.rating_count, b.avg_rating, b.ol_rating_count, b.ol_avg_rating,
+                 b.language, b.rating_count, b.avg_rating, b.ol_rating_count, b.ol_avg_rating,
                  b.ol_want_to_read_count, b.ol_currently_reading_count,
                  b.ol_already_read_count, bs.app_want_to_read_count,
                  bs.app_reading_count, bs.app_read_count
@@ -142,6 +141,7 @@ def _row_to_pool_item(row: typing.Any) -> typing.Dict[str, typing.Any]:
         "slug": row.slug,
         "description": row.description or "",
         "primary_cover_url": row.primary_cover_url or "",
+        "language": row.language or "",
         "authors": authors,
         "rarity": row.rarity_name,
         "avg_rating": str(row.avg_rating) if row.avg_rating else "0.00",
@@ -160,7 +160,7 @@ def _row_to_pool_item(row: typing.Any) -> typing.Dict[str, typing.Any]:
 
 
 async def refresh_case_pools(session_maker: sqlalchemy.orm.sessionmaker) -> None:
-    logger.info(f"[case] Starting case pool refresh for language '{LANGUAGE}'")
+    logger.info("[case] Starting case pool refresh (global, all languages)")
     settings = app.config.settings
 
     try:
@@ -178,7 +178,7 @@ async def refresh_case_pools(session_maker: sqlalchemy.orm.sessionmaker) -> None
         pools[row.rarity_name].append(_row_to_pool_item(row))
 
     for tier_name, pool in pools.items():
-        key = f"{CACHE_KEY_PREFIX}:{tier_name}:{LANGUAGE}"
+        key = f"{CACHE_KEY_PREFIX}:{tier_name}"
         await app.cache.set_cached(key, pool, settings.cache_case_pool_ttl)
         logger.info(
             f"[case] Cached {len(pool)} books for tier '{tier_name}' (key: {key})"

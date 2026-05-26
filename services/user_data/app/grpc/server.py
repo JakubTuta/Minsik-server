@@ -82,6 +82,7 @@ async def _resolve_book(session, book_slug: str) -> typing.Tuple[int, str, str]:
     result = await session.execute(
         sqlalchemy.text(
             "SELECT book_id, title, primary_cover_url FROM books.books WHERE slug = :slug"
+            " ORDER BY book_id ASC LIMIT 1"
         ),
         {"slug": book_slug},
     )
@@ -97,7 +98,7 @@ async def _resolve_book_meta(session, book_slug: str) -> typing.Dict[str, typing
             "SELECT b.book_id, b.title, b.primary_cover_url, s.name AS series_name, s.slug AS series_slug "
             "FROM books.books b "
             "LEFT JOIN books.series s ON s.series_id = b.series_id "
-            "WHERE b.slug = :slug"
+            "WHERE b.slug = :slug ORDER BY b.book_id ASC LIMIT 1"
         ),
         {"slug": book_slug},
     )
@@ -1017,7 +1018,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
             async with app.database.async_session_maker() as session:
                 book_result = await session.execute(
                     sqlalchemy.text(
-                        "SELECT book_id FROM books.books WHERE slug = :slug"
+                        "SELECT book_id FROM books.books WHERE slug = :slug ORDER BY book_id ASC LIMIT 1"
                     ),
                     {"slug": request.book_slug},
                 )

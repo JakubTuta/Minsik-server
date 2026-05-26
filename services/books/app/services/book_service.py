@@ -53,10 +53,11 @@ async def get_book_by_slug(
                 COUNT(*) FILTER (WHERE status = 'reading') AS app_reading_count,
                 COUNT(*) FILTER (WHERE status = 'read') AS app_read_count
             FROM user_data.bookshelves
-            WHERE book_id = :book_id AND status != 'abandoned'
+            WHERE book_id IN (SELECT book_id FROM books.books WHERE slug = :slug)
+              AND status != 'abandoned'
             """
         ),
-        {"book_id": book.book_id},
+        {"slug": book.slug},
     )
     bookshelves_row = bookshelves_result.first()
     book_data["app_want_to_read_count"] = (
@@ -242,10 +243,11 @@ async def update_book(
                 COUNT(*) FILTER (WHERE status = 'reading') AS app_reading_count,
                 COUNT(*) FILTER (WHERE status = 'read') AS app_read_count
             FROM user_data.bookshelves
-            WHERE book_id = :book_id AND status != 'abandoned'
+            WHERE book_id IN (SELECT book_id FROM books.books WHERE slug = :slug)
+              AND status != 'abandoned'
             """
         ),
-        {"book_id": book.book_id},
+        {"slug": book.slug},
     )
     bookshelves_row = bookshelves_result.first()
     book_data["app_want_to_read_count"] = (

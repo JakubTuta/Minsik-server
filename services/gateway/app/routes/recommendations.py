@@ -1,4 +1,5 @@
 import logging
+import typing
 
 import app.config
 import app.grpc_clients
@@ -16,6 +17,23 @@ router = fastapi.APIRouter(prefix="/api/v1", tags=["Recommendations"])
 admin_router = fastapi.APIRouter(prefix="/api/v1/admin", tags=["Admin"])
 
 limiter = app.middleware.rate_limit.limiter
+
+
+def _resolve_language(
+    request: fastapi.Request,
+    language: typing.Optional[str] = None,
+) -> str:
+    if language:
+        return language
+    cookie_lang = request.cookies.get("pref_lang")
+    if cookie_lang:
+        return cookie_lang
+    accept_lang = request.headers.get("Accept-Language", "")
+    if accept_lang:
+        lang = accept_lang.split(",")[0].split(";")[0].strip()[:8]
+        if lang:
+            return lang
+    return "en"
 
 
 def _to_section_dict(key: str, item) -> dict:
@@ -92,10 +110,12 @@ async def get_home_page(
     items_per_category: int = Query(
         20, ge=1, le=100, description="Number of items to return per section"
     ),
+    language: typing.Optional[str] = Query(None, description="Preferred language code"),
 ):
     try:
+        lang = _resolve_language(request, language)
         response = await app.grpc_clients.recommendation_client.get_home_page(
-            items_per_category=items_per_category
+            items_per_category=items_per_category, language=lang
         )
         sections = [_to_section_dict(cat.category, cat) for cat in response.categories]
         return app.utils.responses.success_response({"sections": sections})
@@ -183,9 +203,13 @@ async def get_available_categories(request: fastapi.Request):
     },
 )
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
-async def get_book_of_the_week(request: fastapi.Request):
+async def get_book_of_the_week(
+    request: fastapi.Request,
+    language: typing.Optional[str] = Query(None, description="Preferred language code"),
+):
     try:
-        response = await app.grpc_clients.recommendation_client.get_book_of_the_week()
+        lang = _resolve_language(request, language)
+        response = await app.grpc_clients.recommendation_client.get_book_of_the_week(language=lang)
         data = {
             "book_id": response.book_id,
             "title": response.title,
@@ -258,10 +282,12 @@ async def get_recommendation_list(
     ),
     limit: int = Query(20, ge=1, le=100, description="Number of items to return"),
     offset: int = Query(0, ge=0, description="Pagination offset"),
+    language: typing.Optional[str] = Query(None, description="Preferred language code"),
 ):
     try:
+        lang = _resolve_language(request, language)
         response = await app.grpc_clients.recommendation_client.get_recommendation_list(
-            category=category, limit=limit, offset=offset
+            category=category, limit=limit, offset=offset, language=lang
         )
         return app.utils.responses.success_response(
             _to_section_dict(response.category, response)

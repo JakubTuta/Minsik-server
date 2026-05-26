@@ -126,13 +126,15 @@ class AuthClient:
         user_id: int,
         display_name: str = "",
         bio: str = "",
-        avatar_url: str = ""
+        avatar_url: str = "",
+        preferred_language: str = "",
     ) -> auth_pb2.UserResponse:
         request = auth_pb2.UpdateProfileRequest(
             user_id=user_id,
             display_name=display_name,
             bio=bio,
-            avatar_url=avatar_url
+            avatar_url=avatar_url,
+            preferred_language=preferred_language,
         )
 
         try:

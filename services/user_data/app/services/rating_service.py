@@ -18,7 +18,10 @@ async def _update_book_stats(
     await session.execute(
         sqlalchemy.text(
             """
-        WITH stats AS (
+        WITH canonical AS (
+            SELECT slug FROM books.books WHERE book_id = :book_id
+        ),
+        stats AS (
             SELECT
                 ROUND(AVG(overall_rating)::NUMERIC, 2)    AS avg_overall,
                 COUNT(*)                                   AS total_count,
@@ -71,8 +74,8 @@ async def _update_book_stats(
                     ('humor',             jsonb_build_object('avg', COALESCE(stats.avg_humor, 0)::text,             'count', stats.humor_count))
                 ) AS t(key, value)
             )
-        FROM stats, dist
-        WHERE books.books.book_id = :book_id
+        FROM stats, dist, canonical
+        WHERE books.books.slug = canonical.slug
     """
         ),
         {"book_id": book_id},

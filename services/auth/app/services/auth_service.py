@@ -195,7 +195,8 @@ async def update_profile(
     user_id: int,
     display_name: str,
     bio: str,
-    avatar_url: str
+    avatar_url: str,
+    preferred_language: str = "",
 ) -> app.models.user.User:
     result = await session.execute(
         select(app.models.user.User).filter(app.models.user.User.user_id == user_id)
@@ -210,6 +211,8 @@ async def update_profile(
         user.bio = bio
     if avatar_url is not None:
         user.avatar_url = avatar_url
+    if preferred_language:
+        user.preferred_language = preferred_language
 
     await session.commit()
     await session.refresh(user)

@@ -37,7 +37,8 @@ def _build_user_message(user: object) -> app.proto.auth_pb2.User:
         bio=user.bio or "",
         role=user.role,
         is_active=user.is_active,
-        created_at=user.created_at.isoformat() if user.created_at else ""
+        created_at=user.created_at.isoformat() if user.created_at else "",
+        preferred_language=user.preferred_language or "en",
     )
 
 
@@ -194,7 +195,8 @@ class AuthServicer(app.proto.auth_pb2_grpc.AuthServiceServicer):
                     request.user_id,
                     request.display_name,
                     request.bio,
-                    request.avatar_url
+                    request.avatar_url,
+                    request.preferred_language,
                 )
                 return app.proto.auth_pb2.UserResponse(user=_build_user_message(user))
         except ValueError as e:

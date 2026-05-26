@@ -32,6 +32,9 @@ async def close_redis() -> None:
 
 async def delete_book_cache(book_slug: str) -> None:
     try:
-        await redis_client.delete(f"book_slug:{book_slug}")
+        pattern = f"book_slug:{book_slug}:*"
+        keys = [key async for key in redis_client.scan_iter(match=pattern)]
+        if keys:
+            await redis_client.delete(*keys)
     except Exception as e:
-        logger.error(f"Redis DELETE error for book_slug:{book_slug}: {str(e)}")
+        logger.error(f"Redis DELETE error for book_slug:{book_slug}:*: {str(e)}")

@@ -27,7 +27,8 @@ def _user_proto_to_dict(user) -> typing.Dict[str, typing.Any]:
         "bio": user.bio or None,
         "role": user.role,
         "is_active": user.is_active,
-        "created_at": user.created_at
+        "created_at": user.created_at,
+        "preferred_language": user.preferred_language or "en",
     }
 
 
@@ -535,7 +536,8 @@ async def update_profile(
             user_id=current_user["user_id"],
             display_name=body.display_name or "",
             bio=body.bio or "",
-            avatar_url=body.avatar_url or ""
+            avatar_url=body.avatar_url or "",
+            preferred_language=body.preferred_language or "",
         )
         return app.utils.responses.success_response(
             {"user": _user_proto_to_dict(response.user)},

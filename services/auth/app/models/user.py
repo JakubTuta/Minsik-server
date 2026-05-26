@@ -23,6 +23,7 @@ class User(app.models.base.Base):
     last_login = Column(TIMESTAMP)
     failed_login_attempts = Column(Integer, nullable=False, server_default=text("0"))
     locked_until = Column(TIMESTAMP)
+    preferred_language = Column(String(8), nullable=False, server_default=text("'en'"))
     created_at = Column(TIMESTAMP, nullable=False, server_default=text("NOW()"))
     updated_at = Column(TIMESTAMP, nullable=False, server_default=text("NOW()"))
 

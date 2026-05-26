@@ -1,3 +1,4 @@
+import json
 import logging
 import typing
 
@@ -8,10 +9,11 @@ import sqlalchemy.ext.asyncio
 
 logger = logging.getLogger(__name__)
 
-BOW_CACHE_KEY = "bow:current"
+BOW_POOL_CACHE_KEY = "bow:pool:current"
 BOW_HISTORY_KEY = "bow:history"
 BOW_TTL = 7 * 24 * 3600 + 3600
 BOW_HISTORY_SIZE = 12
+BOW_POOL_SIZE = 20
 
 
 async def _get_recent_book_ids() -> typing.List[int]:
@@ -31,10 +33,10 @@ async def _push_history(book_id: int) -> None:
         logger.error(f"[bow] Error pushing history: {str(e)}")
 
 
-async def _select_candidate(
+async def _fetch_candidate_pool(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     excluded_ids: typing.List[int],
-) -> typing.Optional[typing.Dict[str, typing.Any]]:
+) -> typing.List[typing.Dict[str, typing.Any]]:
     result = await session.execute(
         sqlalchemy.text(
             """
@@ -80,7 +82,6 @@ async def _select_candidate(
             WHERE b.primary_cover_url IS NOT NULL
               AND b.first_sentence IS NOT NULL
               AND length(b.first_sentence) > 10
-              AND b.language = 'en'
               AND EXISTS (SELECT 1 FROM books.book_authors ba2 WHERE ba2.book_id = b.book_id)
               AND EXISTS (SELECT 1 FROM books.book_genres bg2 WHERE bg2.book_id = b.book_id)
               AND (COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0)) >= 100
@@ -95,63 +96,66 @@ async def _select_candidate(
               ) >= 4.0
               AND b.book_id <> ALL(:excluded_ids)
             ORDER BY RANDOM()
-            LIMIT 1
+            LIMIT :pool_size
             """
         ),
-        {"excluded_ids": excluded_ids or [-1]},
+        {"excluded_ids": excluded_ids or [-1], "pool_size": BOW_POOL_SIZE},
     )
-    row = result.first()
-    if not row:
-        return None
+    rows = result.fetchall()
 
-    import json
+    pool = []
+    for row in rows:
+        authors_raw = row.authors
+        if isinstance(authors_raw, str):
+            authors = json.loads(authors_raw)
+        else:
+            authors = authors_raw or []
 
-    authors_raw = row.authors
-    if isinstance(authors_raw, str):
-        authors = json.loads(authors_raw)
-    else:
-        authors = authors_raw or []
+        categories_raw = row.categories
+        if isinstance(categories_raw, str):
+            categories = json.loads(categories_raw)
+        else:
+            categories = categories_raw or []
 
-    categories_raw = row.categories
-    if isinstance(categories_raw, str):
-        categories = json.loads(categories_raw)
-    else:
-        categories = categories_raw or []
+        pool.append({
+            "book_id": row.book_id,
+            "title": row.title or "",
+            "slug": row.slug or "",
+            "language": row.language or "en",
+            "primary_cover_url": row.primary_cover_url or "",
+            "first_sentence": row.first_sentence or "",
+            "weighted_avg_rating": float(row.weighted_avg_rating or 0),
+            "rating_count": int(row.total_rating_count or 0),
+            "authors": authors,
+            "categories": categories,
+        })
 
-    return {
-        "book_id": row.book_id,
-        "title": row.title or "",
-        "slug": row.slug or "",
-        "language": row.language or "en",
-        "primary_cover_url": row.primary_cover_url or "",
-        "first_sentence": row.first_sentence or "",
-        "weighted_avg_rating": float(row.weighted_avg_rating or 0),
-        "rating_count": int(row.total_rating_count or 0),
-        "authors": authors,
-        "categories": categories,
-    }
+    return pool
 
 
 async def refresh_book_of_the_week(
     session_maker: typing.Callable,
-) -> typing.Optional[typing.Dict[str, typing.Any]]:
-    logger.info("[bow] Selecting book of the week")
+) -> typing.Optional[typing.List[typing.Dict[str, typing.Any]]]:
+    logger.info("[bow] Selecting book of the week pool")
 
     excluded_ids = await _get_recent_book_ids()
 
     async with session_maker() as session:
-        book = await _select_candidate(session, excluded_ids)
+        pool = await _fetch_candidate_pool(session, excluded_ids)
 
-    if not book:
+    if not pool:
         logger.warning("[bow] No eligible candidates excluding history, retrying without exclusion")
         async with session_maker() as session:
-            book = await _select_candidate(session, [])
+            pool = await _fetch_candidate_pool(session, [])
 
-    if not book:
+    if not pool:
         logger.error("[bow] No eligible books found for book of the week")
         return None
 
-    await app.cache.set_cached(BOW_CACHE_KEY, book, BOW_TTL)
-    await _push_history(book["book_id"])
-    logger.info(f"[bow] Cached book of the week: '{book['title']}' (id={book['book_id']}, TTL={BOW_TTL}s)")
-    return book
+    await app.cache.set_cached(BOW_POOL_CACHE_KEY, pool, BOW_TTL)
+    await _push_history(pool[0]["book_id"])
+    logger.info(
+        f"[bow] Cached book of the week pool: {len(pool)} candidates "
+        f"(first: '{pool[0]['title']}' id={pool[0]['book_id']}, TTL={BOW_TTL}s)"
+    )
+    return pool

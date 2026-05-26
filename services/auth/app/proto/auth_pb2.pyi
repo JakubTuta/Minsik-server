@@ -58,16 +58,18 @@ class GetCurrentUserRequest(_message.Message):
     def __init__(self, user_id: _Optional[int] = ...) -> None: ...
 
 class UpdateProfileRequest(_message.Message):
-    __slots__ = ("user_id", "display_name", "bio", "avatar_url")
+    __slots__ = ("user_id", "display_name", "bio", "avatar_url", "preferred_language")
     USER_ID_FIELD_NUMBER: _ClassVar[int]
     DISPLAY_NAME_FIELD_NUMBER: _ClassVar[int]
     BIO_FIELD_NUMBER: _ClassVar[int]
     AVATAR_URL_FIELD_NUMBER: _ClassVar[int]
+    PREFERRED_LANGUAGE_FIELD_NUMBER: _ClassVar[int]
     user_id: int
     display_name: str
     bio: str
     avatar_url: str
-    def __init__(self, user_id: _Optional[int] = ..., display_name: _Optional[str] = ..., bio: _Optional[str] = ..., avatar_url: _Optional[str] = ...) -> None: ...
+    preferred_language: str
+    def __init__(self, user_id: _Optional[int] = ..., display_name: _Optional[str] = ..., bio: _Optional[str] = ..., avatar_url: _Optional[str] = ..., preferred_language: _Optional[str] = ...) -> None: ...
 
 class DeleteAccountRequest(_message.Message):
     __slots__ = ("user_id",)
@@ -84,7 +86,7 @@ class GoogleAuthRequest(_message.Message):
     def __init__(self, code: _Optional[str] = ..., redirect_uri: _Optional[str] = ...) -> None: ...
 
 class User(_message.Message):
-    __slots__ = ("user_id", "email", "username", "display_name", "avatar_url", "bio", "role", "is_active", "created_at")
+    __slots__ = ("user_id", "email", "username", "display_name", "avatar_url", "bio", "role", "is_active", "created_at", "preferred_language")
     USER_ID_FIELD_NUMBER: _ClassVar[int]
     EMAIL_FIELD_NUMBER: _ClassVar[int]
     USERNAME_FIELD_NUMBER: _ClassVar[int]
@@ -94,6 +96,7 @@ class User(_message.Message):
     ROLE_FIELD_NUMBER: _ClassVar[int]
     IS_ACTIVE_FIELD_NUMBER: _ClassVar[int]
     CREATED_AT_FIELD_NUMBER: _ClassVar[int]
+    PREFERRED_LANGUAGE_FIELD_NUMBER: _ClassVar[int]
     user_id: int
     email: str
     username: str
@@ -103,7 +106,8 @@ class User(_message.Message):
     role: str
     is_active: bool
     created_at: str
-    def __init__(self, user_id: _Optional[int] = ..., email: _Optional[str] = ..., username: _Optional[str] = ..., display_name: _Optional[str] = ..., avatar_url: _Optional[str] = ..., bio: _Optional[str] = ..., role: _Optional[str] = ..., is_active: bool = ..., created_at: _Optional[str] = ...) -> None: ...
+    preferred_language: str
+    def __init__(self, user_id: _Optional[int] = ..., email: _Optional[str] = ..., username: _Optional[str] = ..., display_name: _Optional[str] = ..., avatar_url: _Optional[str] = ..., bio: _Optional[str] = ..., role: _Optional[str] = ..., is_active: bool = ..., created_at: _Optional[str] = ..., preferred_language: _Optional[str] = ...) -> None: ...
 
 class AuthResponse(_message.Message):
     __slots__ = ("access_token", "refresh_token", "token_type", "user")

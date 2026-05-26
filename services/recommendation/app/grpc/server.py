@@ -1,9 +1,11 @@
 import logging
+import random
 
 import app.cache
 import app.db
 import app.proto.recommendation_pb2 as recommendation_pb2
 import app.proto.recommendation_pb2_grpc as recommendation_pb2_grpc
+import app.services._language_boost
 import app.services.book_of_week_builder
 import app.services.contextual_precompute
 import app.services.contextual_provider
@@ -98,7 +100,7 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
             offset = request.offset if request.offset >= 0 else 0
 
             data = await app.services.list_provider.get_list(
-                request.category, limit, offset
+                request.category, limit, offset, language=request.language or "en"
             )
             if data is None:
                 await context.abort(
@@ -129,6 +131,7 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
                 user_id,
                 personal_cache_only=user_id > 0 and not force_personal_refresh,
                 force_personal_refresh=force_personal_refresh,
+                language=request.language or "en",
             )
             response = recommendation_pb2.HomePageResponse()
             for data in categories:
@@ -335,19 +338,19 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
     ) -> recommendation_pb2.RefreshBookOfTheWeekResponse:
         try:
             deleted = await app.cache.delete_keys(
-                app.services.book_of_week_builder.BOW_CACHE_KEY
+                app.services.book_of_week_builder.BOW_POOL_CACHE_KEY
             )
-            book = await app.services.book_of_week_builder.refresh_book_of_the_week(
+            pool = await app.services.book_of_week_builder.refresh_book_of_the_week(
                 app.db.async_session_maker
             )
-            if not book:
+            if not pool:
                 return recommendation_pb2.RefreshBookOfTheWeekResponse(
                     success=False,
-                    message=f"Flushed {deleted} bow cache key, no eligible candidate found",
+                    message=f"Flushed {deleted} bow cache key, no eligible candidates found",
                 )
             return recommendation_pb2.RefreshBookOfTheWeekResponse(
                 success=True,
-                message=f"Flushed {deleted} bow cache key, selected '{book['title']}' (id={book['book_id']})",
+                message=f"Flushed {deleted} bow cache key, pool of {len(pool)} candidates cached",
             )
         except grpc.aio.AbortError:
             raise
@@ -451,16 +454,24 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
         context: grpc.aio.ServicerContext,
     ) -> recommendation_pb2.BookOfTheWeekResponse:
         try:
-            book = await app.cache.get_cached(app.services.book_of_week_builder.BOW_CACHE_KEY)
-            if not book:
-                book = await app.services.book_of_week_builder.refresh_book_of_the_week(
+            language = request.language or "en"
+            pool = await app.cache.get_cached(
+                app.services.book_of_week_builder.BOW_POOL_CACHE_KEY
+            )
+            if not pool:
+                pool = await app.services.book_of_week_builder.refresh_book_of_the_week(
                     app.db.async_session_maker
                 )
-            if not book:
+            if not pool:
                 await context.abort(
                     grpc.StatusCode.UNAVAILABLE, "Book of the week not yet available"
                 )
                 return
+            weights = [
+                app.services._language_boost.lang_boost_weight(b.get("language", ""), language)
+                for b in pool
+            ]
+            book = random.choices(pool, weights=weights, k=1)[0]
             response = recommendation_pb2.BookOfTheWeekResponse(
                 book_id=book["book_id"],
                 title=book["title"],

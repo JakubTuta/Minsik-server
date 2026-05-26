@@ -3,6 +3,7 @@ import typing
 
 import app.cache
 import app.config
+import app.services._language_boost
 import app.services.list_builder
 
 
@@ -10,6 +11,7 @@ async def get_list(
     category: str,
     limit: int,
     offset: int,
+    language: str = "en",
 ) -> typing.Optional[typing.Dict[str, typing.Any]]:
     cached = await app.cache.get_cached(f"rec:{category}")
     if not cached:
@@ -18,6 +20,17 @@ async def get_list(
     item_type = cached.get("item_type", "book")
     items_key = "book_items" if item_type == "book" else "author_items"
     all_items = cached.get(items_key, [])
+
+    if item_type == "book":
+        all_items = sorted(
+            all_items,
+            key=lambda b: b.get("score", 0)
+            * app.services._language_boost.lang_boost_weight(
+                b.get("language", ""), language
+            ),
+            reverse=True,
+        )
+
     paginated = all_items[offset : offset + limit]
 
     return {
@@ -32,6 +45,7 @@ async def get_home_page(
     user_id: int = 0,
     personal_cache_only: bool = False,
     force_personal_refresh: bool = False,
+    language: str = "en",
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     if user_id > 0:
         return await _get_personal_home_page(
@@ -51,7 +65,7 @@ async def get_home_page(
     all_keys = book_keys + author_keys
 
     results = await asyncio.gather(
-        *[get_list(key, items_per_category, 0) for key in all_keys]
+        *[get_list(key, items_per_category, 0, language) for key in all_keys]
     )
     return [r for r in results if r is not None]
 

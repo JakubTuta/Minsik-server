@@ -7,14 +7,16 @@ from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
 DESCRIPTOR: _descriptor.FileDescriptor
 
 class GetRecommendationListRequest(_message.Message):
-    __slots__ = ("category", "limit", "offset")
+    __slots__ = ("category", "limit", "offset", "language")
     CATEGORY_FIELD_NUMBER: _ClassVar[int]
     LIMIT_FIELD_NUMBER: _ClassVar[int]
     OFFSET_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
     category: str
     limit: int
     offset: int
-    def __init__(self, category: _Optional[str] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ...) -> None: ...
+    language: str
+    def __init__(self, category: _Optional[str] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., language: _Optional[str] = ...) -> None: ...
 
 class RecommendationListResponse(_message.Message):
     __slots__ = ("category", "display_name", "item_type", "book_items", "author_items", "total")
@@ -81,12 +83,14 @@ class RecommendationAuthorItem(_message.Message):
     def __init__(self, author_id: _Optional[int] = ..., name: _Optional[str] = ..., slug: _Optional[str] = ..., photo_url: _Optional[str] = ..., book_count: _Optional[int] = ..., score: _Optional[float] = ..., avg_rating: _Optional[str] = ..., readers: _Optional[int] = ..., rating_count: _Optional[int] = ...) -> None: ...
 
 class GetHomePageRequest(_message.Message):
-    __slots__ = ("items_per_category", "user_id")
+    __slots__ = ("items_per_category", "user_id", "language")
     ITEMS_PER_CATEGORY_FIELD_NUMBER: _ClassVar[int]
     USER_ID_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
     items_per_category: int
     user_id: int
-    def __init__(self, items_per_category: _Optional[int] = ..., user_id: _Optional[int] = ...) -> None: ...
+    language: str
+    def __init__(self, items_per_category: _Optional[int] = ..., user_id: _Optional[int] = ..., language: _Optional[str] = ...) -> None: ...
 
 class HomePageResponse(_message.Message):
     __slots__ = ("categories",)
@@ -261,8 +265,10 @@ class SeriesRecommendationsResponse(_message.Message):
     def __init__(self, series_id: _Optional[int] = ..., sections: _Optional[_Iterable[_Union[RecommendationSection, _Mapping]]] = ...) -> None: ...
 
 class GetBookOfTheWeekRequest(_message.Message):
-    __slots__ = ()
-    def __init__(self) -> None: ...
+    __slots__ = ("language",)
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
+    language: str
+    def __init__(self, language: _Optional[str] = ...) -> None: ...
 
 class BookOfTheWeekAuthor(_message.Message):
     __slots__ = ("author_id", "name", "slug")

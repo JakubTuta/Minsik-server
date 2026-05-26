@@ -6,6 +6,7 @@ import unicodedata
 import app.cache
 import app.config
 import app.es_client
+import app.services._language_boost
 import sqlalchemy
 import sqlalchemy.ext.asyncio
 from sqlalchemy import text
@@ -153,7 +154,7 @@ def _build_full_search_books_query(
             },
             "functions": [
                 {"script_score": {"script": {"source": _POPULARITY_SCRIPT}}},
-                {"filter": {"term": {"language": language}}, "weight": 2.0},
+                {"filter": {"term": {"language": language}}, "weight": app.services._language_boost.LANGUAGE_BOOST_WEIGHT},
             ],
             "score_mode": "multiply",
             "boost_mode": "multiply",
@@ -201,7 +202,7 @@ def _build_full_search_authors_query(
             },
             "functions": [
                 {"script_score": {"script": {"source": _POPULARITY_SCRIPT}}},
-                {"filter": {"term": {"language": language}}, "weight": 2.0},
+                {"filter": {"term": {"language": language}}, "weight": app.services._language_boost.LANGUAGE_BOOST_WEIGHT},
             ],
             "score_mode": "multiply",
             "boost_mode": "multiply",
@@ -249,7 +250,7 @@ def _build_full_search_series_query(
             },
             "functions": [
                 {"script_score": {"script": {"source": _POPULARITY_SCRIPT}}},
-                {"filter": {"term": {"language": language}}, "weight": 2.0},
+                {"filter": {"term": {"language": language}}, "weight": app.services._language_boost.LANGUAGE_BOOST_WEIGHT},
             ],
             "score_mode": "multiply",
             "boost_mode": "multiply",
@@ -301,7 +302,7 @@ def _build_suggest_books_query(
             },
             "functions": [
                 {"script_score": {"script": {"source": _POPULARITY_SCRIPT}}},
-                {"filter": {"term": {"language": language}}, "weight": 2.0},
+                {"filter": {"term": {"language": language}}, "weight": app.services._language_boost.LANGUAGE_BOOST_WEIGHT},
             ],
             "score_mode": "multiply",
             "boost_mode": "multiply",
@@ -342,7 +343,7 @@ def _build_suggest_authors_query(
             },
             "functions": [
                 {"script_score": {"script": {"source": _POPULARITY_SCRIPT}}},
-                {"filter": {"term": {"language": language}}, "weight": 2.0},
+                {"filter": {"term": {"language": language}}, "weight": app.services._language_boost.LANGUAGE_BOOST_WEIGHT},
             ],
             "score_mode": "multiply",
             "boost_mode": "multiply",
@@ -383,7 +384,7 @@ def _build_suggest_series_query(
             },
             "functions": [
                 {"script_score": {"script": {"source": _POPULARITY_SCRIPT}}},
-                {"filter": {"term": {"language": language}}, "weight": 2.0},
+                {"filter": {"term": {"language": language}}, "weight": app.services._language_boost.LANGUAGE_BOOST_WEIGHT},
             ],
             "score_mode": "multiply",
             "boost_mode": "multiply",

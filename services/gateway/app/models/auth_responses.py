@@ -13,6 +13,7 @@ class UserSchema(pydantic.BaseModel):
     role: str
     is_active: bool
     created_at: str
+    preferred_language: str = "en"
 
 
 class AuthTokensData(pydantic.BaseModel):
@@ -107,13 +108,15 @@ class UpdateProfileRequest(pydantic.BaseModel):
     display_name: typing.Optional[str] = pydantic.Field(default=None, max_length=100)
     bio: typing.Optional[str] = pydantic.Field(default=None, max_length=1000)
     avatar_url: typing.Optional[str] = pydantic.Field(default=None, max_length=500)
+    preferred_language: typing.Optional[str] = pydantic.Field(default=None, min_length=2, max_length=8)
 
     model_config = pydantic.ConfigDict(
         json_schema_extra={
             "example": {
                 "display_name": "Book Lover",
                 "bio": "I read everything I can get my hands on.",
-                "avatar_url": "https://example.com/avatar.jpg"
+                "avatar_url": "https://example.com/avatar.jpg",
+                "preferred_language": "en",
             }
         }
     )

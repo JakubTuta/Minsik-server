@@ -22,6 +22,7 @@ message GetRecommendationListRequest {
   string category = 1;
   int32 limit = 2;
   int32 offset = 3;
+  string language = 4;
 }
 
 message RecommendationListResponse {
@@ -62,6 +63,7 @@ message RecommendationAuthorItem {
 message GetHomePageRequest {
   int32 items_per_category = 1;
   int64 user_id = 2;
+  string language = 3;
 }
 
 message HomePageResponse {
@@ -168,7 +170,9 @@ message SeriesRecommendationsResponse {
   repeated RecommendationSection sections = 2;
 }
 
-message GetBookOfTheWeekRequest {}
+message GetBookOfTheWeekRequest {
+  string language = 1;
+}
 
 message BookOfTheWeekAuthor {
   int64 author_id = 1;

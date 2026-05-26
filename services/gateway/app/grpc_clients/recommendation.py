@@ -46,11 +46,13 @@ class RecommendationClient:
         category: str,
         limit: int = 20,
         offset: int = 0,
+        language: str = "en",
     ) -> recommendation_pb2.RecommendationListResponse:
         request = recommendation_pb2.GetRecommendationListRequest(
             category=category,
             limit=limit,
             offset=offset,
+            language=language,
         )
         try:
             return await self.stub.GetRecommendationList(
@@ -67,10 +69,12 @@ class RecommendationClient:
         self,
         items_per_category: int = 20,
         user_id: int = 0,
+        language: str = "en",
     ) -> recommendation_pb2.HomePageResponse:
         request = recommendation_pb2.GetHomePageRequest(
             items_per_category=items_per_category,
             user_id=user_id,
+            language=language,
         )
         try:
             return await self.stub.GetHomePage(
@@ -279,8 +283,9 @@ class RecommendationClient:
 
     async def get_book_of_the_week(
         self,
+        language: str = "en",
     ) -> recommendation_pb2.BookOfTheWeekResponse:
-        request = recommendation_pb2.GetBookOfTheWeekRequest()
+        request = recommendation_pb2.GetBookOfTheWeekRequest(language=language)
         try:
             return await self.stub.GetBookOfTheWeek(
                 request,
