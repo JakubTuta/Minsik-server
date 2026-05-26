@@ -131,6 +131,24 @@ class BookDetailResponse(pydantic.BaseModel):
     error: typing.Optional[app.models.responses.ErrorDetail] = None
 
 
+class BookLanguageVariantSchema(pydantic.BaseModel):
+    book_id: int
+    slug: str
+    language: str
+    title: str
+    primary_cover_url: typing.Optional[str] = None
+
+
+class BookLanguageVariantsData(pydantic.BaseModel):
+    items: typing.List[BookLanguageVariantSchema]
+
+
+class BookLanguageVariantsResponse(pydantic.BaseModel):
+    success: bool = True
+    data: BookLanguageVariantsData
+    error: typing.Optional[app.models.responses.ErrorDetail] = None
+
+
 class AuthorDetailData(pydantic.BaseModel):
     author_id: int
     name: str

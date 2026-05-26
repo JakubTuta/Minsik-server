@@ -6,6 +6,7 @@ service BooksService {
   rpc SearchBooksAndAuthors(SearchRequest) returns (SearchResponse);
   rpc SuggestSearch(SuggestSearchRequest) returns (SuggestSearchResponse);
   rpc GetBook(GetBookRequest) returns (BookDetailResponse);
+  rpc GetBookLanguageVariants(GetBookLanguageVariantsRequest) returns (BookLanguageVariantsResponse);
   rpc GetAuthor(GetAuthorRequest) returns (AuthorDetailResponse);
   rpc GetAuthorBooks(GetAuthorBooksRequest) returns (BooksListResponse);
   rpc GetSeries(GetSeriesRequest) returns (SeriesDetailResponse);
@@ -122,6 +123,23 @@ message SearchResponse {
 message GetBookRequest {
   string slug = 1;
   string language = 2;
+}
+
+message GetBookLanguageVariantsRequest {
+  string slug = 1;
+  string exclude_language = 2;
+}
+
+message BookLanguageVariant {
+  int64 book_id = 1;
+  string slug = 2;
+  string language = 3;
+  string title = 4;
+  string primary_cover_url = 5;
+}
+
+message BookLanguageVariantsResponse {
+  repeated BookLanguageVariant items = 1;
 }
 
 message SubRatingStat {

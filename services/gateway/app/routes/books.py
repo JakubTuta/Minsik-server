@@ -247,6 +247,49 @@ async def get_book(
 
 
 @router.get(
+    "/books/{slug}/language-variants",
+    response_model=app.models.books_responses.BookLanguageVariantsResponse,
+    summary="Get language editions for a book",
+    description="Returns all editions of a book in languages other than the excluded one.",
+)
+@limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
+async def get_book_language_variants(
+    request: fastapi.Request,
+    slug: str = Path(..., description="Book slug"),
+    exclude_language: str = Query(
+        "en", min_length=2, max_length=10, description="Language to exclude (currently displayed)"
+    ),
+):
+    try:
+        response = await app.grpc_clients.books_client.get_book_language_variants(
+            slug, exclude_language=exclude_language
+        )
+
+        items = [
+            {
+                "book_id": item.book_id,
+                "slug": item.slug,
+                "language": item.language,
+                "title": item.title,
+                "primary_cover_url": item.primary_cover_url or None,
+            }
+            for item in response.items
+        ]
+
+        return {
+            "success": True,
+            "data": {"items": items},
+            "error": None,
+        }
+    except grpc.RpcError as e:
+        app.utils.responses.log_grpc_error(logger, "getting book language variants", e)
+        raise fastapi.HTTPException(
+            status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
+            detail=f"Get language variants failed: {e.details()}",
+        )
+
+
+@router.get(
     "/authors/{slug}",
     response_model=app.models.books_responses.AuthorDetailResponse,
     summary="Get author details",
@@ -818,7 +861,7 @@ def _book_detail_proto_to_dict(book) -> typing.Dict[str, typing.Any]:
         "rating_count": book.rating_count,
         "avg_rating": book.avg_rating,
         "sub_rating_stats": {
-            key: {"avg": stat.avg, "count": stat.count}
+            key: {"avg": float(stat.avg) if stat.avg else 0.0, "count": stat.count}
             for key, stat in book.sub_rating_stats.items()
         },
         "view_count": book.view_count,

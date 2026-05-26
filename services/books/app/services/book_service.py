@@ -84,6 +84,38 @@ async def get_book_by_slug(
     return book_data
 
 
+async def get_language_variants(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    slug: str,
+    exclude_language: str = "en",
+) -> typing.List[typing.Dict[str, typing.Any]]:
+    cache_key = f"book_lang_variants:{slug}:{exclude_language}"
+    cached = await app.cache.get_cached(cache_key)
+    if cached is not None:
+        return cached
+
+    stmt = sqlalchemy.text(
+        "SELECT book_id, slug, language, title, primary_cover_url "
+        "FROM books.books WHERE slug = :slug AND language != :exclude_language"
+    )
+    result = await session.execute(stmt, {"slug": slug, "exclude_language": exclude_language})
+    rows = result.fetchall()
+
+    variants = [
+        {
+            "book_id": row.book_id,
+            "slug": row.slug,
+            "language": row.language,
+            "title": row.title,
+            "primary_cover_url": row.primary_cover_url or "",
+        }
+        for row in rows
+    ]
+
+    await app.cache.set_cached(cache_key, variants, app.config.settings.cache_book_detail_ttl)
+    return variants
+
+
 async def _track_book_view(book_id: int) -> None:
     try:
         await app.cache.increment_view_count("book", book_id)
@@ -194,9 +226,11 @@ async def update_book(
         return None
 
     await app.cache.delete_cached(old_cache_key)
+    await app.cache.delete_cached(f"book_lang_variants:{book.slug}:{book.language}")
     if "slug" in updates or "language" in updates:
         new_cache_key = f"book_slug:{book.slug}:{book.language}"
         await app.cache.delete_cached(new_cache_key)
+        await app.cache.delete_cached(f"book_lang_variants:{book.slug}:*")
 
     book_data = _book_to_dict(book)
 
@@ -367,6 +401,7 @@ async def delete_book(
 
     await session.commit()
     await app.cache.delete_cached(f"book_slug:{slug}:{language}")
+    await app.cache.delete_cached(f"book_lang_variants:{slug}:{language}")
 
     return {
         "book_id": book_id,

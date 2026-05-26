@@ -255,6 +255,33 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
             book=_build_book_detail_proto(book)
         )
 
+    async def GetBookLanguageVariants(
+        self,
+        request: app.proto.books_pb2.GetBookLanguageVariantsRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> app.proto.books_pb2.BookLanguageVariantsResponse:
+        try:
+            async with app.db.async_session_maker() as session:
+                variants = await app.services.book_service.get_language_variants(
+                    session, request.slug, request.exclude_language or "en"
+                )
+        except Exception as e:
+            logger.error(f"Error in GetBookLanguageVariants: {str(e)}")
+            await context.abort(grpc.StatusCode.INTERNAL, f"Get language variants failed: {str(e)}")
+            return
+
+        items = [
+            app.proto.books_pb2.BookLanguageVariant(
+                book_id=v["book_id"],
+                slug=v["slug"],
+                language=v["language"],
+                title=v["title"],
+                primary_cover_url=v["primary_cover_url"],
+            )
+            for v in variants
+        ]
+        return app.proto.books_pb2.BookLanguageVariantsResponse(items=items)
+
     async def GetAuthor(
         self,
         request: app.proto.books_pb2.GetAuthorRequest,

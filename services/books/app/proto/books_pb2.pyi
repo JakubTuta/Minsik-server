@@ -160,6 +160,34 @@ class GetBookRequest(_message.Message):
     language: str
     def __init__(self, slug: _Optional[str] = ..., language: _Optional[str] = ...) -> None: ...
 
+class GetBookLanguageVariantsRequest(_message.Message):
+    __slots__ = ("slug", "exclude_language")
+    SLUG_FIELD_NUMBER: _ClassVar[int]
+    EXCLUDE_LANGUAGE_FIELD_NUMBER: _ClassVar[int]
+    slug: str
+    exclude_language: str
+    def __init__(self, slug: _Optional[str] = ..., exclude_language: _Optional[str] = ...) -> None: ...
+
+class BookLanguageVariant(_message.Message):
+    __slots__ = ("book_id", "slug", "language", "title", "primary_cover_url")
+    BOOK_ID_FIELD_NUMBER: _ClassVar[int]
+    SLUG_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
+    TITLE_FIELD_NUMBER: _ClassVar[int]
+    PRIMARY_COVER_URL_FIELD_NUMBER: _ClassVar[int]
+    book_id: int
+    slug: str
+    language: str
+    title: str
+    primary_cover_url: str
+    def __init__(self, book_id: _Optional[int] = ..., slug: _Optional[str] = ..., language: _Optional[str] = ..., title: _Optional[str] = ..., primary_cover_url: _Optional[str] = ...) -> None: ...
+
+class BookLanguageVariantsResponse(_message.Message):
+    __slots__ = ("items",)
+    ITEMS_FIELD_NUMBER: _ClassVar[int]
+    items: _containers.RepeatedCompositeFieldContainer[BookLanguageVariant]
+    def __init__(self, items: _Optional[_Iterable[_Union[BookLanguageVariant, _Mapping]]] = ...) -> None: ...
+
 class SubRatingStat(_message.Message):
     __slots__ = ("avg", "count")
     AVG_FIELD_NUMBER: _ClassVar[int]

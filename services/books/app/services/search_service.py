@@ -26,6 +26,43 @@ _POPULARITY_SCRIPT: str = (
 )
 
 
+def _dedup_by_slug(
+    results: typing.List[typing.Dict[str, typing.Any]], language: str
+) -> typing.List[typing.Dict[str, typing.Any]]:
+    groups: typing.Dict[typing.Tuple[str, str], typing.List[typing.Dict[str, typing.Any]]] = {}
+    order: typing.List[typing.Tuple[str, str]] = []
+    for r in results:
+        slug = r.get("slug") or ""
+        if not slug:
+            continue
+        key = (r["type"], slug)
+        if key not in groups:
+            groups[key] = []
+            order.append(key)
+        groups[key].append(r)
+
+    out: typing.List[typing.Dict[str, typing.Any]] = []
+    for key in order:
+        group = groups[key]
+        if len(group) == 1:
+            out.append(group[0])
+            continue
+
+        matched = [g for g in group if g.get("language") == language]
+        if matched:
+            winner = max(matched, key=lambda g: g.get("relevance_score", 0))
+            out.append(winner)
+            continue
+
+        combined_readers = sum(g.get("readers") or 0 for g in group)
+        winner = max(group, key=lambda g: g.get("readers") or 0)
+        winner = dict(winner)
+        winner["readers"] = combined_readers
+        out.append(winner)
+
+    return out
+
+
 def _normalize_scores(
     results: typing.List[typing.Dict[str, typing.Any]], type_weight: float
 ) -> typing.List[typing.Dict[str, typing.Any]]:
@@ -428,17 +465,9 @@ async def search_books_and_authors(
         results.extend(category_results)
         total_count += category_total
 
-    seen_items: typing.Dict[typing.Tuple[str, int], typing.Dict[str, typing.Any]] = {}
-    for result in results:
-        key = (result["type"], result["id"])
-        if key not in seen_items:
-            seen_items[key] = result
-        else:
-            if result["relevance_score"] > seen_items[key]["relevance_score"]:
-                seen_items[key] = result
-
-    deduplicated_results = list(seen_items.values())
-    deduplicated_results.sort(key=lambda x: x["relevance_score"], reverse=True)
+    results.sort(key=lambda x: x.get("relevance_score", 0), reverse=True)
+    deduplicated_results = _dedup_by_slug(results, language)
+    deduplicated_results.sort(key=lambda x: x.get("relevance_score", 0), reverse=True)
     final_results = deduplicated_results[:limit]
 
     await app.cache.set_cached(
@@ -500,6 +529,7 @@ async def _run_suggest_queries(
                 "primary_cover_url",
                 "authors_names",
                 "author_slugs",
+                "language",
             ]
             + rating_fields,
         },
@@ -543,6 +573,7 @@ async def _run_suggest_queries(
                 "ol_avg_rating": src.get("ol_avg_rating"),
                 "ol_rating_count": src.get("ol_rating_count") or 0,
                 "readers": src.get("readers") or 0,
+                "language": src.get("language") or "",
             }
         )
 
@@ -592,6 +623,8 @@ async def _run_suggest_queries(
 
     merged = books_results + authors_results + series_results
     merged.sort(key=lambda x: x["relevance_score"], reverse=True)
+    merged = _dedup_by_slug(merged, language)
+    merged.sort(key=lambda x: x["relevance_score"], reverse=True)
     return merged[:limit]
 
 
@@ -620,6 +653,7 @@ async def _search_books_es(
                 "ol_avg_rating",
                 "ol_rating_count",
                 "readers",
+                "language",
             ],
         },
     )
@@ -652,6 +686,7 @@ async def _search_books_es(
                 "ol_rating_count": src.get("ol_rating_count") or 0,
                 "readers": src.get("readers") or 0,
                 "book_count": 0,
+                "language": src.get("language") or "",
             }
         )
 
@@ -860,6 +895,7 @@ async def _search_books_by_category(
                 "ol_rating_count": row.ol_rating_count,
                 "readers": row.readers or 0,
                 "book_count": 0,
+                "language": language,
             }
         )
 
@@ -932,6 +968,7 @@ async def _get_author_top_books(
                 "ol_rating_count": row.ol_rating_count,
                 "readers": row.readers or 0,
                 "book_count": 0,
+                "language": language,
             }
         )
 
@@ -1004,6 +1041,7 @@ async def _get_series_top_books(
                 "ol_rating_count": row.ol_rating_count,
                 "readers": row.readers or 0,
                 "book_count": 0,
+                "language": language,
             }
         )
 

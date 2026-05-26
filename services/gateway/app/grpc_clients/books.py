@@ -88,6 +88,22 @@ class BooksClient:
             logger.error(f"gRPC error getting book: {e.code()} - {e.details()}")
             raise
 
+    async def get_book_language_variants(
+        self, slug: str, exclude_language: str = "en"
+    ) -> books_pb2.BookLanguageVariantsResponse:
+        request = books_pb2.GetBookLanguageVariantsRequest(
+            slug=slug, exclude_language=exclude_language
+        )
+
+        try:
+            response = await self.stub.GetBookLanguageVariants(
+                request, timeout=app.config.settings.grpc_timeout
+            )
+            return response
+        except grpc.RpcError as e:
+            logger.error(f"gRPC error getting book language variants: {e.code()} - {e.details()}")
+            raise
+
     async def get_author(
         self, slug: str, language: str = "en"
     ) -> books_pb2.AuthorDetailResponse:
