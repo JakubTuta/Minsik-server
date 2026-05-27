@@ -1,3 +1,4 @@
+import json
 import logging
 import typing
 
@@ -7,7 +8,6 @@ import app.models.book
 import app.models.series
 import sqlalchemy
 import sqlalchemy.ext.asyncio
-from sqlalchemy import select, text
 
 logger = logging.getLogger(__name__)
 
@@ -21,7 +21,7 @@ async def get_series_by_slug(
         await _track_series_view(cached["series_id"])
         return cached
 
-    stmt = select(app.models.series.Series).filter(
+    stmt = sqlalchemy.select(app.models.series.Series).filter(
         app.models.series.Series.slug == slug
     )
 
@@ -31,7 +31,7 @@ async def get_series_by_slug(
     if not series:
         return None
 
-    stats_query = text(
+    stats_query = sqlalchemy.text(
         """
         SELECT
             COUNT(*) as total_books,
@@ -269,8 +269,6 @@ def _series_to_dict(
 def _series_book_row_to_dict(row: typing.Any) -> typing.Dict[str, typing.Any]:
     authors_raw = row.authors
     if isinstance(authors_raw, str):
-        import json
-
         authors_list = json.loads(authors_raw)
     elif authors_raw is None:
         authors_list = []
@@ -304,7 +302,7 @@ async def update_series(
     updates: typing.Dict[str, typing.Any],
     language: str = "en",
 ) -> typing.Optional[typing.Dict[str, typing.Any]]:
-    stmt = select(app.models.series.Series).filter(
+    stmt = sqlalchemy.select(app.models.series.Series).filter(
         app.models.series.Series.series_id == series_id
     )
 
@@ -327,7 +325,7 @@ async def update_series(
         new_cache_key = f"series_slug:{series.slug}:{language}"
         await app.cache.delete_cached(new_cache_key)
 
-    stats_query = text(
+    stats_query = sqlalchemy.text(
         """
         SELECT
             COUNT(*) as total_books,
@@ -393,7 +391,7 @@ async def delete_series(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     series_id: int,
 ) -> typing.Dict[str, typing.Any]:
-    stmt = select(app.models.series.Series).filter(
+    stmt = sqlalchemy.select(app.models.series.Series).filter(
         app.models.series.Series.series_id == series_id
     )
     result = await session.execute(stmt)

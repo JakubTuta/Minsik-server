@@ -1,6 +1,8 @@
 import logging
 import typing
 
+import json
+
 import app.grpc_clients
 import app.middleware.auth
 import app.middleware.rate_limit
@@ -317,8 +319,6 @@ async def update_book(
     book_id: int,
     body: app.models.books_responses.AdminUpdateBookRequest,
 ):
-    import json
-
     updates = body.model_dump(exclude_unset=True)
 
     if not updates:
@@ -430,8 +430,6 @@ async def update_author(
     author_id: int,
     body: app.models.books_responses.AdminUpdateAuthorRequest,
 ):
-    import json
-
     updates = body.model_dump(exclude_unset=True)
 
     if not updates:

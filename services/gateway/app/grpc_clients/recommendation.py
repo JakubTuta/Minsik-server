@@ -2,8 +2,8 @@ import logging
 import typing
 
 import app.config
-import app.proto.recommendation_pb2 as recommendation_pb2
-import app.proto.recommendation_pb2_grpc as recommendation_pb2_grpc
+import app.proto.recommendation_pb2
+import app.proto.recommendation_pb2_grpc
 import app.tracing
 import grpc
 
@@ -14,7 +14,7 @@ class RecommendationClient:
     def __init__(self):
         self.channel: typing.Optional[grpc.aio.Channel] = None
         self.stub: typing.Optional[
-            recommendation_pb2_grpc.RecommendationServiceStub
+            app.proto.recommendation_pb2_grpc.RecommendationServiceStub
         ] = None
 
     async def connect(self):
@@ -31,7 +31,7 @@ class RecommendationClient:
             ],
             interceptors=app.tracing.get_client_interceptors(),
         )
-        self.stub = recommendation_pb2_grpc.RecommendationServiceStub(self.channel)
+        self.stub = app.proto.recommendation_pb2_grpc.RecommendationServiceStub(self.channel)
         logger.info(
             f"Connected to recommendation service at {app.config.settings.recommendation_service_url}"
         )
@@ -47,12 +47,14 @@ class RecommendationClient:
         limit: int = 20,
         offset: int = 0,
         language: str = "en",
-    ) -> recommendation_pb2.RecommendationListResponse:
-        request = recommendation_pb2.GetRecommendationListRequest(
+        user_id: int = 0,
+    ) -> app.proto.recommendation_pb2.RecommendationListResponse:
+        request = app.proto.recommendation_pb2.GetRecommendationListRequest(
             category=category,
             limit=limit,
             offset=offset,
             language=language,
+            user_id=user_id,
         )
         try:
             return await self.stub.GetRecommendationList(
@@ -70,8 +72,8 @@ class RecommendationClient:
         items_per_category: int = 20,
         user_id: int = 0,
         language: str = "en",
-    ) -> recommendation_pb2.HomePageResponse:
-        request = recommendation_pb2.GetHomePageRequest(
+    ) -> app.proto.recommendation_pb2.HomePageResponse:
+        request = app.proto.recommendation_pb2.GetHomePageRequest(
             items_per_category=items_per_category,
             user_id=user_id,
             language=language,
@@ -88,8 +90,8 @@ class RecommendationClient:
     async def refresh_personal_home(
         self,
         user_id: int,
-    ) -> recommendation_pb2.HomePageResponse:
-        request = recommendation_pb2.GetHomePageRequest(
+    ) -> app.proto.recommendation_pb2.HomePageResponse:
+        request = app.proto.recommendation_pb2.GetHomePageRequest(
             items_per_category=0,
             user_id=user_id,
         )
@@ -106,8 +108,8 @@ class RecommendationClient:
 
     async def get_available_categories(
         self,
-    ) -> recommendation_pb2.AvailableCategoriesResponse:
-        request = recommendation_pb2.GetAvailableCategoriesRequest()
+    ) -> app.proto.recommendation_pb2.AvailableCategoriesResponse:
+        request = app.proto.recommendation_pb2.GetAvailableCategoriesRequest()
         try:
             return await self.stub.GetAvailableCategories(
                 request,
@@ -121,8 +123,8 @@ class RecommendationClient:
 
     async def refresh_recommendations(
         self,
-    ) -> recommendation_pb2.RefreshRecommendationsResponse:
-        request = recommendation_pb2.RefreshRecommendationsRequest()
+    ) -> app.proto.recommendation_pb2.RefreshRecommendationsResponse:
+        request = app.proto.recommendation_pb2.RefreshRecommendationsRequest()
         try:
             return await self.stub.RefreshRecommendations(
                 request,
@@ -136,8 +138,8 @@ class RecommendationClient:
 
     async def refresh_personal_recommendations(
         self,
-    ) -> recommendation_pb2.RefreshPersonalRecommendationsResponse:
-        request = recommendation_pb2.RefreshPersonalRecommendationsRequest()
+    ) -> app.proto.recommendation_pb2.RefreshPersonalRecommendationsResponse:
+        request = app.proto.recommendation_pb2.RefreshPersonalRecommendationsRequest()
         try:
             return await self.stub.RefreshPersonalRecommendations(
                 request,
@@ -152,8 +154,8 @@ class RecommendationClient:
     async def refresh_user_personal_recommendations(
         self,
         username: str,
-    ) -> recommendation_pb2.RefreshUserPersonalRecommendationsResponse:
-        request = recommendation_pb2.RefreshUserPersonalRecommendationsRequest(
+    ) -> app.proto.recommendation_pb2.RefreshUserPersonalRecommendationsResponse:
+        request = app.proto.recommendation_pb2.RefreshUserPersonalRecommendationsRequest(
             username=username,
         )
         try:
@@ -169,8 +171,8 @@ class RecommendationClient:
 
     async def refresh_contextual_recommendations(
         self,
-    ) -> recommendation_pb2.RefreshContextualRecommendationsResponse:
-        request = recommendation_pb2.RefreshContextualRecommendationsRequest()
+    ) -> app.proto.recommendation_pb2.RefreshContextualRecommendationsResponse:
+        request = app.proto.recommendation_pb2.RefreshContextualRecommendationsRequest()
         try:
             return await self.stub.RefreshContextualRecommendations(
                 request,
@@ -186,8 +188,8 @@ class RecommendationClient:
         self,
         entity_type: str,
         slug: str,
-    ) -> recommendation_pb2.InvalidateContextualCacheResponse:
-        request = recommendation_pb2.InvalidateContextualCacheRequest(
+    ) -> app.proto.recommendation_pb2.InvalidateContextualCacheResponse:
+        request = app.proto.recommendation_pb2.InvalidateContextualCacheRequest(
             entity_type=entity_type,
             slug=slug,
         )
@@ -204,8 +206,8 @@ class RecommendationClient:
 
     async def refresh_book_of_the_week(
         self,
-    ) -> recommendation_pb2.RefreshBookOfTheWeekResponse:
-        request = recommendation_pb2.RefreshBookOfTheWeekRequest()
+    ) -> app.proto.recommendation_pb2.RefreshBookOfTheWeekResponse:
+        request = app.proto.recommendation_pb2.RefreshBookOfTheWeekRequest()
         try:
             return await self.stub.RefreshBookOfTheWeek(
                 request,
@@ -222,8 +224,8 @@ class RecommendationClient:
         book_id: int,
         limit_per_section: int = 15,
         user_id: int = 0,
-    ) -> recommendation_pb2.BookRecommendationsResponse:
-        request = recommendation_pb2.GetBookRecommendationsRequest(
+    ) -> app.proto.recommendation_pb2.BookRecommendationsResponse:
+        request = app.proto.recommendation_pb2.GetBookRecommendationsRequest(
             book_id=book_id,
             limit_per_section=limit_per_section,
             user_id=user_id,
@@ -244,8 +246,8 @@ class RecommendationClient:
         author_id: int,
         limit_per_section: int = 15,
         user_id: int = 0,
-    ) -> recommendation_pb2.AuthorRecommendationsResponse:
-        request = recommendation_pb2.GetAuthorRecommendationsRequest(
+    ) -> app.proto.recommendation_pb2.AuthorRecommendationsResponse:
+        request = app.proto.recommendation_pb2.GetAuthorRecommendationsRequest(
             author_id=author_id,
             limit_per_section=limit_per_section,
             user_id=user_id,
@@ -265,8 +267,8 @@ class RecommendationClient:
         self,
         series_id: int,
         limit_per_section: int = 15,
-    ) -> recommendation_pb2.SeriesRecommendationsResponse:
-        request = recommendation_pb2.GetSeriesRecommendationsRequest(
+    ) -> app.proto.recommendation_pb2.SeriesRecommendationsResponse:
+        request = app.proto.recommendation_pb2.GetSeriesRecommendationsRequest(
             series_id=series_id,
             limit_per_section=limit_per_section,
         )
@@ -284,8 +286,8 @@ class RecommendationClient:
     async def get_book_of_the_week(
         self,
         language: str = "en",
-    ) -> recommendation_pb2.BookOfTheWeekResponse:
-        request = recommendation_pb2.GetBookOfTheWeekRequest(language=language)
+    ) -> app.proto.recommendation_pb2.BookOfTheWeekResponse:
+        request = app.proto.recommendation_pb2.GetBookOfTheWeekRequest(language=language)
         try:
             return await self.stub.GetBookOfTheWeek(
                 request,

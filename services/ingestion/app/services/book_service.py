@@ -1,6 +1,5 @@
 import logging
 import typing
-from typing import Any, Dict, List, Optional
 
 import app.config
 import app.models
@@ -12,21 +11,21 @@ import app.models.genre
 import app.models.series
 import app.utils
 import sqlalchemy
+import sqlalchemy.dialects.postgresql
 import sqlalchemy.exc
 import sqlalchemy.ext.asyncio
-from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 
 logger = logging.getLogger(__name__)
 
 
 async def insert_books_batch(
     session: sqlalchemy.ext.asyncio.AsyncSession,
-    books_data: List[Dict[str, Any]],
+    books_data: typing.List[typing.Dict[str, Any]],
     commit: bool = True,
-    author_id_map: Optional[Dict[str, int]] = None,
-    genre_id_cache: Optional[Dict[str, int]] = None,
-    series_id_cache: Optional[Dict[str, int]] = None,
-) -> Dict[str, int]:
+    author_id_map: typing.Optional[typing.Dict[str, int]] = None,
+    genre_id_cache: typing.Optional[typing.Dict[str, int]] = None,
+    series_id_cache: typing.Optional[typing.Dict[str, int]] = None,
+) -> typing.Dict[str, int]:
     if not books_data:
         return {"successful": 0, "failed": 0, "updated": 0}
 
@@ -96,7 +95,7 @@ async def insert_books_batch(
         raise
 
 
-def _validate_and_clean_book(book_data: Dict[str, Any]) -> Optional[Dict[str, Any]]:
+def _validate_and_clean_book(book_data: typing.Dict[str, Any]) -> typing.Optional[typing.Dict[str, Any]]:
     title = book_data.get("title")
     if not title or not isinstance(title, str):
         return None
@@ -170,7 +169,7 @@ def _validate_and_clean_book(book_data: Dict[str, Any]) -> Optional[Dict[str, An
     }
 
 
-def _build_dedup_cache(cleaned_books: List[Dict[str, Any]]) -> Dict[str, Any]:
+def _build_dedup_cache(cleaned_books: typing.List[typing.Dict[str, Any]]) -> typing.Dict[str, Any]:
     cache = {"authors": {}, "genres": {}, "series": {}}
 
     for book in cleaned_books:
@@ -197,9 +196,9 @@ def _build_dedup_cache(cleaned_books: List[Dict[str, Any]]) -> Dict[str, Any]:
 
 async def _bulk_insert_authors(
     session: sqlalchemy.ext.asyncio.AsyncSession,
-    cleaned_books: List[Dict[str, Any]],
-    dedup_cache: Dict[str, Any],
-) -> Dict[str, int]:
+    cleaned_books: typing.List[typing.Dict[str, Any]],
+    dedup_cache: typing.Dict[str, Any],
+) -> typing.Dict[str, int]:
     if not dedup_cache["authors"]:
         return {}
 
@@ -224,7 +223,7 @@ async def _bulk_insert_authors(
 
     insert_data.sort(key=lambda r: r["slug"])
 
-    stmt = postgresql_insert(app.models.author.Author).values(insert_data)
+    stmt = sqlalchemy.dialects.postgresql.insert(app.models.author.Author).values(insert_data)
     stmt = stmt.on_conflict_do_update(
         index_elements=["slug"],
         set_={
@@ -286,10 +285,10 @@ async def _bulk_insert_authors(
 
 async def _bulk_insert_genres(
     session: sqlalchemy.ext.asyncio.AsyncSession,
-    cleaned_books: List[Dict[str, Any]],
-    dedup_cache: Dict[str, Any],
-    genre_id_cache: Optional[Dict[str, int]] = None,
-) -> Dict[str, int]:
+    cleaned_books: typing.List[typing.Dict[str, Any]],
+    dedup_cache: typing.Dict[str, Any],
+    genre_id_cache: typing.Optional[typing.Dict[str, int]] = None,
+) -> typing.Dict[str, int]:
     if not dedup_cache["genres"]:
         return genre_id_cache or {}
 
@@ -300,7 +299,7 @@ async def _bulk_insert_genres(
     if new_slugs:
         insert_data = [dedup_cache["genres"][s] for s in new_slugs]
         insert_data.sort(key=lambda r: r["slug"])
-        stmt = postgresql_insert(app.models.genre.Genre).values(insert_data)
+        stmt = sqlalchemy.dialects.postgresql.insert(app.models.genre.Genre).values(insert_data)
         stmt = stmt.on_conflict_do_update(
             index_elements=["slug"],
             set_={"name": stmt.excluded.name},
@@ -318,10 +317,10 @@ async def _bulk_insert_genres(
 
 async def _bulk_insert_series(
     session: sqlalchemy.ext.asyncio.AsyncSession,
-    cleaned_books: List[Dict[str, Any]],
-    dedup_cache: Dict[str, Any],
-    series_id_cache: Optional[Dict[str, int]] = None,
-) -> Dict[str, int]:
+    cleaned_books: typing.List[typing.Dict[str, Any]],
+    dedup_cache: typing.Dict[str, Any],
+    series_id_cache: typing.Optional[typing.Dict[str, int]] = None,
+) -> typing.Dict[str, int]:
     if not dedup_cache["series"]:
         return series_id_cache or {}
 
@@ -339,7 +338,7 @@ async def _bulk_insert_series(
             for s in new_slugs
         ]
         insert_data.sort(key=lambda r: r["slug"])
-        stmt = postgresql_insert(app.models.series.Series).values(insert_data)
+        stmt = sqlalchemy.dialects.postgresql.insert(app.models.series.Series).values(insert_data)
         stmt = stmt.on_conflict_do_update(
             index_elements=["slug"], set_={"description": stmt.excluded.description}
         )
@@ -358,10 +357,10 @@ async def _bulk_insert_series(
 
 async def _bulk_insert_books(
     session: sqlalchemy.ext.asyncio.AsyncSession,
-    cleaned_books: List[Dict[str, Any]],
-    dedup_cache: Dict[str, Any],
-    series_id_map: Dict[str, int],
-) -> Dict[str, Any]:
+    cleaned_books: typing.List[typing.Dict[str, Any]],
+    dedup_cache: typing.Dict[str, Any],
+    series_id_map: typing.Dict[str, int],
+) -> typing.Dict[str, Any]:
     seen_slugs: dict[str, int] = {}
     for idx, book in enumerate(cleaned_books):
         key = (book["language"], book["slug"])
@@ -399,7 +398,7 @@ async def _bulk_insert_books(
 
         insert_data.append(book_entry)
 
-    stmt = postgresql_insert(app.models.book.Book).values(insert_data)
+    stmt = sqlalchemy.dialects.postgresql.insert(app.models.book.Book).values(insert_data)
     stmt = stmt.on_conflict_do_update(
         index_elements=["language", "slug"],
         set_={
@@ -441,11 +440,11 @@ async def _bulk_insert_books(
 
 async def _bulk_insert_relationships(
     session: sqlalchemy.ext.asyncio.AsyncSession,
-    cleaned_books: List[Dict[str, Any]],
-    dedup_cache: Dict[str, Any],
-    book_id_map: Dict[str, int],
-    author_id_map: Dict[str, int],
-    genre_id_map: Dict[str, int],
+    cleaned_books: typing.List[typing.Dict[str, Any]],
+    dedup_cache: typing.Dict[str, Any],
+    book_id_map: typing.Dict[str, int],
+    author_id_map: typing.Dict[str, int],
+    genre_id_map: typing.Dict[str, int],
 ) -> None:
     book_authors_data = []
     book_genres_data = []
@@ -471,14 +470,14 @@ async def _bulk_insert_relationships(
                 book_genres_data.append({"book_id": book_id, "genre_id": genre_id})
 
     if book_authors_data:
-        stmt = postgresql_insert(app.models.book_author.BookAuthor).values(
+        stmt = sqlalchemy.dialects.postgresql.insert(app.models.book_author.BookAuthor).values(
             book_authors_data
         )
         stmt = stmt.on_conflict_do_nothing(index_elements=["book_id", "author_id"])
         await session.execute(stmt)
 
     if book_genres_data:
-        stmt = postgresql_insert(app.models.book_genre.BookGenre).values(
+        stmt = sqlalchemy.dialects.postgresql.insert(app.models.book_genre.BookGenre).values(
             book_genres_data
         )
         stmt = stmt.on_conflict_do_nothing(index_elements=["book_id", "genre_id"])
@@ -486,7 +485,7 @@ async def _bulk_insert_relationships(
 
 
 async def process_single_book(
-    session: sqlalchemy.ext.asyncio.AsyncSession, book_data: Dict[str, Any]
+    session: sqlalchemy.ext.asyncio.AsyncSession, book_data: typing.Dict[str, Any]
 ) -> None:
     result = await insert_books_batch(session, [book_data], commit=False)
     if result["failed"] > 0:

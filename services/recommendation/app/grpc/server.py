@@ -1,10 +1,9 @@
 import logging
-import random
 
 import app.cache
 import app.db
-import app.proto.recommendation_pb2 as recommendation_pb2
-import app.proto.recommendation_pb2_grpc as recommendation_pb2_grpc
+import app.proto.recommendation_pb2
+import app.proto.recommendation_pb2_grpc
 import app.services.book_of_week_builder
 import app.services.contextual_precompute
 import app.services.contextual_provider
@@ -12,12 +11,13 @@ import app.services.list_builder
 import app.services.list_provider
 import app.services.personal_refresher
 import grpc
+import sqlalchemy
 
 logger = logging.getLogger(__name__)
 
 
-def _dict_to_book_item(item: dict) -> recommendation_pb2.RecommendationBookItem:
-    return recommendation_pb2.RecommendationBookItem(
+def _dict_to_book_item(item: dict) -> app.proto.recommendation_pb2.RecommendationBookItem:
+    return app.proto.recommendation_pb2.RecommendationBookItem(
         book_id=item["book_id"],
         title=item["title"],
         slug=item["slug"],
@@ -32,8 +32,8 @@ def _dict_to_book_item(item: dict) -> recommendation_pb2.RecommendationBookItem:
     )
 
 
-def _dict_to_author_item(item: dict) -> recommendation_pb2.RecommendationAuthorItem:
-    return recommendation_pb2.RecommendationAuthorItem(
+def _dict_to_author_item(item: dict) -> app.proto.recommendation_pb2.RecommendationAuthorItem:
+    return app.proto.recommendation_pb2.RecommendationAuthorItem(
         author_id=item["author_id"],
         name=item["name"],
         slug=item["slug"],
@@ -46,9 +46,9 @@ def _dict_to_author_item(item: dict) -> recommendation_pb2.RecommendationAuthorI
     )
 
 
-def _dict_to_section(section: dict) -> recommendation_pb2.RecommendationSection:
+def _dict_to_section(section: dict) -> app.proto.recommendation_pb2.RecommendationSection:
     item_type = section.get("item_type", "book")
-    proto_section = recommendation_pb2.RecommendationSection(
+    proto_section = app.proto.recommendation_pb2.RecommendationSection(
         section_key=section["section_key"],
         display_name=section["display_name"],
         item_type=item_type,
@@ -63,9 +63,9 @@ def _dict_to_section(section: dict) -> recommendation_pb2.RecommendationSection:
     return proto_section
 
 
-def _dict_to_list_response(data: dict) -> recommendation_pb2.RecommendationListResponse:
+def _dict_to_list_response(data: dict) -> app.proto.recommendation_pb2.RecommendationListResponse:
     item_type = data.get("item_type", "book")
-    response = recommendation_pb2.RecommendationListResponse(
+    response = app.proto.recommendation_pb2.RecommendationListResponse(
         category=data["category"],
         display_name=data["display_name"],
         item_type=item_type,
@@ -82,12 +82,12 @@ def _dict_to_list_response(data: dict) -> recommendation_pb2.RecommendationListR
     return response
 
 
-class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServicer):
+class RecommendationServicer(app.proto.recommendation_pb2_grpc.RecommendationServiceServicer):
     async def GetRecommendationList(
         self,
-        request: recommendation_pb2.GetRecommendationListRequest,
+        request: app.proto.recommendation_pb2.GetRecommendationListRequest,
         context: grpc.aio.ServicerContext,
-    ) -> recommendation_pb2.RecommendationListResponse:
+    ) -> app.proto.recommendation_pb2.RecommendationListResponse:
         try:
             if request.category not in app.services.list_builder.CATEGORY_KEYS:
                 await context.abort(
@@ -98,8 +98,9 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
             limit = request.limit if request.limit > 0 else 20
             offset = request.offset if request.offset >= 0 else 0
 
+            user_id = request.user_id if request.user_id > 0 else 0
             data = await app.services.list_provider.get_list(
-                request.category, limit, offset, language=request.language or "en"
+                request.category, limit, offset, language=request.language or "en", user_id=user_id
             )
             if data is None:
                 await context.abort(
@@ -116,9 +117,9 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
 
     async def GetHomePage(
         self,
-        request: recommendation_pb2.GetHomePageRequest,
+        request: app.proto.recommendation_pb2.GetHomePageRequest,
         context: grpc.aio.ServicerContext,
-    ) -> recommendation_pb2.HomePageResponse:
+    ) -> app.proto.recommendation_pb2.HomePageResponse:
         try:
             user_id = request.user_id if request.user_id > 0 else 0
             force_personal_refresh = user_id > 0 and request.items_per_category == 0
@@ -132,7 +133,7 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
                 force_personal_refresh=force_personal_refresh,
                 language=request.language or "en",
             )
-            response = recommendation_pb2.HomePageResponse()
+            response = app.proto.recommendation_pb2.HomePageResponse()
             for data in categories:
                 response.categories.append(_dict_to_list_response(data))
             return response
@@ -144,15 +145,15 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
 
     async def GetAvailableCategories(
         self,
-        request: recommendation_pb2.GetAvailableCategoriesRequest,
+        request: app.proto.recommendation_pb2.GetAvailableCategoriesRequest,
         context: grpc.aio.ServicerContext,
-    ) -> recommendation_pb2.AvailableCategoriesResponse:
+    ) -> app.proto.recommendation_pb2.AvailableCategoriesResponse:
         try:
             categories = app.services.list_provider.get_available_categories()
-            response = recommendation_pb2.AvailableCategoriesResponse()
+            response = app.proto.recommendation_pb2.AvailableCategoriesResponse()
             for cat in categories:
                 response.categories.append(
-                    recommendation_pb2.CategoryInfo(
+                    app.proto.recommendation_pb2.CategoryInfo(
                         category=cat["category"],
                         display_name=cat["display_name"],
                         item_type=cat["item_type"],
@@ -167,16 +168,16 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
 
     async def RefreshRecommendations(
         self,
-        request: recommendation_pb2.RefreshRecommendationsRequest,
+        request: app.proto.recommendation_pb2.RefreshRecommendationsRequest,
         context: grpc.aio.ServicerContext,
-    ) -> recommendation_pb2.RefreshRecommendationsResponse:
+    ) -> app.proto.recommendation_pb2.RefreshRecommendationsResponse:
         try:
             home_keys = [
                 f"rec:{cat['key']}" for cat in app.services.list_builder.CATEGORIES
             ]
             deleted = await app.cache.delete_keys(*home_keys)
             await app.services.list_builder.refresh_all(app.db.async_session_maker)
-            return recommendation_pb2.RefreshRecommendationsResponse(
+            return app.proto.recommendation_pb2.RefreshRecommendationsResponse(
                 success=True,
                 message=f"Flushed {deleted} home cache keys, rebuilt home recommendation lists",
             )
@@ -188,16 +189,16 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
 
     async def RefreshPersonalRecommendations(
         self,
-        request: recommendation_pb2.RefreshPersonalRecommendationsRequest,
+        request: app.proto.recommendation_pb2.RefreshPersonalRecommendationsRequest,
         context: grpc.aio.ServicerContext,
-    ) -> recommendation_pb2.RefreshPersonalRecommendationsResponse:
+    ) -> app.proto.recommendation_pb2.RefreshPersonalRecommendationsResponse:
         try:
             deleted = await app.cache.delete_by_pattern("rec:profile:*")
             deleted += await app.cache.delete_by_pattern("rec:personal:*")
             await app.services.personal_refresher.refresh_all_personal(
                 app.db.async_session_maker
             )
-            return recommendation_pb2.RefreshPersonalRecommendationsResponse(
+            return app.proto.recommendation_pb2.RefreshPersonalRecommendationsResponse(
                 success=True,
                 message=f"Flushed {deleted} personal cache keys, rebuilt personal recommendations",
             )
@@ -209,11 +210,9 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
 
     async def RefreshUserPersonalRecommendations(
         self,
-        request: recommendation_pb2.RefreshUserPersonalRecommendationsRequest,
+        request: app.proto.recommendation_pb2.RefreshUserPersonalRecommendationsRequest,
         context: grpc.aio.ServicerContext,
-    ) -> recommendation_pb2.RefreshUserPersonalRecommendationsResponse:
-        import sqlalchemy
-
+    ) -> app.proto.recommendation_pb2.RefreshUserPersonalRecommendationsResponse:
         username = (request.username or "").strip()
         if not username:
             await context.abort(
@@ -239,7 +238,7 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
             await app.services.personal_refresher.refresh_user_personal(
                 app.db.async_session_maker, user_id
             )
-            return recommendation_pb2.RefreshUserPersonalRecommendationsResponse(
+            return app.proto.recommendation_pb2.RefreshUserPersonalRecommendationsResponse(
                 success=True,
                 message=(
                     f"Flushed {deleted} cache keys for user '{username}' "
@@ -254,9 +253,9 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
 
     async def RefreshContextualRecommendations(
         self,
-        request: recommendation_pb2.RefreshContextualRecommendationsRequest,
+        request: app.proto.recommendation_pb2.RefreshContextualRecommendationsRequest,
         context: grpc.aio.ServicerContext,
-    ) -> recommendation_pb2.RefreshContextualRecommendationsResponse:
+    ) -> app.proto.recommendation_pb2.RefreshContextualRecommendationsResponse:
         try:
             deleted = await app.cache.delete_by_pattern("rec:book:*")
             deleted += await app.cache.delete_by_pattern("rec:author:*")
@@ -264,7 +263,7 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
             await app.services.contextual_precompute.refresh_contextual_recs(
                 app.db.async_session_maker
             )
-            return recommendation_pb2.RefreshContextualRecommendationsResponse(
+            return app.proto.recommendation_pb2.RefreshContextualRecommendationsResponse(
                 success=True,
                 message=f"Flushed {deleted} contextual cache keys, rebuilt contextual recommendations",
             )
@@ -276,11 +275,9 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
 
     async def InvalidateContextualCache(
         self,
-        request: recommendation_pb2.InvalidateContextualCacheRequest,
+        request: app.proto.recommendation_pb2.InvalidateContextualCacheRequest,
         context: grpc.aio.ServicerContext,
-    ) -> recommendation_pb2.InvalidateContextualCacheResponse:
-        import sqlalchemy
-
+    ) -> app.proto.recommendation_pb2.InvalidateContextualCacheResponse:
         entity_type = (request.entity_type or "").strip().lower()
         slug = (request.slug or "").strip()
         if entity_type not in ("book", "author", "series"):
@@ -317,7 +314,7 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
             entity_id = int(row.id)
             cache_key = f"rec:{entity_type}:{entity_id}"
             deleted = await app.cache.delete_keys(cache_key)
-            return recommendation_pb2.InvalidateContextualCacheResponse(
+            return app.proto.recommendation_pb2.InvalidateContextualCacheResponse(
                 success=True,
                 message=(
                     f"Deleted {deleted} key for {entity_type} '{slug}' "
@@ -332,9 +329,9 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
 
     async def RefreshBookOfTheWeek(
         self,
-        request: recommendation_pb2.RefreshBookOfTheWeekRequest,
+        request: app.proto.recommendation_pb2.RefreshBookOfTheWeekRequest,
         context: grpc.aio.ServicerContext,
-    ) -> recommendation_pb2.RefreshBookOfTheWeekResponse:
+    ) -> app.proto.recommendation_pb2.RefreshBookOfTheWeekResponse:
         try:
             languages = app.services.book_of_week_builder.available_languages()
             keys = [
@@ -347,12 +344,12 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
             )
             built = {lang: len(pool) for lang, pool in results.items() if pool}
             if not built:
-                return recommendation_pb2.RefreshBookOfTheWeekResponse(
+                return app.proto.recommendation_pb2.RefreshBookOfTheWeekResponse(
                     success=False,
                     message=f"Flushed {deleted} bow cache keys, no eligible candidates found",
                 )
             summary = ", ".join(f"{lang}={count}" for lang, count in built.items())
-            return recommendation_pb2.RefreshBookOfTheWeekResponse(
+            return app.proto.recommendation_pb2.RefreshBookOfTheWeekResponse(
                 success=True,
                 message=f"Flushed {deleted} bow cache keys, pools cached ({summary})",
             )
@@ -364,9 +361,9 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
 
     async def GetBookRecommendations(
         self,
-        request: recommendation_pb2.GetBookRecommendationsRequest,
+        request: app.proto.recommendation_pb2.GetBookRecommendationsRequest,
         context: grpc.aio.ServicerContext,
-    ) -> recommendation_pb2.BookRecommendationsResponse:
+    ) -> app.proto.recommendation_pb2.BookRecommendationsResponse:
         try:
             limit = request.limit_per_section if request.limit_per_section > 0 else 15
             user_id = request.user_id if request.user_id > 0 else 0
@@ -379,7 +376,7 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
                     f"Book with ID {request.book_id} not found",
                 )
                 return
-            response = recommendation_pb2.BookRecommendationsResponse(
+            response = app.proto.recommendation_pb2.BookRecommendationsResponse(
                 book_id=request.book_id
             )
             for section in sections:
@@ -393,9 +390,9 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
 
     async def GetAuthorRecommendations(
         self,
-        request: recommendation_pb2.GetAuthorRecommendationsRequest,
+        request: app.proto.recommendation_pb2.GetAuthorRecommendationsRequest,
         context: grpc.aio.ServicerContext,
-    ) -> recommendation_pb2.AuthorRecommendationsResponse:
+    ) -> app.proto.recommendation_pb2.AuthorRecommendationsResponse:
         try:
             limit = request.limit_per_section if request.limit_per_section > 0 else 15
             user_id = request.user_id if request.user_id > 0 else 0
@@ -410,7 +407,7 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
                     f"Author with ID {request.author_id} not found",
                 )
                 return
-            response = recommendation_pb2.AuthorRecommendationsResponse(
+            response = app.proto.recommendation_pb2.AuthorRecommendationsResponse(
                 author_id=request.author_id
             )
             for section in sections:
@@ -424,9 +421,9 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
 
     async def GetSeriesRecommendations(
         self,
-        request: recommendation_pb2.GetSeriesRecommendationsRequest,
+        request: app.proto.recommendation_pb2.GetSeriesRecommendationsRequest,
         context: grpc.aio.ServicerContext,
-    ) -> recommendation_pb2.SeriesRecommendationsResponse:
+    ) -> app.proto.recommendation_pb2.SeriesRecommendationsResponse:
         try:
             limit = request.limit_per_section if request.limit_per_section > 0 else 15
             sections = (
@@ -440,7 +437,7 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
                     f"Series with ID {request.series_id} not found",
                 )
                 return
-            response = recommendation_pb2.SeriesRecommendationsResponse(
+            response = app.proto.recommendation_pb2.SeriesRecommendationsResponse(
                 series_id=request.series_id
             )
             for section in sections:
@@ -454,9 +451,9 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
 
     async def GetBookOfTheWeek(
         self,
-        request: recommendation_pb2.GetBookOfTheWeekRequest,
+        request: app.proto.recommendation_pb2.GetBookOfTheWeekRequest,
         context: grpc.aio.ServicerContext,
-    ) -> recommendation_pb2.BookOfTheWeekResponse:
+    ) -> app.proto.recommendation_pb2.BookOfTheWeekResponse:
         try:
             language = request.language or "en"
             available = app.services.book_of_week_builder.available_languages()
@@ -473,8 +470,8 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
                     grpc.StatusCode.UNAVAILABLE, "Book of the week not yet available"
                 )
                 return
-            book = random.choice(pool)
-            response = recommendation_pb2.BookOfTheWeekResponse(
+            book = pool[0]
+            response = app.proto.recommendation_pb2.BookOfTheWeekResponse(
                 book_id=book["book_id"],
                 title=book["title"],
                 slug=book["slug"],
@@ -486,7 +483,7 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
             )
             for a in book.get("authors", []):
                 response.authors.append(
-                    recommendation_pb2.BookOfTheWeekAuthor(
+                    app.proto.recommendation_pb2.BookOfTheWeekAuthor(
                         author_id=a["author_id"],
                         name=a["name"],
                         slug=a["slug"],
@@ -494,7 +491,7 @@ class RecommendationServicer(recommendation_pb2_grpc.RecommendationServiceServic
                 )
             for c in book.get("categories", []):
                 response.categories.append(
-                    recommendation_pb2.BookOfTheWeekCategory(
+                    app.proto.recommendation_pb2.BookOfTheWeekCategory(
                         genre_id=c["genre_id"],
                         name=c["name"],
                         slug=c["slug"],

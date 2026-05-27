@@ -1,30 +1,30 @@
-from pydantic_settings import BaseSettings
-from pydantic import Field
+import pydantic_settings
+import pydantic
 
 
-class Settings(BaseSettings):
-    env: str = Field(default="production")
-    debug: bool = Field(default=False)
-    log_level: str = Field(default="ERROR")
+class Settings(pydantic_settings.BaseSettings):
+    env: str = pydantic.Field(default="production")
+    debug: bool = pydantic.Field(default=False)
+    log_level: str = pydantic.Field(default="ERROR")
 
-    db_host: str = Field(default="localhost")
-    db_port: int = Field(default=5432)
-    db_name: str = Field(default="minsik_db")
-    db_user: str = Field(default="postgres")
-    db_password: str = Field(default="postgres")
-    db_pool_size: int = Field(default=5)
-    db_max_overflow: int = Field(default=10)
+    db_host: str = pydantic.Field(default="localhost")
+    db_port: int = pydantic.Field(default=5432)
+    db_name: str = pydantic.Field(default="minsik_db")
+    db_user: str = pydantic.Field(default="postgres")
+    db_password: str = pydantic.Field(default="postgres")
+    db_pool_size: int = pydantic.Field(default=5)
+    db_max_overflow: int = pydantic.Field(default=10)
 
-    redis_host: str = Field(default="localhost")
-    redis_port: int = Field(default=6379)
-    redis_db: int = Field(default=0)
-    redis_password: str = Field(default="")
-    redis_max_connections: int = Field(default=5)
+    redis_host: str = pydantic.Field(default="localhost")
+    redis_port: int = pydantic.Field(default=6379)
+    redis_db: int = pydantic.Field(default=0)
+    redis_password: str = pydantic.Field(default="")
+    redis_max_connections: int = pydantic.Field(default=5)
 
-    user_data_service_host: str = Field(default="0.0.0.0")
-    user_data_grpc_port: int = Field(default=50053)
+    user_data_service_host: str = pydantic.Field(default="0.0.0.0")
+    user_data_grpc_port: int = pydantic.Field(default=50053)
 
-    ledger_api_key: str = Field(default="")
+    ledger_api_key: str = pydantic.Field(default="")
 
     class Config:
         env_file = ".env"

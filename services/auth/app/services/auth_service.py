@@ -3,7 +3,6 @@ import logging
 import datetime
 import sqlalchemy
 import sqlalchemy.ext.asyncio
-from sqlalchemy import select
 import app.models.user
 import app.models.refresh_token
 import app.utils
@@ -20,13 +19,13 @@ async def register(
     password: str
 ) -> app.models.user.User:
     email_result = await session.execute(
-        select(app.models.user.User).filter(app.models.user.User.email == email)
+        sqlalchemy.select(app.models.user.User).filter(app.models.user.User.email == email)
     )
     if email_result.scalar_one_or_none():
         raise ValueError("email_taken")
 
     username_result = await session.execute(
-        select(app.models.user.User).filter(app.models.user.User.username == username)
+        sqlalchemy.select(app.models.user.User).filter(app.models.user.User.username == username)
     )
     if username_result.scalar_one_or_none():
         raise ValueError("username_taken")
@@ -50,7 +49,7 @@ async def login(
     password: str
 ) -> typing.Tuple[app.models.user.User, str, str]:
     result = await session.execute(
-        select(app.models.user.User).filter(app.models.user.User.email == email)
+        sqlalchemy.select(app.models.user.User).filter(app.models.user.User.email == email)
     )
     user = result.scalar_one_or_none()
 
@@ -95,7 +94,7 @@ async def logout(
 ) -> None:
     token_hash = app.services.token_service.hash_token(refresh_token_raw)
     result = await session.execute(
-        select(app.models.refresh_token.RefreshToken).filter(
+        sqlalchemy.select(app.models.refresh_token.RefreshToken).filter(
             app.models.refresh_token.RefreshToken.token_hash == token_hash
         )
     )
@@ -112,7 +111,7 @@ async def refresh_tokens(
 ) -> typing.Tuple[str, str, app.models.user.User]:
     token_hash = app.services.token_service.hash_token(refresh_token_raw)
     result = await session.execute(
-        select(app.models.refresh_token.RefreshToken).filter(
+        sqlalchemy.select(app.models.refresh_token.RefreshToken).filter(
             app.models.refresh_token.RefreshToken.token_hash == token_hash
         )
     )
@@ -128,7 +127,7 @@ async def refresh_tokens(
         raise PermissionError("token_expired")
 
     user_result = await session.execute(
-        select(app.models.user.User).filter(
+        sqlalchemy.select(app.models.user.User).filter(
             app.models.user.User.user_id == token_obj.user_id
         )
     )
@@ -182,7 +181,7 @@ async def get_current_user(
     user_id: int
 ) -> app.models.user.User:
     result = await session.execute(
-        select(app.models.user.User).filter(app.models.user.User.user_id == user_id)
+        sqlalchemy.select(app.models.user.User).filter(app.models.user.User.user_id == user_id)
     )
     user = result.scalar_one_or_none()
     if not user:
@@ -199,7 +198,7 @@ async def update_profile(
     preferred_language: str = "",
 ) -> app.models.user.User:
     result = await session.execute(
-        select(app.models.user.User).filter(app.models.user.User.user_id == user_id)
+        sqlalchemy.select(app.models.user.User).filter(app.models.user.User.user_id == user_id)
     )
     user = result.scalar_one_or_none()
     if not user:
@@ -224,7 +223,7 @@ async def delete_account(
     user_id: int
 ) -> None:
     result = await session.execute(
-        select(app.models.user.User).filter(app.models.user.User.user_id == user_id)
+        sqlalchemy.select(app.models.user.User).filter(app.models.user.User.user_id == user_id)
     )
     user = result.scalar_one_or_none()
     if not user:

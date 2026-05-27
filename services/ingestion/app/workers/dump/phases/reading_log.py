@@ -6,8 +6,8 @@ import logging
 import typing
 
 import app.models
+import app.workers.dump.parsers
 import sqlalchemy
-from app.workers.dump import parsers
 
 logger = logging.getLogger(__name__)
 
@@ -118,7 +118,7 @@ async def _flush_reading_log_batch(
     chunk_size = 1000
     for i in range(0, len(work_ol_ids), chunk_size):
         chunk_ids = work_ol_ids[i : i + chunk_size]
-        book_lookup = await parsers.batch_lookup_books(session, chunk_ids)
+        book_lookup = await app.workers.dump.parsers.batch_lookup_books(session, chunk_ids)
 
         batch_params: list[dict] = []
         for work_ol_id in chunk_ids:

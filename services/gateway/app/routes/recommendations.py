@@ -9,7 +9,6 @@ import app.models.recommendation_responses
 import app.utils.responses
 import fastapi
 import grpc
-from fastapi import Query
 
 logger = logging.getLogger(__name__)
 
@@ -107,10 +106,10 @@ def _to_section_dict(key: str, item) -> dict:
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
 async def get_home_page(
     request: fastapi.Request,
-    items_per_category: int = Query(
+    items_per_category: int = fastapi.Query(
         20, ge=1, le=100, description="Number of items to return per section"
     ),
-    language: typing.Optional[str] = Query(None, description="Preferred language code"),
+    language: typing.Optional[str] = fastapi.Query(None, description="Preferred language code"),
 ):
     try:
         lang = _resolve_language(request, language)
@@ -205,7 +204,7 @@ async def get_available_categories(request: fastapi.Request):
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
 async def get_book_of_the_week(
     request: fastapi.Request,
-    language: typing.Optional[str] = Query(None, description="Preferred language code"),
+    language: typing.Optional[str] = fastapi.Query(None, description="Preferred language code"),
 ):
     try:
         lang = _resolve_language(request, language)
@@ -280,14 +279,18 @@ async def get_recommendation_list(
     category: str = fastapi.Path(
         ..., description="Category key (e.g. 'most_read', 'top_authors')"
     ),
-    limit: int = Query(20, ge=1, le=100, description="Number of items to return"),
-    offset: int = Query(0, ge=0, description="Pagination offset"),
-    language: typing.Optional[str] = Query(None, description="Preferred language code"),
+    limit: int = fastapi.Query(20, ge=1, le=100, description="Number of items to return"),
+    offset: int = fastapi.Query(0, ge=0, description="Pagination offset"),
+    language: typing.Optional[str] = fastapi.Query(None, description="Preferred language code"),
+    current_user: typing.Optional[typing.Dict[str, typing.Any]] = fastapi.Depends(
+        app.middleware.auth.get_current_user_optional
+    ),
 ):
     try:
         lang = _resolve_language(request, language)
+        user_id = current_user["user_id"] if current_user else 0
         response = await app.grpc_clients.recommendation_client.get_recommendation_list(
-            category=category, limit=limit, offset=offset, language=lang
+            category=category, limit=limit, offset=offset, language=lang, user_id=user_id
         )
         return app.utils.responses.success_response(
             _to_section_dict(response.category, response)
@@ -343,7 +346,7 @@ async def get_recommendation_list(
 async def get_book_recommendations(
     request: fastapi.Request,
     book_id: int = fastapi.Path(..., description="Book ID"),
-    limit_per_section: int = Query(
+    limit_per_section: int = fastapi.Query(
         15, ge=1, le=50, description="Number of items per recommendation section"
     ),
 ):
@@ -400,7 +403,7 @@ async def get_book_recommendations(
 async def get_author_recommendations(
     request: fastapi.Request,
     author_id: int = fastapi.Path(..., description="Author ID"),
-    limit_per_section: int = Query(
+    limit_per_section: int = fastapi.Query(
         15, ge=1, le=50, description="Number of items per recommendation section"
     ),
 ):
@@ -455,7 +458,7 @@ async def get_author_recommendations(
 async def get_series_recommendations(
     request: fastapi.Request,
     series_id: int = fastapi.Path(..., description="Series ID"),
-    limit_per_section: int = Query(
+    limit_per_section: int = fastapi.Query(
         15, ge=1, le=50, description="Number of items per recommendation section"
     ),
 ):

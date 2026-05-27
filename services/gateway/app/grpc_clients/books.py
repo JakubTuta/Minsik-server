@@ -2,11 +2,11 @@ import logging
 import typing
 
 import app.config
-import app.proto.books_pb2 as books_pb2
-import app.proto.books_pb2_grpc as books_pb2_grpc
+import app.proto.books_pb2
+import app.proto.books_pb2_grpc
 import app.tracing
+import google.protobuf.json_format
 import grpc
-from google.protobuf.json_format import MessageToDict
 
 logger = logging.getLogger(__name__)
 
@@ -14,7 +14,7 @@ logger = logging.getLogger(__name__)
 class BooksClient:
     def __init__(self):
         self.channel: typing.Optional[grpc.aio.Channel] = None
-        self.stub: typing.Optional[books_pb2_grpc.BooksServiceStub] = None
+        self.stub: typing.Optional[app.proto.books_pb2_grpc.BooksServiceStub] = None
 
     async def __aenter__(self):
         await self.connect()
@@ -37,7 +37,7 @@ class BooksClient:
             ],
             interceptors=app.tracing.get_client_interceptors(),
         )
-        self.stub = books_pb2_grpc.BooksServiceStub(self.channel)
+        self.stub = app.proto.books_pb2_grpc.BooksServiceStub(self.channel)
         logger.info(
             f"Connected to books service at {app.config.settings.books_service_url}"
         )
@@ -54,8 +54,8 @@ class BooksClient:
         offset: int = 0,
         type_filter: str = "both",
         language: str = "en",
-    ) -> books_pb2.SearchResponse:
-        request = books_pb2.SearchRequest(
+    ) -> app.proto.books_pb2.SearchResponse:
+        request = app.proto.books_pb2.SearchRequest(
             query=query,
             limit=limit,
             offset=offset,
@@ -76,8 +76,8 @@ class BooksClient:
 
     async def get_book(
         self, slug: str, language: str = "en"
-    ) -> books_pb2.BookDetailResponse:
-        request = books_pb2.GetBookRequest(slug=slug, language=language)
+    ) -> app.proto.books_pb2.BookDetailResponse:
+        request = app.proto.books_pb2.GetBookRequest(slug=slug, language=language)
 
         try:
             response = await self.stub.GetBook(
@@ -90,8 +90,8 @@ class BooksClient:
 
     async def get_book_language_variants(
         self, slug: str, exclude_language: str = "en"
-    ) -> books_pb2.BookLanguageVariantsResponse:
-        request = books_pb2.GetBookLanguageVariantsRequest(
+    ) -> app.proto.books_pb2.BookLanguageVariantsResponse:
+        request = app.proto.books_pb2.GetBookLanguageVariantsRequest(
             slug=slug, exclude_language=exclude_language
         )
 
@@ -106,8 +106,8 @@ class BooksClient:
 
     async def get_author(
         self, slug: str, language: str = "en"
-    ) -> books_pb2.AuthorDetailResponse:
-        request = books_pb2.GetAuthorRequest(slug=slug, language=language)
+    ) -> app.proto.books_pb2.AuthorDetailResponse:
+        request = app.proto.books_pb2.GetAuthorRequest(slug=slug, language=language)
 
         try:
             response = await self.stub.GetAuthor(
@@ -126,8 +126,8 @@ class BooksClient:
         sort_by: str = "view_count",
         order: str = "desc",
         language: str = "en",
-    ) -> books_pb2.BooksListResponse:
-        request = books_pb2.GetAuthorBooksRequest(
+    ) -> app.proto.books_pb2.BooksListResponse:
+        request = app.proto.books_pb2.GetAuthorBooksRequest(
             author_slug=author_slug,
             limit=limit,
             offset=offset,
@@ -147,8 +147,8 @@ class BooksClient:
 
     async def get_series(
         self, slug: str, language: str = "en"
-    ) -> books_pb2.SeriesDetailResponse:
-        request = books_pb2.GetSeriesRequest(slug=slug, language=language)
+    ) -> app.proto.books_pb2.SeriesDetailResponse:
+        request = app.proto.books_pb2.GetSeriesRequest(slug=slug, language=language)
 
         try:
             response = await self.stub.GetSeries(
@@ -167,8 +167,8 @@ class BooksClient:
         language: str = "en",
         sort_by: str = "series_position",
         order: str = "asc",
-    ) -> books_pb2.BooksListResponse:
-        request = books_pb2.GetSeriesBooksRequest(
+    ) -> app.proto.books_pb2.BooksListResponse:
+        request = app.proto.books_pb2.GetSeriesBooksRequest(
             series_slug=series_slug,
             limit=limit,
             offset=offset,
@@ -190,8 +190,8 @@ class BooksClient:
         self,
         book_id: int,
         fields: typing.Dict[str, typing.Any],
-    ) -> books_pb2.BookDetailResponse:
-        request = books_pb2.UpdateBookRequest(book_id=book_id)
+    ) -> app.proto.books_pb2.BookDetailResponse:
+        request = app.proto.books_pb2.UpdateBookRequest(book_id=book_id)
 
         for field, value in fields.items():
             setattr(request, field, value)
@@ -209,8 +209,8 @@ class BooksClient:
         self,
         author_id: int,
         fields: typing.Dict[str, typing.Any],
-    ) -> books_pb2.AuthorDetailResponse:
-        request = books_pb2.UpdateAuthorRequest(author_id=author_id)
+    ) -> app.proto.books_pb2.AuthorDetailResponse:
+        request = app.proto.books_pb2.UpdateAuthorRequest(author_id=author_id)
 
         for field, value in fields.items():
             setattr(request, field, value)
@@ -228,8 +228,8 @@ class BooksClient:
         self,
         series_id: int,
         fields: typing.Dict[str, typing.Any],
-    ) -> books_pb2.SeriesDetailResponse:
-        request = books_pb2.UpdateSeriesRequest(series_id=series_id)
+    ) -> app.proto.books_pb2.SeriesDetailResponse:
+        request = app.proto.books_pb2.UpdateSeriesRequest(series_id=series_id)
 
         for field, value in fields.items():
             setattr(request, field, value)
@@ -245,8 +245,8 @@ class BooksClient:
 
     async def remove_book_author(
         self, book_id: int, author_id: int
-    ) -> books_pb2.BookDetailResponse:
-        request = books_pb2.UpdateBookRequest(
+    ) -> app.proto.books_pb2.BookDetailResponse:
+        request = app.proto.books_pb2.UpdateBookRequest(
             book_id=book_id, remove_author_id=author_id
         )
         try:
@@ -258,8 +258,8 @@ class BooksClient:
             logger.error(f"gRPC error removing book author: {e.code()} - {e.details()}")
             raise
 
-    async def delete_book(self, book_id: int) -> books_pb2.DeleteEntityResponse:
-        request = books_pb2.DeleteBookRequest(book_id=book_id)
+    async def delete_book(self, book_id: int) -> app.proto.books_pb2.DeleteEntityResponse:
+        request = app.proto.books_pb2.DeleteBookRequest(book_id=book_id)
         try:
             return await self.stub.DeleteBook(
                 request, timeout=app.config.settings.grpc_admin_timeout
@@ -268,8 +268,8 @@ class BooksClient:
             logger.error(f"gRPC error deleting book: {e.code()} - {e.details()}")
             raise
 
-    async def delete_author(self, author_id: int) -> books_pb2.DeleteEntityResponse:
-        request = books_pb2.DeleteAuthorRequest(author_id=author_id)
+    async def delete_author(self, author_id: int) -> app.proto.books_pb2.DeleteEntityResponse:
+        request = app.proto.books_pb2.DeleteAuthorRequest(author_id=author_id)
         try:
             return await self.stub.DeleteAuthor(
                 request, timeout=app.config.settings.grpc_admin_timeout
@@ -278,8 +278,8 @@ class BooksClient:
             logger.error(f"gRPC error deleting author: {e.code()} - {e.details()}")
             raise
 
-    async def delete_series(self, series_id: int) -> books_pb2.DeleteEntityResponse:
-        request = books_pb2.DeleteSeriesRequest(series_id=series_id)
+    async def delete_series(self, series_id: int) -> app.proto.books_pb2.DeleteEntityResponse:
+        request = app.proto.books_pb2.DeleteSeriesRequest(series_id=series_id)
         try:
             return await self.stub.DeleteSeries(
                 request, timeout=app.config.settings.grpc_admin_timeout
@@ -288,8 +288,8 @@ class BooksClient:
             logger.error(f"gRPC error deleting series: {e.code()} - {e.details()}")
             raise
 
-    async def spin_slots(self, language: str = "en") -> books_pb2.SpinSlotsResponse:
-        request = books_pb2.SpinSlotsRequest(language=language)
+    async def spin_slots(self, language: str = "en") -> app.proto.books_pb2.SpinSlotsResponse:
+        request = app.proto.books_pb2.SpinSlotsRequest(language=language)
 
         try:
             response = await self.stub.SpinSlots(
@@ -311,8 +311,8 @@ class BooksClient:
         series_filter: str = "",
         popularity: str = "",
         exclude_ids: typing.Optional[typing.List[int]] = None,
-    ) -> books_pb2.DiscoverBookResponse:
-        request = books_pb2.DiscoverBookRequest(
+    ) -> app.proto.books_pb2.DiscoverBookResponse:
+        request = app.proto.books_pb2.DiscoverBookRequest(
             language=language,
             genre_slugs=genre_slugs or [],
             book_length=book_length,
@@ -333,8 +333,8 @@ class BooksClient:
             logger.error(f"gRPC error discovering book: {e.code()} - {e.details()}")
             raise
 
-    async def open_case(self, language: str = "en") -> books_pb2.OpenCaseResponse:
-        request = books_pb2.OpenCaseRequest(language=language)
+    async def open_case(self, language: str = "en") -> app.proto.books_pb2.OpenCaseResponse:
+        request = app.proto.books_pb2.OpenCaseRequest(language=language)
 
         try:
             response = await self.stub.OpenCase(
@@ -347,8 +347,8 @@ class BooksClient:
 
     async def open_pack(
         self, language: str = "en", length: int = 8
-    ) -> books_pb2.OpenPackResponse:
-        request = books_pb2.OpenPackRequest(language=language, length=length)
+    ) -> app.proto.books_pb2.OpenPackResponse:
+        request = app.proto.books_pb2.OpenPackRequest(language=language, length=length)
 
         try:
             response = await self.stub.OpenPack(
@@ -360,23 +360,23 @@ class BooksClient:
             raise
 
     async def list_categories(self) -> typing.Dict[str, typing.Any]:
-        request = books_pb2.ListCategoriesRequest()
+        request = app.proto.books_pb2.ListCategoriesRequest()
         try:
             response = await self.stub.ListCategories(
                 request, timeout=app.config.settings.grpc_timeout
             )
-            return MessageToDict(response, preserving_proto_field_name=True)
+            return google.protobuf.json_format.MessageToDict(response, preserving_proto_field_name=True)
         except grpc.RpcError as e:
             logger.error(f"gRPC error listing categories: {e.code()} - {e.details()}")
             raise
 
     async def get_category(self, category_slug: str) -> typing.Dict[str, typing.Any]:
-        request = books_pb2.GetCategoryRequest(category_slug=category_slug)
+        request = app.proto.books_pb2.GetCategoryRequest(category_slug=category_slug)
         try:
             response = await self.stub.GetCategory(
                 request, timeout=app.config.settings.grpc_timeout
             )
-            return MessageToDict(response, preserving_proto_field_name=True)
+            return google.protobuf.json_format.MessageToDict(response, preserving_proto_field_name=True)
         except grpc.RpcError as e:
             logger.error(f"gRPC error getting category: {e.code()} - {e.details()}")
             raise
@@ -389,8 +389,8 @@ class BooksClient:
         sort_by: str = "popularity",
         order: str = "desc",
         language: str = "en",
-    ) -> books_pb2.BooksListResponse:
-        request = books_pb2.GetCategoryBooksRequest(
+    ) -> app.proto.books_pb2.BooksListResponse:
+        request = app.proto.books_pb2.GetCategoryBooksRequest(
             category_slug=category_slug,
             limit=limit,
             offset=offset,
@@ -415,8 +415,8 @@ class BooksClient:
         query: str,
         limit: int = 8,
         language: str = "en",
-    ) -> books_pb2.SuggestSearchResponse:
-        request = books_pb2.SuggestSearchRequest(
+    ) -> app.proto.books_pb2.SuggestSearchResponse:
+        request = app.proto.books_pb2.SuggestSearchRequest(
             query=query,
             limit=limit,
             language=language,
@@ -432,8 +432,8 @@ class BooksClient:
 
     async def get_popular_categories(
         self, limit: int = 12
-    ) -> books_pb2.PopularCategoriesResponse:
-        request = books_pb2.GetPopularCategoriesRequest(limit=limit)
+    ) -> app.proto.books_pb2.PopularCategoriesResponse:
+        request = app.proto.books_pb2.GetPopularCategoriesRequest(limit=limit)
         try:
             return await self.stub.GetPopularCategories(
                 request, timeout=app.config.settings.grpc_timeout
@@ -444,8 +444,8 @@ class BooksClient:
             )
             raise
 
-    async def trigger_reindex(self) -> books_pb2.ReindexAllResponse:
-        request = books_pb2.ReindexAllRequest()
+    async def trigger_reindex(self) -> app.proto.books_pb2.ReindexAllResponse:
+        request = app.proto.books_pb2.ReindexAllRequest()
         try:
             return await self.stub.ReindexAll(
                 request, timeout=app.config.settings.grpc_admin_timeout
@@ -458,8 +458,8 @@ class BooksClient:
         self,
         slug: str,
         limit: int = 10,
-    ) -> books_pb2.GetGenreBubbleResponse:
-        request = books_pb2.GetGenreBubbleRequest(slug=slug, limit=limit)
+    ) -> app.proto.books_pb2.GetGenreBubbleResponse:
+        request = app.proto.books_pb2.GetGenreBubbleRequest(slug=slug, limit=limit)
         try:
             return await self.stub.GetGenreBubble(
                 request, timeout=app.config.settings.grpc_timeout

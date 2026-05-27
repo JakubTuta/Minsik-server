@@ -4,6 +4,7 @@ import typing
 
 import app.cache
 import app.config
+import app.db
 import sqlalchemy
 import sqlalchemy.ext.asyncio
 
@@ -29,6 +30,7 @@ async def _query_bookshelves(
     read_book_ids: typing.Set[int] = set()
     want_to_read_book_ids: typing.Set[int] = set()
     favorite_book_ids: typing.Set[int] = set()
+    excluded_book_ids: typing.Set[int] = set()
     all_book_ids: typing.Set[int] = set()
 
     for row in rows:
@@ -39,11 +41,14 @@ async def _query_bookshelves(
             want_to_read_book_ids.add(row.book_id)
         if row.is_favorite:
             favorite_book_ids.add(row.book_id)
+        if row.status in ("read", "reading") or row.is_favorite:
+            excluded_book_ids.add(row.book_id)
 
     return {
         "read_book_ids": list(read_book_ids),
         "want_to_read_book_ids": list(want_to_read_book_ids),
         "favorite_book_ids": list(favorite_book_ids),
+        "excluded_book_ids": list(excluded_book_ids),
         "shelved_book_count": len(all_book_ids),
     }
 
@@ -259,6 +264,7 @@ async def build_taste_profile(
             "read_book_ids": [],
             "want_to_read_book_ids": [],
             "favorite_book_ids": [],
+            "excluded_book_ids": [],
             "shelved_book_count": 0,
         }
     )
@@ -279,6 +285,7 @@ async def build_taste_profile(
     return {
         "user_id": user_id,
         "read_book_ids": shelf_data["read_book_ids"],
+        "excluded_book_ids": shelf_data["excluded_book_ids"],
         "shelved_book_count": shelved_book_count,
         "want_to_read_book_ids": shelf_data["want_to_read_book_ids"],
         "favorite_book_ids": shelf_data["favorite_book_ids"],
@@ -296,8 +303,6 @@ async def get_taste_profile(
     user_id: int,
     force_refresh: bool = False,
 ) -> typing.Optional[typing.Dict[str, typing.Any]]:
-    import app.db
-
     cache_key = f"rec:profile:{user_id}"
     if not force_refresh:
         cached = await app.cache.get_cached(cache_key)

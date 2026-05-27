@@ -5,7 +5,6 @@ import datetime
 import httpx
 import sqlalchemy
 import sqlalchemy.ext.asyncio
-from sqlalchemy import select
 import app.models.user
 import app.config
 
@@ -76,7 +75,7 @@ async def _generate_unique_username(
 ) -> str:
     candidate = _build_username_candidate(display_name, email)
     result = await session.execute(
-        select(app.models.user.User).filter(app.models.user.User.username == candidate)
+        sqlalchemy.select(app.models.user.User).filter(app.models.user.User.username == candidate)
     )
     if not result.scalar_one_or_none():
         return candidate
@@ -85,7 +84,7 @@ async def _generate_unique_username(
     while True:
         suffixed = f"{candidate}_{counter}"
         result = await session.execute(
-            select(app.models.user.User).filter(app.models.user.User.username == suffixed)
+            sqlalchemy.select(app.models.user.User).filter(app.models.user.User.username == suffixed)
         )
         if not result.scalar_one_or_none():
             return suffixed
@@ -114,7 +113,7 @@ async def authenticate_with_google(
         raise ValueError("google_email_missing")
 
     existing_by_google_id = await session.execute(
-        select(app.models.user.User).filter(app.models.user.User.google_id == google_id)
+        sqlalchemy.select(app.models.user.User).filter(app.models.user.User.google_id == google_id)
     )
     user = existing_by_google_id.scalar_one_or_none()
     if user:
@@ -125,7 +124,7 @@ async def authenticate_with_google(
         return user
 
     existing_by_email = await session.execute(
-        select(app.models.user.User).filter(app.models.user.User.email == email)
+        sqlalchemy.select(app.models.user.User).filter(app.models.user.User.email == email)
     )
     user = existing_by_email.scalar_one_or_none()
     if user:

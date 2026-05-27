@@ -1,16 +1,15 @@
+import datetime
 import logging
 import typing
-from datetime import datetime
 
 import app.config
+import app.fetchers.base
 import app.utils
-from app.fetchers.base import BaseFetcher
-from app.utils import slugify
 
 logger = logging.getLogger(__name__)
 
 
-class GoogleBooksFetcher(BaseFetcher):
+class GoogleBooksFetcher(app.fetchers.base.BaseFetcher):
     def __init__(self):
         super().__init__(
             api_url=app.config.settings.google_books_api_url,
@@ -81,7 +80,7 @@ class GoogleBooksFetcher(BaseFetcher):
                 authors.append(
                     {
                         "name": author_name,
-                        "slug": slugify(author_name),
+                        "slug": app.utils.slugify(author_name),
                         "bio": None,
                         "birth_date": None,
                         "death_date": None,
@@ -141,7 +140,7 @@ class GoogleBooksFetcher(BaseFetcher):
             return {
                 "title": title,
                 "language": language,
-                "slug": slugify(title),
+                "slug": app.utils.slugify(title),
                 "description": volume_info.get("description"),
                 "original_publication_year": publication_year,
                 "formats": formats,

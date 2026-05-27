@@ -6,10 +6,10 @@ import logging
 import app.config
 import app.models
 import app.utils
+import app.workers.dump.parsers
 import sqlalchemy
 import sqlalchemy.exc
 import sqlalchemy.ext.asyncio
-from app.workers.dump import parsers
 
 logger = logging.getLogger(__name__)
 
@@ -75,7 +75,7 @@ async def process_works_dump(file_path: str) -> int:
                     if ol_id:
                         batch_author_ol_ids.add(ol_id)
 
-            author_lookup = await parsers.batch_lookup_authors(
+            author_lookup = await app.workers.dump.parsers.batch_lookup_authors(
                 session, list(batch_author_ol_ids)
             )
 
@@ -121,14 +121,14 @@ async def process_works_dump(file_path: str) -> int:
                                 }
                             )
 
-                    description = parsers.extract_description(
+                    description = app.workers.dump.parsers.extract_description(
                         work_data.get("description")
                     )
-                    pub_date = parsers.parse_free_date(
+                    pub_date = app.workers.dump.parsers.parse_free_date(
                         work_data.get("first_publish_date")
                     )
                     pub_year = pub_date.year if pub_date else None
-                    cover_url = parsers.extract_cover_url(work_data.get("covers"))
+                    cover_url = app.workers.dump.parsers.extract_cover_url(work_data.get("covers"))
                     work_ol_id = work_data.get("key", "").replace("/works/", "")
 
                     if not authors_list:
@@ -139,7 +139,7 @@ async def process_works_dump(file_path: str) -> int:
                         "title": title,
                         "language": "en",
                         "description": description,
-                        "first_sentence": parsers.extract_description(
+                        "first_sentence": app.workers.dump.parsers.extract_description(
                             work_data.get("first_sentence")
                         ),
                         "original_publication_year": pub_year,
@@ -152,7 +152,7 @@ async def process_works_dump(file_path: str) -> int:
                         "series": None,
                     }
                     if (
-                        parsers.score_work(work_entry)
+                        app.workers.dump.parsers.score_work(work_entry)
                         < app.config.settings.dump_work_min_quality_score
                     ):
                         logger.debug(f"Skipping low-quality work: {title}")

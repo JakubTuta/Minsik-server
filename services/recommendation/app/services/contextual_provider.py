@@ -5,9 +5,11 @@ import typing
 import app.cache
 import app.config
 import app.db
+import app.services._book_filter
 import app.services.author_recommender
 import app.services.book_recommender
 import app.services.list_builder
+import app.services.personal_provider
 import app.services.series_recommender
 import sqlalchemy
 
@@ -118,12 +120,12 @@ async def _read_precomputed(
         return None
 
     all_ids: typing.List[int] = []
-    seen: typing.Set[int] = set()
+    seen_ids: typing.Set[int] = set()
     for row in precomputed_rows:
         for eid in (row.similar_ids or [])[:limit]:
-            if eid not in seen:
+            if eid not in seen_ids:
                 all_ids.append(eid)
-                seen.add(eid)
+                seen_ids.add(eid)
 
     if not all_ids:
         return []
@@ -150,13 +152,14 @@ async def _read_precomputed(
                 }
             )
         else:
+            deduped = app.services._book_filter.dedupe_books_by_slug(items)
             sections.append(
                 {
                     "section_key": row.section_key,
                     "display_name": row.display_name,
                     "item_type": "book",
-                    "book_items": items,
-                    "total": len(items),
+                    "book_items": deduped,
+                    "total": len(deduped),
                 }
             )
 
@@ -197,24 +200,26 @@ async def _build_minimal_book_fallback(
     )
 
     if results[0] and not isinstance(results[0], Exception):
+        deduped_author = app.services._book_filter.dedupe_books_by_slug(results[0])
         sections.append(
             {
                 "section_key": "more_by_author",
                 "display_name": f"More by {author_label}",
                 "item_type": "book",
-                "book_items": results[0],
-                "total": len(results[0]),
+                "book_items": deduped_author,
+                "total": len(deduped_author),
             }
         )
 
     if len(results) > 1 and results[1] and not isinstance(results[1], Exception):
+        deduped_series = app.services._book_filter.dedupe_books_by_slug(results[1])
         sections.append(
             {
                 "section_key": "more_from_series",
                 "display_name": f"More from {metadata['series_name']}",
                 "item_type": "book",
-                "book_items": results[1],
-                "total": len(results[1]),
+                "book_items": deduped_series,
+                "total": len(deduped_series),
             }
         )
 
@@ -327,8 +332,6 @@ async def _get_personal_book_sections(
     limit_per_section: int,
     user_id: int,
 ) -> typing.Optional[typing.List[typing.Dict[str, typing.Any]]]:
-    import app.services.personal_provider
-
     return await app.services.personal_provider.get_personal_book_sections(
         user_id, book_id, limit_per_section
     )
@@ -368,8 +371,6 @@ async def _get_personal_author_sections(
     limit_per_section: int,
     user_id: int,
 ) -> typing.Optional[typing.List[typing.Dict[str, typing.Any]]]:
-    import app.services.personal_provider
-
     return await app.services.personal_provider.get_personal_author_sections(
         user_id, author_id, limit_per_section
     )

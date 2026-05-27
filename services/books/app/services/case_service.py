@@ -5,8 +5,8 @@ import typing
 import app.cache
 import app.services._language_boost
 import sqlalchemy
+import sqlalchemy
 import sqlalchemy.ext.asyncio
-from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
@@ -194,7 +194,7 @@ async def _fetch_random_book_from_tier(
     min_ratings: int,
 ) -> typing.Optional[typing.Any]:
     boost = app.services._language_boost.lang_boost_sql()
-    query = text(
+    query = sqlalchemy.text(
         _BOOK_SELECT
         + f"""
         WHERE (b.rating_count + b.ol_rating_count) >= :min_ratings
@@ -281,7 +281,7 @@ async def _fetch_all_display_books(
     winner_book_id: int,
 ) -> typing.List[typing.Any]:
     boost = app.services._language_boost.lang_boost_sql()
-    query = text(
+    query = sqlalchemy.text(
         f"""
         WITH book_stats AS (
             SELECT
@@ -374,7 +374,7 @@ async def _fetch_any_rated_books(
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     boost = app.services._language_boost.lang_boost_sql()
     exclude_ids = [exclude_book_id] + also_exclude_ids
-    query = text(
+    query = sqlalchemy.text(
         _BOOK_SELECT
         + """
         WHERE b.book_id != ALL(:exclude_ids)

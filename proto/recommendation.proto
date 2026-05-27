@@ -23,6 +23,7 @@ message GetRecommendationListRequest {
   int32 limit = 2;
   int32 offset = 3;
   string language = 4;
+  int64 user_id = 5;
 }
 
 message RecommendationListResponse {

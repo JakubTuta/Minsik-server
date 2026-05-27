@@ -12,10 +12,10 @@ import app.jobs
 import app.proto.books_pb2
 import app.proto.books_pb2_grpc
 import app.tracing
+import apscheduler
+import apscheduler.triggers.cron
 import grpc
-from apscheduler import AsyncScheduler
-from apscheduler.triggers.cron import CronTrigger
-from grpc_reflection.v1alpha import reflection
+import grpc_reflection.v1alpha.reflection
 
 logging.basicConfig(
     level=getattr(logging, app.config.settings.log_level.upper()),
@@ -26,7 +26,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 grpc_server: grpc.aio.Server = None
-scheduler: AsyncScheduler = None
+scheduler: apscheduler.AsyncScheduler = None
 _shutdown_event: asyncio.Event = None
 
 
@@ -53,9 +53,9 @@ async def start_server() -> None:
 
     SERVICE_NAMES = (
         app.proto.books_pb2.DESCRIPTOR.services_by_name["BooksService"].full_name,
-        reflection.SERVICE_NAME,
+        grpc_reflection.v1alpha.reflection.SERVICE_NAME,
     )
-    reflection.enable_server_reflection(SERVICE_NAMES, grpc_server)
+    grpc_reflection.v1alpha.reflection.enable_server_reflection(SERVICE_NAMES, grpc_server)
 
     listen_addr = f"{app.config.settings.books_service_host}:{app.config.settings.books_grpc_port}"
     grpc_server.add_insecure_port(listen_addr)
@@ -63,13 +63,13 @@ async def start_server() -> None:
     logger.info(f"Starting gRPC server on {listen_addr}")
     await grpc_server.start()
 
-    scheduler = AsyncScheduler()
+    scheduler = apscheduler.AsyncScheduler()
     await scheduler.__aenter__()
 
     if app.config.settings.view_count_flush_enabled:
         await scheduler.add_schedule(
             app.jobs.flush_view_counts_job,
-            CronTrigger.from_crontab(app.config.settings.view_count_flush_cron),
+            apscheduler.triggers.cron.CronTrigger.from_crontab(app.config.settings.view_count_flush_cron),
         )
         logger.info(
             f"[books] View count flush scheduled (cron: '{app.config.settings.view_count_flush_cron}')"
@@ -78,7 +78,7 @@ async def start_server() -> None:
     if app.config.settings.es_reindex_enabled:
         await scheduler.add_schedule(
             app.jobs.reindex_job,
-            CronTrigger.from_crontab(app.config.settings.es_reindex_cron),
+            apscheduler.triggers.cron.CronTrigger.from_crontab(app.config.settings.es_reindex_cron),
         )
         logger.info(
             f"[books] ES reindex scheduled (cron: '{app.config.settings.es_reindex_cron}')"
@@ -87,7 +87,7 @@ async def start_server() -> None:
     if app.config.settings.category_cache_refresh_enabled:
         await scheduler.add_schedule(
             app.jobs.category_cache_refresh_job,
-            CronTrigger.from_crontab(app.config.settings.category_cache_refresh_cron),
+            apscheduler.triggers.cron.CronTrigger.from_crontab(app.config.settings.category_cache_refresh_cron),
         )
         logger.info(
             f"[books] Category cache refresh scheduled (cron: '{app.config.settings.category_cache_refresh_cron}')"

@@ -7,16 +7,18 @@ from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
 DESCRIPTOR: _descriptor.FileDescriptor
 
 class GetRecommendationListRequest(_message.Message):
-    __slots__ = ("category", "limit", "offset", "language")
+    __slots__ = ("category", "limit", "offset", "language", "user_id")
     CATEGORY_FIELD_NUMBER: _ClassVar[int]
     LIMIT_FIELD_NUMBER: _ClassVar[int]
     OFFSET_FIELD_NUMBER: _ClassVar[int]
     LANGUAGE_FIELD_NUMBER: _ClassVar[int]
+    USER_ID_FIELD_NUMBER: _ClassVar[int]
     category: str
     limit: int
     offset: int
     language: str
-    def __init__(self, category: _Optional[str] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., language: _Optional[str] = ...) -> None: ...
+    user_id: int
+    def __init__(self, category: _Optional[str] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., language: _Optional[str] = ..., user_id: _Optional[int] = ...) -> None: ...
 
 class RecommendationListResponse(_message.Message):
     __slots__ = ("category", "display_name", "item_type", "book_items", "author_items", "total")

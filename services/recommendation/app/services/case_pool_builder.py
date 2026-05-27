@@ -6,7 +6,6 @@ import app.config
 import sqlalchemy
 import sqlalchemy.ext.asyncio
 import sqlalchemy.orm
-from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
@@ -39,7 +38,7 @@ POOL_SIZES: typing.Dict[str, int] = {
 
 CACHE_KEY_PREFIX = "case:pool"
 
-_POOL_QUERY = text(
+_POOL_QUERY = sqlalchemy.text(
     """
     WITH book_stats AS (
         SELECT

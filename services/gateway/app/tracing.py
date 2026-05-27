@@ -2,10 +2,10 @@ import typing
 
 import app.config
 import grpc
-from ledger import LedgerClient
-from ledger.tracing import get_tracer, propagation
+import ledger
+import ledger.tracing
 
-_ledger: typing.Optional[LedgerClient] = None
+_ledger: typing.Optional[ledger.LedgerClient] = None
 _client_interceptor: typing.Optional["TracingClientInterceptor"] = None
 
 
@@ -25,7 +25,7 @@ class TracingClientInterceptor(grpc.aio.UnaryUnaryClientInterceptor):
         client_call_details: grpc.aio.ClientCallDetails,
         request: typing.Any,
     ) -> typing.Any:
-        tracer = get_tracer()
+        tracer = ledger.tracing.get_tracer()
         if tracer is None:
             return await continuation(client_call_details, request)
 
@@ -35,7 +35,7 @@ class TracingClientInterceptor(grpc.aio.UnaryUnaryClientInterceptor):
 
         with tracer.start_as_current_span(f"grpc.client{method}") as span:
             carrier: dict[str, str] = {}
-            propagation.inject(carrier, span)
+            ledger.tracing.propagation.inject(carrier, span)
 
             metadata = list(client_call_details.metadata or [])
             for k, v in carrier.items():
@@ -45,10 +45,10 @@ class TracingClientInterceptor(grpc.aio.UnaryUnaryClientInterceptor):
             return await continuation(new_details, request)
 
 
-def init_ledger() -> typing.Optional[LedgerClient]:
+def init_ledger() -> typing.Optional[ledger.LedgerClient]:
     global _ledger, _client_interceptor
     if app.config.settings.env == "production" and app.config.settings.ledger_api_key:
-        _ledger = LedgerClient(
+        _ledger = ledger.LedgerClient(
             api_key=app.config.settings.ledger_api_key,
             base_url="https://ledger-server.jtuta.cloud",
             service_name="gateway",

@@ -7,8 +7,8 @@ import app.models
 import app.utils
 import redis
 import sqlalchemy
+import sqlalchemy.engine
 import sqlalchemy.ext.asyncio
-from sqlalchemy.engine import CursorResult
 
 logger = logging.getLogger(__name__)
 
@@ -188,7 +188,7 @@ async def cleanup_low_quality_books(
                     sqlalchemy.text("DELETE FROM books.books WHERE book_id = ANY(:book_ids)"),
                     {"book_ids": book_ids},
                 )
-                deleted = typing.cast(CursorResult, result).rowcount
+                deleted = typing.cast(sqlalchemy.engine.CursorResult, result).rowcount
                 await _recompute_user_stats(session, affected_user_ids)
                 await session.commit()
         except Exception as e:
@@ -262,7 +262,7 @@ async def cleanup_duplicate_books(
                     sqlalchemy.text("DELETE FROM books.books WHERE book_id = ANY(:book_ids)"),
                     {"book_ids": book_ids},
                 )
-                deleted = typing.cast(CursorResult, result).rowcount
+                deleted = typing.cast(sqlalchemy.engine.CursorResult, result).rowcount
                 await _recompute_user_stats(session, affected_user_ids)
                 await session.commit()
         except Exception as e:
@@ -354,7 +354,7 @@ async def cleanup_orphan_authors(
                     ),
                     {"author_ids": author_ids},
                 )
-                deleted = typing.cast(CursorResult, result).rowcount
+                deleted = typing.cast(sqlalchemy.engine.CursorResult, result).rowcount
                 await session.commit()
         except Exception as e:
             logger.error(f"[cleanup] Author cleanup batch failed: {e}")
@@ -431,7 +431,7 @@ async def cleanup_underrepresented_series(
                     ),
                     {"series_ids": series_ids},
                 )
-                deleted = typing.cast(CursorResult, result).rowcount
+                deleted = typing.cast(sqlalchemy.engine.CursorResult, result).rowcount
                 await session.commit()
         except Exception as e:
             logger.error(f"[cleanup] Series cleanup batch failed: {e}")
@@ -582,7 +582,7 @@ async def cleanup_orphan_genres(
                     ),
                     {"batch_size": batch_size},
                 )
-                deleted = typing.cast(CursorResult, result).rowcount
+                deleted = typing.cast(sqlalchemy.engine.CursorResult, result).rowcount
                 await session.commit()
         except Exception as e:
             logger.error(f"[cleanup] Orphan genre cleanup batch failed: {e}")
@@ -637,7 +637,7 @@ async def cleanup_underrepresented_genres(
                     ),
                     {"min_book_count": min_book_count, "batch_size": batch_size},
                 )
-                deleted = typing.cast(CursorResult, result).rowcount
+                deleted = typing.cast(sqlalchemy.engine.CursorResult, result).rowcount
                 await session.commit()
         except Exception as e:
             logger.error(f"[cleanup] Underrepresented genre cleanup batch failed: {e}")
@@ -688,7 +688,7 @@ async def cleanup_invalid_genre_names(
                     ),
                     {"batch_size": batch_size},
                 )
-                deleted = typing.cast(CursorResult, result).rowcount
+                deleted = typing.cast(sqlalchemy.engine.CursorResult, result).rowcount
                 await session.commit()
         except Exception as e:
             logger.error(f"[cleanup] Invalid genre name cleanup batch failed: {e}")

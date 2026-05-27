@@ -1,43 +1,30 @@
-from datetime import datetime
-
-from app.models.base import Base
-from sqlalchemy import (
-    DECIMAL,
-    TIMESTAMP,
-    BigInteger,
-    Column,
-    ForeignKey,
-    Index,
-    Integer,
-    String,
-    Text,
-    text,
-)
-from sqlalchemy.dialects.postgresql import JSONB
-from sqlalchemy.orm import relationship
+import sqlalchemy
+import sqlalchemy.dialects.postgresql
+import sqlalchemy.orm
+import app.models.base
 
 
-class Book(Base):
+class Book(app.models.base.Base):
     __tablename__ = "books"
     __table_args__ = (
-        Index("idx_books_language", "language"),
-        Index("idx_books_language_slug", "language", "slug", unique=True),
-        Index(
+        sqlalchemy.Index("idx_books_language", "language"),
+        sqlalchemy.Index("idx_books_language_slug", "language", "slug", unique=True),
+        sqlalchemy.Index(
             "idx_books_rating_count",
             "rating_count",
             postgresql_ops={"rating_count": "DESC"},
         ),
-        Index(
+        sqlalchemy.Index(
             "idx_books_view_count", "view_count", postgresql_ops={"view_count": "DESC"}
         ),
-        Index("idx_books_open_library_id", "open_library_id"),
-        Index("idx_books_isbn", "isbn", postgresql_using="gin"),
-        Index(
+        sqlalchemy.Index("idx_books_open_library_id", "open_library_id"),
+        sqlalchemy.Index("idx_books_isbn", "isbn", postgresql_using="gin"),
+        sqlalchemy.Index(
             "idx_books_ol_rating_count",
             "ol_rating_count",
             postgresql_ops={"ol_rating_count": "DESC"},
         ),
-        Index(
+        sqlalchemy.Index(
             "idx_books_ol_already_read_count",
             "ol_already_read_count",
             postgresql_ops={"ol_already_read_count": "DESC"},
@@ -45,50 +32,50 @@ class Book(Base):
         {"schema": "books"},
     )
 
-    book_id = Column(BigInteger, primary_key=True, autoincrement=True)
-    title = Column(String(500), nullable=False)
-    language = Column(String(10), nullable=False)
-    slug = Column(String(600), nullable=False)
-    description = Column(Text)
-    first_sentence = Column(Text)
-    original_publication_year = Column(Integer)
+    book_id = sqlalchemy.Column(sqlalchemy.BigInteger, primary_key=True, autoincrement=True)
+    title = sqlalchemy.Column(sqlalchemy.String(500), nullable=False)
+    language = sqlalchemy.Column(sqlalchemy.String(10), nullable=False)
+    slug = sqlalchemy.Column(sqlalchemy.String(600), nullable=False)
+    description = sqlalchemy.Column(sqlalchemy.Text)
+    first_sentence = sqlalchemy.Column(sqlalchemy.Text)
+    original_publication_year = sqlalchemy.Column(sqlalchemy.Integer)
 
-    formats = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
-    primary_cover_url = Column(String(1000))
+    formats = sqlalchemy.Column(sqlalchemy.dialects.postgresql.JSONB, nullable=False, server_default=sqlalchemy.text("'[]'::jsonb"))
+    primary_cover_url = sqlalchemy.Column(sqlalchemy.String(1000))
 
-    isbn = Column(JSONB, nullable=False, server_default=text("'[]'::jsonb"))
-    publisher = Column(String(500))
-    number_of_pages = Column(Integer)
-    external_ids = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    isbn = sqlalchemy.Column(sqlalchemy.dialects.postgresql.JSONB, nullable=False, server_default=sqlalchemy.text("'[]'::jsonb"))
+    publisher = sqlalchemy.Column(sqlalchemy.String(500))
+    number_of_pages = sqlalchemy.Column(sqlalchemy.Integer)
+    external_ids = sqlalchemy.Column(sqlalchemy.dialects.postgresql.JSONB, nullable=False, server_default=sqlalchemy.text("'{}'::jsonb"))
 
-    rating_count = Column(Integer, nullable=False, server_default=text("0"))
-    avg_rating = Column(DECIMAL(3, 2))
-    sub_rating_stats = Column(JSONB, nullable=False, server_default=text("'{}'::jsonb"))
+    rating_count = sqlalchemy.Column(sqlalchemy.Integer, nullable=False, server_default=sqlalchemy.text("0"))
+    avg_rating = sqlalchemy.Column(sqlalchemy.DECIMAL(3, 2))
+    sub_rating_stats = sqlalchemy.Column(sqlalchemy.dialects.postgresql.JSONB, nullable=False, server_default=sqlalchemy.text("'{}'::jsonb"))
 
-    ol_rating_count = Column(Integer, nullable=False, server_default=text("0"))
-    ol_avg_rating = Column(DECIMAL(3, 2))
-    ol_want_to_read_count = Column(Integer, nullable=False, server_default=text("0"))
-    ol_currently_reading_count = Column(
-        Integer, nullable=False, server_default=text("0")
+    ol_rating_count = sqlalchemy.Column(sqlalchemy.Integer, nullable=False, server_default=sqlalchemy.text("0"))
+    ol_avg_rating = sqlalchemy.Column(sqlalchemy.DECIMAL(3, 2))
+    ol_want_to_read_count = sqlalchemy.Column(sqlalchemy.Integer, nullable=False, server_default=sqlalchemy.text("0"))
+    ol_currently_reading_count = sqlalchemy.Column(
+        sqlalchemy.Integer, nullable=False, server_default=sqlalchemy.text("0")
     )
-    ol_already_read_count = Column(Integer, nullable=False, server_default=text("0"))
+    ol_already_read_count = sqlalchemy.Column(sqlalchemy.Integer, nullable=False, server_default=sqlalchemy.text("0"))
 
-    view_count = Column(Integer, nullable=False, server_default=text("0"))
-    last_viewed_at = Column(TIMESTAMP)
+    view_count = sqlalchemy.Column(sqlalchemy.Integer, nullable=False, server_default=sqlalchemy.text("0"))
+    last_viewed_at = sqlalchemy.Column(sqlalchemy.TIMESTAMP)
 
-    created_at = Column(TIMESTAMP, nullable=False, server_default=text("NOW()"))
-    updated_at = Column(TIMESTAMP, nullable=False, server_default=text("NOW()"))
+    created_at = sqlalchemy.Column(sqlalchemy.TIMESTAMP, nullable=False, server_default=sqlalchemy.text("NOW()"))
+    updated_at = sqlalchemy.Column(sqlalchemy.TIMESTAMP, nullable=False, server_default=sqlalchemy.text("NOW()"))
 
-    open_library_id = Column(String(100))
-    google_books_id = Column(String(100))
+    open_library_id = sqlalchemy.Column(sqlalchemy.String(100))
+    google_books_id = sqlalchemy.Column(sqlalchemy.String(100))
 
-    series_id = Column(BigInteger, ForeignKey("books.series.series_id"))
-    series_position = Column(DECIMAL(5, 2))
+    series_id = sqlalchemy.Column(sqlalchemy.BigInteger, sqlalchemy.ForeignKey("books.series.series_id"))
+    series_position = sqlalchemy.Column(sqlalchemy.DECIMAL(5, 2))
 
-    authors = relationship(
+    authors = sqlalchemy.orm.relationship(
         "Author", secondary="books.book_authors", back_populates="books"
     )
-    genres = relationship(
+    genres = sqlalchemy.orm.relationship(
         "Genre", secondary="books.book_genres", back_populates="books"
     )
-    series = relationship("Series", back_populates="books")
+    series = sqlalchemy.orm.relationship("Series", back_populates="books")

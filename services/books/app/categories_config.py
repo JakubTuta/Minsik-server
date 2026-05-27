@@ -1,13 +1,13 @@
-from typing import List
+import typing
 
-from pydantic import BaseModel
+import pydantic
 
 
-class CategoryConfig(BaseModel):
+class CategoryConfig(pydantic.BaseModel):
     slug: str
     name: str
-    keywords: List[str]
-    exact_slugs: List[str] = []
+    keywords: typing.List[str]
+    exact_slugs: typing.List[str] = []
 
 
 CATEGORIES = {

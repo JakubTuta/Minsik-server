@@ -1,9 +1,12 @@
 import asyncio
+import datetime
+import json
 import logging
 import typing
 
 import app.cache
 import app.db
+import app.main
 import app.proto.books_pb2
 import app.proto.books_pb2_grpc
 import app.services.author_service
@@ -16,8 +19,8 @@ import app.services.search_service
 import app.services.series_service
 import app.services.es_sync_service
 import app.services.slots_service
+import app.services.category_service
 import grpc
-from app.services.category_service import category_service
 
 logger = logging.getLogger(__name__)
 
@@ -448,8 +451,6 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
         request: app.proto.books_pb2.UpdateBookRequest,
         context: grpc.aio.ServicerContext,
     ) -> app.proto.books_pb2.BookDetailResponse:
-        import json
-
         try:
             async with app.db.async_session_maker() as session:
                 updates: typing.Dict[str, typing.Any] = {}
@@ -604,9 +605,6 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
         request: app.proto.books_pb2.UpdateAuthorRequest,
         context: grpc.aio.ServicerContext,
     ) -> app.proto.books_pb2.AuthorDetailResponse:
-        import datetime
-        import json
-
         try:
             async with app.db.async_session_maker() as session:
                 updates: typing.Dict[str, typing.Any] = {}
@@ -958,7 +956,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
         context: grpc.aio.ServicerContext,
     ) -> app.proto.books_pb2.ListCategoriesResponse:
         try:
-            categories = category_service.get_categories()
+            categories = app.services.category_service.category_service.get_categories()
 
             category_protos = [
                 app.proto.books_pb2.Category(slug=cat["slug"], name=cat["name"])
@@ -978,7 +976,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
         context: grpc.aio.ServicerContext,
     ) -> app.proto.books_pb2.CategoryResponse:
         try:
-            cat = category_service.get_category(request.category_slug)
+            cat = app.services.category_service.category_service.get_category(request.category_slug)
         except Exception as e:
             logger.error(f"Error in GetCategory: {str(e)}")
             await context.abort(
@@ -1003,7 +1001,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
         context: grpc.aio.ServicerContext,
     ) -> app.proto.books_pb2.BooksListResponse:
         try:
-            books, total = await category_service.get_category_books(
+            books, total = await app.services.category_service.category_service.get_category_books(
                 category_slug=request.category_slug,
                 limit=request.limit or 20,
                 offset=request.offset or 0,
@@ -1029,7 +1027,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
     ) -> app.proto.books_pb2.PopularCategoriesResponse:
         try:
             limit = request.limit if request.limit > 0 else 12
-            categories = await category_service.get_popular_categories(limit=limit)
+            categories = await app.services.category_service.category_service.get_popular_categories(limit=limit)
             response = app.proto.books_pb2.PopularCategoriesResponse()
             for cat in categories:
                 response.categories.append(
@@ -1087,7 +1085,6 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
             return app.proto.books_pb2.GetGenreBubbleResponse()
 
     async def ReindexAll(self, request, context):
-        import app.main
         try:
             flag = await app.cache.redis_client.get("es_reindex_running")
             if flag:

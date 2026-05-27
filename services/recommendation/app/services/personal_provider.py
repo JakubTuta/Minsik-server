@@ -3,6 +3,7 @@ import typing
 
 import app.cache
 import app.config
+import app.db
 import app.services.personal_builder
 import app.services.taste_profile
 
@@ -15,8 +16,6 @@ async def get_personal_home_sections(
     cache_only: bool = False,
     force_refresh: bool = False,
 ) -> typing.Optional[typing.List[typing.Dict[str, typing.Any]]]:
-    import app.db
-
     cache_key = f"rec:personal:{user_id}"
     if not force_refresh:
         cached = await app.cache.get_cached(cache_key)
@@ -54,8 +53,6 @@ async def get_personal_book_sections(
     book_id: int,
     limit_per_section: int,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
-    import app.db
-
     cache_key = f"rec:personal:book:{user_id}:{book_id}"
     cached = await app.cache.get_cached(cache_key)
     if cached is not None:
@@ -81,8 +78,6 @@ async def get_personal_author_sections(
     author_id: int,
     limit_per_section: int,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
-    import app.db
-
     cache_key = f"rec:personal:author:{user_id}:{author_id}"
     cached = await app.cache.get_cached(cache_key)
     if cached is not None:

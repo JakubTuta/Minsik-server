@@ -2,8 +2,8 @@ import json
 import logging
 import typing
 
+import sqlalchemy
 import sqlalchemy.ext.asyncio
-from sqlalchemy import text
 import app.services._language_boost
 
 logger = logging.getLogger(__name__)
@@ -263,7 +263,7 @@ async def _count_matching_books(
         inner_query += " HAVING " + " AND ".join(having_clauses)
 
     count_query = f"SELECT COUNT(*) FROM ({inner_query}) AS filtered"
-    result = await session.execute(text(count_query), params)
+    result = await session.execute(sqlalchemy.text(count_query), params)
     return result.scalar() or 0
 
 
@@ -271,7 +271,7 @@ async def _fetch_book_summary_by_id(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     book_id: int,
 ) -> typing.Optional[typing.Dict[str, typing.Any]]:
-    result = await session.execute(text(_BOOK_SUMMARY_SELECT), {"book_id": book_id})
+    result = await session.execute(sqlalchemy.text(_BOOK_SUMMARY_SELECT), {"book_id": book_id})
     row = result.first()
     if row is None:
         return None
@@ -324,6 +324,6 @@ async def _fetch_random_matching_book(
     boost = app.services._language_boost.lang_boost_sql()
     query += f" ORDER BY RANDOM() * {boost} DESC LIMIT 1"
 
-    result = await session.execute(text(query), params)
+    result = await session.execute(sqlalchemy.text(query), params)
     row = result.first()
     return row.book_id if row is not None else None

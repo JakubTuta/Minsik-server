@@ -2,8 +2,8 @@ import grpc
 import logging
 import typing
 import app.config
-import app.proto.auth_pb2 as auth_pb2
-import app.proto.auth_pb2_grpc as auth_pb2_grpc
+import app.proto.auth_pb2
+import app.proto.auth_pb2_grpc
 import app.tracing
 
 logger = logging.getLogger(__name__)
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class AuthClient:
     def __init__(self):
         self.channel: typing.Optional[grpc.aio.Channel] = None
-        self.stub: typing.Optional[auth_pb2_grpc.AuthServiceStub] = None
+        self.stub: typing.Optional[app.proto.auth_pb2_grpc.AuthServiceStub] = None
 
     async def __aenter__(self):
         await self.connect()
@@ -32,7 +32,7 @@ class AuthClient:
             ],
             interceptors=app.tracing.get_client_interceptors(),
         )
-        self.stub = auth_pb2_grpc.AuthServiceStub(self.channel)
+        self.stub = app.proto.auth_pb2_grpc.AuthServiceStub(self.channel)
         logger.info(f"Connected to auth service at {app.config.settings.auth_service_url}")
 
     async def close(self):
@@ -45,8 +45,8 @@ class AuthClient:
         email: str,
         username: str,
         password: str
-    ) -> auth_pb2.AuthResponse:
-        request = auth_pb2.RegisterRequest(
+    ) -> app.proto.auth_pb2.AuthResponse:
+        request = app.proto.auth_pb2.RegisterRequest(
             email=email,
             username=username,
             password=password
@@ -66,8 +66,8 @@ class AuthClient:
         self,
         email: str,
         password: str
-    ) -> auth_pb2.AuthResponse:
-        request = auth_pb2.LoginRequest(
+    ) -> app.proto.auth_pb2.AuthResponse:
+        request = app.proto.auth_pb2.LoginRequest(
             email=email,
             password=password
         )
@@ -82,8 +82,8 @@ class AuthClient:
             logger.error(f"gRPC error logging in: {e.code()} - {e.details()}")
             raise
 
-    async def logout(self, refresh_token: str) -> auth_pb2.EmptyResponse:
-        request = auth_pb2.LogoutRequest(refresh_token=refresh_token)
+    async def logout(self, refresh_token: str) -> app.proto.auth_pb2.EmptyResponse:
+        request = app.proto.auth_pb2.LogoutRequest(refresh_token=refresh_token)
 
         try:
             response = await self.stub.Logout(
@@ -95,8 +95,8 @@ class AuthClient:
             logger.error(f"gRPC error logging out: {e.code()} - {e.details()}")
             raise
 
-    async def refresh_token(self, refresh_token: str) -> auth_pb2.AuthResponse:
-        request = auth_pb2.RefreshTokenRequest(refresh_token=refresh_token)
+    async def refresh_token(self, refresh_token: str) -> app.proto.auth_pb2.AuthResponse:
+        request = app.proto.auth_pb2.RefreshTokenRequest(refresh_token=refresh_token)
 
         try:
             response = await self.stub.RefreshToken(
@@ -108,8 +108,8 @@ class AuthClient:
             logger.error(f"gRPC error refreshing token: {e.code()} - {e.details()}")
             raise
 
-    async def get_current_user(self, user_id: int) -> auth_pb2.UserResponse:
-        request = auth_pb2.GetCurrentUserRequest(user_id=user_id)
+    async def get_current_user(self, user_id: int) -> app.proto.auth_pb2.UserResponse:
+        request = app.proto.auth_pb2.GetCurrentUserRequest(user_id=user_id)
 
         try:
             response = await self.stub.GetCurrentUser(
@@ -128,8 +128,8 @@ class AuthClient:
         bio: str = "",
         avatar_url: str = "",
         preferred_language: str = "",
-    ) -> auth_pb2.UserResponse:
-        request = auth_pb2.UpdateProfileRequest(
+    ) -> app.proto.auth_pb2.UserResponse:
+        request = app.proto.auth_pb2.UpdateProfileRequest(
             user_id=user_id,
             display_name=display_name,
             bio=bio,
@@ -147,8 +147,8 @@ class AuthClient:
             logger.error(f"gRPC error updating profile: {e.code()} - {e.details()}")
             raise
 
-    async def delete_account(self, user_id: int) -> auth_pb2.EmptyResponse:
-        request = auth_pb2.DeleteAccountRequest(user_id=user_id)
+    async def delete_account(self, user_id: int) -> app.proto.auth_pb2.EmptyResponse:
+        request = app.proto.auth_pb2.DeleteAccountRequest(user_id=user_id)
 
         try:
             return await self.stub.DeleteAccount(
@@ -159,8 +159,8 @@ class AuthClient:
             logger.error(f"gRPC error deleting account: {e.code()} - {e.details()}")
             raise
 
-    async def google_auth(self, code: str, redirect_uri: str) -> auth_pb2.AuthResponse:
-        request = auth_pb2.GoogleAuthRequest(code=code, redirect_uri=redirect_uri)
+    async def google_auth(self, code: str, redirect_uri: str) -> app.proto.auth_pb2.AuthResponse:
+        request = app.proto.auth_pb2.GoogleAuthRequest(code=code, redirect_uri=redirect_uri)
 
         try:
             return await self.stub.GoogleAuth(

@@ -1,21 +1,20 @@
 import datetime
-import html as html_module
+import html
 import re
 import typing
 import unicodedata
 import uuid
 
-from dateutil import parser as date_parser
-from text_unidecode import unidecode
-
-import app.data.genre_synonyms as genre_synonyms
+import app.data.genre_synonyms
+import dateutil.parser
+import text_unidecode
 
 
 def slugify(text: str, max_length: int = 200) -> str:
     if not text:
         return ""
 
-    text = unidecode(text)
+    text = text_unidecode.unidecode(text)
 
     text = unicodedata.normalize("NFKD", text)
     text = text.encode("ascii", "ignore").decode("ascii")
@@ -47,10 +46,10 @@ def parse_date(date_string: typing.Optional[str]) -> typing.Optional[datetime.da
         if re.match(r"^\d{4}$", date_string):
             return datetime.date(int(date_string), 1, 1)
 
-        parsed = date_parser.parse(date_string, fuzzy=True)
+        parsed = dateutil.parser.parse(date_string, fuzzy=True)
         return parsed.date()
 
-    except (ValueError, TypeError, date_parser.ParserError):
+    except (ValueError, TypeError, dateutil.parser.ParserError):
         return None
 
 
@@ -63,7 +62,7 @@ def clean_description(description: typing.Optional[str]) -> typing.Optional[str]
     if not description:
         return None
 
-    description = html_module.unescape(description)
+    description = html.unescape(description)
 
     description = re.sub(r"<[^>]+>", "", description)
 
@@ -129,9 +128,9 @@ def clean_description(description: typing.Optional[str]) -> typing.Optional[str]
 
 
 def canonicalize_genre_name(name: str) -> tuple[str, str]:
-    cleaned = genre_synonyms.strip_genre_noise(name)
+    cleaned = app.data.genre_synonyms.strip_genre_noise(name)
     base_slug = slugify(cleaned, max_length=150)
-    canonical_slug = genre_synonyms.GENRE_SYNONYMS.get(base_slug, base_slug)
+    canonical_slug = app.data.genre_synonyms.GENRE_SYNONYMS.get(base_slug, base_slug)
     if canonical_slug != base_slug:
         canonical_name = canonical_slug.replace("-", " ")
     else:

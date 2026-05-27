@@ -2,6 +2,7 @@ import asyncio
 import logging
 import typing
 
+import app.services._book_filter
 import app.services.list_builder
 import sqlalchemy
 import sqlalchemy.ext.asyncio
@@ -50,7 +51,7 @@ async def _build_for_you(
 
     genre_slugs = list(genre_scores.keys())
     genre_weights = [genre_scores[slug] for slug in genre_slugs]
-    exclude_ids = profile.get("read_book_ids", []) or [-1]
+    exclude_ids = profile.get("excluded_book_ids", []) or [-1]
     read_book_ids = profile.get("read_book_ids", []) or [-1]
     user_id = profile["user_id"]
 
@@ -141,7 +142,7 @@ async def _build_because_you_liked(
 
     anchor_book_id = anchor_book["book_id"]
     anchor_title = anchor_book["title"]
-    exclude_ids = profile.get("read_book_ids", []) or [-1]
+    exclude_ids = profile.get("excluded_book_ids", []) or [-1]
 
     result = await session.execute(
         sqlalchemy.text(
@@ -229,7 +230,7 @@ async def _build_continue_series(
         return []
 
     series_ids = [s["series_id"] for s in series_in_progress]
-    exclude_ids = profile.get("read_book_ids", []) or [-1]
+    exclude_ids = profile.get("excluded_book_ids", []) or [-1]
 
     result = await session.execute(
         sqlalchemy.text(
@@ -261,7 +262,7 @@ async def _build_from_favorite_authors(
     if not author_ids:
         return []
 
-    exclude_ids = profile.get("read_book_ids", []) or [-1]
+    exclude_ids = profile.get("excluded_book_ids", []) or [-1]
 
     result = await session.execute(
         sqlalchemy.text(
@@ -298,7 +299,7 @@ async def _build_top_in_genre(
         return [], ""
 
     genre_slug = top_genre_slugs[0]
-    exclude_ids = profile.get("read_book_ids", []) or [-1]
+    exclude_ids = profile.get("excluded_book_ids", []) or [-1]
 
     result = await session.execute(
         sqlalchemy.text(
@@ -365,7 +366,7 @@ async def _build_readers_like_you(
     if not read_book_ids:
         return []
 
-    exclude_ids = read_book_ids or [-1]
+    exclude_ids = profile.get("excluded_book_ids", []) or [-1]
     user_id = profile["user_id"]
 
     result = await session.execute(
@@ -423,7 +424,7 @@ async def _build_hidden_gems(
     if not top_genre_slugs:
         return []
 
-    exclude_ids = profile.get("read_book_ids", []) or [-1]
+    exclude_ids = profile.get("excluded_book_ids", []) or [-1]
 
     result = await session.execute(
         sqlalchemy.text(
@@ -463,7 +464,7 @@ async def _build_you_might_like(
     if not genre_scores:
         return []
 
-    exclude_ids = list({*profile.get("read_book_ids", []), book_id}) or [-1]
+    exclude_ids = list({*profile.get("excluded_book_ids", []), book_id}) or [-1]
     genre_slugs = list(genre_scores.keys())
     genre_weights = [genre_scores[slug] for slug in genre_slugs]
 
@@ -527,7 +528,7 @@ async def _build_unread_by_author(
     profile: typing.Dict[str, typing.Any],
     limit: int,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
-    exclude_ids = profile.get("read_book_ids", [])
+    exclude_ids = profile.get("excluded_book_ids", [])
     shelved_ids = list(
         {
             *exclude_ids,
@@ -569,7 +570,7 @@ async def _build_explore_adjacent_genres(
         return [], ""
 
     top_genre_slugs = sorted(genre_scores, key=lambda s: genre_scores[s], reverse=True)[:3]
-    exclude_ids = profile.get("read_book_ids", []) or [-1]
+    exclude_ids = profile.get("excluded_book_ids", []) or [-1]
 
     result = await session.execute(
         sqlalchemy.text(
@@ -682,11 +683,14 @@ async def build_personal_home_sections(
     adjacent_result = safe(results[8])
     adjacent_items, adjacent_genre = adjacent_result if adjacent_result else ([], "")
 
+    def _deduped(items: typing.List[typing.Dict[str, typing.Any]]) -> typing.List[typing.Dict[str, typing.Any]]:
+        return app.services._book_filter.dedupe_books_by_slug(items)
+
     sections: typing.List[typing.Dict[str, typing.Any]] = []
 
     if for_you_items:
         sections.append(
-            _make_home_section("for_you", "Recommended For You", "book", for_you_items)
+            _make_home_section("for_you", "Recommended For You", "book", _deduped(for_you_items))
         )
     if because_items and anchor_title:
         sections.append(
@@ -694,13 +698,13 @@ async def build_personal_home_sections(
                 "because_you_liked",
                 f"Because You Liked {anchor_title}",
                 "book",
-                because_items,
+                _deduped(because_items),
             )
         )
     if continue_items:
         sections.append(
             _make_home_section(
-                "continue_series", "Continue Your Series", "book", continue_items
+                "continue_series", "Continue Your Series", "book", _deduped(continue_items)
             )
         )
     if fav_author_items:
@@ -709,14 +713,14 @@ async def build_personal_home_sections(
                 "from_favorite_authors",
                 "From Authors You Love",
                 "book",
-                fav_author_items,
+                _deduped(fav_author_items),
             )
         )
     if top_genre_items and genre_slug:
         display_genre = genre_slug.replace("-", " ").title()
         sections.append(
             _make_home_section(
-                "top_in_your_genres", f"Top in {display_genre}", "book", top_genre_items
+                "top_in_your_genres", f"Top in {display_genre}", "book", _deduped(top_genre_items)
             )
         )
     if want_to_read_items:
@@ -725,7 +729,7 @@ async def build_personal_home_sections(
                 "want_to_read_picks",
                 "From Your Want-to-Read",
                 "book",
-                want_to_read_items,
+                _deduped(want_to_read_items),
             )
         )
     if readers_like_items:
@@ -734,13 +738,13 @@ async def build_personal_home_sections(
                 "readers_like_you",
                 "Readers Like You Enjoyed",
                 "book",
-                readers_like_items,
+                _deduped(readers_like_items),
             )
         )
     if hidden_gems_items:
         sections.append(
             _make_home_section(
-                "hidden_gems", "Hidden Gems For You", "book", hidden_gems_items
+                "hidden_gems", "Hidden Gems For You", "book", _deduped(hidden_gems_items)
             )
         )
     if adjacent_items and adjacent_genre:
@@ -749,7 +753,7 @@ async def build_personal_home_sections(
                 "explore_adjacent_genres",
                 f"Explore {adjacent_genre}",
                 "book",
-                adjacent_items,
+                _deduped(adjacent_items),
             )
         )
 
@@ -763,6 +767,7 @@ async def build_personal_book_sections(
     limit_per_section: int,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     items = await _build_you_might_like(session, book_id, profile, limit_per_section)
+    items = app.services._book_filter.dedupe_books_by_slug(items)
     if not items:
         return []
     return [_make_book_page_section("you_might_like", "You Might Also Like", items)]
@@ -777,6 +782,7 @@ async def build_personal_author_sections(
     items = await _build_unread_by_author(
         session, author_id, profile, limit_per_section
     )
+    items = app.services._book_filter.dedupe_books_by_slug(items)
     if not items:
         return []
     return [

@@ -10,9 +10,11 @@ import app.tracing
 import app.workers.continuous_fetcher
 import app.workers.data_cleaner
 import app.workers.description_enricher
+import app.workers.dump
 import app.workers.genre_bubble_builder
-from apscheduler import AsyncScheduler
-from apscheduler.triggers.cron import CronTrigger
+import apscheduler
+import apscheduler.triggers.cron
+import redis
 
 logging.basicConfig(
     level=getattr(logging, app.config.settings.log_level),
@@ -23,14 +25,11 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 shutdown_event = asyncio.Event()
-scheduler: AsyncScheduler = None
+scheduler: apscheduler.AsyncScheduler = None
 
 
 def _check_stale_import_flag_sync() -> bool:
-    import redis as redis_lib
-    from app.workers import dump
-
-    r = redis_lib.Redis(
+    r = redis.Redis(
         host=app.config.settings.redis_host,
         port=app.config.settings.redis_port,
         db=app.config.settings.redis_db,
@@ -41,7 +40,7 @@ def _check_stale_import_flag_sync() -> bool:
             r.delete("dump_import_running")
             logger.info("Cleared stale dump_import_running flag from previous run")
 
-        state = dump.get_job_state(r)
+        state = app.workers.dump.get_job_state(r)
 
         if state and len(state.get("completed_phases", [])) < 6:
             logger.info(
@@ -89,17 +88,17 @@ async def main():
             asyncio.sleep(0)  # yield to event loop before serve() blocks
         )
 
-        scheduler = AsyncScheduler()
+        scheduler = apscheduler.AsyncScheduler()
         await scheduler.__aenter__()
 
         if app.config.settings.continuous_fetch_enabled:
             await scheduler.add_schedule(
                 app.workers.continuous_fetcher.run_continuous_ol_fetch,
-                CronTrigger.from_crontab(app.config.settings.continuous_ol_cron),
+                apscheduler.triggers.cron.CronTrigger.from_crontab(app.config.settings.continuous_ol_cron),
             )
             await scheduler.add_schedule(
                 app.workers.continuous_fetcher.run_continuous_gb_fetch,
-                CronTrigger.from_crontab(app.config.settings.continuous_gb_cron),
+                apscheduler.triggers.cron.CronTrigger.from_crontab(app.config.settings.continuous_gb_cron),
             )
             logger.info(
                 f"[ingestion] OL fetch scheduled (cron: '{app.config.settings.continuous_ol_cron}')"
@@ -111,7 +110,7 @@ async def main():
         if app.config.settings.description_enrich_enabled:
             await scheduler.add_schedule(
                 app.workers.description_enricher.run_description_enrichment,
-                CronTrigger.from_crontab(app.config.settings.description_enrich_cron),
+                apscheduler.triggers.cron.CronTrigger.from_crontab(app.config.settings.description_enrich_cron),
             )
             logger.info(
                 f"[ingestion] Description enrichment scheduled (cron: '{app.config.settings.description_enrich_cron}')"
@@ -120,7 +119,7 @@ async def main():
         if app.config.settings.cleanup_enabled:
             await scheduler.add_schedule(
                 app.workers.data_cleaner.run_cleanup_job,
-                CronTrigger.from_crontab(app.config.settings.cleanup_cron),
+                apscheduler.triggers.cron.CronTrigger.from_crontab(app.config.settings.cleanup_cron),
             )
             logger.info(
                 f"[ingestion] Cleanup scheduled (cron: '{app.config.settings.cleanup_cron}')"
@@ -129,7 +128,7 @@ async def main():
         if app.config.settings.genre_bubble_enabled:
             await scheduler.add_schedule(
                 app.workers.genre_bubble_builder.run_genre_bubble_job,
-                CronTrigger.from_crontab(app.config.settings.genre_bubble_cron),
+                apscheduler.triggers.cron.CronTrigger.from_crontab(app.config.settings.genre_bubble_cron),
             )
             logger.info(
                 f"[ingestion] Genre bubble builder scheduled (cron: '{app.config.settings.genre_bubble_cron}')"
@@ -138,19 +137,16 @@ async def main():
         await scheduler.start_in_background()
 
         if should_resume:
-            import redis as redis_lib
-            from app.workers import dump
-
-            resume_redis = redis_lib.Redis(
+            resume_redis = redis.Redis(
                 host=app.config.settings.redis_host,
                 port=app.config.settings.redis_port,
                 db=app.config.settings.redis_db,
                 password=app.config.settings.redis_password or None,
                 decode_responses=True,
             )
-            state = dump.get_job_state(resume_redis)
+            state = app.workers.dump.get_job_state(resume_redis)
             if state:
-                asyncio.create_task(dump.run_import_dump(state["job_id"], resume_redis))
+                asyncio.create_task(app.workers.dump.run_import_dump(state["job_id"], resume_redis))
 
         app.tracing.init_ledger()
         await app.grpc.serve()

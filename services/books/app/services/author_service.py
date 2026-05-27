@@ -1,3 +1,4 @@
+import json
 import logging
 import typing
 
@@ -10,7 +11,6 @@ import app.models.book_genre
 import app.models.genre
 import sqlalchemy
 import sqlalchemy.ext.asyncio
-from sqlalchemy import func, select
 
 logger = logging.getLogger(__name__)
 
@@ -24,7 +24,7 @@ async def get_author_by_slug(
         await _track_author_view(cached["author_id"])
         return cached
 
-    stmt = select(app.models.author.Author).filter(
+    stmt = sqlalchemy.select(app.models.author.Author).filter(
         app.models.author.Author.slug == slug
     )
 
@@ -66,7 +66,7 @@ async def get_author_books(
     if cached:
         return cached["books"], cached["total"]
 
-    author_stmt = select(app.models.author.Author).filter(
+    author_stmt = sqlalchemy.select(app.models.author.Author).filter(
         app.models.author.Author.slug == author_slug
     )
     author_result = await session.execute(author_stmt)
@@ -192,7 +192,7 @@ async def _get_author_book_categories(
     session: sqlalchemy.ext.asyncio.AsyncSession, author_id: int, language: str
 ) -> typing.List[str]:
     stmt = (
-        select(app.models.genre.Genre.name)
+        sqlalchemy.select(app.models.genre.Genre.name)
         .select_from(app.models.book_genre.BookGenre)
         .join(
             app.models.book_author.BookAuthor,
@@ -212,8 +212,8 @@ async def _get_author_book_categories(
             app.models.book.Book.language == language,
         )
         .group_by(app.models.genre.Genre.name)
-        .having(func.count(func.distinct(app.models.book.Book.book_id)) >= 3)
-        .order_by(func.count(func.distinct(app.models.book.Book.book_id)).desc())
+        .having(sqlalchemy.func.count(sqlalchemy.func.distinct(app.models.book.Book.book_id)) >= 3)
+        .order_by(sqlalchemy.func.count(sqlalchemy.func.distinct(app.models.book.Book.book_id)).desc())
     )
 
     result = await session.execute(stmt)
@@ -342,8 +342,6 @@ def _author_to_dict(
 def _book_row_to_dict(row: typing.Any) -> typing.Dict[str, typing.Any]:
     authors_raw = row.authors
     if isinstance(authors_raw, str):
-        import json
-
         authors_list = json.loads(authors_raw)
     elif authors_raw is None:
         authors_list = []
@@ -376,7 +374,7 @@ async def update_author(
     updates: typing.Dict[str, typing.Any],
     language: str = "en",
 ) -> typing.Optional[typing.Dict[str, typing.Any]]:
-    stmt = select(app.models.author.Author).filter(
+    stmt = sqlalchemy.select(app.models.author.Author).filter(
         app.models.author.Author.author_id == author_id
     )
 
@@ -450,7 +448,7 @@ async def delete_author(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     author_id: int,
 ) -> typing.Dict[str, typing.Any]:
-    stmt = select(app.models.author.Author).filter(
+    stmt = sqlalchemy.select(app.models.author.Author).filter(
         app.models.author.Author.author_id == author_id
     )
     result = await session.execute(stmt)

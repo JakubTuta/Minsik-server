@@ -9,8 +9,7 @@ import app.models.book
 import app.models.genre
 import sqlalchemy
 import sqlalchemy.ext.asyncio
-from sqlalchemy import select
-from sqlalchemy.orm import selectinload
+import sqlalchemy.orm
 
 logger = logging.getLogger(__name__)
 
@@ -25,11 +24,11 @@ async def get_book_by_slug(
         return cached
 
     stmt = (
-        select(app.models.book.Book)
+        sqlalchemy.select(app.models.book.Book)
         .options(
-            selectinload(app.models.book.Book.authors),
-            selectinload(app.models.book.Book.genres),
-            selectinload(app.models.book.Book.series),
+            sqlalchemy.orm.selectinload(app.models.book.Book.authors),
+            sqlalchemy.orm.selectinload(app.models.book.Book.genres),
+            sqlalchemy.orm.selectinload(app.models.book.Book.series),
         )
         .filter(
             app.models.book.Book.slug == slug,
@@ -189,11 +188,11 @@ async def update_book(
     updates: typing.Dict[str, typing.Any],
 ) -> typing.Optional[typing.Dict[str, typing.Any]]:
     stmt = (
-        select(app.models.book.Book)
+        sqlalchemy.select(app.models.book.Book)
         .options(
-            selectinload(app.models.book.Book.authors),
-            selectinload(app.models.book.Book.genres),
-            selectinload(app.models.book.Book.series),
+            sqlalchemy.orm.selectinload(app.models.book.Book.authors),
+            sqlalchemy.orm.selectinload(app.models.book.Book.genres),
+            sqlalchemy.orm.selectinload(app.models.book.Book.series),
         )
         .filter(app.models.book.Book.book_id == book_id)
     )
@@ -212,11 +211,11 @@ async def update_book(
     await session.commit()
 
     fresh_stmt = (
-        select(app.models.book.Book)
+        sqlalchemy.select(app.models.book.Book)
         .options(
-            selectinload(app.models.book.Book.authors),
-            selectinload(app.models.book.Book.genres),
-            selectinload(app.models.book.Book.series),
+            sqlalchemy.orm.selectinload(app.models.book.Book.authors),
+            sqlalchemy.orm.selectinload(app.models.book.Book.genres),
+            sqlalchemy.orm.selectinload(app.models.book.Book.series),
         )
         .filter(app.models.book.Book.book_id == book_id)
     )
@@ -275,11 +274,11 @@ async def remove_book_author(
     author_id: int,
 ) -> typing.Optional[typing.Dict[str, typing.Any]]:
     stmt = (
-        select(app.models.book.Book)
+        sqlalchemy.select(app.models.book.Book)
         .options(
-            selectinload(app.models.book.Book.authors),
-            selectinload(app.models.book.Book.genres),
-            selectinload(app.models.book.Book.series),
+            sqlalchemy.orm.selectinload(app.models.book.Book.authors),
+            sqlalchemy.orm.selectinload(app.models.book.Book.genres),
+            sqlalchemy.orm.selectinload(app.models.book.Book.series),
         )
         .filter(app.models.book.Book.book_id == book_id)
     )
@@ -385,7 +384,7 @@ async def delete_book(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     book_id: int,
 ) -> typing.Dict[str, typing.Any]:
-    stmt = select(app.models.book.Book).filter(app.models.book.Book.book_id == book_id)
+    stmt = sqlalchemy.select(app.models.book.Book).filter(app.models.book.Book.book_id == book_id)
     result = await session.execute(stmt)
     book = result.scalars().first()
 

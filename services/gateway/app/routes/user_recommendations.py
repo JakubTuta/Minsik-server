@@ -9,7 +9,6 @@ import app.models.recommendation_responses
 import app.utils.responses
 import fastapi
 import grpc
-from fastapi import Query
 
 logger = logging.getLogger(__name__)
 
@@ -90,7 +89,7 @@ def _to_section_dict(key: str, item) -> dict:
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
 async def get_personal_home_page(
     request: fastapi.Request,
-    items_per_category: int = Query(
+    items_per_category: int = fastapi.Query(
         20, ge=1, le=100, description="Number of items to return per section"
     ),
     current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
@@ -144,7 +143,7 @@ async def get_personal_home_page(
 async def get_personal_book_recommendations(
     request: fastapi.Request,
     book_id: int = fastapi.Path(..., description="Book ID"),
-    limit_per_section: int = Query(
+    limit_per_section: int = fastapi.Query(
         15, ge=1, le=50, description="Number of items per section"
     ),
     current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
@@ -206,7 +205,7 @@ async def get_personal_book_recommendations(
 async def get_personal_author_recommendations(
     request: fastapi.Request,
     author_id: int = fastapi.Path(..., description="Author ID"),
-    limit_per_section: int = Query(
+    limit_per_section: int = fastapi.Query(
         15, ge=1, le=50, description="Number of items per section"
     ),
     current_user: typing.Dict[str, typing.Any] = fastapi.Depends(

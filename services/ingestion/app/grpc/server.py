@@ -5,8 +5,9 @@ import logging
 
 import app.config
 import app.models
-import app.proto.ingestion_pb2 as ingestion_pb2
-import app.proto.ingestion_pb2_grpc as ingestion_pb2_grpc
+import app.proto.ingestion_pb2
+import app.proto.ingestion_pb2_grpc
+import uuid
 import app.tracing
 import app.workers.data_cleaner
 import app.workers.dump
@@ -34,13 +35,13 @@ _COVERAGE_CACHE_TTL = 3600
 _CLEANUP_RUNNING_KEY = "cleanup_running"
 
 
-class IngestionService(ingestion_pb2_grpc.IngestionServiceServicer):
+class IngestionService(app.proto.ingestion_pb2_grpc.IngestionServiceServicer):
     async def GetDataCoverage(self, request, context):
         try:
             cached = redis_client.get(_COVERAGE_CACHE_KEY)
             if cached:
                 data = json.loads(cached)
-                return ingestion_pb2.GetDataCoverageResponse(
+                return app.proto.ingestion_pb2.GetDataCoverageResponse(
                     db_books_count=data["db_books_count"],
                     db_authors_count=data["db_authors_count"],
                     db_series_count=data["db_series_count"],
@@ -78,7 +79,7 @@ class IngestionService(ingestion_pb2_grpc.IngestionServiceServicer):
                 f"Data coverage: {db_books_count} books, {db_authors_count} authors, {db_series_count} series"
             )
 
-            return ingestion_pb2.GetDataCoverageResponse(
+            return app.proto.ingestion_pb2.GetDataCoverageResponse(
                 db_books_count=db_books_count,
                 db_authors_count=db_authors_count,
                 db_series_count=db_series_count,
@@ -89,13 +90,13 @@ class IngestionService(ingestion_pb2_grpc.IngestionServiceServicer):
             logger.error(f"Error getting data coverage: {str(e)}")
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(str(e))
-            return ingestion_pb2.GetDataCoverageResponse()
+            return app.proto.ingestion_pb2.GetDataCoverageResponse()
 
     async def ImportDump(self, request, context):
         try:
             is_running = redis_client.exists("dump_import_running")
             if is_running:
-                return ingestion_pb2.ImportDumpResponse(
+                return app.proto.ingestion_pb2.ImportDumpResponse(
                     status="already_running",
                     message="Dump import is already in progress",
                 )
@@ -107,7 +108,7 @@ class IngestionService(ingestion_pb2_grpc.IngestionServiceServicer):
                 asyncio.create_task(
                     app.workers.dump.run_import_dump(job_id, redis_client)
                 )
-                return ingestion_pb2.ImportDumpResponse(
+                return app.proto.ingestion_pb2.ImportDumpResponse(
                     status="resuming",
                     message=(
                         f"Resuming dump import (job_id: {job_id}), "
@@ -115,11 +116,10 @@ class IngestionService(ingestion_pb2_grpc.IngestionServiceServicer):
                     ),
                 )
 
-            import uuid
             job_id = str(uuid.uuid4())
             asyncio.create_task(app.workers.dump.run_import_dump(job_id, redis_client))
 
-            return ingestion_pb2.ImportDumpResponse(
+            return app.proto.ingestion_pb2.ImportDumpResponse(
                 status="started",
                 message=f"Dump import started (job_id: {job_id}). Check service logs for progress.",
             )
@@ -128,20 +128,20 @@ class IngestionService(ingestion_pb2_grpc.IngestionServiceServicer):
             logger.error(f"Error starting dump import: {str(e)}")
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(str(e))
-            return ingestion_pb2.ImportDumpResponse()
+            return app.proto.ingestion_pb2.ImportDumpResponse()
 
     async def RunCleanup(self, request, context):
         try:
             is_running = redis_client.get(_CLEANUP_RUNNING_KEY)
             if is_running:
-                return ingestion_pb2.RunCleanupResponse(
+                return app.proto.ingestion_pb2.RunCleanupResponse(
                     status="already_running",
                     message="Cleanup job is already in progress",
                 )
 
             asyncio.create_task(app.workers.data_cleaner.run_cleanup_job(force=True))
 
-            return ingestion_pb2.RunCleanupResponse(
+            return app.proto.ingestion_pb2.RunCleanupResponse(
                 status="started",
                 message="Cleanup job started. Check service logs for progress.",
             )
@@ -150,7 +150,7 @@ class IngestionService(ingestion_pb2_grpc.IngestionServiceServicer):
             logger.error(f"Error triggering cleanup: {str(e)}")
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(str(e))
-            return ingestion_pb2.RunCleanupResponse()
+            return app.proto.ingestion_pb2.RunCleanupResponse()
 
 
 async def serve():
@@ -158,7 +158,7 @@ async def serve():
         concurrent.futures.ThreadPoolExecutor(max_workers=10),
         interceptors=app.tracing.get_server_interceptors(),
     )
-    ingestion_pb2_grpc.add_IngestionServiceServicer_to_server(
+    app.proto.ingestion_pb2_grpc.add_IngestionServiceServicer_to_server(
         IngestionService(), server
     )
 

@@ -6,9 +6,9 @@ import sys
 import app.config
 import app.grpc_clients
 import app.middleware
-import app.middleware.cors as cors_middleware
-import app.middleware.logging as logging_middleware
-import app.middleware.rate_limit as rate_limit_middleware
+import app.middleware.cors
+import app.middleware.logging
+import app.middleware.rate_limit
 import app.tracing
 import app.routes.admin
 import app.routes.auth
@@ -19,10 +19,10 @@ import app.routes.recommendations
 import app.routes.user_data
 import app.routes.user_recommendations
 import fastapi
+import ledger.integrations.fastapi
+import slowapi
+import slowapi.errors
 import uvicorn
-from ledger.integrations.fastapi import LedgerMiddleware
-from slowapi import _rate_limit_exceeded_handler
-from slowapi.errors import RateLimitExceeded
 
 settings = app.config.settings
 health_router = app.routes.health.router
@@ -36,7 +36,7 @@ recommendations_admin_router = app.routes.recommendations.admin_router
 user_recommendations_router = app.routes.user_recommendations.router
 grpc_clients_module = app.grpc_clients
 tracing_module = app.tracing
-limiter = rate_limit_middleware.limiter
+limiter = app.middleware.rate_limit.limiter
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
@@ -117,16 +117,16 @@ app = fastapi.FastAPI(
 ledger = tracing_module.init_ledger()
 
 if ledger:
-    app.add_middleware(LedgerMiddleware, ledger_client=ledger)
+    app.add_middleware(ledger.integrations.fastapi.LedgerMiddleware, ledger_client=ledger)
 
 if settings.env == "development":
-    cors_middleware.setup_cors(app)
+    app.middleware.cors.setup_cors(app)
 
-logging_middleware.setup_logging_middleware(app)
+app.middleware.logging.setup_logging_middleware(app)
 
 if settings.rate_limit_enabled:
     app.state.limiter = limiter
-    app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
+    app.add_exception_handler(slowapi.errors.RateLimitExceeded, slowapi._rate_limit_exceeded_handler)
 
 app.include_router(health_router)
 app.include_router(admin_router)

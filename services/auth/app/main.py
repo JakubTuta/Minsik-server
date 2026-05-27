@@ -3,7 +3,7 @@ import signal
 import logging
 import sys
 import grpc
-from grpc_reflection.v1alpha import reflection
+import grpc_reflection.v1alpha.reflection
 import app.config
 import app.database
 import app.grpc.server
@@ -39,9 +39,9 @@ async def start_server() -> None:
 
     SERVICE_NAMES = (
         app.proto.auth_pb2.DESCRIPTOR.services_by_name['AuthService'].full_name,
-        reflection.SERVICE_NAME,
+        grpc_reflection.v1alpha.reflection.SERVICE_NAME,
     )
-    reflection.enable_server_reflection(SERVICE_NAMES, grpc_server)
+    grpc_reflection.v1alpha.reflection.enable_server_reflection(SERVICE_NAMES, grpc_server)
 
     grpc_server.add_insecure_port(app.config.settings.listen_address)
 

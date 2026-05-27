@@ -1,8 +1,10 @@
 import logging
 import typing
 
+import random
+
 import app.cache
-import app.services.case_service as case_service
+import app.services.case_service
 import sqlalchemy.ext.asyncio
 
 logger = logging.getLogger(__name__)
@@ -40,9 +42,9 @@ async def _try_pack_from_cache(
     length: int,
 ) -> typing.Optional[typing.List[typing.Dict[str, typing.Any]]]:
     tier_pools: typing.Dict[str, typing.List[typing.Dict[str, typing.Any]]] = {}
-    for tier_name, _, _, _ in case_service.RARITY_TIERS:
+    for tier_name, _, _, _ in app.services.case_service.RARITY_TIERS:
         pool = await app.cache.get_cached(
-            f"{case_service.CACHE_POOL_KEY_PREFIX}:{tier_name}:{language}"
+            f"{app.services.case_service.CACHE_POOL_KEY_PREFIX}:{tier_name}:{language}"
         )
         if pool is None:
             return None
@@ -60,13 +62,11 @@ def _pick_from_pools(
     tier_pools: typing.Dict[str, typing.List[typing.Dict[str, typing.Any]]],
     length: int,
 ) -> typing.Optional[typing.List[typing.Dict[str, typing.Any]]]:
-    import random
-
     items: typing.List[typing.Dict[str, typing.Any]] = []
     used_ids: typing.Set[int] = set()
 
     for _ in range(length):
-        tier = case_service._pick_winning_tier()
+        tier = app.services.case_service._pick_winning_tier()
         pool = tier_pools[tier[0]]
         eligible = [b for b in pool if b["book_id"] not in used_ids]
 
@@ -91,7 +91,7 @@ def _find_fallback_from_pools(
     tier_index = next(
         (
             i
-            for i, t in enumerate(case_service.RARITY_TIERS)
+            for i, t in enumerate(app.services.case_service.RARITY_TIERS)
             if t[0] == original_tier_name
         ),
         None,
@@ -99,10 +99,10 @@ def _find_fallback_from_pools(
     if tier_index is None:
         return []
 
-    for i in range(1, len(case_service.RARITY_TIERS)):
+    for i in range(1, len(app.services.case_service.RARITY_TIERS)):
         for idx in [tier_index + i, tier_index - i]:
-            if 0 <= idx < len(case_service.RARITY_TIERS):
-                tier_name = case_service.RARITY_TIERS[idx][0]
+            if 0 <= idx < len(app.services.case_service.RARITY_TIERS):
+                tier_name = app.services.case_service.RARITY_TIERS[idx][0]
                 eligible = [
                     b for b in tier_pools[tier_name] if b["book_id"] not in used_ids
                 ]
@@ -116,8 +116,6 @@ def _ensure_guaranteed_rarity(
     items: typing.List[typing.Dict[str, typing.Any]],
     tier_pools: typing.Dict[str, typing.List[typing.Dict[str, typing.Any]]],
 ) -> typing.List[typing.Dict[str, typing.Any]]:
-    import random
-
     if any(item.get("rarity") in _GUARANTEED_TIERS for item in items):
         return items
 
@@ -147,13 +145,13 @@ async def _build_pack_from_db(
     used_ids: typing.Set[int] = set()
 
     for _ in range(length):
-        tier = case_service._pick_winning_tier()
-        row = await case_service._fetch_random_book_from_tier(
+        tier = app.services.case_service._pick_winning_tier()
+        row = await app.services.case_service._fetch_random_book_from_tier(
             session,
             language,
             tier[1],
             tier[2],
-            case_service.RARITY_MIN_RATINGS[tier[0]],
+            app.services.case_service.RARITY_MIN_RATINGS[tier[0]],
         )
 
         if row is None or row.book_id in used_ids:
@@ -163,7 +161,7 @@ async def _build_pack_from_db(
             raise ValueError(f"No rated books found for language '{language}'")
 
         used_ids.add(row.book_id)
-        items.append(case_service._row_to_case_item(row))
+        items.append(app.services.case_service._row_to_case_item(row))
 
     items = await _ensure_guaranteed_rarity_from_db(session, language, items, used_ids)
     return items
@@ -178,7 +176,7 @@ async def _fetch_unique_fallback(
     tier_index = next(
         (
             i
-            for i, t in enumerate(case_service.RARITY_TIERS)
+            for i, t in enumerate(app.services.case_service.RARITY_TIERS)
             if t[0] == original_tier[0]
         ),
         None,
@@ -186,16 +184,16 @@ async def _fetch_unique_fallback(
     if tier_index is None:
         return None
 
-    for i in range(1, len(case_service.RARITY_TIERS)):
+    for i in range(1, len(app.services.case_service.RARITY_TIERS)):
         for idx in [tier_index + i, tier_index - i]:
-            if 0 <= idx < len(case_service.RARITY_TIERS):
-                fallback_tier = case_service.RARITY_TIERS[idx]
-                row = await case_service._fetch_random_book_from_tier(
+            if 0 <= idx < len(app.services.case_service.RARITY_TIERS):
+                fallback_tier = app.services.case_service.RARITY_TIERS[idx]
+                row = await app.services.case_service._fetch_random_book_from_tier(
                     session,
                     language,
                     fallback_tier[1],
                     fallback_tier[2],
-                    case_service.RARITY_MIN_RATINGS[fallback_tier[0]],
+                    app.services.case_service.RARITY_MIN_RATINGS[fallback_tier[0]],
                 )
                 if row is not None and row.book_id not in used_ids:
                     return row
@@ -220,16 +218,16 @@ async def _ensure_guaranteed_rarity_from_db(
     replacement_ids = used_ids - {items[lowest_idx]["book_id"]}
 
     for tier_name in _UPGRADE_TIER_ORDER:
-        tier = next(t for t in case_service.RARITY_TIERS if t[0] == tier_name)
-        row = await case_service._fetch_random_book_from_tier(
+        tier = next(t for t in app.services.case_service.RARITY_TIERS if t[0] == tier_name)
+        row = await app.services.case_service._fetch_random_book_from_tier(
             session,
             language,
             tier[1],
             tier[2],
-            case_service.RARITY_MIN_RATINGS[tier_name],
+            app.services.case_service.RARITY_MIN_RATINGS[tier_name],
         )
         if row is not None and row.book_id not in replacement_ids:
-            items[lowest_idx] = case_service._row_to_case_item(row)
+            items[lowest_idx] = app.services.case_service._row_to_case_item(row)
             return items
 
     return items

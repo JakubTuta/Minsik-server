@@ -1,7 +1,7 @@
 import json
 import logging
 import re
-from typing import Dict, List, Optional, Set, Tuple
+import typing
 
 import app.cache
 import app.categories_config
@@ -23,7 +23,7 @@ POPULAR_CATEGORIES_CACHE_TTL = 172800
 
 class CategoryService:
     def __init__(self):
-        self._category_genre_ids: Dict[str, Set[int]] = {}
+        self._category_genre_ids: typing.Dict[str, typing.Set[int]] = {}
         self._is_ready = False
 
     async def setup(self):
@@ -58,13 +58,13 @@ class CategoryService:
                 f"CategoryService mappings initialized. Cached {len(self._category_genre_ids)} categories."
             )
 
-    def get_categories(self) -> List[dict]:
+    def get_categories(self) -> typing.List[dict]:
         return [
             {"slug": cat.slug, "name": cat.name}
             for cat in app.categories_config.CATEGORIES.values()
         ]
 
-    def get_category(self, slug: str) -> Optional[dict]:
+    def get_category(self, slug: str) -> typing.Optional[dict]:
         if slug not in app.categories_config.CATEGORIES:
             return None
 
@@ -110,7 +110,7 @@ class CategoryService:
         language: str = "en",
         sort_by: str = "popularity",
         order: str = "desc",
-    ) -> Tuple[List[dict], int]:
+    ) -> typing.Tuple[typing.List[dict], int]:
         if not self._is_ready:
             await self.setup()
 
@@ -148,7 +148,7 @@ class CategoryService:
         language: str,
         sort_by: str,
         order: str,
-    ) -> Tuple[List[dict], int]:
+    ) -> typing.Tuple[typing.List[dict], int]:
         genre_ids = self._category_genre_ids.get(category_slug, set())
 
         if not genre_ids:
@@ -285,8 +285,8 @@ class CategoryService:
         return books_data, total_count
 
 
-    async def _compute_popular_categories(self) -> List[dict]:
-        slug_to_genre_ids: Dict[str, List[int]] = {
+    async def _compute_popular_categories(self) -> typing.List[dict]:
+        slug_to_genre_ids: typing.Dict[str, typing.List[int]] = {
             slug: list(genre_ids)
             for slug, genre_ids in self._category_genre_ids.items()
             if genre_ids and slug in app.categories_config.CATEGORIES
@@ -295,7 +295,7 @@ class CategoryService:
         if not slug_to_genre_ids:
             return []
 
-        mapping_rows: List[Tuple[str, int]] = []
+        mapping_rows: typing.List[typing.Tuple[str, int]] = []
         for slug, genre_ids in slug_to_genre_ids.items():
             for gid in genre_ids:
                 mapping_rows.append((slug, gid))
@@ -325,9 +325,9 @@ class CategoryService:
             result = await session.execute(
                 query, {"slugs": slugs_array, "gids": gids_array}
             )
-            counts: Dict[str, int] = {row.slug: int(row.book_count) for row in result.fetchall()}
+            counts: typing.Dict[str, int] = {row.slug: int(row.book_count) for row in result.fetchall()}
 
-        results: List[dict] = []
+        results: typing.List[dict] = []
         for slug in slug_to_genre_ids:
             cat = app.categories_config.CATEGORIES[slug]
             results.append({
@@ -353,7 +353,7 @@ class CategoryService:
             logger.error(f"Error populating popular categories cache: {str(e)}")
             raise
 
-    async def get_popular_categories(self, limit: int = 12) -> List[dict]:
+    async def get_popular_categories(self, limit: int = 12) -> typing.List[dict]:
         if not self._is_ready:
             await self.setup()
 

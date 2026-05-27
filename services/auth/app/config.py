@@ -1,38 +1,38 @@
-from pydantic_settings import BaseSettings
-from pydantic import Field
+import pydantic_settings
+import pydantic
 
 
-class Settings(BaseSettings):
-    env: str = Field(default="production")
-    debug: bool = Field(default=False)
-    log_level: str = Field(default="ERROR")
+class Settings(pydantic_settings.BaseSettings):
+    env: str = pydantic.Field(default="production")
+    debug: bool = pydantic.Field(default=False)
+    log_level: str = pydantic.Field(default="ERROR")
 
-    db_host: str = Field(default="localhost")
-    db_port: int = Field(default=5432)
-    db_name: str = Field(default="minsik_db")
-    db_user: str = Field(default="postgres")
-    db_password: str = Field(default="postgres")
-    db_pool_size: int = Field(default=5)
-    db_max_overflow: int = Field(default=10)
+    db_host: str = pydantic.Field(default="localhost")
+    db_port: int = pydantic.Field(default=5432)
+    db_name: str = pydantic.Field(default="minsik_db")
+    db_user: str = pydantic.Field(default="postgres")
+    db_password: str = pydantic.Field(default="postgres")
+    db_pool_size: int = pydantic.Field(default=5)
+    db_max_overflow: int = pydantic.Field(default=10)
 
-    auth_service_host: str = Field(default="0.0.0.0")
-    auth_grpc_port: int = Field(default=50051)
+    auth_service_host: str = pydantic.Field(default="0.0.0.0")
+    auth_grpc_port: int = pydantic.Field(default=50051)
 
-    jwt_secret_key: str = Field(...)
-    jwt_algorithm: str = Field(default="HS256")
-    jwt_access_token_expire_minutes: int = Field(default=15)
-    jwt_refresh_token_expire_days: int = Field(default=30)
+    jwt_secret_key: str = pydantic.Field(...)
+    jwt_algorithm: str = pydantic.Field(default="HS256")
+    jwt_access_token_expire_minutes: int = pydantic.Field(default=15)
+    jwt_refresh_token_expire_days: int = pydantic.Field(default=30)
 
-    bcrypt_rounds: int = Field(default=12)
-    max_failed_login_attempts: int = Field(default=5)
-    lockout_duration_minutes: int = Field(default=30)
+    bcrypt_rounds: int = pydantic.Field(default=12)
+    max_failed_login_attempts: int = pydantic.Field(default=5)
+    lockout_duration_minutes: int = pydantic.Field(default=30)
 
-    google_client_id: str = Field(default="")
-    google_client_secret: str = Field(default="")
-    google_token_url: str = Field(default="https://oauth2.googleapis.com/token")
-    google_userinfo_url: str = Field(default="https://www.googleapis.com/oauth2/v3/userinfo")
+    google_client_id: str = pydantic.Field(default="")
+    google_client_secret: str = pydantic.Field(default="")
+    google_token_url: str = pydantic.Field(default="https://oauth2.googleapis.com/token")
+    google_userinfo_url: str = pydantic.Field(default="https://www.googleapis.com/oauth2/v3/userinfo")
 
-    ledger_api_key: str = Field(default="")
+    ledger_api_key: str = pydantic.Field(default="")
 
     class Config:
         env_file = ".env"

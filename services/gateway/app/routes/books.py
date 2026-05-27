@@ -4,18 +4,17 @@ import typing
 import app.config
 import app.grpc_clients
 import app.middleware.auth
-import app.middleware.rate_limit as rate_limit_middleware
+import app.middleware.rate_limit
 import app.models.books_responses
 import app.utils.responses
 import fastapi
 import grpc
-from fastapi import Path, Query
 
 logger = logging.getLogger(__name__)
 
 router = fastapi.APIRouter(prefix="/api/v1", tags=["Books"])
 
-limiter = rate_limit_middleware.limiter
+limiter = app.middleware.rate_limit.limiter
 
 
 @router.get(
@@ -36,9 +35,9 @@ limiter = rate_limit_middleware.limiter
 @limiter.limit(f"{app.config.settings.rate_limit_suggest_per_minute}/minute")
 async def suggest_search(
     request: fastapi.Request,
-    q: str = Query(..., min_length=1, description="Search query (partial input)"),
-    limit: int = Query(8, ge=1, le=20, description="Max suggestions to return"),
-    language: str = Query(
+    q: str = fastapi.Query(..., min_length=1, description="Search query (partial input)"),
+    limit: int = fastapi.Query(8, ge=1, le=20, description="Max suggestions to return"),
+    language: str = fastapi.Query(
         "en", min_length=2, max_length=10, description="Language preference"
     ),
 ):
@@ -118,15 +117,15 @@ async def suggest_search(
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
 async def search_books_and_authors(
     request: fastapi.Request,
-    q: str = Query(..., min_length=1, description="Search query"),
-    type: str = Query(
+    q: str = fastapi.Query(..., min_length=1, description="Search query"),
+    type: str = fastapi.Query(
         "all",
         regex="^(all|books|authors|series|categories)$",
         description="Filter by type",
     ),
-    limit: int = Query(10, ge=1, le=100, description="Number of results per page"),
-    offset: int = Query(0, ge=0, description="Pagination offset"),
-    language: str = Query(
+    limit: int = fastapi.Query(10, ge=1, le=100, description="Number of results per page"),
+    offset: int = fastapi.Query(0, ge=0, description="Pagination offset"),
+    language: str = fastapi.Query(
         "en", min_length=2, max_length=10, description="Language code (e.g. en, pl, de)"
     ),
 ):
@@ -221,8 +220,8 @@ async def search_books_and_authors(
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
 async def get_book(
     request: fastapi.Request,
-    slug: str = Path(..., description="Book slug"),
-    language: str = Query(
+    slug: str = fastapi.Path(..., description="Book slug"),
+    language: str = fastapi.Query(
         "en", min_length=2, max_length=10, description="Language code (e.g. en, pl, de)"
     ),
 ):
@@ -255,8 +254,8 @@ async def get_book(
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
 async def get_book_language_variants(
     request: fastapi.Request,
-    slug: str = Path(..., description="Book slug"),
-    exclude_language: str = Query(
+    slug: str = fastapi.Path(..., description="Book slug"),
+    exclude_language: str = fastapi.Query(
         "en", min_length=2, max_length=10, description="Language to exclude (currently displayed)"
     ),
 ):
@@ -318,8 +317,8 @@ async def get_book_language_variants(
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
 async def get_author(
     request: fastapi.Request,
-    slug: str = Path(..., description="Author slug"),
-    language: str = Query(
+    slug: str = fastapi.Path(..., description="Author slug"),
+    language: str = fastapi.Query(
         "en", min_length=2, max_length=10, description="Language code (e.g. en, pl, de)"
     ),
 ):
@@ -412,16 +411,16 @@ async def get_author(
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
 async def get_author_books(
     request: fastapi.Request,
-    slug: str = Path(..., description="Author slug"),
-    limit: int = Query(10, ge=1, le=100, description="Number of books per page"),
-    offset: int = Query(0, ge=0, description="Pagination offset"),
-    sort_by: str = Query(
+    slug: str = fastapi.Path(..., description="Author slug"),
+    limit: int = fastapi.Query(10, ge=1, le=100, description="Number of books per page"),
+    offset: int = fastapi.Query(0, ge=0, description="Pagination offset"),
+    sort_by: str = fastapi.Query(
         "combined_rating",
         regex="^(publication_year|combined_rating|readers_count)$",
         description="Sort field",
     ),
-    order: str = Query("desc", regex="^(asc|desc)$", description="Sort order"),
-    language: str = Query(
+    order: str = fastapi.Query("desc", regex="^(asc|desc)$", description="Sort order"),
+    language: str = fastapi.Query(
         "en", min_length=2, max_length=10, description="Language code (e.g. en, pl, de)"
     ),
 ):
@@ -474,8 +473,8 @@ async def get_author_books(
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
 async def get_author_quote(
     request: fastapi.Request,
-    slug: str = Path(..., description="Author slug"),
-    language: str = Query(
+    slug: str = fastapi.Path(..., description="Author slug"),
+    language: str = fastapi.Query(
         "en", min_length=2, max_length=10, description="Language code (e.g. en, pl, de)"
     ),
 ):
@@ -538,8 +537,8 @@ async def get_author_quote(
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
 async def get_author_top_books(
     request: fastapi.Request,
-    slug: str = Path(..., description="Author slug"),
-    language: str = Query(
+    slug: str = fastapi.Path(..., description="Author slug"),
+    language: str = fastapi.Query(
         "en", min_length=2, max_length=10, description="Language code (e.g. en, pl, de)"
     ),
 ):
@@ -590,8 +589,8 @@ async def get_author_top_books(
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
 async def get_series(
     request: fastapi.Request,
-    slug: str = Path(..., description="Series slug"),
-    language: str = Query(
+    slug: str = fastapi.Path(..., description="Series slug"),
+    language: str = fastapi.Query(
         "en", min_length=2, max_length=10, description="Language code (e.g. en, pl, de)"
     ),
 ):
@@ -713,17 +712,17 @@ def _comment_with_rating_to_dict(c) -> typing.Dict[str, typing.Any]:
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
 async def get_book_comments(
     request: fastapi.Request,
-    slug: str = Path(..., description="Book slug"),
-    limit: int = Query(10, ge=1, le=100, description="Number of comments per page"),
-    offset: int = Query(0, ge=0, description="Pagination offset"),
-    order: str = Query("desc", regex="^(asc|desc)$", description="Sort order"),
-    include_spoilers: bool = Query(False, description="Include spoiler comments"),
-    sort_by: str = Query(
+    slug: str = fastapi.Path(..., description="Book slug"),
+    limit: int = fastapi.Query(10, ge=1, le=100, description="Number of comments per page"),
+    offset: int = fastapi.Query(0, ge=0, description="Pagination offset"),
+    order: str = fastapi.Query("desc", regex="^(asc|desc)$", description="Sort order"),
+    include_spoilers: bool = fastapi.Query(False, description="Include spoiler comments"),
+    sort_by: str = fastapi.Query(
         "created_at",
         regex="^(created_at|overall_rating|pacing|emotional_impact|intellectual_depth|writing_quality|rereadability|readability|plot_complexity|humor)$",
         description="Sort field",
     ),
-    rating_filter: typing.Optional[typing.List[float]] = Query(
+    rating_filter: typing.Optional[typing.List[float]] = fastapi.Query(
         None,
         ge=0.0,
         le=5.0,
@@ -803,18 +802,18 @@ async def get_book_comments(
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
 async def get_series_books(
     request: fastapi.Request,
-    slug: str = Path(..., description="Series slug"),
-    limit: int = Query(10, ge=1, le=100, description="Number of books per page"),
-    offset: int = Query(0, ge=0, description="Pagination offset"),
-    language: str = Query(
+    slug: str = fastapi.Path(..., description="Series slug"),
+    limit: int = fastapi.Query(10, ge=1, le=100, description="Number of books per page"),
+    offset: int = fastapi.Query(0, ge=0, description="Pagination offset"),
+    language: str = fastapi.Query(
         "en", min_length=2, max_length=10, description="Language code (e.g. en, pl, de)"
     ),
-    sort_by: str = Query(
+    sort_by: str = fastapi.Query(
         "series_position",
         regex="^(series_position|publication_year|combined_rating|readers_count)$",
         description="Sort field",
     ),
-    order: str = Query("asc", regex="^(asc|desc)$", description="Sort order"),
+    order: str = fastapi.Query("asc", regex="^(asc|desc)$", description="Sort order"),
 ):
     try:
         response = await app.grpc_clients.books_client.get_series_books(
@@ -983,7 +982,7 @@ def _book_summary_proto_to_dict(item) -> typing.Dict[str, typing.Any]:
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
 async def open_case(
     request: fastapi.Request,
-    language: str = Query(
+    language: str = fastapi.Query(
         "en", min_length=2, max_length=10, description="Language code (e.g. en, pl, de)"
     ),
 ):
@@ -1038,10 +1037,10 @@ async def open_case(
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
 async def open_pack(
     request: fastapi.Request,
-    language: str = Query(
+    language: str = fastapi.Query(
         "en", min_length=2, max_length=10, description="Language code (e.g. en, pl, de)"
     ),
-    length: int = Query(8, ge=1, le=25, description="Number of cards in the pack"),
+    length: int = fastapi.Query(8, ge=1, le=25, description="Number of cards in the pack"),
 ):
     try:
         response = await app.grpc_clients.books_client.open_pack(
@@ -1096,7 +1095,7 @@ async def open_pack(
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
 async def spin_slots(
     request: fastapi.Request,
-    language: str = Query(
+    language: str = fastapi.Query(
         "en", min_length=2, max_length=10, description="Language code (e.g. en, pl, de)"
     ),
 ):
@@ -1220,8 +1219,8 @@ async def discover_book(
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
 async def get_genre_bubble(
     request: fastapi.Request,
-    slug: str = Path(..., description="Genre slug"),
-    limit: int = Query(10, ge=1, le=50, description="Max related genres to return"),
+    slug: str = fastapi.Path(..., description="Genre slug"),
+    limit: int = fastapi.Query(10, ge=1, le=50, description="Max related genres to return"),
 ):
     try:
         response = await app.grpc_clients.books_client.get_genre_bubble(

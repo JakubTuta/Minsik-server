@@ -2,12 +2,12 @@ import typing
 import logging
 import jwt
 import fastapi
-from fastapi.security import HTTPBearer, HTTPAuthorizationCredentials
+import fastapi.security
 import app.config
 
 logger = logging.getLogger(__name__)
 
-_bearer_scheme = HTTPBearer(auto_error=False)
+_bearer_scheme = fastapi.security.HTTPBearer(auto_error=False)
 
 
 def _decode_access_token(token: str) -> typing.Optional[typing.Dict[str, typing.Any]]:
@@ -27,7 +27,7 @@ def _decode_access_token(token: str) -> typing.Optional[typing.Dict[str, typing.
 
 
 async def get_current_user_optional(
-    credentials: typing.Optional[HTTPAuthorizationCredentials] = fastapi.Depends(_bearer_scheme)
+    credentials: typing.Optional[fastapi.security.HTTPAuthorizationCredentials] = fastapi.Depends(_bearer_scheme)
 ) -> typing.Optional[typing.Dict[str, typing.Any]]:
     if not credentials:
         return None

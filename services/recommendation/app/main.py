@@ -11,10 +11,10 @@ import app.jobs
 import app.proto.recommendation_pb2
 import app.proto.recommendation_pb2_grpc
 import app.tracing
+import apscheduler
+import apscheduler.triggers.cron
 import grpc
-from apscheduler import AsyncScheduler
-from apscheduler.triggers.cron import CronTrigger
-from grpc_reflection.v1alpha import reflection
+import grpc_reflection.v1alpha.reflection
 
 logging.basicConfig(
     level=getattr(logging, app.config.settings.log_level.upper()),
@@ -25,7 +25,7 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 grpc_server: grpc.aio.Server = None
-scheduler: AsyncScheduler = None
+scheduler: apscheduler.AsyncScheduler = None
 _shutdown_event: asyncio.Event = None
 
 
@@ -49,9 +49,9 @@ async def start_server() -> None:
         app.proto.recommendation_pb2.DESCRIPTOR.services_by_name[
             "RecommendationService"
         ].full_name,
-        reflection.SERVICE_NAME,
+        grpc_reflection.v1alpha.reflection.SERVICE_NAME,
     )
-    reflection.enable_server_reflection(SERVICE_NAMES, grpc_server)
+    grpc_reflection.v1alpha.reflection.enable_server_reflection(SERVICE_NAMES, grpc_server)
 
     listen_addr = f"{app.config.settings.recommendation_service_host}:{app.config.settings.recommendation_grpc_port}"
     grpc_server.add_insecure_port(listen_addr)
@@ -59,13 +59,13 @@ async def start_server() -> None:
     logger.info(f"Starting gRPC server on {listen_addr}")
     await grpc_server.start()
 
-    scheduler = AsyncScheduler()
+    scheduler = apscheduler.AsyncScheduler()
     await scheduler.__aenter__()
 
     if app.config.settings.general_refresh_enabled:
         await scheduler.add_schedule(
             app.jobs.general_refresh_job,
-            CronTrigger.from_crontab(app.config.settings.general_refresh_cron),
+            apscheduler.triggers.cron.CronTrigger.from_crontab(app.config.settings.general_refresh_cron),
         )
         logger.info(
             f"[rec] General refresh scheduled (cron: '{app.config.settings.general_refresh_cron}')"
@@ -74,7 +74,7 @@ async def start_server() -> None:
     if app.config.settings.personal_refresh_enabled:
         await scheduler.add_schedule(
             app.jobs.personal_refresh_job,
-            CronTrigger.from_crontab(app.config.settings.personal_refresh_cron),
+            apscheduler.triggers.cron.CronTrigger.from_crontab(app.config.settings.personal_refresh_cron),
         )
         logger.info(
             f"[rec:personal] Personal refresh scheduled (cron: '{app.config.settings.personal_refresh_cron}')"
@@ -83,7 +83,7 @@ async def start_server() -> None:
     if app.config.settings.contextual_precompute_enabled:
         await scheduler.add_schedule(
             app.jobs.contextual_precompute_job,
-            CronTrigger.from_crontab(app.config.settings.contextual_precompute_cron),
+            apscheduler.triggers.cron.CronTrigger.from_crontab(app.config.settings.contextual_precompute_cron),
         )
         logger.info(
             f"[rec:precompute] Contextual precompute scheduled (cron: '{app.config.settings.contextual_precompute_cron}')"
@@ -92,7 +92,7 @@ async def start_server() -> None:
     if app.config.settings.case_pool_refresh_enabled:
         await scheduler.add_schedule(
             app.jobs.case_pool_refresh_job,
-            CronTrigger.from_crontab(app.config.settings.case_pool_refresh_cron),
+            apscheduler.triggers.cron.CronTrigger.from_crontab(app.config.settings.case_pool_refresh_cron),
         )
         logger.info(
             f"[rec:case] Case pool refresh scheduled (cron: '{app.config.settings.case_pool_refresh_cron}')"
@@ -101,7 +101,7 @@ async def start_server() -> None:
     if app.config.settings.book_of_week_enabled:
         await scheduler.add_schedule(
             app.jobs.book_of_week_job,
-            CronTrigger.from_crontab(app.config.settings.book_of_week_cron),
+            apscheduler.triggers.cron.CronTrigger.from_crontab(app.config.settings.book_of_week_cron),
         )
         logger.info(
             f"[rec:bow] Book of the week scheduled (cron: '{app.config.settings.book_of_week_cron}')"

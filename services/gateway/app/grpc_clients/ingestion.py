@@ -2,8 +2,8 @@ import grpc
 import logging
 import typing
 import app.config
-import app.proto.ingestion_pb2 as ingestion_pb2
-import app.proto.ingestion_pb2_grpc as ingestion_pb2_grpc
+import app.proto.ingestion_pb2
+import app.proto.ingestion_pb2_grpc
 import app.tracing
 
 logger = logging.getLogger(__name__)
@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 class IngestionClient:
     def __init__(self):
         self.channel: typing.Optional[grpc.aio.Channel] = None
-        self.stub: typing.Optional[ingestion_pb2_grpc.IngestionServiceStub] = None
+        self.stub: typing.Optional[app.proto.ingestion_pb2_grpc.IngestionServiceStub] = None
 
     async def __aenter__(self):
         await self.connect()
@@ -32,7 +32,7 @@ class IngestionClient:
             ],
             interceptors=app.tracing.get_client_interceptors(),
         )
-        self.stub = ingestion_pb2_grpc.IngestionServiceStub(self.channel)
+        self.stub = app.proto.ingestion_pb2_grpc.IngestionServiceStub(self.channel)
         logger.info(f"Connected to ingestion service at {app.config.settings.ingestion_service_url}")
 
     async def close(self):
@@ -40,8 +40,8 @@ class IngestionClient:
             await self.channel.close()
             logger.info("Closed ingestion service connection")
 
-    async def get_data_coverage(self) -> ingestion_pb2.GetDataCoverageResponse:
-        request = ingestion_pb2.GetDataCoverageRequest()
+    async def get_data_coverage(self) -> app.proto.ingestion_pb2.GetDataCoverageResponse:
+        request = app.proto.ingestion_pb2.GetDataCoverageRequest()
 
         try:
             response = await self.stub.GetDataCoverage(
@@ -53,8 +53,8 @@ class IngestionClient:
             logger.error(f"gRPC error getting data coverage: {e.code()} - {e.details()}")
             raise
 
-    async def import_dump(self) -> ingestion_pb2.ImportDumpResponse:
-        request = ingestion_pb2.ImportDumpRequest()
+    async def import_dump(self) -> app.proto.ingestion_pb2.ImportDumpResponse:
+        request = app.proto.ingestion_pb2.ImportDumpRequest()
 
         try:
             response = await self.stub.ImportDump(
@@ -66,8 +66,8 @@ class IngestionClient:
             logger.error(f"gRPC error starting dump import: {e.code()} - {e.details()}")
             raise
 
-    async def run_cleanup(self) -> ingestion_pb2.RunCleanupResponse:
-        request = ingestion_pb2.RunCleanupRequest()
+    async def run_cleanup(self) -> app.proto.ingestion_pb2.RunCleanupResponse:
+        request = app.proto.ingestion_pb2.RunCleanupRequest()
 
         try:
             response = await self.stub.RunCleanup(

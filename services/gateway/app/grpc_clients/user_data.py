@@ -2,8 +2,8 @@ import logging
 import typing
 
 import app.config
-import app.proto.user_data_pb2 as user_data_pb2
-import app.proto.user_data_pb2_grpc as user_data_pb2_grpc
+import app.proto.user_data_pb2
+import app.proto.user_data_pb2_grpc
 import app.tracing
 import grpc
 
@@ -13,7 +13,7 @@ logger = logging.getLogger(__name__)
 class UserDataClient:
     def __init__(self):
         self.channel: typing.Optional[grpc.aio.Channel] = None
-        self.stub: typing.Optional[user_data_pb2_grpc.UserDataServiceStub] = None
+        self.stub: typing.Optional[app.proto.user_data_pb2_grpc.UserDataServiceStub] = None
 
     async def connect(self) -> None:
         self.channel = grpc.aio.insecure_channel(
@@ -29,7 +29,7 @@ class UserDataClient:
             ],
             interceptors=app.tracing.get_client_interceptors(),
         )
-        self.stub = user_data_pb2_grpc.UserDataServiceStub(self.channel)
+        self.stub = app.proto.user_data_pb2_grpc.UserDataServiceStub(self.channel)
         logger.info(
             f"Connected to user data service at {app.config.settings.user_data_service_url}"
         )
@@ -41,8 +41,8 @@ class UserDataClient:
 
     async def get_bookshelf(
         self, user_id: int, book_slug: str
-    ) -> user_data_pb2.BookshelfResponse:
-        request = user_data_pb2.GetBookshelfRequest(
+    ) -> app.proto.user_data_pb2.BookshelfResponse:
+        request = app.proto.user_data_pb2.GetBookshelfRequest(
             user_id=user_id, book_slug=book_slug
         )
         try:
@@ -55,8 +55,8 @@ class UserDataClient:
 
     async def get_user_book_info(
         self, user_id: int, book_slug: str
-    ) -> user_data_pb2.UserBookInfoResponse:
-        request = user_data_pb2.GetUserBookInfoRequest(
+    ) -> app.proto.user_data_pb2.UserBookInfoResponse:
+        request = app.proto.user_data_pb2.GetUserBookInfoRequest(
             user_id=user_id, book_slug=book_slug
         )
         try:
@@ -71,8 +71,8 @@ class UserDataClient:
 
     async def upsert_bookshelf(
         self, user_id: int, book_slug: str, status: str
-    ) -> user_data_pb2.BookshelfResponse:
-        request = user_data_pb2.UpsertBookshelfRequest(
+    ) -> app.proto.user_data_pb2.BookshelfResponse:
+        request = app.proto.user_data_pb2.UpsertBookshelfRequest(
             user_id=user_id, book_slug=book_slug, status=status
         )
         try:
@@ -85,8 +85,8 @@ class UserDataClient:
 
     async def delete_bookshelf(
         self, user_id: int, book_slug: str
-    ) -> user_data_pb2.EmptyResponse:
-        request = user_data_pb2.DeleteBookshelfRequest(
+    ) -> app.proto.user_data_pb2.EmptyResponse:
+        request = app.proto.user_data_pb2.DeleteBookshelfRequest(
             user_id=user_id, book_slug=book_slug
         )
         try:
@@ -106,8 +106,8 @@ class UserDataClient:
         favourites_only: bool = False,
         sort_by: str = "created_at",
         order: str = "desc",
-    ) -> user_data_pb2.BookshelvesListResponse:
-        request = user_data_pb2.GetUserBookshelvesRequest(
+    ) -> app.proto.user_data_pb2.BookshelvesListResponse:
+        request = app.proto.user_data_pb2.GetUserBookshelvesRequest(
             user_id=user_id,
             limit=limit,
             offset=offset,
@@ -135,8 +135,8 @@ class UserDataClient:
         favourites_only: bool = False,
         sort_by: str = "created_at",
         order: str = "desc",
-    ) -> user_data_pb2.BookshelvesListResponse:
-        request = user_data_pb2.GetPublicBookshelvesRequest(
+    ) -> app.proto.user_data_pb2.BookshelvesListResponse:
+        request = app.proto.user_data_pb2.GetPublicBookshelvesRequest(
             username=username,
             limit=limit,
             offset=offset,
@@ -157,8 +157,8 @@ class UserDataClient:
 
     async def get_rating(
         self, user_id: int, book_slug: str
-    ) -> user_data_pb2.RatingResponse:
-        request = user_data_pb2.GetRatingRequest(user_id=user_id, book_slug=book_slug)
+    ) -> app.proto.user_data_pb2.RatingResponse:
+        request = app.proto.user_data_pb2.GetRatingRequest(user_id=user_id, book_slug=book_slug)
         try:
             return await self.stub.GetRating(
                 request, timeout=app.config.settings.grpc_timeout
@@ -181,8 +181,8 @@ class UserDataClient:
         readability: typing.Optional[float] = None,
         plot_complexity: typing.Optional[float] = None,
         humor: typing.Optional[float] = None,
-    ) -> user_data_pb2.RatingResponse:
-        request = user_data_pb2.UpsertRatingRequest(
+    ) -> app.proto.user_data_pb2.RatingResponse:
+        request = app.proto.user_data_pb2.UpsertRatingRequest(
             user_id=user_id,
             book_slug=book_slug,
             overall_rating=overall_rating,
@@ -214,8 +214,8 @@ class UserDataClient:
 
     async def delete_rating(
         self, user_id: int, book_slug: str
-    ) -> user_data_pb2.EmptyResponse:
-        request = user_data_pb2.DeleteRatingRequest(
+    ) -> app.proto.user_data_pb2.EmptyResponse:
+        request = app.proto.user_data_pb2.DeleteRatingRequest(
             user_id=user_id, book_slug=book_slug
         )
         try:
@@ -235,8 +235,8 @@ class UserDataClient:
         order: str = "desc",
         min_rating: float = 0.0,
         max_rating: float = 0.0,
-    ) -> user_data_pb2.RatingsListResponse:
-        request = user_data_pb2.GetUserRatingsRequest(
+    ) -> app.proto.user_data_pb2.RatingsListResponse:
+        request = app.proto.user_data_pb2.GetUserRatingsRequest(
             user_id=user_id,
             limit=limit,
             offset=offset,
@@ -255,8 +255,8 @@ class UserDataClient:
 
     async def toggle_favourite(
         self, user_id: int, book_slug: str, is_favorite: bool
-    ) -> user_data_pb2.FavouriteResponse:
-        request = user_data_pb2.ToggleFavouriteRequest(
+    ) -> app.proto.user_data_pb2.FavouriteResponse:
+        request = app.proto.user_data_pb2.ToggleFavouriteRequest(
             user_id=user_id, book_slug=book_slug, is_favorite=is_favorite
         )
         try:
@@ -269,8 +269,8 @@ class UserDataClient:
 
     async def get_user_favourites(
         self, user_id: int, limit: int = 10, offset: int = 0
-    ) -> user_data_pb2.BookshelvesListResponse:
-        request = user_data_pb2.GetUserFavouritesRequest(
+    ) -> app.proto.user_data_pb2.BookshelvesListResponse:
+        request = app.proto.user_data_pb2.GetUserFavouritesRequest(
             user_id=user_id, limit=limit, offset=offset
         )
         try:
@@ -285,8 +285,8 @@ class UserDataClient:
 
     async def create_comment(
         self, user_id: int, book_slug: str, body: str, is_spoiler: bool
-    ) -> user_data_pb2.CommentResponse:
-        request = user_data_pb2.CreateCommentRequest(
+    ) -> app.proto.user_data_pb2.CommentResponse:
+        request = app.proto.user_data_pb2.CreateCommentRequest(
             user_id=user_id, book_slug=book_slug, body=body, is_spoiler=is_spoiler
         )
         try:
@@ -299,8 +299,8 @@ class UserDataClient:
 
     async def update_comment(
         self, comment_id: int, user_id: int, body: str, is_spoiler: bool
-    ) -> user_data_pb2.CommentResponse:
-        request = user_data_pb2.UpdateCommentRequest(
+    ) -> app.proto.user_data_pb2.CommentResponse:
+        request = app.proto.user_data_pb2.UpdateCommentRequest(
             comment_id=comment_id, user_id=user_id, body=body, is_spoiler=is_spoiler
         )
         try:
@@ -313,8 +313,8 @@ class UserDataClient:
 
     async def delete_comment(
         self, comment_id: int, user_id: int
-    ) -> user_data_pb2.EmptyResponse:
-        request = user_data_pb2.DeleteCommentRequest(
+    ) -> app.proto.user_data_pb2.EmptyResponse:
+        request = app.proto.user_data_pb2.DeleteCommentRequest(
             comment_id=comment_id, user_id=user_id
         )
         try:
@@ -333,8 +333,8 @@ class UserDataClient:
         sort_by: str = "created_at",
         order: str = "desc",
         book_slug: str = "",
-    ) -> user_data_pb2.CommentsListResponse:
-        request = user_data_pb2.GetUserCommentsRequest(
+    ) -> app.proto.user_data_pb2.CommentsListResponse:
+        request = app.proto.user_data_pb2.GetUserCommentsRequest(
             user_id=user_id,
             limit=limit,
             offset=offset,
@@ -360,8 +360,8 @@ class UserDataClient:
         sort_by: str = "created_at",
         requesting_user_id: int = 0,
         rating_filters: typing.List[float] = [],
-    ) -> user_data_pb2.BookCommentsResponse:
-        request = user_data_pb2.GetBookCommentsRequest(
+    ) -> app.proto.user_data_pb2.BookCommentsResponse:
+        request = app.proto.user_data_pb2.GetBookCommentsRequest(
             book_slug=book_slug,
             limit=limit,
             offset=offset,
@@ -381,8 +381,8 @@ class UserDataClient:
 
     async def get_public_profile_stats(
         self, username: str
-    ) -> user_data_pb2.ProfileStatsResponse:
-        request = user_data_pb2.GetPublicProfileStatsRequest(username=username)
+    ) -> app.proto.user_data_pb2.ProfileStatsResponse:
+        request = app.proto.user_data_pb2.GetPublicProfileStatsRequest(username=username)
         try:
             return await self.stub.GetPublicProfileStats(
                 request, timeout=app.config.settings.grpc_timeout
@@ -393,8 +393,8 @@ class UserDataClient:
             )
             raise
 
-    async def delete_user_data(self, user_id: int) -> user_data_pb2.EmptyResponse:
-        request = user_data_pb2.DeleteUserDataRequest(user_id=user_id)
+    async def delete_user_data(self, user_id: int) -> app.proto.user_data_pb2.EmptyResponse:
+        request = app.proto.user_data_pb2.DeleteUserDataRequest(user_id=user_id)
         try:
             return await self.stub.DeleteUserData(
                 request, timeout=app.config.settings.grpc_timeout

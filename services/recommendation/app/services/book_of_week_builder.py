@@ -12,7 +12,7 @@ logger = logging.getLogger(__name__)
 
 BOW_TTL = 7 * 24 * 3600 + 3600
 BOW_HISTORY_SIZE = 12
-BOW_POOL_SIZE = 20
+BOW_POOL_SIZE = 1
 
 
 def bow_pool_cache_key(language: str) -> str:

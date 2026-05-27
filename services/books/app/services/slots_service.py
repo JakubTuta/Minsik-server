@@ -2,7 +2,8 @@ import logging
 import random
 import typing
 
-import app.services.case_service as case_service
+import app.cache
+import app.services.case_service
 import sqlalchemy.ext.asyncio
 
 logger = logging.getLogger(__name__)
@@ -22,16 +23,14 @@ async def spin_slots(
 
     if language == "en":
         # we can use the tier pools if they are cached, but we need to pick a tier first
-        tier = case_service._pick_winning_tier()
+        tier = app.services.case_service._pick_winning_tier()
 
         # We need to replicate some of the cache logic
         tier_pools: typing.Dict[str, typing.List[typing.Dict[str, typing.Any]]] = {}
         all_cached = True
-        for tier_name, _, _, _ in case_service.RARITY_TIERS:
-            import app.cache
-
+        for tier_name, _, _, _ in app.services.case_service.RARITY_TIERS:
             pool = await app.cache.get_cached(
-                f"{case_service.CACHE_POOL_KEY_PREFIX}:{tier_name}:{language}"
+                f"{app.services.case_service.CACHE_POOL_KEY_PREFIX}:{tier_name}:{language}"
             )
             if pool is None:
                 all_cached = False
@@ -45,14 +44,14 @@ async def spin_slots(
             if not winner_pool:
                 tier_index = next(
                     i
-                    for i, t in enumerate(case_service.RARITY_TIERS)
+                    for i, t in enumerate(app.services.case_service.RARITY_TIERS)
                     if t[0] == tier[0]
                 )
                 winner_pool = None
-                for i in range(1, len(case_service.RARITY_TIERS)):
+                for i in range(1, len(app.services.case_service.RARITY_TIERS)):
                     for idx in [tier_index + i, tier_index - i]:
-                        if 0 <= idx < len(case_service.RARITY_TIERS):
-                            candidate = tier_pools[case_service.RARITY_TIERS[idx][0]]
+                        if 0 <= idx < len(app.services.case_service.RARITY_TIERS):
+                            candidate = tier_pools[app.services.case_service.RARITY_TIERS[idx][0]]
                             if candidate:
                                 winner_pool = candidate
                                 break
@@ -67,22 +66,22 @@ async def spin_slots(
 
     # If not found in cache or not English, fetch from DB
     if not winner_item:
-        tier = case_service._pick_winning_tier()
-        winner_row = await case_service._fetch_random_book_from_tier(
+        tier = app.services.case_service._pick_winning_tier()
+        winner_row = await app.services.case_service._fetch_random_book_from_tier(
             session,
             language,
             tier[1],
             tier[2],
-            case_service.RARITY_MIN_RATINGS[tier[0]],
+            app.services.case_service.RARITY_MIN_RATINGS[tier[0]],
         )
 
         if winner_row is None:
-            winner_row = await case_service._fallback_book(session, language, tier)
+            winner_row = await app.services.case_service._fallback_book(session, language, tier)
 
         if winner_row is None:
             raise ValueError(f"No rated books found for language '{language}'")
 
-        winner_item = case_service._row_to_case_item(winner_row)
+        winner_item = app.services.case_service._row_to_case_item(winner_row)
 
     actual_winning_tier = winner_item.get("rarity", "common")
 
@@ -90,7 +89,7 @@ async def spin_slots(
     # Guarantee one is actual_winning_tier
     # The other two are randomly drawn from actual_winning_tier and higher tiers.
     # Tiers are ordered highest to lowest in RARITY_TIERS.
-    tier_names = [t[0] for t in case_service.RARITY_TIERS]
+    tier_names = [t[0] for t in app.services.case_service.RARITY_TIERS]
     try:
         winning_idx = tier_names.index(actual_winning_tier)
     except ValueError:
@@ -98,7 +97,7 @@ async def spin_slots(
         actual_winning_tier = tier_names[winning_idx]
 
     # Eligible tiers: 0 to winning_idx (inclusive)
-    eligible_tiers = case_service.RARITY_TIERS[: winning_idx + 1]
+    eligible_tiers = app.services.case_service.RARITY_TIERS[: winning_idx + 1]
 
     total_prob = sum(t[3] for t in eligible_tiers)
 

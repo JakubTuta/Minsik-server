@@ -3,8 +3,11 @@ import typing
 
 import app.cache
 import app.config
+import app.services._book_filter
 import app.services._language_boost
 import app.services.list_builder
+import app.services.personal_provider
+import app.services.taste_profile
 
 
 async def get_list(
@@ -12,6 +15,7 @@ async def get_list(
     limit: int,
     offset: int,
     language: str = "en",
+    user_id: int = 0,
 ) -> typing.Optional[typing.Dict[str, typing.Any]]:
     cached = await app.cache.get_cached(f"rec:{category}")
     if not cached:
@@ -30,6 +34,19 @@ async def get_list(
             ),
             reverse=True,
         )
+        all_items = app.services._book_filter.dedupe_books_by_slug(all_items)
+        if user_id > 0:
+            profile = await app.services.taste_profile.get_taste_profile(user_id)
+            if profile:
+                excluded_ids = profile.get("excluded_book_ids", [])
+                excluded_slugs = {
+                    b["slug"]
+                    for b in all_items
+                    if b.get("book_id") in set(excluded_ids) and b.get("slug")
+                }
+                all_items = app.services._book_filter.exclude_books(
+                    all_items, excluded_ids, excluded_slugs
+                )
 
     paginated = all_items[offset : offset + limit]
 
@@ -65,7 +82,7 @@ async def get_home_page(
     all_keys = book_keys + author_keys
 
     results = await asyncio.gather(
-        *[get_list(key, items_per_category, 0, language) for key in all_keys]
+        *[get_list(key, items_per_category, 0, language, user_id=0) for key in all_keys]
     )
     return [r for r in results if r is not None]
 
@@ -76,8 +93,6 @@ async def _get_personal_home_page(
     cache_only: bool,
     force_refresh: bool,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
-    import app.services.personal_provider
-
     sections = await app.services.personal_provider.get_personal_home_sections(
         user_id,
         items_per_section,

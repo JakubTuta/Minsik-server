@@ -2,10 +2,10 @@ import typing
 
 import app.config
 import grpc
-from ledger import LedgerClient
-from ledger.tracing import get_tracer, propagation
+import ledger
+import ledger.tracing
 
-_ledger: typing.Optional[LedgerClient] = None
+_ledger: typing.Optional[ledger.LedgerClient] = None
 
 
 class TracingServerInterceptor(grpc.aio.ServerInterceptor):
@@ -14,12 +14,12 @@ class TracingServerInterceptor(grpc.aio.ServerInterceptor):
         continuation: typing.Callable,
         handler_call_details: grpc.HandlerCallDetails,
     ) -> grpc.RpcMethodHandler:
-        tracer = get_tracer()
+        tracer = ledger.tracing.get_tracer()
         if tracer is None:
             return await continuation(handler_call_details)
 
         metadata_dict = dict(handler_call_details.invocation_metadata)
-        ctx = propagation.extract(metadata_dict)
+        ctx = ledger.tracing.propagation.extract(metadata_dict)
         method = handler_call_details.method
 
         handler = await continuation(handler_call_details)
@@ -40,10 +40,10 @@ class TracingServerInterceptor(grpc.aio.ServerInterceptor):
         return handler
 
 
-def init_ledger() -> typing.Optional[LedgerClient]:
+def init_ledger() -> typing.Optional[ledger.LedgerClient]:
     global _ledger
     if app.config.settings.env == "production" and app.config.settings.ledger_api_key:
-        _ledger = LedgerClient(
+        _ledger = ledger.LedgerClient(
             api_key=app.config.settings.ledger_api_key,
             base_url="https://ledger-server.jtuta.cloud",
             service_name="recommendation",

@@ -8,12 +8,12 @@ import typing
 import app.config
 import app.models
 import app.utils
+import app.workers.dump.parsers
 import redis
 import sqlalchemy
+import sqlalchemy.dialects.postgresql
 import sqlalchemy.ext.asyncio
 import sqlalchemy.pool
-from app.workers.dump import parsers
-from sqlalchemy.dialects.postgresql import insert as postgresql_insert
 
 logger = logging.getLogger(__name__)
 
@@ -146,7 +146,7 @@ async def process_editions_dump(
                             else ""
                         )
                         work_ol_id = work_key.replace("/works/", "")
-                        if not work_ol_id or not parsers.is_known_work(
+                        if not work_ol_id or not app.workers.dump.parsers.is_known_work(
                             known_works_filter, work_ol_id
                         ):
                             skipped += 1
@@ -155,7 +155,7 @@ async def process_editions_dump(
                         languages = edition_data.get("languages", [])
                         lang_code = "en"
                         if languages and isinstance(languages, list):
-                            detected = parsers.extract_ol_lang(languages[0])
+                            detected = app.workers.dump.parsers.extract_ol_lang(languages[0])
                             if detected:
                                 lang_code = detected
 
@@ -203,21 +203,21 @@ async def process_editions_dump(
                         )
                         google_books_id = ext_ids.pop("google", None)
 
-                        cover_url = parsers.extract_cover_url(
+                        cover_url = app.workers.dump.parsers.extract_cover_url(
                             edition_data.get("covers")
                         )
-                        description = parsers.extract_description(
+                        description = app.workers.dump.parsers.extract_description(
                             edition_data.get("description")
                         )
 
-                        series_data = parsers.parse_series_string(
+                        series_data = app.workers.dump.parsers.parse_series_string(
                             edition_data.get("series")
                         )
-                        first_sentence = parsers.extract_description(
+                        first_sentence = app.workers.dump.parsers.extract_description(
                             edition_data.get("first_sentence")
                         )
 
-                        score = parsers.score_edition(edition_data)
+                        score = app.workers.dump.parsers.score_edition(edition_data)
 
                         edition_key = f"{work_ol_id}:{lang_code}"
                         existing = best_editions.get(edition_key)
@@ -332,7 +332,7 @@ async def _flush_best_editions_chunk(
         return 0, 0
 
     work_ol_ids = list({ed["work_ol_id"] for ed in best_editions.values()})
-    book_lookup = await parsers.batch_lookup_books(session, work_ol_ids)
+    book_lookup = await app.workers.dump.parsers.batch_lookup_books(session, work_ol_ids)
 
     enriched = 0
     new_lang_rows = 0
@@ -426,7 +426,7 @@ async def _flush_edition_updates(
                 unique_series[slug] = {"name": series["name"][:500], "slug": slug}
 
     if unique_series:
-        stmt = postgresql_insert(app.models.Series).values(list(unique_series.values()))
+        stmt = sqlalchemy.dialects.postgresql.insert(app.models.Series).values(list(unique_series.values()))
         stmt = stmt.on_conflict_do_update(
             index_elements=["slug"],
             set_={"name": stmt.excluded.name},
@@ -572,7 +572,7 @@ async def _insert_new_language_row(
         "series_position": series_position,
     }
 
-    stmt = postgresql_insert(app.models.Book).values(insert_data)
+    stmt = sqlalchemy.dialects.postgresql.insert(app.models.Book).values(insert_data)
     stmt = stmt.on_conflict_do_update(
         index_elements=["language", "slug"],
         set_={

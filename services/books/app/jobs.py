@@ -3,8 +3,8 @@ import logging
 import app.db
 import app.services.author_service
 import app.services.book_service
+import app.services.category_service
 import app.services.es_sync_service
-from app.services.category_service import category_service
 
 logger = logging.getLogger(__name__)
 
@@ -33,8 +33,8 @@ async def reindex_job() -> None:
 
 async def category_cache_refresh_job() -> None:
     try:
-        await category_service.setup()
-        await category_service.populate_category_top_books_cache()
-        await category_service.populate_popular_categories_cache()
+        await app.services.category_service.category_service.setup()
+        await app.services.category_service.category_service.populate_category_top_books_cache()
+        await app.services.category_service.category_service.populate_popular_categories_cache()
     except Exception as e:
         logger.error(f"[books] Category cache refresh error: {str(e)}")

@@ -3,9 +3,9 @@ import logging
 import typing
 
 import app.models
+import app.workers.dump.parsers
 import httpx
 import sqlalchemy
-from app.workers.dump import parsers
 
 logger = logging.getLogger(__name__)
 
@@ -137,13 +137,13 @@ async def _fetch_wikidata_sparql_batch(
         entry = enrichment_map[wikidata_id]
         if (
             nat_label
-            and not parsers.is_wikidata_qid(nat_label)
+            and not app.workers.dump.parsers.is_wikidata_qid(nat_label)
             and not entry["nationality"]
         ):
             entry["nationality"] = nat_label[:200]
         if (
             bp_label
-            and not parsers.is_wikidata_qid(bp_label)
+            and not app.workers.dump.parsers.is_wikidata_qid(bp_label)
             and not entry["birth_place"]
         ):
             entry["birth_place"] = bp_label[:500]

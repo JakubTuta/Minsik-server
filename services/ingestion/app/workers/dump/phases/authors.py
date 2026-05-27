@@ -4,20 +4,19 @@ import logging
 import app.config
 import app.models
 import app.utils
+import app.workers.dump.downloader
+import app.workers.dump.parsers
 import sqlalchemy
-from app.workers.dump import parsers
-from sqlalchemy.dialects.postgresql import insert as postgresql_insert
+import sqlalchemy.dialects.postgresql
 
 logger = logging.getLogger(__name__)
 
 
 async def process_authors_dump(file_path: str) -> int:
-    from app.workers.dump import downloader
-
     queue: asyncio.Queue = asyncio.Queue(maxsize=100)
 
     parse_task = asyncio.create_task(
-        downloader.stream_parse_dump(
+        app.workers.dump.downloader.stream_parse_dump(
             file_path, "/type/author", queue, app.config.settings.dump_batch_size
         )
     )
@@ -92,7 +91,7 @@ async def process_authors_dump(file_path: str) -> int:
                             "alternate_names": alternate_names,
                         }
                         if (
-                            parsers.score_author(author_entry)
+                            app.workers.dump.parsers.score_author(author_entry)
                             < app.config.settings.dump_author_min_quality_score
                         ):
                             logger.debug(f"Skipping low-quality author: {name}")
@@ -110,7 +109,7 @@ async def process_authors_dump(file_path: str) -> int:
 
                 if insert_data:
                     try:
-                        stmt = postgresql_insert(app.models.Author).values(insert_data)
+                        stmt = sqlalchemy.dialects.postgresql.insert(app.models.Author).values(insert_data)
                         stmt = stmt.on_conflict_do_update(
                             index_elements=["slug"],
                             set_={

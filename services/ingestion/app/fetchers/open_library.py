@@ -1,16 +1,15 @@
+import datetime
 import logging
 import typing
-from datetime import datetime
 
 import app.config
+import app.fetchers.base
 import app.utils
-from app.fetchers.base import BaseFetcher
-from app.utils import slugify
 
 logger = logging.getLogger(__name__)
 
 
-class OpenLibraryFetcher(BaseFetcher):
+class OpenLibraryFetcher(app.fetchers.base.BaseFetcher):
     def __init__(self):
         super().__init__(
             api_url=app.config.settings.open_library_api_url,
@@ -104,7 +103,7 @@ class OpenLibraryFetcher(BaseFetcher):
                         authors.append(
                             {
                                 "name": author_data.get("name"),
-                                "slug": slugify(author_data.get("name")),
+                                "slug": app.utils.slugify(author_data.get("name")),
                                 "bio": (
                                     author_data.get("bio", {}).get("value")
                                     if isinstance(author_data.get("bio"), dict)
@@ -138,7 +137,7 @@ class OpenLibraryFetcher(BaseFetcher):
             return {
                 "title": title,
                 "language": language,
-                "slug": slugify(title),
+                "slug": app.utils.slugify(title),
                 "description": self._extract_description(work_data),
                 "original_publication_year": self._extract_publication_year(work_data),
                 "formats": formats,
@@ -259,11 +258,11 @@ class OpenLibraryFetcher(BaseFetcher):
                             position = float(position_str.split()[0])
                     except (ValueError, IndexError):
                         position = None
-                    return {"name": name, "slug": slugify(name), "position": position}
+                    return {"name": name, "slug": app.utils.slugify(name), "position": position}
                 else:
                     return {
                         "name": series_str,
-                        "slug": slugify(series_str),
+                        "slug": app.utils.slugify(series_str),
                         "position": None,
                     }
         return None

@@ -5,6 +5,7 @@ import app.config
 import app.models
 import app.utils
 import httpx
+import redis
 import sqlalchemy
 import sqlalchemy.ext.asyncio
 
@@ -190,9 +191,7 @@ async def run_description_enrichment() -> None:
         return
 
     try:
-        import redis as _redis
-
-        _rc = _redis.Redis(
+        _rc = redis.Redis(
             host=app.config.settings.redis_host,
             port=app.config.settings.redis_port,
             db=app.config.settings.redis_db,

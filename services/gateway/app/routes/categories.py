@@ -3,11 +3,11 @@ import logging
 import app.grpc_clients
 import app.models.books_responses
 import app.utils.responses
+import fastapi
+import google.protobuf.json_format
 import grpc
-from fastapi import APIRouter, HTTPException, Query
-from google.protobuf.json_format import MessageToDict
 
-router = APIRouter(prefix="/api/v1/categories", tags=["Categories"])
+router = fastapi.APIRouter(prefix="/api/v1/categories", tags=["Categories"])
 logger = logging.getLogger(__name__)
 
 
@@ -22,7 +22,7 @@ logger = logging.getLogger(__name__)
     """,
 )
 async def get_popular_categories(
-    limit: int = Query(12, ge=1, le=20, description="Number of categories to return"),
+    limit: int = fastapi.Query(12, ge=1, le=20, description="Number of categories to return"),
 ):
     try:
         response = await app.grpc_clients.books_client.get_popular_categories(limit=limit)
@@ -33,10 +33,10 @@ async def get_popular_categories(
         return app.utils.responses.success_response({"categories": categories})
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "in get_popular_categories", e)
-        raise HTTPException(status_code=500, detail="Failed to fetch popular categories")
+        raise fastapi.HTTPException(status_code=500, detail="Failed to fetch popular categories")
     except Exception as e:
         logger.error(f"Unexpected error in get_popular_categories: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to fetch popular categories")
+        raise fastapi.HTTPException(status_code=500, detail="Failed to fetch popular categories")
 
 
 @router.get(
@@ -58,7 +58,7 @@ async def list_categories():
         return {"success": True, "data": {"categories": response.get("categories", [])}}
     except Exception as e:
         logger.error(f"Error fetching categories: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to fetch categories")
+        raise fastapi.HTTPException(status_code=500, detail="Failed to fetch categories")
 
 
 @router.get(
@@ -82,8 +82,8 @@ async def get_category(
     except Exception as e:
         logger.error(f"Error fetching category {category_slug}: {str(e)}")
         if "Category not found" in str(e):
-            raise HTTPException(status_code=404, detail="Category not found")
-        raise HTTPException(status_code=500, detail="Failed to fetch category")
+            raise fastapi.HTTPException(status_code=404, detail="Category not found")
+        raise fastapi.HTTPException(status_code=500, detail="Failed to fetch category")
 
 
 @router.get(
@@ -113,11 +113,11 @@ async def get_category(
 )
 async def get_category_books(
     category_slug: str,
-    limit: int = Query(20, ge=1, le=50),
-    offset: int = Query(0, ge=0),
-    sort_by: str = Query("popularity", regex="^(popularity|rating)$"),
-    order: str = Query("desc", regex="^(asc|desc)$"),
-    language: str = Query(
+    limit: int = fastapi.Query(20, ge=1, le=50),
+    offset: int = fastapi.Query(0, ge=0),
+    sort_by: str = fastapi.Query("popularity", regex="^(popularity|rating)$"),
+    order: str = fastapi.Query("desc", regex="^(asc|desc)$"),
+    language: str = fastapi.Query(
         "en", description="ISO 639-1 language code (e.g., en, es, fr)"
     ),
 ):
@@ -131,7 +131,7 @@ async def get_category_books(
             order=order,
         )
 
-        response_dict = MessageToDict(response, preserving_proto_field_name=True)
+        response_dict = google.protobuf.json_format.MessageToDict(response, preserving_proto_field_name=True)
         return {
             "success": True,
             "data": {
@@ -141,4 +141,4 @@ async def get_category_books(
         }
     except Exception as e:
         logger.error(f"Error fetching books for category {category_slug}: {str(e)}")
-        raise HTTPException(status_code=500, detail="Failed to fetch category books")
+        raise fastapi.HTTPException(status_code=500, detail="Failed to fetch category books")

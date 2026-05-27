@@ -9,7 +9,6 @@ import app.es_client
 import app.services._language_boost
 import sqlalchemy
 import sqlalchemy.ext.asyncio
-from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
@@ -808,7 +807,7 @@ async def _search_books_by_category(
     offset: int,
     language: str,
 ) -> typing.Tuple[typing.List[typing.Dict[str, typing.Any]], int]:
-    count_query = text(
+    count_query = sqlalchemy.text(
         """
         SELECT COUNT(DISTINCT b.book_id)
         FROM books.books b
@@ -825,7 +824,7 @@ async def _search_books_by_category(
     )
     total = count_result.scalar() or 0
 
-    books_query = text(
+    books_query = sqlalchemy.text(
         """
         SELECT
             b.book_id,
@@ -909,7 +908,7 @@ async def _get_author_top_books(
     limit: int,
     language: str,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
-    query = text(
+    query = sqlalchemy.text(
         """
         SELECT
             b.book_id,
@@ -982,7 +981,7 @@ async def _get_series_top_books(
     limit: int,
     language: str,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
-    query = text(
+    query = sqlalchemy.text(
         """
         SELECT
             b.book_id,

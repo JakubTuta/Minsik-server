@@ -1,54 +1,54 @@
-from pydantic import Field
-from pydantic_settings import BaseSettings
+import pydantic
+import pydantic_settings
 
 
-class Settings(BaseSettings):
-    env: str = Field(default="production")
-    debug: bool = Field(default=False)
-    log_level: str = Field(default="ERROR")
+class Settings(pydantic_settings.BaseSettings):
+    env: str = pydantic.Field(default="production")
+    debug: bool = pydantic.Field(default=False)
+    log_level: str = pydantic.Field(default="ERROR")
 
-    gateway_host: str = Field(default="0.0.0.0")
-    gateway_http_port: int = Field(default=8040)
-    gateway_workers: int = Field(default=2)
+    gateway_host: str = pydantic.Field(default="0.0.0.0")
+    gateway_http_port: int = pydantic.Field(default=8040)
+    gateway_workers: int = pydantic.Field(default=2)
 
-    ingestion_service_host: str = Field(default="ingestion-service")
-    ingestion_grpc_port: int = Field(default=50054)
+    ingestion_service_host: str = pydantic.Field(default="ingestion-service")
+    ingestion_grpc_port: int = pydantic.Field(default=50054)
 
-    books_service_host: str = Field(default="books-service")
-    books_grpc_port: int = Field(default=50055)
+    books_service_host: str = pydantic.Field(default="books-service")
+    books_grpc_port: int = pydantic.Field(default=50055)
 
-    auth_service_host: str = Field(default="auth-service")
-    auth_grpc_port: int = Field(default=50051)
+    auth_service_host: str = pydantic.Field(default="auth-service")
+    auth_grpc_port: int = pydantic.Field(default=50051)
 
-    user_data_service_host: str = Field(default="user-data-service")
-    user_data_grpc_port: int = Field(default=50053)
+    user_data_service_host: str = pydantic.Field(default="user-data-service")
+    user_data_grpc_port: int = pydantic.Field(default=50053)
 
-    recommendation_service_host: str = Field(default="recommendation-service")
-    recommendation_grpc_port: int = Field(default=50056)
+    recommendation_service_host: str = pydantic.Field(default="recommendation-service")
+    recommendation_grpc_port: int = pydantic.Field(default=50056)
 
-    jwt_secret_key: str = Field(default="changeme")
-    jwt_algorithm: str = Field(default="HS256")
-    jwt_access_token_expire_minutes: int = Field(default=15)
+    jwt_secret_key: str = pydantic.Field(default="changeme")
+    jwt_algorithm: str = pydantic.Field(default="HS256")
+    jwt_access_token_expire_minutes: int = pydantic.Field(default=15)
 
-    grpc_keepalive_time_ms: int = Field(default=300000)
-    grpc_keepalive_timeout_ms: int = Field(default=10000)
-    grpc_timeout: float = Field(default=10.0)
-    grpc_recommendation_timeout: float = Field(default=30.0)
-    grpc_admin_timeout: float = Field(default=60.0)
-    recommendation_recompute_on_user_write: bool = Field(default=True)
+    grpc_keepalive_time_ms: int = pydantic.Field(default=300000)
+    grpc_keepalive_timeout_ms: int = pydantic.Field(default=10000)
+    grpc_timeout: float = pydantic.Field(default=10.0)
+    grpc_recommendation_timeout: float = pydantic.Field(default=30.0)
+    grpc_admin_timeout: float = pydantic.Field(default=60.0)
+    recommendation_recompute_on_user_write: bool = pydantic.Field(default=True)
 
-    cors_origins: str = Field(default="*")
-    cors_allow_credentials: bool = Field(default=True)
-    cors_allow_methods: str = Field(default="*")
-    cors_allow_headers: str = Field(default="*")
+    cors_origins: str = pydantic.Field(default="*")
+    cors_allow_credentials: bool = pydantic.Field(default=True)
+    cors_allow_methods: str = pydantic.Field(default="*")
+    cors_allow_headers: str = pydantic.Field(default="*")
 
-    rate_limit_enabled: bool = Field(default=False)
-    rate_limit_per_minute: int = Field(default=60)
-    rate_limit_burst: int = Field(default=10)
-    rate_limit_admin_per_minute: int = Field(default=20)
-    rate_limit_suggest_per_minute: int = Field(default=120)
+    rate_limit_enabled: bool = pydantic.Field(default=False)
+    rate_limit_per_minute: int = pydantic.Field(default=60)
+    rate_limit_burst: int = pydantic.Field(default=10)
+    rate_limit_admin_per_minute: int = pydantic.Field(default=20)
+    rate_limit_suggest_per_minute: int = pydantic.Field(default=120)
 
-    ledger_api_key: str = Field(default="")
+    ledger_api_key: str = pydantic.Field(default="")
 
     class Config:
         env_file = ".env"
