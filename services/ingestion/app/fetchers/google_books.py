@@ -3,13 +3,13 @@ import logging
 import typing
 
 import app.config
-import app.fetchers.base
+import app.fetcher_base
 import app.utils
 
 logger = logging.getLogger(__name__)
 
 
-class GoogleBooksFetcher(app.fetchers.base.BaseFetcher):
+class GoogleBooksFetcher(app.fetcher_base.BaseFetcher):
     def __init__(self):
         super().__init__(
             api_url=app.config.settings.google_books_api_url,

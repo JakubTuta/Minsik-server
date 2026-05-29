@@ -29,6 +29,17 @@ class AuthResponse(pydantic.BaseModel):
     error: typing.Optional[app.models.responses.ErrorDetail] = None
 
 
+class SessionData(pydantic.BaseModel):
+    user: UserSchema
+    expires_in: int
+
+
+class SessionResponse(pydantic.BaseModel):
+    success: bool = True
+    data: SessionData
+    error: typing.Optional[app.models.responses.ErrorDetail] = None
+
+
 class UserData(pydantic.BaseModel):
     user: UserSchema
 
@@ -81,7 +92,7 @@ class LoginRequest(pydantic.BaseModel):
 
 
 class LogoutRequest(pydantic.BaseModel):
-    refresh_token: str = pydantic.Field(min_length=1)
+    refresh_token: typing.Optional[str] = pydantic.Field(default=None)
 
     model_config = pydantic.ConfigDict(
         json_schema_extra={
@@ -93,7 +104,7 @@ class LogoutRequest(pydantic.BaseModel):
 
 
 class RefreshTokenRequest(pydantic.BaseModel):
-    refresh_token: str = pydantic.Field(min_length=1)
+    refresh_token: typing.Optional[str] = pydantic.Field(default=None)
 
     model_config = pydantic.ConfigDict(
         json_schema_extra={

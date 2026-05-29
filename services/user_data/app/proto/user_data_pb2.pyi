@@ -193,7 +193,7 @@ class GetUserRatingsRequest(_message.Message):
     def __init__(self, user_id: _Optional[int] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., sort_by: _Optional[str] = ..., order: _Optional[str] = ..., min_rating: _Optional[float] = ..., max_rating: _Optional[float] = ...) -> None: ...
 
 class Rating(_message.Message):
-    __slots__ = ("rating_id", "user_id", "book_id", "book_slug", "book_title", "book_cover_url", "overall_rating", "review_text", "pacing", "has_pacing", "emotional_impact", "has_emotional_impact", "intellectual_depth", "has_intellectual_depth", "writing_quality", "has_writing_quality", "rereadability", "has_rereadability", "readability", "has_readability", "plot_complexity", "has_plot_complexity", "humor", "has_humor", "created_at", "updated_at", "book_author_names", "book_author_slugs", "book_series_name", "book_series_slug")
+    __slots__ = ("rating_id", "user_id", "book_id", "book_slug", "book_title", "book_cover_url", "overall_rating", "review_text", "pacing", "has_pacing", "emotional_impact", "has_emotional_impact", "intellectual_depth", "has_intellectual_depth", "writing_quality", "has_writing_quality", "rereadability", "has_rereadability", "readability", "has_readability", "plot_complexity", "has_plot_complexity", "humor", "has_humor", "created_at", "updated_at", "book_author_names", "book_author_slugs", "book_series_name", "book_series_slug", "book_avg_rating", "book_rating_count")
     RATING_ID_FIELD_NUMBER: _ClassVar[int]
     USER_ID_FIELD_NUMBER: _ClassVar[int]
     BOOK_ID_FIELD_NUMBER: _ClassVar[int]
@@ -224,6 +224,8 @@ class Rating(_message.Message):
     BOOK_AUTHOR_SLUGS_FIELD_NUMBER: _ClassVar[int]
     BOOK_SERIES_NAME_FIELD_NUMBER: _ClassVar[int]
     BOOK_SERIES_SLUG_FIELD_NUMBER: _ClassVar[int]
+    BOOK_AVG_RATING_FIELD_NUMBER: _ClassVar[int]
+    BOOK_RATING_COUNT_FIELD_NUMBER: _ClassVar[int]
     rating_id: int
     user_id: int
     book_id: int
@@ -254,7 +256,9 @@ class Rating(_message.Message):
     book_author_slugs: _containers.RepeatedScalarFieldContainer[str]
     book_series_name: str
     book_series_slug: str
-    def __init__(self, rating_id: _Optional[int] = ..., user_id: _Optional[int] = ..., book_id: _Optional[int] = ..., book_slug: _Optional[str] = ..., book_title: _Optional[str] = ..., book_cover_url: _Optional[str] = ..., overall_rating: _Optional[float] = ..., review_text: _Optional[str] = ..., pacing: _Optional[float] = ..., has_pacing: bool = ..., emotional_impact: _Optional[float] = ..., has_emotional_impact: bool = ..., intellectual_depth: _Optional[float] = ..., has_intellectual_depth: bool = ..., writing_quality: _Optional[float] = ..., has_writing_quality: bool = ..., rereadability: _Optional[float] = ..., has_rereadability: bool = ..., readability: _Optional[float] = ..., has_readability: bool = ..., plot_complexity: _Optional[float] = ..., has_plot_complexity: bool = ..., humor: _Optional[float] = ..., has_humor: bool = ..., created_at: _Optional[str] = ..., updated_at: _Optional[str] = ..., book_author_names: _Optional[_Iterable[str]] = ..., book_author_slugs: _Optional[_Iterable[str]] = ..., book_series_name: _Optional[str] = ..., book_series_slug: _Optional[str] = ...) -> None: ...
+    book_avg_rating: float
+    book_rating_count: int
+    def __init__(self, rating_id: _Optional[int] = ..., user_id: _Optional[int] = ..., book_id: _Optional[int] = ..., book_slug: _Optional[str] = ..., book_title: _Optional[str] = ..., book_cover_url: _Optional[str] = ..., overall_rating: _Optional[float] = ..., review_text: _Optional[str] = ..., pacing: _Optional[float] = ..., has_pacing: bool = ..., emotional_impact: _Optional[float] = ..., has_emotional_impact: bool = ..., intellectual_depth: _Optional[float] = ..., has_intellectual_depth: bool = ..., writing_quality: _Optional[float] = ..., has_writing_quality: bool = ..., rereadability: _Optional[float] = ..., has_rereadability: bool = ..., readability: _Optional[float] = ..., has_readability: bool = ..., plot_complexity: _Optional[float] = ..., has_plot_complexity: bool = ..., humor: _Optional[float] = ..., has_humor: bool = ..., created_at: _Optional[str] = ..., updated_at: _Optional[str] = ..., book_author_names: _Optional[_Iterable[str]] = ..., book_author_slugs: _Optional[_Iterable[str]] = ..., book_series_name: _Optional[str] = ..., book_series_slug: _Optional[str] = ..., book_avg_rating: _Optional[float] = ..., book_rating_count: _Optional[int] = ...) -> None: ...
 
 class RatingResponse(_message.Message):
     __slots__ = ("rating",)
@@ -515,7 +519,7 @@ class GetPublicProfileStatsRequest(_message.Message):
     def __init__(self, username: _Optional[str] = ...) -> None: ...
 
 class ProfileStats(_message.Message):
-    __slots__ = ("want_to_read_count", "reading_count", "read_count", "abandoned_count", "favourites_count", "ratings_count", "comments_count")
+    __slots__ = ("want_to_read_count", "reading_count", "read_count", "abandoned_count", "favourites_count", "ratings_count", "comments_count", "finished_this_year_count", "pages_read_this_year", "hours_read_this_year", "bookshelf_updated_at", "favourites_updated_at", "comments_updated_at", "ratings_updated_at", "average_rating", "rating_distribution_json", "pages_read_total", "reviews_count")
     WANT_TO_READ_COUNT_FIELD_NUMBER: _ClassVar[int]
     READING_COUNT_FIELD_NUMBER: _ClassVar[int]
     READ_COUNT_FIELD_NUMBER: _ClassVar[int]
@@ -523,6 +527,17 @@ class ProfileStats(_message.Message):
     FAVOURITES_COUNT_FIELD_NUMBER: _ClassVar[int]
     RATINGS_COUNT_FIELD_NUMBER: _ClassVar[int]
     COMMENTS_COUNT_FIELD_NUMBER: _ClassVar[int]
+    FINISHED_THIS_YEAR_COUNT_FIELD_NUMBER: _ClassVar[int]
+    PAGES_READ_THIS_YEAR_FIELD_NUMBER: _ClassVar[int]
+    HOURS_READ_THIS_YEAR_FIELD_NUMBER: _ClassVar[int]
+    BOOKSHELF_UPDATED_AT_FIELD_NUMBER: _ClassVar[int]
+    FAVOURITES_UPDATED_AT_FIELD_NUMBER: _ClassVar[int]
+    COMMENTS_UPDATED_AT_FIELD_NUMBER: _ClassVar[int]
+    RATINGS_UPDATED_AT_FIELD_NUMBER: _ClassVar[int]
+    AVERAGE_RATING_FIELD_NUMBER: _ClassVar[int]
+    RATING_DISTRIBUTION_JSON_FIELD_NUMBER: _ClassVar[int]
+    PAGES_READ_TOTAL_FIELD_NUMBER: _ClassVar[int]
+    REVIEWS_COUNT_FIELD_NUMBER: _ClassVar[int]
     want_to_read_count: int
     reading_count: int
     read_count: int
@@ -530,13 +545,96 @@ class ProfileStats(_message.Message):
     favourites_count: int
     ratings_count: int
     comments_count: int
-    def __init__(self, want_to_read_count: _Optional[int] = ..., reading_count: _Optional[int] = ..., read_count: _Optional[int] = ..., abandoned_count: _Optional[int] = ..., favourites_count: _Optional[int] = ..., ratings_count: _Optional[int] = ..., comments_count: _Optional[int] = ...) -> None: ...
+    finished_this_year_count: int
+    pages_read_this_year: int
+    hours_read_this_year: int
+    bookshelf_updated_at: str
+    favourites_updated_at: str
+    comments_updated_at: str
+    ratings_updated_at: str
+    average_rating: float
+    rating_distribution_json: str
+    pages_read_total: int
+    reviews_count: int
+    def __init__(self, want_to_read_count: _Optional[int] = ..., reading_count: _Optional[int] = ..., read_count: _Optional[int] = ..., abandoned_count: _Optional[int] = ..., favourites_count: _Optional[int] = ..., ratings_count: _Optional[int] = ..., comments_count: _Optional[int] = ..., finished_this_year_count: _Optional[int] = ..., pages_read_this_year: _Optional[int] = ..., hours_read_this_year: _Optional[int] = ..., bookshelf_updated_at: _Optional[str] = ..., favourites_updated_at: _Optional[str] = ..., comments_updated_at: _Optional[str] = ..., ratings_updated_at: _Optional[str] = ..., average_rating: _Optional[float] = ..., rating_distribution_json: _Optional[str] = ..., pages_read_total: _Optional[int] = ..., reviews_count: _Optional[int] = ...) -> None: ...
 
 class ProfileStatsResponse(_message.Message):
     __slots__ = ("stats",)
     STATS_FIELD_NUMBER: _ClassVar[int]
     stats: ProfileStats
     def __init__(self, stats: _Optional[_Union[ProfileStats, _Mapping]] = ...) -> None: ...
+
+class GetProfileOverviewRequest(_message.Message):
+    __slots__ = ("username",)
+    USERNAME_FIELD_NUMBER: _ClassVar[int]
+    username: str
+    def __init__(self, username: _Optional[str] = ...) -> None: ...
+
+class PublicUser(_message.Message):
+    __slots__ = ("user_id", "username", "display_name", "avatar_url", "bio")
+    USER_ID_FIELD_NUMBER: _ClassVar[int]
+    USERNAME_FIELD_NUMBER: _ClassVar[int]
+    DISPLAY_NAME_FIELD_NUMBER: _ClassVar[int]
+    AVATAR_URL_FIELD_NUMBER: _ClassVar[int]
+    BIO_FIELD_NUMBER: _ClassVar[int]
+    user_id: int
+    username: str
+    display_name: str
+    avatar_url: str
+    bio: str
+    def __init__(self, user_id: _Optional[int] = ..., username: _Optional[str] = ..., display_name: _Optional[str] = ..., avatar_url: _Optional[str] = ..., bio: _Optional[str] = ...) -> None: ...
+
+class OverviewBook(_message.Message):
+    __slots__ = ("book_slug", "book_title", "book_cover_url", "book_author_names", "book_author_slugs")
+    BOOK_SLUG_FIELD_NUMBER: _ClassVar[int]
+    BOOK_TITLE_FIELD_NUMBER: _ClassVar[int]
+    BOOK_COVER_URL_FIELD_NUMBER: _ClassVar[int]
+    BOOK_AUTHOR_NAMES_FIELD_NUMBER: _ClassVar[int]
+    BOOK_AUTHOR_SLUGS_FIELD_NUMBER: _ClassVar[int]
+    book_slug: str
+    book_title: str
+    book_cover_url: str
+    book_author_names: _containers.RepeatedScalarFieldContainer[str]
+    book_author_slugs: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, book_slug: _Optional[str] = ..., book_title: _Optional[str] = ..., book_cover_url: _Optional[str] = ..., book_author_names: _Optional[_Iterable[str]] = ..., book_author_slugs: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class TopGenre(_message.Message):
+    __slots__ = ("name", "slug", "count", "percent")
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    SLUG_FIELD_NUMBER: _ClassVar[int]
+    COUNT_FIELD_NUMBER: _ClassVar[int]
+    PERCENT_FIELD_NUMBER: _ClassVar[int]
+    name: str
+    slug: str
+    count: int
+    percent: float
+    def __init__(self, name: _Optional[str] = ..., slug: _Optional[str] = ..., count: _Optional[int] = ..., percent: _Optional[float] = ...) -> None: ...
+
+class FavouriteAuthor(_message.Message):
+    __slots__ = ("name", "slug", "count")
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    SLUG_FIELD_NUMBER: _ClassVar[int]
+    COUNT_FIELD_NUMBER: _ClassVar[int]
+    name: str
+    slug: str
+    count: int
+    def __init__(self, name: _Optional[str] = ..., slug: _Optional[str] = ..., count: _Optional[int] = ...) -> None: ...
+
+class ProfileOverviewResponse(_message.Message):
+    __slots__ = ("user", "reading_now", "top_genres", "favourite_authors", "favourites_this_year", "reading_now_present")
+    USER_FIELD_NUMBER: _ClassVar[int]
+    READING_NOW_FIELD_NUMBER: _ClassVar[int]
+    TOP_GENRES_FIELD_NUMBER: _ClassVar[int]
+    FAVOURITE_AUTHORS_FIELD_NUMBER: _ClassVar[int]
+    FAVOURITES_THIS_YEAR_FIELD_NUMBER: _ClassVar[int]
+    READING_NOW_PRESENT_FIELD_NUMBER: _ClassVar[int]
+    user: PublicUser
+    reading_now: OverviewBook
+    top_genres: _containers.RepeatedCompositeFieldContainer[TopGenre]
+    favourite_authors: _containers.RepeatedCompositeFieldContainer[FavouriteAuthor]
+    favourites_this_year: _containers.RepeatedCompositeFieldContainer[OverviewBook]
+    reading_now_present: bool
+    def __init__(self, user: _Optional[_Union[PublicUser, _Mapping]] = ..., reading_now: _Optional[_Union[OverviewBook, _Mapping]] = ..., top_genres: _Optional[_Iterable[_Union[TopGenre, _Mapping]]] = ..., favourite_authors: _Optional[_Iterable[_Union[FavouriteAuthor, _Mapping]]] = ..., favourites_this_year: _Optional[_Iterable[_Union[OverviewBook, _Mapping]]] = ..., reading_now_present: bool = ...) -> None: ...
 
 class DeleteUserDataRequest(_message.Message):
     __slots__ = ("user_id",)

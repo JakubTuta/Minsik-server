@@ -29,6 +29,11 @@ class Settings(pydantic_settings.BaseSettings):
     jwt_secret_key: str = pydantic.Field(default="changeme")
     jwt_algorithm: str = pydantic.Field(default="HS256")
     jwt_access_token_expire_minutes: int = pydantic.Field(default=15)
+    refresh_token_expire_days: int = pydantic.Field(default=30)
+
+    cookie_secure: bool = pydantic.Field(default=True)
+    cookie_samesite: str = pydantic.Field(default="lax")
+    cookie_domain: str = pydantic.Field(default="")
 
     grpc_keepalive_time_ms: int = pydantic.Field(default=300000)
     grpc_keepalive_timeout_ms: int = pydantic.Field(default=10000)

@@ -329,6 +329,7 @@ CREATE TABLE user_data.bookshelves_p3 PARTITION OF user_data.bookshelves FOR VAL
 
 -- Indexes for user_data.bookshelves
 CREATE INDEX idx_bookshelves_user_status_date ON user_data.bookshelves(user_id, status, created_at DESC);
+CREATE INDEX idx_bookshelves_user_status_updated ON user_data.bookshelves(user_id, status, updated_at DESC);
 CREATE INDEX idx_bookshelves_user_fav ON user_data.bookshelves(user_id, created_at DESC) WHERE is_favorite = TRUE;
 CREATE INDEX idx_bookshelves_book_id ON user_data.bookshelves(book_id);
 

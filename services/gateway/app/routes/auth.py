@@ -8,6 +8,7 @@ import app.middleware.auth
 import app.middleware.rate_limit
 import app.models.auth_responses
 import app.models.responses
+import app.utils.cookies
 import app.utils.responses
 
 logger = logging.getLogger(__name__)
@@ -32,18 +33,22 @@ def _user_proto_to_dict(user) -> typing.Dict[str, typing.Any]:
     }
 
 
-def _auth_response_to_dict(response) -> typing.Dict[str, typing.Any]:
+def _session_data(response) -> typing.Dict[str, typing.Any]:
     return {
-        "access_token": response.access_token,
-        "refresh_token": response.refresh_token,
-        "token_type": response.token_type,
-        "user": _user_proto_to_dict(response.user)
+        "user": _user_proto_to_dict(response.user),
+        "expires_in": app.config.settings.jwt_access_token_expire_minutes * 60,
     }
+
+
+def _auth_success(response, status_code: int) -> fastapi.responses.JSONResponse:
+    json_response = app.utils.responses.success_response(_session_data(response), status_code=status_code)
+    app.utils.cookies.set_auth_cookies(json_response, response.access_token, response.refresh_token)
+    return json_response
 
 
 @router.post(
     "/auth/register",
-    response_model=app.models.auth_responses.AuthResponse,
+    response_model=app.models.auth_responses.SessionResponse,
     summary="Register a new user",
     description="""
     Create a new user account. The account is immediately active — no email verification required.
@@ -112,10 +117,7 @@ async def register(
             username=body.username,
             password=body.password
         )
-        return app.utils.responses.success_response(
-            _auth_response_to_dict(response),
-            status_code=201
-        )
+        return _auth_success(response, status_code=201)
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "during register", e)
         if e.code() == grpc.StatusCode.ALREADY_EXISTS:
@@ -147,7 +149,7 @@ async def register(
 
 @router.post(
     "/auth/login",
-    response_model=app.models.auth_responses.AuthResponse,
+    response_model=app.models.auth_responses.SessionResponse,
     summary="Log in",
     description="""
     Authenticate with email and password.
@@ -213,10 +215,7 @@ async def login(
             email=body.email,
             password=body.password
         )
-        return app.utils.responses.success_response(
-            _auth_response_to_dict(response),
-            status_code=200
-        )
+        return _auth_success(response, status_code=200)
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "during login", e)
         if e.code() == grpc.StatusCode.UNAUTHENTICATED:
@@ -277,20 +276,25 @@ async def logout(
     body: app.models.auth_responses.LogoutRequest,
     current_user: typing.Dict[str, typing.Any] = fastapi.Depends(app.middleware.auth.require_user)
 ):
+    refresh_value = request.cookies.get(app.utils.cookies.REFRESH_COOKIE) or body.refresh_token
     try:
-        await app.grpc_clients.auth_client.logout(refresh_token=body.refresh_token)
-        return app.utils.responses.success_response(
+        if refresh_value:
+            await app.grpc_clients.auth_client.logout(refresh_token=refresh_value)
+        json_response = app.utils.responses.success_response(
             {"message": "Logged out successfully"},
             status_code=200
         )
+        app.utils.cookies.clear_auth_cookies(json_response)
+        return json_response
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "during logout", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
-            return app.utils.responses.error_response(
-                code="NOT_FOUND",
-                message="Token not found",
-                status_code=404
+            json_response = app.utils.responses.success_response(
+                {"message": "Logged out successfully"},
+                status_code=200
             )
+            app.utils.cookies.clear_auth_cookies(json_response)
+            return json_response
         return app.utils.responses.error_response(
             code="INTERNAL_ERROR",
             message="Logout failed",
@@ -308,7 +312,7 @@ async def logout(
 
 @router.post(
     "/auth/refresh",
-    response_model=app.models.auth_responses.AuthResponse,
+    response_model=app.models.auth_responses.SessionResponse,
     summary="Refresh access token",
     description="""
     Exchange a valid refresh token for a new access token and rotated refresh token.
@@ -367,30 +371,30 @@ async def logout(
 @limiter.limit(app.middleware.rate_limit.get_default_limit())
 async def refresh_token(
     request: fastapi.Request,
-    body: app.models.auth_responses.RefreshTokenRequest
+    body: typing.Optional[app.models.auth_responses.RefreshTokenRequest] = None
 ):
+    refresh_value = request.cookies.get(app.utils.cookies.REFRESH_COOKIE) or (body.refresh_token if body else None)
+    if not refresh_value:
+        return app.utils.responses.error_response(
+            code="UNAUTHENTICATED",
+            message="Refresh token is invalid or expired",
+            status_code=401
+        )
     try:
         response = await app.grpc_clients.auth_client.refresh_token(
-            refresh_token=body.refresh_token
+            refresh_token=refresh_value
         )
-        return app.utils.responses.success_response(
-            _auth_response_to_dict(response),
-            status_code=200
-        )
+        return _auth_success(response, status_code=200)
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "during token refresh", e)
-        if e.code() in (grpc.StatusCode.UNAUTHENTICATED, grpc.StatusCode.PERMISSION_DENIED):
-            return app.utils.responses.error_response(
+        if e.code() in (grpc.StatusCode.UNAUTHENTICATED, grpc.StatusCode.PERMISSION_DENIED, grpc.StatusCode.NOT_FOUND):
+            json_response = app.utils.responses.error_response(
                 code="UNAUTHENTICATED",
                 message="Refresh token is invalid or expired",
                 status_code=401
             )
-        if e.code() == grpc.StatusCode.NOT_FOUND:
-            return app.utils.responses.error_response(
-                code="UNAUTHENTICATED",
-                message="Refresh token is invalid or expired",
-                status_code=401
-            )
+            app.utils.cookies.clear_auth_cookies(json_response)
+            return json_response
         return app.utils.responses.error_response(
             code="INTERNAL_ERROR",
             message="Token refresh failed",
@@ -624,7 +628,7 @@ async def delete_account(
 
 @router.post(
     "/auth/google",
-    response_model=app.models.auth_responses.AuthResponse,
+    response_model=app.models.auth_responses.SessionResponse,
     summary="Sign in with Google",
     description="""
     Exchange a Google OAuth authorization code for Minsik JWT tokens.
@@ -654,10 +658,7 @@ async def google_auth(
             code=body.code,
             redirect_uri=body.redirect_uri
         )
-        return app.utils.responses.success_response(
-            _auth_response_to_dict(response),
-            status_code=200
-        )
+        return _auth_success(response, status_code=200)
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "during google_auth", e)
         if e.code() == grpc.StatusCode.PERMISSION_DENIED:

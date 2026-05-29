@@ -1,10 +1,10 @@
 import sqlalchemy
 import sqlalchemy.dialects.postgresql
 import sqlalchemy.orm
-import app.models.base
+import app.db_base
 
 
-class Author(app.models.base.Base):
+class Author(app.db_base.Base):
     __tablename__ = "authors"
     __table_args__ = (
         sqlalchemy.Index("idx_authors_slug", "slug", unique=True),

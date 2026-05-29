@@ -6,11 +6,6 @@ import sqlalchemy
 import sqlalchemy.dialects.postgresql
 import sqlalchemy.ext.asyncio
 
-_RATING_SORT_COLUMNS: typing.Dict[str, typing.Any] = {
-    "created_at": app.models.rating.Rating.created_at,
-    "overall_rating": app.models.rating.Rating.overall_rating,
-}
-
 
 async def _update_book_stats(
     session: sqlalchemy.ext.asyncio.AsyncSession, book_id: int
@@ -164,34 +159,52 @@ async def get_user_ratings(
     order: str,
     min_rating: float,
     max_rating: float,
-) -> typing.Tuple[typing.List[app.models.rating.Rating], int]:
-    sort_col = _RATING_SORT_COLUMNS.get(sort_by, app.models.rating.Rating.created_at)
-    order_expr = sort_col.desc() if order == "desc" else sort_col.asc()
+) -> typing.Tuple[typing.List[typing.Any], int]:
+    order_col = "r.created_at" if sort_by == "created_at" else "r.overall_rating"
+    order_dir = "DESC" if order == "desc" else "ASC"
 
-    base_conditions = [app.models.rating.Rating.user_id == user_id]
+    filter_clauses: typing.List[str] = []
+    filter_params: typing.Dict[str, typing.Any] = {"user_id": user_id}
     if min_rating > 0.0:
-        base_conditions.append(app.models.rating.Rating.overall_rating >= min_rating)
+        filter_clauses.append("AND r.overall_rating >= :min_rating")
+        filter_params["min_rating"] = min_rating
     if max_rating > 0.0:
-        base_conditions.append(app.models.rating.Rating.overall_rating <= max_rating)
+        filter_clauses.append("AND r.overall_rating <= :max_rating")
+        filter_params["max_rating"] = max_rating
 
-    count_stmt = (
-        sqlalchemy.select(sqlalchemy.func.count())
-        .select_from(app.models.rating.Rating)
-        .where(*base_conditions)
+    where_extra = " ".join(filter_clauses)
+
+    count_result = await session.execute(
+        sqlalchemy.text(f"""
+            SELECT COUNT(*)
+            FROM user_data.ratings r
+            WHERE r.user_id = :user_id {where_extra}
+        """),
+        filter_params,
     )
-    count_result = await session.execute(count_stmt)
     total_count = count_result.scalar_one()
 
-    stmt = (
-        sqlalchemy.select(app.models.rating.Rating)
-        .where(*base_conditions)
-        .order_by(order_expr)
-        .limit(limit)
-        .offset(offset)
+    rows = await session.execute(
+        sqlalchemy.text(f"""
+            SELECT
+                r.*,
+                COALESCE(
+                    (
+                        COALESCE(b.avg_rating, 0) * b.rating_count
+                        + COALESCE(b.ol_avg_rating, 0) * b.ol_rating_count
+                    ) / NULLIF(b.rating_count + b.ol_rating_count, 0),
+                    0
+                ) AS book_avg_rating,
+                COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0) AS book_rating_count
+            FROM user_data.ratings r
+            JOIN books.books b ON b.book_id = r.book_id
+            WHERE r.user_id = :user_id {where_extra}
+            ORDER BY {order_col} {order_dir}
+            LIMIT :limit OFFSET :offset
+        """),
+        {**filter_params, "limit": limit, "offset": offset},
     )
-
-    result = await session.execute(stmt)
-    return result.scalars().all(), total_count
+    return rows.fetchall(), total_count
 
 
 async def delete_user_ratings(

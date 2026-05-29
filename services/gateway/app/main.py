@@ -7,6 +7,7 @@ import app.config
 import app.grpc_clients
 import app.middleware
 import app.middleware.cors
+import app.middleware.csrf
 import app.middleware.logging
 import app.middleware.rate_limit
 import app.tracing
@@ -37,6 +38,9 @@ user_recommendations_router = app.routes.user_recommendations.router
 grpc_clients_module = app.grpc_clients
 tracing_module = app.tracing
 limiter = app.middleware.rate_limit.limiter
+_setup_cors = app.middleware.cors.setup_cors
+_setup_csrf = app.middleware.csrf.setup_csrf
+_setup_logging = app.middleware.logging.setup_logging_middleware
 
 logging.basicConfig(
     level=getattr(logging, settings.log_level),
@@ -114,15 +118,16 @@ app = fastapi.FastAPI(
     lifespan=lifespan,
 )
 
-ledger = tracing_module.init_ledger()
+ledger_client = tracing_module.init_ledger()
 
-if ledger:
-    app.add_middleware(ledger.integrations.fastapi.LedgerMiddleware, ledger_client=ledger)
+if ledger_client:
+    app.add_middleware(ledger.integrations.fastapi.LedgerMiddleware, ledger_client=ledger_client)
 
 if settings.env == "development":
-    app.middleware.cors.setup_cors(app)
+    _setup_cors(app)
 
-app.middleware.logging.setup_logging_middleware(app)
+_setup_csrf(app)
+_setup_logging(app)
 
 if settings.rate_limit_enabled:
     app.state.limiter = limiter

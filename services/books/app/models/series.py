@@ -1,9 +1,9 @@
 import sqlalchemy
 import sqlalchemy.orm
-import app.models.base
+import app.db_base
 
 
-class Series(app.models.base.Base):
+class Series(app.db_base.Base):
     __tablename__ = "series"
     __table_args__ = (
         sqlalchemy.Index("idx_series_slug", "slug", unique=True),

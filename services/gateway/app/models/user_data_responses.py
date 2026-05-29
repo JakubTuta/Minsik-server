@@ -43,6 +43,8 @@ class RatingSchema(pydantic.BaseModel):
     book_author_slugs: typing.List[str] = []
     book_series_name: typing.Optional[str] = None
     book_series_slug: typing.Optional[str] = None
+    book_avg_rating: float = 0.0
+    book_rating_count: int = 0
 
 
 class CommentSchema(pydantic.BaseModel):
@@ -164,6 +166,61 @@ class ProfileStatsSchema(pydantic.BaseModel):
     favourites_count: int = 0
     ratings_count: int = 0
     comments_count: int = 0
+    finished_this_year_count: int = 0
+    pages_read_this_year: int = 0
+    hours_read_this_year: int = 0
+    bookshelf_updated_at: str = ""
+    favourites_updated_at: str = ""
+    comments_updated_at: str = ""
+    ratings_updated_at: str = ""
+    average_rating: float = 0.0
+    rating_distribution: typing.Dict[str, int] = {}
+    pages_read_total: int = 0
+    reviews_count: int = 0
+
+
+class OverviewBookSchema(pydantic.BaseModel):
+    book_slug: str = ""
+    book_title: str = ""
+    book_cover_url: str = ""
+    book_author_names: typing.List[str] = []
+    book_author_slugs: typing.List[str] = []
+
+
+class TopGenreSchema(pydantic.BaseModel):
+    name: str
+    slug: str
+    count: int
+    percent: float
+
+
+class FavouriteAuthorSchema(pydantic.BaseModel):
+    name: str
+    slug: str
+    count: int
+    photo_url: str = ""
+
+
+class PublicUserSchema(pydantic.BaseModel):
+    user_id: int
+    username: str
+    display_name: str = ""
+    avatar_url: str = ""
+    bio: str = ""
+
+
+class ProfileOverviewData(pydantic.BaseModel):
+    user: PublicUserSchema
+    reading_now: typing.Optional[OverviewBookSchema] = None
+    top_genres: typing.List[TopGenreSchema] = []
+    favourite_authors: typing.List[FavouriteAuthorSchema] = []
+    favourites_this_year: typing.List[OverviewBookSchema] = []
+
+
+class ProfileOverviewResponse(pydantic.BaseModel):
+    success: bool = True
+    data: ProfileOverviewData
+    error: typing.Optional[app.models.responses.ErrorDetail] = None
 
 
 class ProfileStatsData(pydantic.BaseModel):

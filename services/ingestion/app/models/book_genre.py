@@ -1,8 +1,8 @@
 import sqlalchemy
-import app.models.base
+import app.db_base
 
 
-class BookGenre(app.models.base.Base):
+class BookGenre(app.db_base.Base):
     __tablename__ = "book_genres"
     __table_args__ = (
         sqlalchemy.UniqueConstraint("book_id", "genre_id", name="uq_book_genre"),

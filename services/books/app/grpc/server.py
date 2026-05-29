@@ -6,7 +6,6 @@ import typing
 
 import app.cache
 import app.db
-import app.main
 import app.proto.books_pb2
 import app.proto.books_pb2_grpc
 import app.services.author_service

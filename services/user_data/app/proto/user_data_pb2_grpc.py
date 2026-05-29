@@ -124,6 +124,11 @@ class UserDataServiceStub(object):
                 request_serializer=user__data__pb2.GetPublicProfileStatsRequest.SerializeToString,
                 response_deserializer=user__data__pb2.ProfileStatsResponse.FromString,
                 _registered_method=True)
+        self.GetProfileOverview = channel.unary_unary(
+                '/user_data.v1.UserDataService/GetProfileOverview',
+                request_serializer=user__data__pb2.GetProfileOverviewRequest.SerializeToString,
+                response_deserializer=user__data__pb2.ProfileOverviewResponse.FromString,
+                _registered_method=True)
         self.DeleteUserData = channel.unary_unary(
                 '/user_data.v1.UserDataService/DeleteUserData',
                 request_serializer=user__data__pb2.DeleteUserDataRequest.SerializeToString,
@@ -242,6 +247,12 @@ class UserDataServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetProfileOverview(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def DeleteUserData(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -340,6 +351,11 @@ def add_UserDataServiceServicer_to_server(servicer, server):
                     servicer.GetPublicProfileStats,
                     request_deserializer=user__data__pb2.GetPublicProfileStatsRequest.FromString,
                     response_serializer=user__data__pb2.ProfileStatsResponse.SerializeToString,
+            ),
+            'GetProfileOverview': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetProfileOverview,
+                    request_deserializer=user__data__pb2.GetProfileOverviewRequest.FromString,
+                    response_serializer=user__data__pb2.ProfileOverviewResponse.SerializeToString,
             ),
             'DeleteUserData': grpc.unary_unary_rpc_method_handler(
                     servicer.DeleteUserData,
@@ -833,6 +849,33 @@ class UserDataService(object):
             '/user_data.v1.UserDataService/GetPublicProfileStats',
             user__data__pb2.GetPublicProfileStatsRequest.SerializeToString,
             user__data__pb2.ProfileStatsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetProfileOverview(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/user_data.v1.UserDataService/GetProfileOverview',
+            user__data__pb2.GetProfileOverviewRequest.SerializeToString,
+            user__data__pb2.ProfileOverviewResponse.FromString,
             options,
             channel_credentials,
             insecure,

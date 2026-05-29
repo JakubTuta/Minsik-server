@@ -3,10 +3,10 @@ import datetime
 import sqlalchemy
 import sqlalchemy.dialects.postgresql
 import sqlalchemy.orm
-import app.models.base
+import app.db_base
 
 
-class Book(app.models.base.Base):
+class Book(app.db_base.Base):
     __tablename__ = "books"
     __table_args__ = (
         sqlalchemy.Index("idx_books_language", "language"),

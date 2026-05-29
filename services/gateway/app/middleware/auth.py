@@ -4,6 +4,7 @@ import jwt
 import fastapi
 import fastapi.security
 import app.config
+import app.utils.cookies
 
 logger = logging.getLogger(__name__)
 
@@ -27,12 +28,14 @@ def _decode_access_token(token: str) -> typing.Optional[typing.Dict[str, typing.
 
 
 async def get_current_user_optional(
+    request: fastapi.Request,
     credentials: typing.Optional[fastapi.security.HTTPAuthorizationCredentials] = fastapi.Depends(_bearer_scheme)
 ) -> typing.Optional[typing.Dict[str, typing.Any]]:
-    if not credentials:
+    token = credentials.credentials if credentials else request.cookies.get(app.utils.cookies.ACCESS_COOKIE)
+    if not token:
         return None
 
-    payload = _decode_access_token(credentials.credentials)
+    payload = _decode_access_token(token)
     if not payload:
         return None
 

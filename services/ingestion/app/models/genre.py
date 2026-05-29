@@ -1,9 +1,9 @@
 import sqlalchemy
 import sqlalchemy.orm
-import app.models.base
+import app.db_base
 
 
-class Genre(app.models.base.Base):
+class Genre(app.db_base.Base):
     __tablename__ = "genres"
     __table_args__ = (
         sqlalchemy.Index("idx_genres_slug", "slug", unique=True),

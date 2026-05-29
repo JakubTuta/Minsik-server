@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import typing
 
@@ -86,6 +87,8 @@ def _rating_proto_to_dict(r) -> typing.Dict[str, typing.Any]:
         "book_author_slugs": list(r.book_author_slugs),
         "book_series_name": r.book_series_name or None,
         "book_series_slug": r.book_series_slug or None,
+        "book_avg_rating": r.book_avg_rating,
+        "book_rating_count": r.book_rating_count,
     }
 
 
@@ -442,6 +445,10 @@ async def get_public_profile_stats(
             username=username
         )
         s = response.stats
+        try:
+            rating_distribution = json.loads(s.rating_distribution_json) if s.rating_distribution_json else {}
+        except (ValueError, TypeError):
+            rating_distribution = {}
         return app.utils.responses.success_response(
             {
                 "stats": {
@@ -452,6 +459,17 @@ async def get_public_profile_stats(
                     "favourites_count": s.favourites_count,
                     "ratings_count": s.ratings_count,
                     "comments_count": s.comments_count,
+                    "finished_this_year_count": s.finished_this_year_count,
+                    "pages_read_this_year": s.pages_read_this_year,
+                    "hours_read_this_year": s.hours_read_this_year,
+                    "bookshelf_updated_at": s.bookshelf_updated_at,
+                    "favourites_updated_at": s.favourites_updated_at,
+                    "comments_updated_at": s.comments_updated_at,
+                    "ratings_updated_at": s.ratings_updated_at,
+                    "average_rating": s.average_rating,
+                    "rating_distribution": rating_distribution,
+                    "pages_read_total": s.pages_read_total,
+                    "reviews_count": s.reviews_count,
                 }
             }
         )
@@ -462,6 +480,75 @@ async def get_public_profile_stats(
         return _grpc_error_response(e)
     except Exception as e:
         logger.error(f"Unexpected error in get_public_profile_stats: {e}")
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
+        )
+
+
+@router.get(
+    "/users/{username}/profile-overview",
+    response_model=app.models.user_data_responses.ProfileOverviewResponse,
+    summary="Get a user's public profile overview",
+    responses={
+        200: {"description": "Profile overview returned"},
+        404: {"description": "User not found"},
+    },
+)
+@limiter.limit(app.middleware.rate_limit.get_default_limit())
+async def get_profile_overview(
+    request: fastapi.Request,
+    username: str,
+):
+    try:
+        response = await app.grpc_clients.user_data_client.get_profile_overview(
+            username=username
+        )
+        u = response.user
+        reading_now = None
+        if response.reading_now_present:
+            rn = response.reading_now
+            reading_now = {
+                "book_slug": rn.book_slug,
+                "book_title": rn.book_title,
+                "book_cover_url": rn.book_cover_url,
+                "book_author_names": list(rn.book_author_names),
+                "book_author_slugs": list(rn.book_author_slugs),
+            }
+        return app.utils.responses.success_response({
+            "user": {
+                "user_id": u.user_id,
+                "username": u.username,
+                "display_name": u.display_name,
+                "avatar_url": u.avatar_url,
+                "bio": u.bio,
+            },
+            "reading_now": reading_now,
+            "top_genres": [
+                {"name": g.name, "slug": g.slug, "count": g.count, "percent": g.percent}
+                for g in response.top_genres
+            ],
+            "favourite_authors": [
+                {"name": a.name, "slug": a.slug, "count": a.count, "photo_url": a.photo_url}
+                for a in response.favourite_authors
+            ],
+            "favourites_this_year": [
+                {
+                    "book_slug": b.book_slug,
+                    "book_title": b.book_title,
+                    "book_cover_url": b.book_cover_url,
+                    "book_author_names": list(b.book_author_names),
+                    "book_author_slugs": list(b.book_author_slugs),
+                }
+                for b in response.favourites_this_year
+            ],
+        })
+    except grpc.RpcError as e:
+        logger.error(
+            f"gRPC error in get_profile_overview: {e.code()} - {e.details()}"
+        )
+        return _grpc_error_response(e)
+    except Exception as e:
+        logger.error(f"Unexpected error in get_profile_overview: {e}")
         return app.utils.responses.error_response(
             "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
         )

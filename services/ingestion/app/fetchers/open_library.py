@@ -3,13 +3,13 @@ import logging
 import typing
 
 import app.config
-import app.fetchers.base
+import app.fetcher_base
 import app.utils
 
 logger = logging.getLogger(__name__)
 
 
-class OpenLibraryFetcher(app.fetchers.base.BaseFetcher):
+class OpenLibraryFetcher(app.fetcher_base.BaseFetcher):
     def __init__(self):
         super().__init__(
             api_url=app.config.settings.open_library_api_url,

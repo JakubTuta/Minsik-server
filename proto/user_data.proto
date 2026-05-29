@@ -23,6 +23,7 @@ service UserDataService {
   rpc GetBookComments(GetBookCommentsRequest) returns (BookCommentsResponse);
   rpc GetUserBookInfo(GetUserBookInfoRequest) returns (UserBookInfoResponse);
   rpc GetPublicProfileStats(GetPublicProfileStatsRequest) returns (ProfileStatsResponse);
+  rpc GetProfileOverview(GetProfileOverviewRequest) returns (ProfileOverviewResponse);
   rpc DeleteUserData(DeleteUserDataRequest) returns (EmptyResponse);
 }
 
@@ -132,6 +133,8 @@ message Rating {
   repeated string book_author_slugs = 28;
   string book_series_name = 29;
   string book_series_slug = 30;
+  double book_avg_rating = 31;
+  int32 book_rating_count = 32;
 }
 message RatingResponse      { Rating rating = 1; }
 message RatingsListResponse { repeated Rating ratings = 1; int32 total_count = 2; }
@@ -234,15 +237,63 @@ message UserBookInfoResponse {
 // Profile stats (public)
 message GetPublicProfileStatsRequest { string username = 1; }
 message ProfileStats {
-  int32 want_to_read_count = 1;
-  int32 reading_count      = 2;
-  int32 read_count         = 3;
-  int32 abandoned_count    = 4;
-  int32 favourites_count   = 5;
-  int32 ratings_count      = 6;
-  int32 comments_count     = 7;
+  int32 want_to_read_count           = 1;
+  int32 reading_count                = 2;
+  int32 read_count                   = 3;
+  int32 abandoned_count              = 4;
+  int32 favourites_count             = 5;
+  int32 ratings_count                = 6;
+  int32 comments_count               = 7;
+  int32 finished_this_year_count     = 8;
+  int32 pages_read_this_year         = 9;
+  int32 hours_read_this_year         = 10;
+  string bookshelf_updated_at        = 11;
+  string favourites_updated_at       = 12;
+  string comments_updated_at         = 13;
+  string ratings_updated_at          = 14;
+  double average_rating              = 15;
+  string rating_distribution_json    = 16;
+  int32 pages_read_total             = 17;
+  int32 reviews_count                = 18;
 }
 message ProfileStatsResponse { ProfileStats stats = 1; }
+
+// Profile overview (combined public profile widget data)
+message GetProfileOverviewRequest { string username = 1; }
+message PublicUser {
+  int64 user_id       = 1;
+  string username     = 2;
+  string display_name = 3;
+  string avatar_url   = 4;
+  string bio          = 5;
+}
+message OverviewBook {
+  string book_slug              = 1;
+  string book_title             = 2;
+  string book_cover_url         = 3;
+  repeated string book_author_names = 4;
+  repeated string book_author_slugs = 5;
+}
+message TopGenre {
+  string name    = 1;
+  string slug    = 2;
+  int32  count   = 3;
+  double percent = 4;
+}
+message FavouriteAuthor {
+  string name      = 1;
+  string slug      = 2;
+  int32  count     = 3;
+  string photo_url = 4;
+}
+message ProfileOverviewResponse {
+  PublicUser              user                  = 1;
+  OverviewBook            reading_now           = 2;
+  repeated TopGenre       top_genres            = 3;
+  repeated FavouriteAuthor favourite_authors    = 4;
+  repeated OverviewBook   favourites_this_year  = 5;
+  bool                    reading_now_present   = 6;
+}
 
 // Account deletion
 message DeleteUserDataRequest { int64 user_id = 1; }

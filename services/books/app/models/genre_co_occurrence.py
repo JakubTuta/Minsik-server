@@ -1,8 +1,8 @@
 import sqlalchemy
-import app.models.base
+import app.db_base
 
 
-class GenreCoOccurrence(app.models.base.Base):
+class GenreCoOccurrence(app.db_base.Base):
     __tablename__ = "genre_co_occurrences"
     __table_args__ = (
         sqlalchemy.CheckConstraint("genre_id_a < genre_id_b", name="chk_genre_co_occ_order"),

@@ -393,6 +393,20 @@ class UserDataClient:
             )
             raise
 
+    async def get_profile_overview(
+        self, username: str
+    ) -> app.proto.user_data_pb2.ProfileOverviewResponse:
+        request = app.proto.user_data_pb2.GetProfileOverviewRequest(username=username)
+        try:
+            return await self.stub.GetProfileOverview(
+                request, timeout=app.config.settings.grpc_timeout
+            )
+        except grpc.RpcError as e:
+            logger.error(
+                f"gRPC error in get_profile_overview: {e.code()} - {e.details()}"
+            )
+            raise
+
     async def delete_user_data(self, user_id: int) -> app.proto.user_data_pb2.EmptyResponse:
         request = app.proto.user_data_pb2.DeleteUserDataRequest(user_id=user_id)
         try:
