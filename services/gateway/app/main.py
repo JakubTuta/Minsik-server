@@ -17,12 +17,14 @@ import app.routes.books
 import app.routes.categories
 import app.routes.health
 import app.routes.recommendations
+import app.routes.sitemap
 import app.routes.user_data
 import app.routes.user_recommendations
 import fastapi
 import ledger.integrations.fastapi
 import slowapi
 import slowapi.errors
+import slowapi.middleware
 import uvicorn
 
 settings = app.config.settings
@@ -33,6 +35,7 @@ books_router = app.routes.books.router
 user_data_router = app.routes.user_data.router
 categories_router = app.routes.categories.router
 recommendations_router = app.routes.recommendations.router
+sitemap_router = app.routes.sitemap.router
 recommendations_admin_router = app.routes.recommendations.admin_router
 user_recommendations_router = app.routes.user_recommendations.router
 grpc_clients_module = app.grpc_clients
@@ -132,6 +135,7 @@ _setup_logging(app)
 if settings.rate_limit_enabled:
     app.state.limiter = limiter
     app.add_exception_handler(slowapi.errors.RateLimitExceeded, slowapi._rate_limit_exceeded_handler)
+    app.add_middleware(slowapi.middleware.SlowAPIMiddleware)
 
 app.include_router(health_router)
 app.include_router(admin_router)
@@ -140,6 +144,7 @@ app.include_router(books_router)
 app.include_router(categories_router)
 app.include_router(user_data_router)
 app.include_router(recommendations_router)
+app.include_router(sitemap_router)
 app.include_router(recommendations_admin_router)
 app.include_router(user_recommendations_router)
 
@@ -160,4 +165,6 @@ if __name__ == "__main__":
         workers=settings.gateway_workers,
         log_level=settings.log_level.lower(),
         access_log=True,
+        proxy_headers=True,
+        forwarded_allow_ips="*",
     )

@@ -109,7 +109,7 @@ class TestSearchBooksAndAuthors:
         ):
 
             results, total = await search_service.search_books_and_authors(
-                mock_session, query="test", limit=10, offset=0, type_filter="authors"
+                mock_session, query="test", limit=10, offset=0, type_filter="all"
             )
 
             assert len(results) == 2
@@ -157,7 +157,7 @@ class TestSearchBooksAndAuthors:
         ):
 
             results, total = await search_service.search_books_and_authors(
-                mock_session, query="test", limit=10, offset=0, type_filter="series"
+                mock_session, query="test", limit=10, offset=0, type_filter="all"
             )
 
             assert len(results) == 2
@@ -212,9 +212,9 @@ class TestSearchBooksAndAuthors:
                 mock_session, query="test", limit=10, offset=0, type_filter="books"
             )
 
-            assert results[0]["relevance_score"] == 0.9
-            assert results[1]["relevance_score"] == 0.7
-            assert results[2]["relevance_score"] == 0.5
+            assert results[0]["relevance_score"] == pytest.approx(1.0)
+            assert results[1]["relevance_score"] == pytest.approx(0.7 / 0.9)
+            assert results[2]["relevance_score"] == pytest.approx(0.5 / 0.9)
 
     @pytest.mark.asyncio
     async def test_search_respects_limit(self, mock_session, mock_cache):

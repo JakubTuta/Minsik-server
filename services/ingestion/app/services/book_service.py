@@ -20,7 +20,7 @@ logger = logging.getLogger(__name__)
 
 async def insert_books_batch(
     session: sqlalchemy.ext.asyncio.AsyncSession,
-    books_data: typing.List[typing.Dict[str, Any]],
+    books_data: typing.List[typing.Dict[str, typing.Any]],
     commit: bool = True,
     author_id_map: typing.Optional[typing.Dict[str, int]] = None,
     genre_id_cache: typing.Optional[typing.Dict[str, int]] = None,
@@ -95,7 +95,7 @@ async def insert_books_batch(
         raise
 
 
-def _validate_and_clean_book(book_data: typing.Dict[str, Any]) -> typing.Optional[typing.Dict[str, Any]]:
+def _validate_and_clean_book(book_data: typing.Dict[str, typing.Any]) -> typing.Optional[typing.Dict[str, typing.Any]]:
     title = book_data.get("title")
     if not title or not isinstance(title, str):
         return None
@@ -169,7 +169,7 @@ def _validate_and_clean_book(book_data: typing.Dict[str, Any]) -> typing.Optiona
     }
 
 
-def _build_dedup_cache(cleaned_books: typing.List[typing.Dict[str, Any]]) -> typing.Dict[str, Any]:
+def _build_dedup_cache(cleaned_books: typing.List[typing.Dict[str, typing.Any]]) -> typing.Dict[str, typing.Any]:
     cache = {"authors": {}, "genres": {}, "series": {}}
 
     for book in cleaned_books:
@@ -196,8 +196,8 @@ def _build_dedup_cache(cleaned_books: typing.List[typing.Dict[str, Any]]) -> typ
 
 async def _bulk_insert_authors(
     session: sqlalchemy.ext.asyncio.AsyncSession,
-    cleaned_books: typing.List[typing.Dict[str, Any]],
-    dedup_cache: typing.Dict[str, Any],
+    cleaned_books: typing.List[typing.Dict[str, typing.Any]],
+    dedup_cache: typing.Dict[str, typing.Any],
 ) -> typing.Dict[str, int]:
     if not dedup_cache["authors"]:
         return {}
@@ -285,8 +285,8 @@ async def _bulk_insert_authors(
 
 async def _bulk_insert_genres(
     session: sqlalchemy.ext.asyncio.AsyncSession,
-    cleaned_books: typing.List[typing.Dict[str, Any]],
-    dedup_cache: typing.Dict[str, Any],
+    cleaned_books: typing.List[typing.Dict[str, typing.Any]],
+    dedup_cache: typing.Dict[str, typing.Any],
     genre_id_cache: typing.Optional[typing.Dict[str, int]] = None,
 ) -> typing.Dict[str, int]:
     if not dedup_cache["genres"]:
@@ -317,8 +317,8 @@ async def _bulk_insert_genres(
 
 async def _bulk_insert_series(
     session: sqlalchemy.ext.asyncio.AsyncSession,
-    cleaned_books: typing.List[typing.Dict[str, Any]],
-    dedup_cache: typing.Dict[str, Any],
+    cleaned_books: typing.List[typing.Dict[str, typing.Any]],
+    dedup_cache: typing.Dict[str, typing.Any],
     series_id_cache: typing.Optional[typing.Dict[str, int]] = None,
 ) -> typing.Dict[str, int]:
     if not dedup_cache["series"]:
@@ -357,10 +357,10 @@ async def _bulk_insert_series(
 
 async def _bulk_insert_books(
     session: sqlalchemy.ext.asyncio.AsyncSession,
-    cleaned_books: typing.List[typing.Dict[str, Any]],
-    dedup_cache: typing.Dict[str, Any],
+    cleaned_books: typing.List[typing.Dict[str, typing.Any]],
+    dedup_cache: typing.Dict[str, typing.Any],
     series_id_map: typing.Dict[str, int],
-) -> typing.Dict[str, Any]:
+) -> typing.Dict[str, typing.Any]:
     seen_slugs: dict[str, int] = {}
     for idx, book in enumerate(cleaned_books):
         key = (book["language"], book["slug"])
@@ -440,8 +440,8 @@ async def _bulk_insert_books(
 
 async def _bulk_insert_relationships(
     session: sqlalchemy.ext.asyncio.AsyncSession,
-    cleaned_books: typing.List[typing.Dict[str, Any]],
-    dedup_cache: typing.Dict[str, Any],
+    cleaned_books: typing.List[typing.Dict[str, typing.Any]],
+    dedup_cache: typing.Dict[str, typing.Any],
     book_id_map: typing.Dict[str, int],
     author_id_map: typing.Dict[str, int],
     genre_id_map: typing.Dict[str, int],
@@ -485,7 +485,7 @@ async def _bulk_insert_relationships(
 
 
 async def process_single_book(
-    session: sqlalchemy.ext.asyncio.AsyncSession, book_data: typing.Dict[str, Any]
+    session: sqlalchemy.ext.asyncio.AsyncSession, book_data: typing.Dict[str, typing.Any]
 ) -> None:
     result = await insert_books_batch(session, [book_data], commit=False)
     if result["failed"] > 0:

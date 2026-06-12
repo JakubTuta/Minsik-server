@@ -250,9 +250,10 @@ async def login(
     response_model=app.models.responses.APIResponse,
     summary="Log out",
     description="""
-    Revoke the provided refresh token. The access token will expire naturally after 15 minutes.
+    Revoke the refresh token (from cookie or request body) and clear auth cookies.
 
-    Requires a valid access token in the `Authorization: Bearer <token>` header.
+    Works without a valid access token so that sessions with an expired access token
+    can still log out cleanly.
     """,
     responses={
         200: {
@@ -266,17 +267,15 @@ async def login(
                     }
                 }
             }
-        },
-        401: {"description": "Not authenticated"}
+        }
     }
 )
 @limiter.limit(app.middleware.rate_limit.get_default_limit())
 async def logout(
     request: fastapi.Request,
-    body: app.models.auth_responses.LogoutRequest,
-    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(app.middleware.auth.require_user)
+    body: typing.Optional[app.models.auth_responses.LogoutRequest] = None
 ):
-    refresh_value = request.cookies.get(app.utils.cookies.REFRESH_COOKIE) or body.refresh_token
+    refresh_value = request.cookies.get(app.utils.cookies.REFRESH_COOKIE) or (body.refresh_token if body else None)
     try:
         if refresh_value:
             await app.grpc_clients.auth_client.logout(refresh_token=refresh_value)
@@ -600,9 +599,16 @@ async def delete_account(
 ):
     try:
         user_id = current_user["user_id"]
-        await app.grpc_clients.user_data_client.delete_user_data(user_id=user_id)
         await app.grpc_clients.auth_client.delete_account(user_id=user_id)
-        return fastapi.Response(status_code=204)
+        try:
+            await app.grpc_clients.user_data_client.delete_user_data(user_id=user_id)
+        except grpc.RpcError as e:
+            app.utils.responses.log_grpc_error(
+                logger, f"deleting user data for removed account {user_id}", e
+            )
+        response = fastapi.Response(status_code=204)
+        app.utils.cookies.clear_auth_cookies(response)
+        return response
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "in delete_account", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:

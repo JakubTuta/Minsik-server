@@ -99,7 +99,7 @@ class TestGenerateUniqueUsername:
 class TestExchangeCodeForTokens:
     @pytest.mark.asyncio
     async def test_raises_when_not_configured(self):
-        with patch.object(app.services.google_auth_service.app.config.settings, "google_client_id", ""):
+        with patch.object(google_auth_service.app.config.settings, "google_client_id", ""):
             with pytest.raises(ValueError, match="google_oauth_not_configured"):
                 await google_auth_service.exchange_code_for_tokens("code", "http://localhost/cb")
 
@@ -114,7 +114,7 @@ class TestExchangeCodeForTokens:
 
         with patch("httpx.AsyncClient") as mock_class:
             mock_class.return_value.__aenter__.return_value = mock_client
-            with patch.object(app.services.google_auth_service.app.config.settings, "google_client_id", "fake-id"):
+            with patch.object(google_auth_service.app.config.settings, "google_client_id", "fake-id"):
                 result = await google_auth_service.exchange_code_for_tokens("code", "http://localhost/cb")
 
         assert result["access_token"] == "goog_access"
@@ -130,7 +130,7 @@ class TestExchangeCodeForTokens:
 
         with patch("httpx.AsyncClient") as mock_class:
             mock_class.return_value.__aenter__.return_value = mock_client
-            with patch.object(app.services.google_auth_service.app.config.settings, "google_client_id", "fake-id"):
+            with patch.object(google_auth_service.app.config.settings, "google_client_id", "fake-id"):
                 with pytest.raises(ValueError, match="google_token_exchange_failed"):
                     await google_auth_service.exchange_code_for_tokens("bad_code", "http://localhost/cb")
 
@@ -142,7 +142,7 @@ class TestExchangeCodeForTokens:
 
         with patch("httpx.AsyncClient") as mock_class:
             mock_class.return_value.__aenter__.return_value = mock_client
-            with patch.object(app.services.google_auth_service.app.config.settings, "google_client_id", "fake-id"):
+            with patch.object(google_auth_service.app.config.settings, "google_client_id", "fake-id"):
                 with pytest.raises(ValueError, match="google_token_exchange_failed"):
                     await google_auth_service.exchange_code_for_tokens("code", "http://localhost/cb")
 
@@ -200,6 +200,7 @@ class TestAuthenticateWithGoogle:
     _user_info = {
         "sub": "123456",
         "email": "google@example.com",
+        "email_verified": True,
         "name": "Google User",
         "picture": "https://example.com/photo.jpg"
     }
@@ -277,6 +278,26 @@ class TestAuthenticateWithGoogle:
         with patch.object(google_auth_service, "exchange_code_for_tokens", AsyncMock(return_value=self._token_data)):
             with patch.object(google_auth_service, "fetch_google_user_info", AsyncMock(return_value=user_info_no_email)):
                 with pytest.raises(ValueError, match="google_email_missing"):
+                    await google_auth_service.authenticate_with_google(
+                        mock_session, "code", "http://localhost/cb"
+                    )
+
+    @pytest.mark.asyncio
+    async def test_raises_when_email_not_verified(self, mock_session):
+        unverified_info = {**self._user_info, "email_verified": False}
+        with patch.object(google_auth_service, "exchange_code_for_tokens", AsyncMock(return_value=self._token_data)):
+            with patch.object(google_auth_service, "fetch_google_user_info", AsyncMock(return_value=unverified_info)):
+                with pytest.raises(ValueError, match="google_email_not_verified"):
+                    await google_auth_service.authenticate_with_google(
+                        mock_session, "code", "http://localhost/cb"
+                    )
+
+    @pytest.mark.asyncio
+    async def test_raises_when_email_verified_absent(self, mock_session):
+        info_without_flag = {k: v for k, v in self._user_info.items() if k != "email_verified"}
+        with patch.object(google_auth_service, "exchange_code_for_tokens", AsyncMock(return_value=self._token_data)):
+            with patch.object(google_auth_service, "fetch_google_user_info", AsyncMock(return_value=info_without_flag)):
+                with pytest.raises(ValueError, match="google_email_not_verified"):
                     await google_auth_service.authenticate_with_google(
                         mock_session, "code", "http://localhost/cb"
                     )

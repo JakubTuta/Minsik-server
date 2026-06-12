@@ -154,6 +154,11 @@ class BooksServiceStub(object):
                 request_serializer=books__pb2.GetGenreBubbleRequest.SerializeToString,
                 response_deserializer=books__pb2.GetGenreBubbleResponse.FromString,
                 _registered_method=True)
+        self.ListSitemapSlugs = channel.unary_unary(
+                '/books.v1.BooksService/ListSitemapSlugs',
+                request_serializer=books__pb2.ListSitemapSlugsRequest.SerializeToString,
+                response_deserializer=books__pb2.ListSitemapSlugsResponse.FromString,
+                _registered_method=True)
 
 
 class BooksServiceServicer(object):
@@ -303,6 +308,12 @@ class BooksServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def ListSitemapSlugs(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_BooksServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -425,6 +436,11 @@ def add_BooksServiceServicer_to_server(servicer, server):
                     servicer.GetGenreBubble,
                     request_deserializer=books__pb2.GetGenreBubbleRequest.FromString,
                     response_serializer=books__pb2.GetGenreBubbleResponse.SerializeToString,
+            ),
+            'ListSitemapSlugs': grpc.unary_unary_rpc_method_handler(
+                    servicer.ListSitemapSlugs,
+                    request_deserializer=books__pb2.ListSitemapSlugsRequest.FromString,
+                    response_serializer=books__pb2.ListSitemapSlugsResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -1075,6 +1091,33 @@ class BooksService(object):
             '/books.v1.BooksService/GetGenreBubble',
             books__pb2.GetGenreBubbleRequest.SerializeToString,
             books__pb2.GetGenreBubbleResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def ListSitemapSlugs(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/books.v1.BooksService/ListSitemapSlugs',
+            books__pb2.ListSitemapSlugsRequest.SerializeToString,
+            books__pb2.ListSitemapSlugsResponse.FromString,
             options,
             channel_credentials,
             insecure,

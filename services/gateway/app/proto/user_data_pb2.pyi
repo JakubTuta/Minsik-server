@@ -611,14 +611,16 @@ class TopGenre(_message.Message):
     def __init__(self, name: _Optional[str] = ..., slug: _Optional[str] = ..., count: _Optional[int] = ..., percent: _Optional[float] = ...) -> None: ...
 
 class FavouriteAuthor(_message.Message):
-    __slots__ = ("name", "slug", "count")
+    __slots__ = ("name", "slug", "count", "photo_url")
     NAME_FIELD_NUMBER: _ClassVar[int]
     SLUG_FIELD_NUMBER: _ClassVar[int]
     COUNT_FIELD_NUMBER: _ClassVar[int]
+    PHOTO_URL_FIELD_NUMBER: _ClassVar[int]
     name: str
     slug: str
     count: int
-    def __init__(self, name: _Optional[str] = ..., slug: _Optional[str] = ..., count: _Optional[int] = ...) -> None: ...
+    photo_url: str
+    def __init__(self, name: _Optional[str] = ..., slug: _Optional[str] = ..., count: _Optional[int] = ..., photo_url: _Optional[str] = ...) -> None: ...
 
 class ProfileOverviewResponse(_message.Message):
     __slots__ = ("user", "reading_now", "top_genres", "favourite_authors", "favourites_this_year", "reading_now_present")

@@ -2,6 +2,7 @@ import typing
 import logging
 import datetime
 import sqlalchemy
+import sqlalchemy.exc
 import sqlalchemy.ext.asyncio
 import app.models.user
 import app.models.refresh_token
@@ -38,7 +39,14 @@ async def register(
         is_active=True
     )
     session.add(user)
-    await session.commit()
+    try:
+        await session.commit()
+    except sqlalchemy.exc.IntegrityError as e:
+        await session.rollback()
+        constraint = str(e.orig)
+        if "email" in constraint:
+            raise ValueError("email_taken")
+        raise ValueError("username_taken")
     await session.refresh(user)
     return user
 
@@ -56,13 +64,13 @@ async def login(
     if not user or not user.is_active:
         raise ValueError("invalid_credentials")
 
-    if user.locked_until and user.locked_until > datetime.datetime.utcnow():
+    if user.locked_until and user.locked_until > app.utils.utcnow():
         raise PermissionError("account_locked")
 
     if not user.password_hash or not app.utils.verify_password(password, user.password_hash):
         user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
         if user.failed_login_attempts >= app.config.settings.max_failed_login_attempts:
-            user.locked_until = datetime.datetime.utcnow() + datetime.timedelta(
+            user.locked_until = app.utils.utcnow() + datetime.timedelta(
                 minutes=app.config.settings.lockout_duration_minutes
             )
         await session.commit()
@@ -74,13 +82,13 @@ async def login(
     refresh_token_obj = app.models.refresh_token.RefreshToken(
         user_id=user.user_id,
         token_hash=token_hash,
-        expires_at=datetime.datetime.utcnow() + datetime.timedelta(
+        expires_at=app.utils.utcnow() + datetime.timedelta(
             days=app.config.settings.jwt_refresh_token_expire_days
         )
     )
     session.add(refresh_token_obj)
 
-    user.last_login = datetime.datetime.utcnow()
+    user.last_login = app.utils.utcnow()
     user.failed_login_attempts = 0
     user.locked_until = None
     await session.commit()
@@ -101,7 +109,7 @@ async def logout(
     token_obj = result.scalar_one_or_none()
     if token_obj and not token_obj.is_revoked:
         token_obj.is_revoked = True
-        token_obj.revoked_at = datetime.datetime.utcnow()
+        token_obj.revoked_at = app.utils.utcnow()
         await session.commit()
 
 
@@ -123,7 +131,7 @@ async def refresh_tokens(
     if token_obj.is_revoked:
         raise PermissionError("token_revoked")
 
-    if token_obj.expires_at < datetime.datetime.utcnow():
+    if token_obj.expires_at < app.utils.utcnow():
         raise PermissionError("token_expired")
 
     user_result = await session.execute(
@@ -141,7 +149,7 @@ async def refresh_tokens(
     new_refresh_token_obj = app.models.refresh_token.RefreshToken(
         user_id=user.user_id,
         token_hash=new_token_hash,
-        expires_at=datetime.datetime.utcnow() + datetime.timedelta(
+        expires_at=app.utils.utcnow() + datetime.timedelta(
             days=app.config.settings.jwt_refresh_token_expire_days
         )
     )
@@ -149,7 +157,7 @@ async def refresh_tokens(
     await session.flush()
 
     token_obj.is_revoked = True
-    token_obj.revoked_at = datetime.datetime.utcnow()
+    token_obj.revoked_at = app.utils.utcnow()
     token_obj.replaced_by_token_id = new_refresh_token_obj.token_id
     await session.commit()
 
@@ -166,7 +174,7 @@ async def issue_tokens_for_user(
     refresh_token_obj = app.models.refresh_token.RefreshToken(
         user_id=user.user_id,
         token_hash=token_hash,
-        expires_at=datetime.datetime.utcnow() + datetime.timedelta(
+        expires_at=app.utils.utcnow() + datetime.timedelta(
             days=app.config.settings.jwt_refresh_token_expire_days
         )
     )
@@ -174,6 +182,26 @@ async def issue_tokens_for_user(
     await session.commit()
 
     return access_token, raw_refresh_token
+
+
+async def purge_stale_refresh_tokens(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    retention_days: int = 60
+) -> int:
+    cutoff = app.utils.utcnow() - datetime.timedelta(days=retention_days)
+    result = await session.execute(
+        sqlalchemy.delete(app.models.refresh_token.RefreshToken).where(
+            sqlalchemy.or_(
+                app.models.refresh_token.RefreshToken.expires_at < cutoff,
+                sqlalchemy.and_(
+                    app.models.refresh_token.RefreshToken.is_revoked.is_(True),
+                    app.models.refresh_token.RefreshToken.revoked_at < cutoff,
+                ),
+            )
+        )
+    )
+    await session.commit()
+    return result.rowcount
 
 
 async def get_current_user(

@@ -1,44 +1,21 @@
-import grpc
 import logging
-import typing
 import app.config
+from app.grpc_clients import base
 import app.proto.auth_pb2
 import app.proto.auth_pb2_grpc
-import app.tracing
 
 logger = logging.getLogger(__name__)
 
 
-class AuthClient:
-    def __init__(self):
-        self.channel: typing.Optional[grpc.aio.Channel] = None
-        self.stub: typing.Optional[app.proto.auth_pb2_grpc.AuthServiceStub] = None
+class AuthClient(base.GrpcClientBase):
+    service_label = "auth"
 
-    async def __aenter__(self):
-        await self.connect()
-        return self
+    def _target(self) -> str:
+        return app.config.settings.auth_service_url
 
-    async def __aexit__(self, exc_type, exc_val, exc_tb):
-        await self.close()
+    def _create_stub(self, channel):
+        return app.proto.auth_pb2_grpc.AuthServiceStub(channel)
 
-    async def connect(self):
-        self.channel = grpc.aio.insecure_channel(
-            app.config.settings.auth_service_url,
-            options=[
-                ("grpc.keepalive_time_ms", app.config.settings.grpc_keepalive_time_ms),
-                ("grpc.keepalive_timeout_ms", app.config.settings.grpc_keepalive_timeout_ms),
-                ("grpc.keepalive_permit_without_calls", 0),
-                ("grpc.http2.max_pings_without_data", 0),
-            ],
-            interceptors=app.tracing.get_client_interceptors(),
-        )
-        self.stub = app.proto.auth_pb2_grpc.AuthServiceStub(self.channel)
-        logger.info(f"Connected to auth service at {app.config.settings.auth_service_url}")
-
-    async def close(self):
-        if self.channel:
-            await self.channel.close()
-            logger.info("Closed auth service connection")
 
     async def register(
         self,
@@ -52,15 +29,7 @@ class AuthClient:
             password=password
         )
 
-        try:
-            response = await self.stub.Register(
-                request,
-                timeout=app.config.settings.grpc_timeout
-            )
-            return response
-        except grpc.RpcError as e:
-            logger.error(f"gRPC error registering user: {e.code()} - {e.details()}")
-            raise
+        return await self._call("Register", request)
 
     async def login(
         self,
@@ -72,54 +41,22 @@ class AuthClient:
             password=password
         )
 
-        try:
-            response = await self.stub.Login(
-                request,
-                timeout=app.config.settings.grpc_timeout
-            )
-            return response
-        except grpc.RpcError as e:
-            logger.error(f"gRPC error logging in: {e.code()} - {e.details()}")
-            raise
+        return await self._call("Login", request)
 
     async def logout(self, refresh_token: str) -> app.proto.auth_pb2.EmptyResponse:
         request = app.proto.auth_pb2.LogoutRequest(refresh_token=refresh_token)
 
-        try:
-            response = await self.stub.Logout(
-                request,
-                timeout=app.config.settings.grpc_timeout
-            )
-            return response
-        except grpc.RpcError as e:
-            logger.error(f"gRPC error logging out: {e.code()} - {e.details()}")
-            raise
+        return await self._call("Logout", request)
 
     async def refresh_token(self, refresh_token: str) -> app.proto.auth_pb2.AuthResponse:
         request = app.proto.auth_pb2.RefreshTokenRequest(refresh_token=refresh_token)
 
-        try:
-            response = await self.stub.RefreshToken(
-                request,
-                timeout=app.config.settings.grpc_timeout
-            )
-            return response
-        except grpc.RpcError as e:
-            logger.error(f"gRPC error refreshing token: {e.code()} - {e.details()}")
-            raise
+        return await self._call("RefreshToken", request)
 
     async def get_current_user(self, user_id: int) -> app.proto.auth_pb2.UserResponse:
         request = app.proto.auth_pb2.GetCurrentUserRequest(user_id=user_id)
 
-        try:
-            response = await self.stub.GetCurrentUser(
-                request,
-                timeout=app.config.settings.grpc_timeout
-            )
-            return response
-        except grpc.RpcError as e:
-            logger.error(f"gRPC error getting current user: {e.code()} - {e.details()}")
-            raise
+        return await self._call("GetCurrentUser", request)
 
     async def update_profile(
         self,
@@ -137,39 +74,17 @@ class AuthClient:
             preferred_language=preferred_language,
         )
 
-        try:
-            response = await self.stub.UpdateProfile(
-                request,
-                timeout=app.config.settings.grpc_timeout
-            )
-            return response
-        except grpc.RpcError as e:
-            logger.error(f"gRPC error updating profile: {e.code()} - {e.details()}")
-            raise
+        return await self._call("UpdateProfile", request)
 
     async def delete_account(self, user_id: int) -> app.proto.auth_pb2.EmptyResponse:
         request = app.proto.auth_pb2.DeleteAccountRequest(user_id=user_id)
 
-        try:
-            return await self.stub.DeleteAccount(
-                request,
-                timeout=app.config.settings.grpc_timeout
-            )
-        except grpc.RpcError as e:
-            logger.error(f"gRPC error deleting account: {e.code()} - {e.details()}")
-            raise
+        return await self._call("DeleteAccount", request)
 
     async def google_auth(self, code: str, redirect_uri: str) -> app.proto.auth_pb2.AuthResponse:
         request = app.proto.auth_pb2.GoogleAuthRequest(code=code, redirect_uri=redirect_uri)
 
-        try:
-            return await self.stub.GoogleAuth(
-                request,
-                timeout=app.config.settings.grpc_timeout
-            )
-        except grpc.RpcError as e:
-            logger.error(f"gRPC error in google_auth: {e.code()} - {e.details()}")
-            raise
+        return await self._call("GoogleAuth", request)
 
 
 auth_client = AuthClient()

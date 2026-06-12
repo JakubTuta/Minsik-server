@@ -7,13 +7,14 @@ import app.config
 
 
 def create_access_token(user_id: int, role: str) -> str:
+    now = datetime.datetime.now(datetime.timezone.utc)
     payload = {
         "sub": str(user_id),
         "role": role,
-        "exp": datetime.datetime.utcnow() + datetime.timedelta(
+        "exp": now + datetime.timedelta(
             minutes=app.config.settings.jwt_access_token_expire_minutes
         ),
-        "iat": datetime.datetime.utcnow(),
+        "iat": now,
         "type": "access"
     }
     return jwt.encode(

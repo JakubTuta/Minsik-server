@@ -3,7 +3,7 @@ import pydantic_settings
 
 
 class Settings(pydantic_settings.BaseSettings):
-    env: str = pydantic.Field(default="production")
+    env: str = pydantic.Field(default="development")
     debug: bool = pydantic.Field(default=False)
     log_level: str = pydantic.Field(default="ERROR")
 
@@ -42,22 +42,30 @@ class Settings(pydantic_settings.BaseSettings):
     grpc_admin_timeout: float = pydantic.Field(default=60.0)
     recommendation_recompute_on_user_write: bool = pydantic.Field(default=True)
 
-    cors_origins: str = pydantic.Field(default="*")
+    cors_origins: str = pydantic.Field(default="http://localhost:3000")
     cors_allow_credentials: bool = pydantic.Field(default=True)
-    cors_allow_methods: str = pydantic.Field(default="*")
-    cors_allow_headers: str = pydantic.Field(default="*")
+    cors_allow_methods: str = pydantic.Field(default="GET,POST,PUT,DELETE,PATCH,OPTIONS")
+    cors_allow_headers: str = pydantic.Field(default="Content-Type,Authorization,X-CSRF-Token")
 
-    rate_limit_enabled: bool = pydantic.Field(default=False)
+    rate_limit_enabled: bool = pydantic.Field(default=True)
     rate_limit_per_minute: int = pydantic.Field(default=60)
-    rate_limit_burst: int = pydantic.Field(default=10)
     rate_limit_admin_per_minute: int = pydantic.Field(default=20)
     rate_limit_suggest_per_minute: int = pydantic.Field(default=120)
+    rate_limit_storage_uri: str = pydantic.Field(default="")
 
     ledger_api_key: str = pydantic.Field(default="")
 
     class Config:
         env_file = ".env"
         case_sensitive = False
+
+    @pydantic.model_validator(mode="after")
+    def validate_production_secrets(self) -> "Settings":
+        if self.env == "production" and self.jwt_secret_key in ("", "changeme"):
+            raise ValueError(
+                "JWT_SECRET_KEY must be set to a strong secret in production"
+            )
+        return self
 
     @property
     def ingestion_service_url(self) -> str:

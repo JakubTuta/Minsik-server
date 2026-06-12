@@ -27,6 +27,23 @@ service BooksService {
   rpc GetPopularCategories(GetPopularCategoriesRequest) returns (PopularCategoriesResponse);
   rpc ReindexAll(ReindexAllRequest) returns (ReindexAllResponse);
   rpc GetGenreBubble(GetGenreBubbleRequest) returns (GetGenreBubbleResponse);
+  rpc ListSitemapSlugs(ListSitemapSlugsRequest) returns (ListSitemapSlugsResponse);
+}
+
+message ListSitemapSlugsRequest {
+  string entity = 1;
+  int32 limit = 2;
+  int32 offset = 3;
+}
+
+message SitemapSlugItem {
+  string slug = 1;
+  string updated_at = 2;
+}
+
+message ListSitemapSlugsResponse {
+  repeated SitemapSlugItem items = 1;
+  int32 total_count = 2;
 }
 
 message ListCategoriesRequest {

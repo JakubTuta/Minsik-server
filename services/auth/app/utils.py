@@ -1,5 +1,11 @@
+import datetime
+
 import bcrypt
 import app.config
+
+
+def utcnow() -> datetime.datetime:
+    return datetime.datetime.now(datetime.timezone.utc).replace(tzinfo=None)
 
 
 def hash_password(plain: str) -> str:

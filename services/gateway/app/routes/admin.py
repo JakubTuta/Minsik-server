@@ -60,7 +60,6 @@ _AUTH_RESPONSES = {
     summary="Get data coverage stats",
     description="Returns counts of books/authors/series in the database.",
     dependencies=[
-        fastapi.Depends(lambda: limiter),
         fastapi.Depends(app.middleware.auth.require_admin),
     ],
     responses={
@@ -88,26 +87,25 @@ _AUTH_RESPONSES = {
 @limiter.limit(app.middleware.rate_limit.get_admin_limit())
 async def get_data_coverage(request: fastapi.Request):
     try:
-        async with app.grpc_clients.IngestionClient() as client:
-            response = await client.get_data_coverage()
+        response = await app.grpc_clients.ingestion_client.get_data_coverage()
 
-            data = app.models.requests.DataCoverageResponse(
-                db_books_count=response.db_books_count,
-                db_authors_count=response.db_authors_count,
-                db_series_count=response.db_series_count,
-                cached=response.cached,
-            )
+        data = app.models.requests.DataCoverageResponse(
+            db_books_count=response.db_books_count,
+            db_authors_count=response.db_authors_count,
+            db_series_count=response.db_series_count,
+            cached=response.cached,
+        )
 
-            return app.utils.responses.success_response(
-                data.model_dump(), status_code=200
-            )
+        return app.utils.responses.success_response(
+            data.model_dump(), status_code=200
+        )
 
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "admin", e)
         return app.utils.responses.error_response(
             code="INTERNAL_ERROR",
             message="Failed to communicate with ingestion service",
-            details={"grpc_code": e.code().name, "grpc_details": e.details()},
+            details={"grpc_code": e.code().name},
             status_code=500,
         )
 
@@ -116,7 +114,6 @@ async def get_data_coverage(request: fastapi.Request):
         return app.utils.responses.error_response(
             code="INTERNAL_ERROR",
             message="An unexpected error occurred",
-            details={"error": str(e)},
             status_code=500,
         )
 
@@ -127,7 +124,6 @@ async def get_data_coverage(request: fastapi.Request):
     summary="Import Open Library data dump",
     description="Trigger an import of Open Library's monthly data dump. Import runs asynchronously in the background; check service logs for progress.",
     dependencies=[
-        fastapi.Depends(lambda: limiter),
         fastapi.Depends(app.middleware.auth.require_admin),
     ],
     responses={
@@ -168,23 +164,22 @@ async def get_data_coverage(request: fastapi.Request):
 @limiter.limit(app.middleware.rate_limit.get_admin_limit())
 async def import_dump(request: fastapi.Request):
     try:
-        async with app.grpc_clients.IngestionClient() as client:
-            response = await client.import_dump()
+        response = await app.grpc_clients.ingestion_client.import_dump()
 
-            data = app.models.requests.ImportDumpResponse(
-                status=response.status, message=response.message
-            )
+        data = app.models.requests.ImportDumpResponse(
+            status=response.status, message=response.message
+        )
 
-            return app.utils.responses.success_response(
-                data.model_dump(), status_code=200
-            )
+        return app.utils.responses.success_response(
+            data.model_dump(), status_code=200
+        )
 
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "admin", e)
         return app.utils.responses.error_response(
             code="INTERNAL_ERROR",
             message="Failed to start dump import",
-            details={"grpc_code": e.code().name, "grpc_details": e.details()},
+            details={"grpc_code": e.code().name},
             status_code=500,
         )
 
@@ -193,7 +188,6 @@ async def import_dump(request: fastapi.Request):
         return app.utils.responses.error_response(
             code="INTERNAL_ERROR",
             message="An unexpected error occurred",
-            details={"error": str(e)},
             status_code=500,
         )
 
@@ -204,7 +198,6 @@ async def import_dump(request: fastapi.Request):
     summary="Trigger data cleanup job",
     description="Manually trigger a full data cleanup cycle. Runs asynchronously in the background; check service logs for progress.",
     dependencies=[
-        fastapi.Depends(lambda: limiter),
         fastapi.Depends(app.middleware.auth.require_admin),
     ],
     responses={
@@ -216,23 +209,22 @@ async def import_dump(request: fastapi.Request):
 @limiter.limit(app.middleware.rate_limit.get_admin_limit())
 async def run_cleanup(request: fastapi.Request):
     try:
-        async with app.grpc_clients.IngestionClient() as client:
-            response = await client.run_cleanup()
+        response = await app.grpc_clients.ingestion_client.run_cleanup()
 
-            data = app.models.requests.JobTriggerResponse(
-                status=response.status, message=response.message
-            )
+        data = app.models.requests.JobTriggerResponse(
+            status=response.status, message=response.message
+        )
 
-            return app.utils.responses.success_response(
-                data.model_dump(), status_code=200
-            )
+        return app.utils.responses.success_response(
+            data.model_dump(), status_code=200
+        )
 
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "admin", e)
         return app.utils.responses.error_response(
             code="INTERNAL_ERROR",
             message="Failed to trigger cleanup job",
-            details={"grpc_code": e.code().name, "grpc_details": e.details()},
+            details={"grpc_code": e.code().name},
             status_code=500,
         )
 
@@ -241,7 +233,6 @@ async def run_cleanup(request: fastapi.Request):
         return app.utils.responses.error_response(
             code="INTERNAL_ERROR",
             message="An unexpected error occurred",
-            details={"error": str(e)},
             status_code=500,
         )
 
@@ -252,7 +243,6 @@ async def run_cleanup(request: fastapi.Request):
     summary="Trigger full Elasticsearch reindex",
     description="Manually trigger a full Elasticsearch reindex of all books, authors, and series. Runs asynchronously in the background; check service logs for progress.",
     dependencies=[
-        fastapi.Depends(lambda: limiter),
         fastapi.Depends(app.middleware.auth.require_admin),
     ],
     responses={
@@ -264,23 +254,22 @@ async def run_cleanup(request: fastapi.Request):
 @limiter.limit(app.middleware.rate_limit.get_admin_limit())
 async def run_reindex(request: fastapi.Request):
     try:
-        async with app.grpc_clients.BooksClient() as client:
-            response = await client.trigger_reindex()
+        response = await app.grpc_clients.books_client.trigger_reindex()
 
-            data = app.models.requests.JobTriggerResponse(
-                status=response.status, message=response.message
-            )
+        data = app.models.requests.JobTriggerResponse(
+            status=response.status, message=response.message
+        )
 
-            return app.utils.responses.success_response(
-                data.model_dump(), status_code=200
-            )
+        return app.utils.responses.success_response(
+            data.model_dump(), status_code=200
+        )
 
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "admin", e)
         return app.utils.responses.error_response(
             code="INTERNAL_ERROR",
             message="Failed to trigger reindex",
-            details={"grpc_code": e.code().name, "grpc_details": e.details()},
+            details={"grpc_code": e.code().name},
             status_code=500,
         )
 
@@ -289,7 +278,6 @@ async def run_reindex(request: fastapi.Request):
         return app.utils.responses.error_response(
             code="INTERNAL_ERROR",
             message="An unexpected error occurred",
-            details={"error": str(e)},
             status_code=500,
         )
 
@@ -302,7 +290,6 @@ async def run_reindex(request: fastapi.Request):
     the request body are changed — omitted fields are left untouched.
     Author/genre relationships cannot be modified through this endpoint.""",
     dependencies=[
-        fastapi.Depends(lambda: limiter),
         fastapi.Depends(app.middleware.auth.require_admin),
     ],
     responses={
@@ -342,48 +329,47 @@ async def update_book(
             proto_fields[field] = value
 
     try:
-        async with app.grpc_clients.BooksClient() as client:
-            response = await client.update_book(book_id=book_id, fields=proto_fields)
-            book = response.book
-            return app.utils.responses.success_response(
-                {
-                    "book_id": book.book_id,
-                    "title": book.title,
-                    "slug": book.slug,
-                    "description": book.description,
-                    "first_sentence": book.first_sentence or None,
-                    "language": book.language,
-                    "original_publication_year": book.original_publication_year,
-                    "primary_cover_url": book.primary_cover_url,
-                    "formats": list(book.formats),
-                    "isbn": list(book.isbn),
-                    "publisher": book.publisher,
-                    "number_of_pages": book.number_of_pages,
-                    "external_ids": dict(book.external_ids),
-                    "open_library_id": book.open_library_id,
-                    "google_books_id": book.google_books_id,
-                    "series": (
-                        {
-                            "series_id": book.series.series_id,
-                            "name": book.series.name,
-                            "slug": book.series.slug,
-                            "total_books": book.series.total_books,
-                        }
-                        if book.HasField("series")
-                        else None
-                    ),
-                    "series_position": (
-                        float(book.series_position) if book.series_position else None
-                    ),
-                    "rating_count": book.rating_count,
-                    "avg_rating": float(book.avg_rating) if book.avg_rating else 0.0,
-                    "ol_rating_count": book.ol_rating_count,
-                    "ol_avg_rating": (
-                        float(book.ol_avg_rating) if book.ol_avg_rating else 0.0
-                    ),
-                    "updated_at": book.updated_at,
-                }
-            )
+        response = await app.grpc_clients.books_client.update_book(book_id=book_id, fields=proto_fields)
+        book = response.book
+        return app.utils.responses.success_response(
+            {
+                "book_id": book.book_id,
+                "title": book.title,
+                "slug": book.slug,
+                "description": book.description,
+                "first_sentence": book.first_sentence or None,
+                "language": book.language,
+                "original_publication_year": book.original_publication_year,
+                "primary_cover_url": book.primary_cover_url,
+                "formats": list(book.formats),
+                "isbn": list(book.isbn),
+                "publisher": book.publisher,
+                "number_of_pages": book.number_of_pages,
+                "external_ids": dict(book.external_ids),
+                "open_library_id": book.open_library_id,
+                "google_books_id": book.google_books_id,
+                "series": (
+                    {
+                        "series_id": book.series.series_id,
+                        "name": book.series.name,
+                        "slug": book.series.slug,
+                        "total_books": book.series.total_books,
+                    }
+                    if book.HasField("series")
+                    else None
+                ),
+                "series_position": (
+                    float(book.series_position) if book.series_position else None
+                ),
+                "rating_count": book.rating_count,
+                "avg_rating": float(book.avg_rating) if book.avg_rating else 0.0,
+                "ol_rating_count": book.ol_rating_count,
+                "ol_avg_rating": (
+                    float(book.ol_avg_rating) if book.ol_avg_rating else 0.0
+                ),
+                "updated_at": book.updated_at,
+            }
+        )
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "updating book", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
@@ -393,7 +379,7 @@ async def update_book(
         return app.utils.responses.error_response(
             code="INTERNAL_ERROR",
             message="Failed to update book",
-            details={"grpc_code": e.code().name, "grpc_details": e.details()},
+            details={"grpc_code": e.code().name},
             status_code=500,
         )
     except Exception as e:
@@ -401,7 +387,6 @@ async def update_book(
         return app.utils.responses.error_response(
             code="INTERNAL_ERROR",
             message="An unexpected error occurred",
-            details={"error": str(e)},
             status_code=500,
         )
 
@@ -413,7 +398,6 @@ async def update_book(
     description="""Partially update an author's editable fields. Only the fields included
     in the request body are changed — omitted fields are left untouched.""",
     dependencies=[
-        fastapi.Depends(lambda: limiter),
         fastapi.Depends(app.middleware.auth.require_admin),
     ],
     responses={
@@ -449,30 +433,29 @@ async def update_author(
             proto_fields[field] = value
 
     try:
-        async with app.grpc_clients.BooksClient() as client:
-            response = await client.update_author(
-                author_id=author_id, fields=proto_fields
-            )
-            author = response.author
-            return app.utils.responses.success_response(
-                {
-                    "author_id": author.author_id,
-                    "name": author.name,
-                    "slug": author.slug,
-                    "bio": author.bio or None,
-                    "birth_date": author.birth_date or None,
-                    "death_date": author.death_date or None,
-                    "birth_place": author.birth_place or None,
-                    "nationality": author.nationality or None,
-                    "photo_url": author.photo_url or None,
-                    "wikidata_id": author.wikidata_id or None,
-                    "wikipedia_url": author.wikipedia_url or None,
-                    "remote_ids": dict(author.remote_ids),
-                    "alternate_names": list(author.alternate_names),
-                    "open_library_id": author.open_library_id or None,
-                    "updated_at": author.updated_at,
-                }
-            )
+        response = await app.grpc_clients.books_client.update_author(
+            author_id=author_id, fields=proto_fields
+        )
+        author = response.author
+        return app.utils.responses.success_response(
+            {
+                "author_id": author.author_id,
+                "name": author.name,
+                "slug": author.slug,
+                "bio": author.bio or None,
+                "birth_date": author.birth_date or None,
+                "death_date": author.death_date or None,
+                "birth_place": author.birth_place or None,
+                "nationality": author.nationality or None,
+                "photo_url": author.photo_url or None,
+                "wikidata_id": author.wikidata_id or None,
+                "wikipedia_url": author.wikipedia_url or None,
+                "remote_ids": dict(author.remote_ids),
+                "alternate_names": list(author.alternate_names),
+                "open_library_id": author.open_library_id or None,
+                "updated_at": author.updated_at,
+            }
+        )
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "updating author", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
@@ -482,7 +465,7 @@ async def update_author(
         return app.utils.responses.error_response(
             code="INTERNAL_ERROR",
             message="Failed to update author",
-            details={"grpc_code": e.code().name, "grpc_details": e.details()},
+            details={"grpc_code": e.code().name},
             status_code=500,
         )
     except Exception as e:
@@ -490,7 +473,6 @@ async def update_author(
         return app.utils.responses.error_response(
             code="INTERNAL_ERROR",
             message="An unexpected error occurred",
-            details={"error": str(e)},
             status_code=500,
         )
 
@@ -502,7 +484,6 @@ async def update_author(
     description="""Partially update a series' editable fields. Only the fields included
     in the request body are changed — omitted fields are left untouched.""",
     dependencies=[
-        fastapi.Depends(lambda: limiter),
         fastapi.Depends(app.middleware.auth.require_admin),
     ],
     responses={
@@ -529,27 +510,26 @@ async def update_series(
         )
 
     try:
-        async with app.grpc_clients.BooksClient() as client:
-            response = await client.update_series(series_id=series_id, fields=updates)
-            series = response.series
-            return app.utils.responses.success_response(
-                {
-                    "series_id": series.series_id,
-                    "name": series.name,
-                    "slug": series.slug,
-                    "description": series.description or None,
-                    "total_books": series.total_books,
-                    "avg_rating": (
-                        float(series.avg_rating) if series.avg_rating else 0.0
-                    ),
-                    "rating_count": series.rating_count,
-                    "ol_avg_rating": (
-                        float(series.ol_avg_rating) if series.ol_avg_rating else 0.0
-                    ),
-                    "ol_rating_count": series.ol_rating_count,
-                    "updated_at": series.updated_at,
-                }
-            )
+        response = await app.grpc_clients.books_client.update_series(series_id=series_id, fields=updates)
+        series = response.series
+        return app.utils.responses.success_response(
+            {
+                "series_id": series.series_id,
+                "name": series.name,
+                "slug": series.slug,
+                "description": series.description or None,
+                "total_books": series.total_books,
+                "avg_rating": (
+                    float(series.avg_rating) if series.avg_rating else 0.0
+                ),
+                "rating_count": series.rating_count,
+                "ol_avg_rating": (
+                    float(series.ol_avg_rating) if series.ol_avg_rating else 0.0
+                ),
+                "ol_rating_count": series.ol_rating_count,
+                "updated_at": series.updated_at,
+            }
+        )
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "updating series", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
@@ -559,7 +539,7 @@ async def update_series(
         return app.utils.responses.error_response(
             code="INTERNAL_ERROR",
             message="Failed to update series",
-            details={"grpc_code": e.code().name, "grpc_details": e.details()},
+            details={"grpc_code": e.code().name},
             status_code=500,
         )
     except Exception as e:
@@ -567,7 +547,6 @@ async def update_series(
         return app.utils.responses.error_response(
             code="INTERNAL_ERROR",
             message="An unexpected error occurred",
-            details={"error": str(e)},
             status_code=500,
         )
 
@@ -578,7 +557,6 @@ async def update_series(
     summary="Remove an author from a book",
     description="Remove the author-book association. Neither the book nor the author is deleted.",
     dependencies=[
-        fastapi.Depends(lambda: limiter),
         fastapi.Depends(app.middleware.auth.require_admin),
     ],
     responses={
@@ -591,21 +569,20 @@ async def update_series(
 @limiter.limit(app.middleware.rate_limit.get_admin_limit())
 async def remove_book_author(request: fastapi.Request, book_id: int, author_id: int):
     try:
-        async with app.grpc_clients.BooksClient() as client:
-            response = await client.remove_book_author(
-                book_id=book_id, author_id=author_id
-            )
-            book = response.book
-            return app.utils.responses.success_response(
-                {
-                    "book_id": book.book_id,
-                    "title": book.title,
-                    "authors": [
-                        {"author_id": a.author_id, "name": a.name, "slug": a.slug}
-                        for a in book.authors
-                    ],
-                }
-            )
+        response = await app.grpc_clients.books_client.remove_book_author(
+            book_id=book_id, author_id=author_id
+        )
+        book = response.book
+        return app.utils.responses.success_response(
+            {
+                "book_id": book.book_id,
+                "title": book.title,
+                "authors": [
+                    {"author_id": a.author_id, "name": a.name, "slug": a.slug}
+                    for a in book.authors
+                ],
+            }
+        )
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "removing book author", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
@@ -615,7 +592,7 @@ async def remove_book_author(request: fastapi.Request, book_id: int, author_id: 
         return app.utils.responses.error_response(
             code="INTERNAL_ERROR",
             message="Failed to remove author from book",
-            details={"grpc_code": e.code().name, "grpc_details": e.details()},
+            details={"grpc_code": e.code().name},
             status_code=500,
         )
     except Exception as e:
@@ -623,7 +600,6 @@ async def remove_book_author(request: fastapi.Request, book_id: int, author_id: 
         return app.utils.responses.error_response(
             code="INTERNAL_ERROR",
             message="An unexpected error occurred",
-            details={"error": str(e)},
             status_code=500,
         )
 
@@ -638,7 +614,6 @@ async def remove_book_author(request: fastapi.Request, book_id: int, author_id: 
         "affected users."
     ),
     dependencies=[
-        fastapi.Depends(lambda: limiter),
         fastapi.Depends(app.middleware.auth.require_admin),
     ],
     responses={
@@ -651,9 +626,8 @@ async def remove_book_author(request: fastapi.Request, book_id: int, author_id: 
 @limiter.limit(app.middleware.rate_limit.get_admin_limit())
 async def delete_book(request: fastapi.Request, book_id: int):
     try:
-        async with app.grpc_clients.BooksClient() as client:
-            response = await client.delete_book(book_id=book_id)
-            return app.utils.responses.success_response({"message": response.message})
+        response = await app.grpc_clients.books_client.delete_book(book_id=book_id)
+        return app.utils.responses.success_response({"message": response.message})
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "deleting book", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
@@ -663,7 +637,7 @@ async def delete_book(request: fastapi.Request, book_id: int):
         return app.utils.responses.error_response(
             code="INTERNAL_ERROR",
             message="Failed to delete book",
-            details={"grpc_code": e.code().name, "grpc_details": e.details()},
+            details={"grpc_code": e.code().name},
             status_code=500,
         )
     except Exception as e:
@@ -671,7 +645,6 @@ async def delete_book(request: fastapi.Request, book_id: int):
         return app.utils.responses.error_response(
             code="INTERNAL_ERROR",
             message="An unexpected error occurred",
-            details={"error": str(e)},
             status_code=500,
         )
 
@@ -685,7 +658,6 @@ async def delete_book(request: fastapi.Request, book_id: int):
         "Books written by this author are NOT deleted."
     ),
     dependencies=[
-        fastapi.Depends(lambda: limiter),
         fastapi.Depends(app.middleware.auth.require_admin),
     ],
     responses={
@@ -698,9 +670,8 @@ async def delete_book(request: fastapi.Request, book_id: int):
 @limiter.limit(app.middleware.rate_limit.get_admin_limit())
 async def delete_author(request: fastapi.Request, author_id: int):
     try:
-        async with app.grpc_clients.BooksClient() as client:
-            response = await client.delete_author(author_id=author_id)
-            return app.utils.responses.success_response({"message": response.message})
+        response = await app.grpc_clients.books_client.delete_author(author_id=author_id)
+        return app.utils.responses.success_response({"message": response.message})
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "deleting author", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
@@ -710,7 +681,7 @@ async def delete_author(request: fastapi.Request, author_id: int):
         return app.utils.responses.error_response(
             code="INTERNAL_ERROR",
             message="Failed to delete author",
-            details={"grpc_code": e.code().name, "grpc_details": e.details()},
+            details={"grpc_code": e.code().name},
             status_code=500,
         )
     except Exception as e:
@@ -718,7 +689,6 @@ async def delete_author(request: fastapi.Request, author_id: int):
         return app.utils.responses.error_response(
             code="INTERNAL_ERROR",
             message="An unexpected error occurred",
-            details={"error": str(e)},
             status_code=500,
         )
 
@@ -732,7 +702,6 @@ async def delete_author(request: fastapi.Request, author_id: int):
         "series_id and series_position set to NULL — they are NOT deleted."
     ),
     dependencies=[
-        fastapi.Depends(lambda: limiter),
         fastapi.Depends(app.middleware.auth.require_admin),
     ],
     responses={
@@ -745,9 +714,8 @@ async def delete_author(request: fastapi.Request, author_id: int):
 @limiter.limit(app.middleware.rate_limit.get_admin_limit())
 async def delete_series(request: fastapi.Request, series_id: int):
     try:
-        async with app.grpc_clients.BooksClient() as client:
-            response = await client.delete_series(series_id=series_id)
-            return app.utils.responses.success_response({"message": response.message})
+        response = await app.grpc_clients.books_client.delete_series(series_id=series_id)
+        return app.utils.responses.success_response({"message": response.message})
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "deleting series", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
@@ -757,7 +725,7 @@ async def delete_series(request: fastapi.Request, series_id: int):
         return app.utils.responses.error_response(
             code="INTERNAL_ERROR",
             message="Failed to delete series",
-            details={"grpc_code": e.code().name, "grpc_details": e.details()},
+            details={"grpc_code": e.code().name},
             status_code=500,
         )
     except Exception as e:
@@ -765,6 +733,5 @@ async def delete_series(request: fastapi.Request, series_id: int):
         return app.utils.responses.error_response(
             code="INTERNAL_ERROR",
             message="An unexpected error occurred",
-            details={"error": str(e)},
             status_code=500,
         )

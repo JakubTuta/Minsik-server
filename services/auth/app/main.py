@@ -9,7 +9,10 @@ import app.database
 import app.grpc.server
 import app.proto.auth_pb2
 import app.proto.auth_pb2_grpc
+import app.services.auth_service
 import app.tracing
+
+TOKEN_PURGE_INTERVAL_SECONDS = 24 * 60 * 60
 
 logging.basicConfig(
     level=getattr(logging, app.config.settings.log_level.upper()),
@@ -21,6 +24,21 @@ logger = logging.getLogger(__name__)
 
 grpc_server: grpc.aio.Server = None
 shutdown_event = asyncio.Event()
+token_purge_task: asyncio.Task = None
+
+
+async def run_token_purge_loop() -> None:
+    while True:
+        try:
+            async with app.database.async_session_maker() as session:
+                deleted = await app.services.auth_service.purge_stale_refresh_tokens(session)
+                if deleted:
+                    logger.info(f"Purged {deleted} stale refresh tokens")
+        except asyncio.CancelledError:
+            raise
+        except Exception as e:
+            logger.error(f"Refresh token purge failed: {str(e)}")
+        await asyncio.sleep(TOKEN_PURGE_INTERVAL_SECONDS)
 
 
 async def start_server() -> None:
@@ -48,6 +66,9 @@ async def start_server() -> None:
     logger.info(f"Starting gRPC server on {app.config.settings.listen_address}")
     await grpc_server.start()
 
+    global token_purge_task
+    token_purge_task = asyncio.create_task(run_token_purge_loop())
+
     logger.info("Auth service is running")
 
 
@@ -57,6 +78,9 @@ async def shutdown() -> None:
     logger.info("Shutting down Auth service")
 
     shutdown_event.set()
+
+    if token_purge_task:
+        token_purge_task.cancel()
 
     if grpc_server:
         logger.info("Stopping gRPC server")

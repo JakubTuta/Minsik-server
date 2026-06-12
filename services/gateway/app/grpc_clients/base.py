@@ -1,0 +1,69 @@
+import logging
+import typing
+
+import app.config
+import app.tracing
+import grpc
+
+logger = logging.getLogger(__name__)
+
+
+class GrpcClientBase:
+    service_label: str = ""
+
+    def __init__(self):
+        self.channel: typing.Optional[grpc.aio.Channel] = None
+        self.stub: typing.Optional[typing.Any] = None
+
+    def _target(self) -> str:
+        raise NotImplementedError
+
+    def _create_stub(self, channel: grpc.aio.Channel) -> typing.Any:
+        raise NotImplementedError
+
+    async def __aenter__(self):
+        await self.connect()
+        return self
+
+    async def __aexit__(self, exc_type, exc_val, exc_tb):
+        await self.close()
+
+    async def connect(self) -> None:
+        self.channel = grpc.aio.insecure_channel(
+            self._target(),
+            options=[
+                ("grpc.keepalive_time_ms", app.config.settings.grpc_keepalive_time_ms),
+                (
+                    "grpc.keepalive_timeout_ms",
+                    app.config.settings.grpc_keepalive_timeout_ms,
+                ),
+                ("grpc.keepalive_permit_without_calls", 0),
+                ("grpc.http2.max_pings_without_data", 0),
+            ],
+            interceptors=app.tracing.get_client_interceptors(),
+        )
+        self.stub = self._create_stub(self.channel)
+        logger.info(f"Connected to {self.service_label} service at {self._target()}")
+
+    async def close(self) -> None:
+        if self.channel:
+            await self.channel.close()
+            logger.info(f"Closed {self.service_label} service connection")
+
+    async def _call(
+        self,
+        method_name: str,
+        request: typing.Any,
+        timeout: typing.Optional[float] = None,
+    ) -> typing.Any:
+        method = getattr(self.stub, method_name)
+        try:
+            return await method(
+                request, timeout=timeout or app.config.settings.grpc_timeout
+            )
+        except grpc.RpcError as e:
+            logger.error(
+                f"gRPC {self.service_label}.{method_name} failed: "
+                f"{e.code()} - {e.details()}"
+            )
+            raise

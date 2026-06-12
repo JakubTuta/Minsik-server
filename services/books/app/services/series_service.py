@@ -108,7 +108,7 @@ async def get_series_books(
     if cached:
         return cached["books"], cached["total"]
 
-    series_stmt = select(app.models.series.Series).filter(
+    series_stmt = sqlalchemy.select(app.models.series.Series).filter(
         app.models.series.Series.slug == series_slug
     )
     series_result = await session.execute(series_stmt)

@@ -2,118 +2,88 @@ import logging
 import random
 import typing
 
-import app.cache
 import app.services.case_service
 import sqlalchemy.ext.asyncio
 
 logger = logging.getLogger(__name__)
+
+REEL_COUNT = 3
 
 
 async def spin_slots(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     language: str = "en",
 ) -> typing.Tuple[typing.List[str], typing.Dict[str, typing.Any]]:
-    """
-    Spin the slots. Returns a tuple of (reels, winner_book_dict).
-    The reels are a list of 3 strings representing the tiers.
-    The lowest tier in the reels equals the rarity of the winner book.
-    """
-    # Try getting a winner from cache (if English) or fallback to DB
     winner_item = None
 
     if language == "en":
-        # we can use the tier pools if they are cached, but we need to pick a tier first
-        tier = app.services.case_service._pick_winning_tier()
+        winner_item = await _pick_winner_from_cache()
 
-        # We need to replicate some of the cache logic
-        tier_pools: typing.Dict[str, typing.List[typing.Dict[str, typing.Any]]] = {}
-        all_cached = True
-        for tier_name, _, _, _ in app.services.case_service.RARITY_TIERS:
-            pool = await app.cache.get_cached(
-                f"{app.services.case_service.CACHE_POOL_KEY_PREFIX}:{tier_name}:{language}"
-            )
-            if pool is None:
-                all_cached = False
-                break
-            tier_pools[tier_name] = pool
-
-        if all_cached:
-            winner_pool = tier_pools[tier[0]]
-
-            # fallback logic if exact pool is empty
-            if not winner_pool:
-                tier_index = next(
-                    i
-                    for i, t in enumerate(app.services.case_service.RARITY_TIERS)
-                    if t[0] == tier[0]
-                )
-                winner_pool = None
-                for i in range(1, len(app.services.case_service.RARITY_TIERS)):
-                    for idx in [tier_index + i, tier_index - i]:
-                        if 0 <= idx < len(app.services.case_service.RARITY_TIERS):
-                            candidate = tier_pools[app.services.case_service.RARITY_TIERS[idx][0]]
-                            if candidate:
-                                winner_pool = candidate
-                                break
-                    if winner_pool:
-                        break
-
-            if winner_pool:
-                winner_item = random.choice(winner_pool)
-                # Ensure rarity is set based on the book, or fallback to the tier we found it in
-                if "rarity" not in winner_item:
-                    winner_item["rarity"] = tier[0]
-
-    # If not found in cache or not English, fetch from DB
     if not winner_item:
-        tier = app.services.case_service._pick_winning_tier()
-        winner_row = await app.services.case_service._fetch_random_book_from_tier(
-            session,
-            language,
-            tier[1],
-            tier[2],
-            app.services.case_service.RARITY_MIN_RATINGS[tier[0]],
-        )
+        winner_item = await _pick_winner_from_db(session, language)
 
-        if winner_row is None:
-            winner_row = await app.services.case_service._fallback_book(session, language, tier)
+    winning_tier_name = winner_item.get("rarity", "common")
+    reels = _build_reels(winning_tier_name)
 
-        if winner_row is None:
-            raise ValueError(f"No rated books found for language '{language}'")
+    return reels, winner_item
 
-        winner_item = app.services.case_service._row_to_case_item(winner_row)
 
-    actual_winning_tier = winner_item.get("rarity", "common")
+async def _pick_winner_from_cache() -> typing.Optional[typing.Dict[str, typing.Any]]:
+    tier_pools = await app.services.case_service.load_cached_tier_pools()
+    if tier_pools is None:
+        return None
 
-    # Generate 3 reel symbols
-    # Guarantee one is actual_winning_tier
-    # The other two are randomly drawn from actual_winning_tier and higher tiers.
-    # Tiers are ordered highest to lowest in RARITY_TIERS.
-    tier_names = [t[0] for t in app.services.case_service.RARITY_TIERS]
+    tier = app.services.case_service.pick_winning_tier()
+    winner_pool = app.services.case_service.eligible_pool_books(
+        tier_pools, tier[0], frozenset()
+    )
+    if not winner_pool:
+        return None
+
+    winner_item = random.choice(winner_pool)
+    if "rarity" not in winner_item:
+        winner_item["rarity"] = tier[0]
+    return winner_item
+
+
+async def _pick_winner_from_db(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    language: str,
+) -> typing.Dict[str, typing.Any]:
+    tier = app.services.case_service.pick_winning_tier()
+    winner_row = await app.services.case_service.fetch_tier_row_with_fallback(
+        session, language, tier
+    )
+
+    if winner_row is None:
+        raise ValueError(f"No rated books found for language '{language}'")
+
+    return app.services.case_service.row_to_case_item(winner_row)
+
+
+def _build_reels(winning_tier_name: str) -> typing.List[str]:
+    tiers = app.services.case_service.RARITY_TIERS
+    tier_names = [t[0] for t in tiers]
     try:
-        winning_idx = tier_names.index(actual_winning_tier)
+        winning_idx = tier_names.index(winning_tier_name)
     except ValueError:
         winning_idx = len(tier_names) - 1
-        actual_winning_tier = tier_names[winning_idx]
+        winning_tier_name = tier_names[winning_idx]
 
-    # Eligible tiers: 0 to winning_idx (inclusive)
-    eligible_tiers = app.services.case_service.RARITY_TIERS[: winning_idx + 1]
-
+    eligible_tiers = tiers[: winning_idx + 1]
     total_prob = sum(t[3] for t in eligible_tiers)
 
-    reels = [actual_winning_tier]
-
-    for _ in range(2):
+    reels = [winning_tier_name]
+    for _ in range(REEL_COUNT - 1):
         roll = random.random() * total_prob
         cumulative = 0.0
-        selected = actual_winning_tier
-        for t_name, _, _, t_prob in eligible_tiers:
-            cumulative += t_prob
+        selected = winning_tier_name
+        for tier_name, _, _, tier_prob in eligible_tiers:
+            cumulative += tier_prob
             if roll <= cumulative:
-                selected = t_name
+                selected = tier_name
                 break
         reels.append(selected)
 
     random.shuffle(reels)
-
-    return reels, winner_item
+    return reels

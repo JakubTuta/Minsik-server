@@ -246,6 +246,8 @@ class AuthServicer(app.proto.auth_pb2_grpc.AuthServiceServicer):
         except PermissionError as e:
             await context.abort(grpc.StatusCode.PERMISSION_DENIED, f"Google auth failed: {str(e)}")
         except ValueError as e:
+            if str(e) == "google_email_not_verified":
+                await context.abort(grpc.StatusCode.PERMISSION_DENIED, "Google auth failed: google_email_not_verified")
             await context.abort(grpc.StatusCode.INTERNAL, f"Google auth failed: {str(e)}")
         except grpc.aio.AbortError:
             raise

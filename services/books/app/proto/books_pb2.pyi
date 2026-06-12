@@ -6,6 +6,32 @@ from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
 
 DESCRIPTOR: _descriptor.FileDescriptor
 
+class ListSitemapSlugsRequest(_message.Message):
+    __slots__ = ("entity", "limit", "offset")
+    ENTITY_FIELD_NUMBER: _ClassVar[int]
+    LIMIT_FIELD_NUMBER: _ClassVar[int]
+    OFFSET_FIELD_NUMBER: _ClassVar[int]
+    entity: str
+    limit: int
+    offset: int
+    def __init__(self, entity: _Optional[str] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ...) -> None: ...
+
+class SitemapSlugItem(_message.Message):
+    __slots__ = ("slug", "updated_at")
+    SLUG_FIELD_NUMBER: _ClassVar[int]
+    UPDATED_AT_FIELD_NUMBER: _ClassVar[int]
+    slug: str
+    updated_at: str
+    def __init__(self, slug: _Optional[str] = ..., updated_at: _Optional[str] = ...) -> None: ...
+
+class ListSitemapSlugsResponse(_message.Message):
+    __slots__ = ("items", "total_count")
+    ITEMS_FIELD_NUMBER: _ClassVar[int]
+    TOTAL_COUNT_FIELD_NUMBER: _ClassVar[int]
+    items: _containers.RepeatedCompositeFieldContainer[SitemapSlugItem]
+    total_count: int
+    def __init__(self, items: _Optional[_Iterable[_Union[SitemapSlugItem, _Mapping]]] = ..., total_count: _Optional[int] = ...) -> None: ...
+
 class ListCategoriesRequest(_message.Message):
     __slots__ = ()
     def __init__(self) -> None: ...

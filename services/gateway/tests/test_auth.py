@@ -60,7 +60,13 @@ def make_mock_user(mocker, user_id: int = 1, role: str = "user"):
     user.role = role
     user.is_active = True
     user.created_at = "2026-01-01T00:00:00"
+    user.preferred_language = "en"
     return user
+
+
+class FakeRequest:
+    def __init__(self, cookies=None):
+        self.cookies = cookies or {}
 
 
 def make_mock_auth_response(mocker, user_id: int = 1, role: str = "user"):
@@ -81,7 +87,7 @@ def make_mock_user_response(mocker, user_id: int = 1, role: str = "user"):
 class TestAuthMiddleware:
     @pytest.mark.asyncio
     async def test_no_credentials_returns_none(self):
-        result = await app.middleware.auth.get_current_user_optional(None)
+        result = await app.middleware.auth.get_current_user_optional(FakeRequest(), None)
 
         assert result is None
 
@@ -90,10 +96,20 @@ class TestAuthMiddleware:
         token = make_token(user_id=42, role="user")
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
 
-        result = await app.middleware.auth.get_current_user_optional(creds)
+        result = await app.middleware.auth.get_current_user_optional(FakeRequest(), creds)
 
         assert result is not None
         assert result["user_id"] == 42
+
+    @pytest.mark.asyncio
+    async def test_token_from_cookie_returns_user_context(self):
+        token = make_token(user_id=7, role="user")
+        request = FakeRequest(cookies={"access_token": token})
+
+        result = await app.middleware.auth.get_current_user_optional(request, None)
+
+        assert result is not None
+        assert result["user_id"] == 7
         assert result["role"] == "user"
 
     @pytest.mark.asyncio
@@ -101,7 +117,7 @@ class TestAuthMiddleware:
         token = make_token(user_id=1, role="admin")
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
 
-        result = await app.middleware.auth.get_current_user_optional(creds)
+        result = await app.middleware.auth.get_current_user_optional(FakeRequest(), creds)
 
         assert result is not None
         assert result["role"] == "admin"
@@ -111,7 +127,7 @@ class TestAuthMiddleware:
         token = make_expired_token(user_id=1)
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials=token)
 
-        result = await app.middleware.auth.get_current_user_optional(creds)
+        result = await app.middleware.auth.get_current_user_optional(FakeRequest(), creds)
 
         assert result is None
 
@@ -119,7 +135,7 @@ class TestAuthMiddleware:
     async def test_malformed_token_returns_none(self):
         creds = HTTPAuthorizationCredentials(scheme="Bearer", credentials="not.a.valid.token")
 
-        result = await app.middleware.auth.get_current_user_optional(creds)
+        result = await app.middleware.auth.get_current_user_optional(FakeRequest(), creds)
 
         assert result is None
 
@@ -173,12 +189,13 @@ class TestRegisterEndpoint:
         data = response.json()
         assert data["success"] is True
         assert data["error"] is None
-        assert data["data"]["access_token"] == "test_access_token"
-        assert data["data"]["refresh_token"] == "test_refresh_token"
-        assert data["data"]["token_type"] == "Bearer"
+        assert data["data"]["expires_in"] > 0
         assert data["data"]["user"]["email"] == "user@example.com"
         assert data["data"]["user"]["username"] == "bookworm42"
         assert data["data"]["user"]["role"] == "user"
+        assert response.cookies.get("access_token") == "test_access_token"
+        assert response.cookies.get("refresh_token") == "test_refresh_token"
+        assert response.cookies.get("csrf_token")
 
     def test_register_email_already_taken(self, client, mock_auth_client):
         mock_auth_client.register.side_effect = MockRpcError(
@@ -302,8 +319,8 @@ class TestLoginEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
-        assert data["data"]["access_token"] == "test_access_token"
         assert data["data"]["user"]["username"] == "bookworm42"
+        assert response.cookies.get("access_token") == "test_access_token"
 
     def test_login_wrong_password(self, client, mock_auth_client):
         mock_auth_client.login.side_effect = MockRpcError(
@@ -384,24 +401,25 @@ class TestLogoutEndpoint:
         assert data["success"] is True
         assert data["data"]["message"] == "Logged out successfully"
 
-    def test_logout_requires_auth(self, client):
+    def test_logout_without_auth_succeeds(self, client, mock_auth_client):
         response = client.post(
             "/api/v1/auth/logout",
             json={"refresh_token": "some-refresh-token"}
         )
 
-        assert response.status_code == 401
+        assert response.status_code == 200
+        mock_auth_client.logout.assert_called_once_with(refresh_token="some-refresh-token")
 
-    def test_logout_expired_access_token_rejected(self, client):
+    def test_logout_with_expired_access_token_succeeds(self, client, mock_auth_client):
         response = client.post(
             "/api/v1/auth/logout",
             json={"refresh_token": "some-refresh-token"},
             headers={"Authorization": f"Bearer {make_expired_token()}"}
         )
 
-        assert response.status_code == 401
+        assert response.status_code == 200
 
-    def test_logout_refresh_token_not_found(self, client, mock_auth_client):
+    def test_logout_refresh_token_not_found_still_succeeds(self, client, mock_auth_client):
         mock_auth_client.logout.side_effect = MockRpcError(
             grpc.StatusCode.NOT_FOUND, "Token not found"
         )
@@ -412,10 +430,9 @@ class TestLogoutEndpoint:
             headers={"Authorization": f"Bearer {make_token()}"}
         )
 
-        assert response.status_code == 404
+        assert response.status_code == 200
         data = response.json()
-        assert data["success"] is False
-        assert data["error"]["code"] == "NOT_FOUND"
+        assert data["success"] is True
 
     def test_logout_grpc_internal_error(self, client, mock_auth_client):
         mock_auth_client.logout.side_effect = MockRpcError(
@@ -446,8 +463,8 @@ class TestRefreshTokenEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
-        assert data["data"]["access_token"] == "test_access_token"
-        assert data["data"]["refresh_token"] == "test_refresh_token"
+        assert response.cookies.get("access_token") == "test_access_token"
+        assert response.cookies.get("refresh_token") == "test_refresh_token"
 
     def test_refresh_token_unauthenticated(self, client, mock_auth_client):
         mock_auth_client.refresh_token.side_effect = MockRpcError(
@@ -515,7 +532,7 @@ class TestRefreshTokenEndpoint:
             json={"refresh_token": ""}
         )
 
-        assert response.status_code == 422
+        assert response.status_code == 401
 
 
 class TestGetCurrentUserEndpoint:
@@ -628,7 +645,8 @@ class TestUpdateProfileEndpoint:
             user_id=1,
             display_name="Only Name",
             bio="",
-            avatar_url=""
+            avatar_url="",
+            preferred_language=""
         )
 
     def test_update_profile_requires_auth(self, client):
@@ -709,9 +727,9 @@ class TestGoogleAuthEndpoint:
         assert response.status_code == 200
         data = response.json()
         assert data["success"] is True
-        assert data["data"]["access_token"] == "test_access_token"
-        assert data["data"]["refresh_token"] == "test_refresh_token"
         assert data["data"]["user"]["email"] == "user@example.com"
+        assert response.cookies.get("access_token") == "test_access_token"
+        assert response.cookies.get("refresh_token") == "test_refresh_token"
 
     def test_google_auth_passes_code_and_redirect_uri(self, client, mock_auth_client, mocker):
         mock_auth_client.google_auth.return_value = make_mock_auth_response(mocker)

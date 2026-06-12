@@ -35,7 +35,7 @@ def mock_books_client(mocker):
     mock_client = mocker.MagicMock()
     for method in [
         "search_books_and_authors", "get_book", "get_author", "get_author_books",
-        "get_series", "get_series_books",
+        "get_series", "get_series_books", "list_sitemap_slugs",
     ]:
         setattr(mock_client, method, mocker.AsyncMock())
     mocker.patch.object(app.grpc_clients, "books_client", mock_client)

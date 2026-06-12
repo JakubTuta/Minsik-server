@@ -16,6 +16,7 @@ import app.services.genre_service
 import app.services.pack_service
 import app.services.search_service
 import app.services.series_service
+import app.services.sitemap_service
 import app.services.es_sync_service
 import app.services.slots_service
 import app.services.category_service
@@ -1041,6 +1042,47 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
             logger.error(f"Error in GetPopularCategories: {str(e)}")
             await context.abort(
                 grpc.StatusCode.INTERNAL, f"Get popular categories failed: {str(e)}"
+            )
+
+    async def ListSitemapSlugs(
+        self,
+        request: app.proto.books_pb2.ListSitemapSlugsRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> app.proto.books_pb2.ListSitemapSlugsResponse:
+        entity = request.entity or "books"
+        if entity not in app.services.sitemap_service.SITEMAP_ENTITIES:
+            context.set_code(grpc.StatusCode.INVALID_ARGUMENT)
+            context.set_details(f"Invalid entity: {entity}")
+            return app.proto.books_pb2.ListSitemapSlugsResponse()
+
+        try:
+            limit = (
+                request.limit
+                if 0 < request.limit <= app.services.sitemap_service.MAX_LIMIT
+                else app.services.sitemap_service.DEFAULT_LIMIT
+            )
+            offset = max(request.offset, 0)
+
+            async with app.db.async_session_maker() as session:
+                items, total_count = (
+                    await app.services.sitemap_service.list_sitemap_slugs(
+                        session, entity, limit, offset
+                    )
+                )
+
+            item_protos = [
+                app.proto.books_pb2.SitemapSlugItem(
+                    slug=item["slug"], updated_at=item["updated_at"]
+                )
+                for item in items
+            ]
+            return app.proto.books_pb2.ListSitemapSlugsResponse(
+                items=item_protos, total_count=total_count
+            )
+        except Exception as e:
+            logger.error(f"Error in ListSitemapSlugs: {str(e)}")
+            await context.abort(
+                grpc.StatusCode.INTERNAL, f"List sitemap slugs failed: {str(e)}"
             )
 
     async def GetGenreBubble(self, request, context):

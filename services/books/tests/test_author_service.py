@@ -25,6 +25,12 @@ def mock_author():
     author.open_library_id = "OL123456A"
     author.created_at = None
     author.updated_at = None
+    author.birth_place = None
+    author.nationality = None
+    author.wikidata_id = None
+    author.wikipedia_url = None
+    author.remote_ids = {}
+    author.alternate_names = []
     return author
 
 
@@ -51,6 +57,29 @@ def mock_book():
     return book
 
 
+@pytest.fixture
+def mock_book_row():
+    row = MagicMock()
+    row.book_id = 1
+    row.title = "Harry Potter"
+    row.slug = "harry-potter"
+    row.description = "A magical book"
+    row.original_publication_year = 1997
+    row.primary_cover_url = "http://example.com/cover.jpg"
+    row.rating_count = 500
+    row.avg_rating = 4.5
+    row.ol_rating_count = 0
+    row.ol_avg_rating = None
+    row.ol_want_to_read_count = 0
+    row.ol_currently_reading_count = 0
+    row.ol_already_read_count = 0
+    row.app_want_to_read_count = 0
+    row.app_reading_count = 0
+    row.app_read_count = 0
+    row.authors = []
+    return row
+
+
 class TestAuthorService:
     @pytest.mark.asyncio
     async def test_get_author_by_slug_cache_hit(self, mock_session):
@@ -73,7 +102,7 @@ class TestAuthorService:
     @pytest.mark.asyncio
     async def test_get_author_by_slug_cache_miss(self, mock_session, mock_author):
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = mock_author
+        mock_result.scalars.return_value.first.return_value = mock_author
 
         mock_categories_result = MagicMock()
         mock_categories_result.fetchall.return_value = [("Fantasy",), ("Fiction",)]
@@ -82,7 +111,14 @@ class TestAuthorService:
         mock_aggregates_row.books_count = 7
         mock_aggregates_row.weighted_rating_sum = 2250.0
         mock_aggregates_row.total_ratings = 500
-        mock_aggregates_row.total_views = 2000
+        mock_aggregates_row.ol_total_ratings = 0
+        mock_aggregates_row.ol_weighted_rating_sum = 0.0
+        mock_aggregates_row.ol_want_to_read_count = 0
+        mock_aggregates_row.ol_currently_reading_count = 0
+        mock_aggregates_row.ol_already_read_count = 0
+        mock_aggregates_row.app_want_to_read_count = 0
+        mock_aggregates_row.app_reading_count = 0
+        mock_aggregates_row.app_read_count = 0
         mock_aggregates_result = MagicMock()
         mock_aggregates_result.first.return_value = mock_aggregates_row
 
@@ -107,7 +143,7 @@ class TestAuthorService:
     @pytest.mark.asyncio
     async def test_get_author_by_slug_not_found(self, mock_session):
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
+        mock_result.scalars.return_value.first.return_value = None
         mock_session.execute.return_value = mock_result
 
         with patch("app.cache.get_cached", return_value=None):
@@ -131,13 +167,13 @@ class TestAuthorService:
 
     @pytest.mark.asyncio
     async def test_get_author_books_cache_miss(
-        self, mock_session, mock_author, mock_book
+        self, mock_session, mock_author, mock_book_row
     ):
         mock_author_result = MagicMock()
-        mock_author_result.scalar_one_or_none.return_value = mock_author
+        mock_author_result.scalars.return_value.first.return_value = mock_author
 
         mock_books_result = MagicMock()
-        mock_books_result.scalars.return_value.all.return_value = [mock_book]
+        mock_books_result.fetchall.return_value = [mock_book_row]
 
         mock_count_result = MagicMock()
         mock_count_result.scalar.return_value = 7
@@ -164,7 +200,7 @@ class TestAuthorService:
     @pytest.mark.asyncio
     async def test_get_author_books_author_not_found(self, mock_session):
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
+        mock_result.scalars.return_value.first.return_value = None
         mock_session.execute.return_value = mock_result
 
         with patch("app.cache.get_cached", return_value=None):
@@ -181,7 +217,14 @@ class TestAuthorService:
             "books_count": 7,
             "avg_rating": 4.5,
             "total_ratings": 500,
-            "total_views": 2000,
+            "ol_avg_rating": 4.2,
+            "ol_total_ratings": 300,
+            "ol_want_to_read_count": 10,
+            "ol_currently_reading_count": 5,
+            "ol_already_read_count": 20,
+            "app_want_to_read_count": 3,
+            "app_reading_count": 2,
+            "app_read_count": 1,
         }
         result = author_service._author_to_dict(
             mock_author, book_categories, books_aggregates
@@ -194,16 +237,15 @@ class TestAuthorService:
         assert result["books_count"] == 7
         assert result["view_count"] == 1000
 
-    def test_book_summary_to_dict(self, mock_book):
-        result = author_service._book_summary_to_dict(mock_book)
+    def test_book_row_to_dict(self, mock_book_row):
+        result = author_service._book_row_to_dict(mock_book_row)
 
         assert result["book_id"] == 1
         assert result["title"] == "Harry Potter"
         assert result["slug"] == "harry-potter"
         assert result["description"] == "A magical book"
         assert result["avg_rating"] == "4.5"
-        assert len(result["genres"]) == 1
-        assert result["genres"][0]["name"] == "Fantasy"
+        assert result["authors"] == []
 
     @pytest.mark.asyncio
     async def test_flush_view_counts_to_db(self, mock_session):

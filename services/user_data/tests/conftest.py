@@ -68,5 +68,6 @@ def make_list_result(items, count):
 
     items_result = MagicMock()
     items_result.scalars.return_value.all.return_value = items
+    items_result.fetchall.return_value = items
 
     return count_result, items_result

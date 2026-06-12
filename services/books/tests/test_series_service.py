@@ -47,6 +47,30 @@ def mock_book():
     return book
 
 
+@pytest.fixture
+def mock_series_book_row():
+    row = MagicMock()
+    row.book_id = 1
+    row.title = "Harry Potter and the Philosopher's Stone"
+    row.slug = "harry-potter-philosophers-stone"
+    row.description = "The first book"
+    row.primary_cover_url = "http://example.com/cover.jpg"
+    row.rating_count = 1000
+    row.avg_rating = 4.7
+    row.ol_rating_count = 0
+    row.ol_avg_rating = None
+    row.ol_want_to_read_count = 0
+    row.ol_currently_reading_count = 0
+    row.ol_already_read_count = 0
+    row.app_want_to_read_count = 0
+    row.app_reading_count = 0
+    row.app_read_count = 0
+    row.series_position = 1.0
+    row.number_of_pages = 320
+    row.authors = []
+    return row
+
+
 class TestSeriesService:
     @pytest.mark.asyncio
     async def test_get_series_by_slug_cache_hit(self, mock_session):
@@ -71,7 +95,7 @@ class TestSeriesService:
     @pytest.mark.asyncio
     async def test_get_series_by_slug_cache_miss(self, mock_session, mock_series):
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = mock_series
+        mock_result.scalars.return_value.first.return_value = mock_series
 
         mock_stats_row = MagicMock()
         mock_stats_row.total_books = 7
@@ -79,7 +103,14 @@ class TestSeriesService:
         mock_stats_row.avg_rating = 4.5
         mock_stats_row.ol_rating_count = 500
         mock_stats_row.ol_avg_rating = 4.2
-        mock_stats_row.total_views = 50000
+        mock_stats_row.ol_want_to_read_count = 0
+        mock_stats_row.ol_currently_reading_count = 0
+        mock_stats_row.ol_already_read_count = 0
+        mock_stats_row.app_want_to_read_count = 0
+        mock_stats_row.app_reading_count = 0
+        mock_stats_row.app_read_count = 0
+        mock_stats_row.total_pages = 2500
+        mock_stats_row.fallback_description = None
         mock_stats_result = MagicMock()
         mock_stats_result.first.return_value = mock_stats_row
 
@@ -104,7 +135,7 @@ class TestSeriesService:
     @pytest.mark.asyncio
     async def test_get_series_by_slug_not_found(self, mock_session):
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
+        mock_result.scalars.return_value.first.return_value = None
         mock_session.execute.return_value = mock_result
 
         with patch("app.cache.get_cached", return_value=None):
@@ -131,13 +162,13 @@ class TestSeriesService:
 
     @pytest.mark.asyncio
     async def test_get_series_books_cache_miss(
-        self, mock_session, mock_series, mock_book
+        self, mock_session, mock_series, mock_series_book_row
     ):
         mock_series_result = MagicMock()
-        mock_series_result.scalar_one_or_none.return_value = mock_series
+        mock_series_result.scalars.return_value.first.return_value = mock_series
 
         mock_books_result = MagicMock()
-        mock_books_result.scalars.return_value.all.return_value = [mock_book]
+        mock_books_result.fetchall.return_value = [mock_series_book_row]
 
         mock_count_result = MagicMock()
         mock_count_result.scalar.return_value = 7
@@ -165,7 +196,7 @@ class TestSeriesService:
     @pytest.mark.asyncio
     async def test_get_series_books_series_not_found(self, mock_session):
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
+        mock_result.scalars.return_value.first.return_value = None
         mock_session.execute.return_value = mock_result
 
         with patch("app.cache.get_cached", return_value=None):
@@ -178,13 +209,13 @@ class TestSeriesService:
 
     @pytest.mark.asyncio
     async def test_get_series_books_with_pagination(
-        self, mock_session, mock_series, mock_book
+        self, mock_session, mock_series, mock_series_book_row
     ):
         mock_series_result = MagicMock()
-        mock_series_result.scalar_one_or_none.return_value = mock_series
+        mock_series_result.scalars.return_value.first.return_value = mock_series
 
         mock_books_result = MagicMock()
-        mock_books_result.scalars.return_value.all.return_value = [mock_book]
+        mock_books_result.fetchall.return_value = [mock_series_book_row]
 
         mock_count_result = MagicMock()
         mock_count_result.scalar.return_value = 7
@@ -213,7 +244,14 @@ class TestSeriesService:
         stats.avg_rating = 4.5
         stats.ol_rating_count = 500
         stats.ol_avg_rating = 4.2
-        stats.total_views = 50000
+        stats.ol_want_to_read_count = 0
+        stats.ol_currently_reading_count = 0
+        stats.ol_already_read_count = 0
+        stats.app_want_to_read_count = 0
+        stats.app_reading_count = 0
+        stats.app_read_count = 0
+        stats.total_pages = 2500
+        stats.fallback_description = None
 
         result = series_service._series_to_dict(mock_series, stats)
 
@@ -226,4 +264,4 @@ class TestSeriesService:
         assert result["rating_count"] == 1000
         assert result["avg_rating"] == "4.5"
         assert result["ol_rating_count"] == 500
-        assert result["total_views"] == 50000
+        assert result["total_pages"] == 2500

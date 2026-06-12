@@ -708,3 +708,19 @@ class AdminSeriesUpdateResponse(pydantic.BaseModel):
     success: bool = True
     data: typing.Optional[AdminSeriesUpdateData] = None
     error: typing.Optional[app.models.responses.ErrorDetail] = None
+
+
+class SitemapSlugItemSchema(pydantic.BaseModel):
+    slug: str
+    updated_at: typing.Optional[str] = None
+
+
+class SitemapSlugsData(pydantic.BaseModel):
+    items: typing.List[SitemapSlugItemSchema]
+    total_count: int
+
+
+class SitemapSlugsResponse(pydantic.BaseModel):
+    success: bool = True
+    data: SitemapSlugsData
+    error: typing.Optional[app.models.responses.ErrorDetail] = None

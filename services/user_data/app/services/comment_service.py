@@ -78,40 +78,6 @@ async def delete_comment(
     await session.commit()
 
 
-async def get_book_comments(
-    session: sqlalchemy.ext.asyncio.AsyncSession,
-    book_id: int,
-    limit: int,
-    offset: int,
-    order: str,
-    include_spoilers: bool
-) -> typing.Tuple[typing.List[app.models.comment.Comment], int]:
-    base_conditions = [
-        app.models.comment.Comment.book_id == book_id
-    ]
-    if not include_spoilers:
-        base_conditions.append(app.models.comment.Comment.is_spoiler == False)
-
-    order_expr = (
-        app.models.comment.Comment.created_at.desc()
-        if order == "desc"
-        else app.models.comment.Comment.created_at.asc()
-    )
-
-    count_stmt = sqlalchemy.select(sqlalchemy.func.count()).select_from(
-        app.models.comment.Comment
-    ).where(*base_conditions)
-    count_result = await session.execute(count_stmt)
-    total_count = count_result.scalar_one()
-
-    stmt = sqlalchemy.select(app.models.comment.Comment).where(
-        *base_conditions
-    ).order_by(order_expr).limit(limit).offset(offset)
-
-    result = await session.execute(stmt)
-    return result.scalars().all(), total_count
-
-
 async def get_comment_for_book(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     user_id: int,

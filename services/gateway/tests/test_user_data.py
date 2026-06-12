@@ -113,6 +113,8 @@ def _rating(mocker):
     r.book_author_slugs = []
     r.book_series_name = ""
     r.book_series_slug = ""
+    r.book_avg_rating = 4.2
+    r.book_rating_count = 100
     return r
 
 

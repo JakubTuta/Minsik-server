@@ -1,8 +1,10 @@
-import redis.asyncio
 import json
-import typing
 import logging
+import time
+import typing
+
 import app.config
+import redis.asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -87,7 +89,7 @@ async def increment_view_count(entity_type: str, entity_id: int) -> None:
     try:
         key = f"view_count:{entity_type}:{entity_id}"
         await redis_client.hincrby(key, "count", 1)
-        await redis_client.hset(key, "last_viewed", int(asyncio.get_event_loop().time()))
+        await redis_client.hset(key, "last_viewed", int(time.time()))
     except Exception as e:
         logger.error(f"Redis view count increment error: {str(e)}")
 
@@ -129,6 +131,3 @@ async def clear_view_counts(entity_type: str, entity_ids: typing.List[int]) -> N
         await redis_client.delete(*keys)
     except Exception as e:
         logger.error(f"Redis clear view counts error: {str(e)}")
-
-
-import asyncio

@@ -5,7 +5,6 @@ import typing
 import app.cache
 import app.services._language_boost
 import sqlalchemy
-import sqlalchemy
 import sqlalchemy.ext.asyncio
 
 logger = logging.getLogger(__name__)
@@ -60,7 +59,7 @@ _BOOK_SELECT = """
         (
             COALESCE(b.avg_rating::numeric, 0) * b.rating_count
             + COALESCE(b.ol_avg_rating::numeric, 0) * b.ol_rating_count
-        )::numeric / (b.rating_count + b.ol_rating_count) AS combined_rating,
+        )::numeric / NULLIF(b.rating_count + b.ol_rating_count, 0) AS combined_rating,
         b.rating_count + b.ol_rating_count AS total_rating_count,
         b.ol_want_to_read_count + b.ol_currently_reading_count + b.ol_already_read_count
             + COALESCE(bs.app_want_to_read_count, 0)
@@ -100,11 +99,11 @@ _COMBINED_RATING_FILTER = """
     (
         COALESCE(b.avg_rating::numeric, 0) * b.rating_count
         + COALESCE(b.ol_avg_rating::numeric, 0) * b.ol_rating_count
-    ) / (b.rating_count + b.ol_rating_count) > :min_rating
+    ) / NULLIF(b.rating_count + b.ol_rating_count, 0) > :min_rating
     AND (
         COALESCE(b.avg_rating::numeric, 0) * b.rating_count
         + COALESCE(b.ol_avg_rating::numeric, 0) * b.ol_rating_count
-    ) / (b.rating_count + b.ol_rating_count) <= :max_rating
+    ) / NULLIF(b.rating_count + b.ol_rating_count, 0) <= :max_rating
 """
 
 
@@ -115,18 +114,13 @@ async def open_case(
     if cached_result is not None:
         return cached_result
 
-    tier = _pick_winning_tier()
-    winner_row = await _fetch_random_book_from_tier(
-        session, language, tier[1], tier[2], RARITY_MIN_RATINGS[tier[0]]
-    )
-
-    if winner_row is None:
-        winner_row = await _fallback_book(session, language, tier)
+    tier = pick_winning_tier()
+    winner_row = await fetch_tier_row_with_fallback(session, language, tier)
 
     if winner_row is None:
         raise ValueError("No rated books found")
 
-    winner_item = _row_to_case_item(winner_row)
+    winner_item = row_to_case_item(winner_row)
 
     return {
         "winner": winner_item,
@@ -136,32 +130,14 @@ async def open_case(
 async def _try_open_from_cache(
     language: str,
 ) -> typing.Optional[typing.Dict[str, typing.Any]]:
-    tier_pools: typing.Dict[str, typing.List[typing.Dict[str, typing.Any]]] = {}
-    for tier_name, _, _, _ in RARITY_TIERS:
-        pool = await app.cache.get_cached(f"{CACHE_POOL_KEY_PREFIX}:{tier_name}")
-        if pool is None:
-            return None
-        tier_pools[tier_name] = pool
+    tier_pools = await load_cached_tier_pools()
+    if tier_pools is None:
+        return None
 
-    winning_tier = _pick_winning_tier()
-    winner_pool = tier_pools[winning_tier[0]]
-
+    winning_tier = pick_winning_tier()
+    winner_pool = eligible_pool_books(tier_pools, winning_tier[0], frozenset())
     if not winner_pool:
-        tier_index = next(
-            i for i, t in enumerate(RARITY_TIERS) if t[0] == winning_tier[0]
-        )
-        winner_pool = None
-        for i in range(1, len(RARITY_TIERS)):
-            for idx in [tier_index + i, tier_index - i]:
-                if 0 <= idx < len(RARITY_TIERS):
-                    candidate = tier_pools[RARITY_TIERS[idx][0]]
-                    if candidate:
-                        winner_pool = candidate
-                        break
-            if winner_pool:
-                break
-        if not winner_pool:
-            return None
+        return None
 
     weights = [
         app.services._language_boost.lang_boost_weight(b.get("language", ""), language)
@@ -176,7 +152,7 @@ async def _try_open_from_cache(
     }
 
 
-def _pick_winning_tier() -> typing.Tuple[str, float, float, float]:
+def pick_winning_tier() -> typing.Tuple[str, float, float, float]:
     roll = random.random()
     cumulative = 0.0
     for tier in RARITY_TIERS:
@@ -184,6 +160,97 @@ def _pick_winning_tier() -> typing.Tuple[str, float, float, float]:
         if roll < cumulative:
             return tier
     return RARITY_TIERS[-1]
+
+
+def tier_fallback_candidates(
+    tier_name: str,
+) -> typing.List[typing.Tuple[str, float, float, float]]:
+    tier_index = next(
+        (i for i, t in enumerate(RARITY_TIERS) if t[0] == tier_name), None
+    )
+    if tier_index is None:
+        return []
+
+    candidates: typing.List[typing.Tuple[str, float, float, float]] = []
+    for i in range(1, len(RARITY_TIERS)):
+        for idx in (tier_index + i, tier_index - i):
+            if 0 <= idx < len(RARITY_TIERS):
+                candidates.append(RARITY_TIERS[idx])
+    return candidates
+
+
+async def load_cached_tier_pools() -> typing.Optional[
+    typing.Dict[str, typing.List[typing.Dict[str, typing.Any]]]
+]:
+    tier_pools: typing.Dict[str, typing.List[typing.Dict[str, typing.Any]]] = {}
+    for tier_name, _, _, _ in RARITY_TIERS:
+        pool = await app.cache.get_cached(f"{CACHE_POOL_KEY_PREFIX}:{tier_name}")
+        if pool is None:
+            return None
+        tier_pools[tier_name] = pool
+    return tier_pools
+
+
+def eligible_pool_books(
+    tier_pools: typing.Dict[str, typing.List[typing.Dict[str, typing.Any]]],
+    tier_name: str,
+    used_ids: typing.AbstractSet[int],
+) -> typing.List[typing.Dict[str, typing.Any]]:
+    pool = tier_pools.get(tier_name, [])
+    eligible = [b for b in pool if b["book_id"] not in used_ids]
+    if eligible:
+        return eligible
+
+    for fallback_tier in tier_fallback_candidates(tier_name):
+        eligible = [
+            b
+            for b in tier_pools.get(fallback_tier[0], [])
+            if b["book_id"] not in used_ids
+        ]
+        if eligible:
+            return eligible
+
+    return []
+
+
+async def fetch_tier_row(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    language: str,
+    tier: typing.Tuple[str, float, float, float],
+    used_ids: typing.AbstractSet[int] = frozenset(),
+) -> typing.Optional[typing.Any]:
+    row = await _fetch_random_book_from_tier(
+        session, language, tier[1], tier[2], RARITY_MIN_RATINGS[tier[0]]
+    )
+    if row is not None and row.book_id not in used_ids:
+        return row
+    return None
+
+
+async def fetch_tier_row_with_fallback(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    language: str,
+    tier: typing.Tuple[str, float, float, float],
+    used_ids: typing.AbstractSet[int] = frozenset(),
+) -> typing.Optional[typing.Any]:
+    row = await _fetch_random_book_from_tier(
+        session, language, tier[1], tier[2], RARITY_MIN_RATINGS[tier[0]]
+    )
+    if row is not None and row.book_id not in used_ids:
+        return row
+
+    for fallback_tier in tier_fallback_candidates(tier[0]):
+        row = await _fetch_random_book_from_tier(
+            session,
+            language,
+            fallback_tier[1],
+            fallback_tier[2],
+            RARITY_MIN_RATINGS[fallback_tier[0]],
+        )
+        if row is not None and row.book_id not in used_ids:
+            return row
+
+    return None
 
 
 async def _fetch_random_book_from_tier(
@@ -218,40 +285,6 @@ async def _fetch_random_book_from_tier(
     return result.first()
 
 
-async def _fallback_book(
-    session: sqlalchemy.ext.asyncio.AsyncSession,
-    language: str,
-    original_tier: typing.Tuple[str, float, float, float],
-) -> typing.Optional[typing.Any]:
-    tier_index = next(
-        (i for i, t in enumerate(RARITY_TIERS) if t[0] == original_tier[0]), None
-    )
-    if tier_index is None:
-        return None
-
-    candidates = []
-    for i in range(1, len(RARITY_TIERS)):
-        lower = tier_index + i
-        higher = tier_index - i
-        if lower < len(RARITY_TIERS):
-            candidates.append(RARITY_TIERS[lower])
-        if higher >= 0:
-            candidates.append(RARITY_TIERS[higher])
-
-    for fallback_tier in candidates:
-        row = await _fetch_random_book_from_tier(
-            session,
-            language,
-            fallback_tier[1],
-            fallback_tier[2],
-            RARITY_MIN_RATINGS[fallback_tier[0]],
-        )
-        if row is not None:
-            return row
-
-    return None
-
-
 async def _build_display_list(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     language: str,
@@ -259,7 +292,7 @@ async def _build_display_list(
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     needed = DISPLAY_LIST_SIZE - 1
     rows = await _fetch_all_display_books(session, language, winner_book_id)
-    books = [_row_to_case_item(r) for r in rows]
+    books = [row_to_case_item(r) for r in rows]
 
     if len(books) < needed:
         extra = await _fetch_any_rated_books(
@@ -301,7 +334,7 @@ async def _fetch_all_display_books(
                 (
                     COALESCE(b.avg_rating::numeric, 0) * b.rating_count
                     + COALESCE(b.ol_avg_rating::numeric, 0) * b.ol_rating_count
-                )::numeric / (b.rating_count + b.ol_rating_count) AS combined_rating,
+                )::numeric / NULLIF(b.rating_count + b.ol_rating_count, 0) AS combined_rating,
                 b.rating_count + b.ol_rating_count AS total_ratings,
                 COALESCE(bs.app_want_to_read_count, 0) AS app_want_to_read_count,
                 COALESCE(bs.app_reading_count, 0) AS app_reading_count,
@@ -390,7 +423,7 @@ async def _fetch_any_rated_books(
         query,
         {"language": language, "exclude_ids": exclude_ids, "limit": limit},
     )
-    return [_row_to_case_item(r) for r in result.fetchall()]
+    return [row_to_case_item(r) for r in result.fetchall()]
 
 
 def _compute_rarity(combined_rating: float) -> str:
@@ -407,7 +440,7 @@ def _compute_rarity(combined_rating: float) -> str:
     return "common"
 
 
-def _row_to_case_item(row: typing.Any) -> typing.Dict[str, typing.Any]:
+def row_to_case_item(row: typing.Any) -> typing.Dict[str, typing.Any]:
     combined = float(row.combined_rating) if row.combined_rating else 0.0
 
     author_ids = row.author_ids or []

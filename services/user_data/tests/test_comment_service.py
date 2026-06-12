@@ -66,46 +66,6 @@ class TestDeleteComment:
             await comment_service.delete_comment(mock_session, 999, 10)
 
 
-class TestGetBookComments:
-    @pytest.mark.asyncio
-    async def test_returns_items_and_count(self, mock_session, mock_comment):
-        count_result, items_result = make_list_result([mock_comment], 1)
-        mock_session.execute.side_effect = [count_result, items_result]
-        rows, total = await comment_service.get_book_comments(
-            mock_session, 100, 10, 0, "desc", False
-        )
-        assert total == 1
-        assert rows == [mock_comment]
-
-    @pytest.mark.asyncio
-    async def test_include_spoilers_flag(self, mock_session, mock_comment):
-        count_result, items_result = make_list_result([mock_comment], 1)
-        mock_session.execute.side_effect = [count_result, items_result]
-        rows, total = await comment_service.get_book_comments(
-            mock_session, 100, 10, 0, "desc", True
-        )
-        assert total == 1
-
-    @pytest.mark.asyncio
-    async def test_asc_order(self, mock_session, mock_comment):
-        count_result, items_result = make_list_result([mock_comment], 1)
-        mock_session.execute.side_effect = [count_result, items_result]
-        rows, total = await comment_service.get_book_comments(
-            mock_session, 100, 10, 0, "asc", False
-        )
-        assert total == 1
-
-    @pytest.mark.asyncio
-    async def test_empty_result(self, mock_session):
-        count_result, items_result = make_list_result([], 0)
-        mock_session.execute.side_effect = [count_result, items_result]
-        rows, total = await comment_service.get_book_comments(
-            mock_session, 100, 10, 0, "desc", False
-        )
-        assert total == 0
-        assert rows == []
-
-
 class TestGetUserComments:
     @pytest.mark.asyncio
     async def test_returns_user_comments(self, mock_session, mock_comment):

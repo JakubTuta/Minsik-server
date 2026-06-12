@@ -1,12 +1,12 @@
 import re
 import typing
 import logging
-import datetime
 import httpx
 import sqlalchemy
 import sqlalchemy.ext.asyncio
 import app.models.user
 import app.config
+import app.utils
 
 logger = logging.getLogger(__name__)
 
@@ -106,11 +106,15 @@ async def authenticate_with_google(
 
     google_id = user_info.get("sub")
     email = user_info.get("email")
+    email_verified = user_info.get("email_verified")
     display_name = user_info.get("name", "")
     avatar_url = user_info.get("picture")
 
     if not email:
         raise ValueError("google_email_missing")
+
+    if email_verified is not True:
+        raise ValueError("google_email_not_verified")
 
     existing_by_google_id = await session.execute(
         sqlalchemy.select(app.models.user.User).filter(app.models.user.User.google_id == google_id)
@@ -119,7 +123,7 @@ async def authenticate_with_google(
     if user:
         if not user.is_active:
             raise PermissionError("account_inactive")
-        user.last_login = datetime.datetime.utcnow()
+        user.last_login = app.utils.utcnow()
         await session.commit()
         return user
 
@@ -133,7 +137,7 @@ async def authenticate_with_google(
         user.google_id = google_id
         if not user.avatar_url and avatar_url:
             user.avatar_url = avatar_url
-        user.last_login = datetime.datetime.utcnow()
+        user.last_login = app.utils.utcnow()
         await session.commit()
         await session.refresh(user)
         return user
@@ -148,7 +152,7 @@ async def authenticate_with_google(
         password_hash=None,
         role="user",
         is_active=True,
-        last_login=datetime.datetime.utcnow(),
+        last_login=app.utils.utcnow(),
     )
     session.add(new_user)
     await session.commit()

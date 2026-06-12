@@ -75,8 +75,14 @@ class TestBookService:
     @pytest.mark.asyncio
     async def test_get_book_by_slug_cache_miss(self, mock_session, mock_book):
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = mock_book
-        mock_session.execute.return_value = mock_result
+        mock_result.scalars.return_value.first.return_value = mock_book
+        shelf_row = MagicMock()
+        shelf_row.app_want_to_read_count = 3
+        shelf_row.app_reading_count = 2
+        shelf_row.app_read_count = 1
+        shelf_result = MagicMock()
+        shelf_result.first.return_value = shelf_row
+        mock_session.execute.side_effect = [mock_result, shelf_result]
 
         with patch('app.cache.get_cached', return_value=None), \
              patch('app.cache.set_cached') as mock_set_cache, \
@@ -92,7 +98,7 @@ class TestBookService:
     @pytest.mark.asyncio
     async def test_get_book_by_slug_not_found(self, mock_session):
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = None
+        mock_result.scalars.return_value.first.return_value = None
         mock_session.execute.return_value = mock_result
 
         with patch('app.cache.get_cached', return_value=None):
@@ -103,8 +109,10 @@ class TestBookService:
     @pytest.mark.asyncio
     async def test_get_book_with_series(self, mock_session, mock_book_with_series):
         mock_result = MagicMock()
-        mock_result.scalar_one_or_none.return_value = mock_book_with_series
-        mock_session.execute.return_value = mock_result
+        mock_result.scalars.return_value.first.return_value = mock_book_with_series
+        shelf_result = MagicMock()
+        shelf_result.first.return_value = None
+        mock_session.execute.side_effect = [mock_result, shelf_result]
 
         with patch('app.cache.get_cached', return_value=None), \
              patch('app.cache.set_cached'), \

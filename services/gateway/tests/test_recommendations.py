@@ -26,6 +26,7 @@ def make_book_item(mocker, book_id=1):
     item.author_slugs = ["author-one"]
     item.avg_rating = "4.50"
     item.rating_count = 100
+    item.readers = 5000
     item.score = 9000.0
     return item
 
@@ -37,6 +38,9 @@ def make_author_item(mocker, author_id=1):
     item.slug = "famous-author"
     item.photo_url = "https://example.com/photo.jpg"
     item.book_count = 10
+    item.avg_rating = "4.20"
+    item.rating_count = 50
+    item.readers = 1000
     item.score = 50000.0
     return item
 
@@ -68,8 +72,8 @@ class TestGetHomePage:
         assert response.status_code == 200
         body = response.json()
         assert body["success"] is True
-        assert "categories" in body["data"]
-        assert len(body["data"]["categories"]) == 1
+        assert "sections" in body["data"]
+        assert len(body["data"]["sections"]) == 1
 
     def test_category_structure_for_book_type(self, client, mock_recommendation_client, mocker):
         cat = make_list_response(mocker, item_type="book", category="most_read")
@@ -80,7 +84,7 @@ class TestGetHomePage:
         response = client.get("/api/v1/recommendations/home")
 
         body = response.json()
-        category = body["data"]["categories"][0]
+        category = body["data"]["sections"][0]
         assert category["item_type"] == "book"
         assert "book_items" in category
         assert category["book_items"][0]["book_id"] == 1
@@ -94,7 +98,7 @@ class TestGetHomePage:
         response = client.get("/api/v1/recommendations/home")
 
         body = response.json()
-        category = body["data"]["categories"][0]
+        category = body["data"]["sections"][0]
         assert category["item_type"] == "author"
         assert "author_items" in category
         assert category["author_items"][0]["author_id"] == 1
@@ -140,7 +144,7 @@ class TestGetAvailableCategories:
         assert body["success"] is True
         cats = body["data"]["categories"]
         assert len(cats) == 1
-        assert cats[0]["category"] == "most_read"
+        assert cats[0]["key"] == "most_read"
         assert cats[0]["display_name"] == "Most Read Books"
         assert cats[0]["item_type"] == "book"
 
@@ -169,7 +173,7 @@ class TestGetRecommendationList:
         assert response.status_code == 200
         body = response.json()
         assert body["success"] is True
-        assert body["data"]["category"] == "most_read"
+        assert body["data"]["key"] == "most_read"
         assert "book_items" in body["data"]
 
     def test_passes_limit_and_offset(self, client, mock_recommendation_client, mocker):
@@ -179,7 +183,7 @@ class TestGetRecommendationList:
         client.get("/api/v1/recommendations/most_read?limit=5&offset=10")
 
         mock_recommendation_client.get_recommendation_list.assert_called_once_with(
-            category="most_read", limit=5, offset=10
+            category="most_read", limit=5, offset=10, language="en", user_id=0
         )
 
     def test_not_found_returns_404(self, client, mock_recommendation_client):
@@ -244,10 +248,10 @@ class TestAdminRefreshRecommendations:
         assert body["success"] is True
         assert body["data"]["success"] is True
 
-    def test_unauthorized_without_token_returns_403(self, client, mock_recommendation_client):
+    def test_unauthorized_without_token_returns_401(self, client, mock_recommendation_client):
         response = client.post("/api/v1/admin/recommendations/refresh")
 
-        assert response.status_code == 403
+        assert response.status_code == 401
 
     def test_unauthorized_for_non_admin_returns_403(self, client, mock_recommendation_client):
         user_token = _make_user_token()

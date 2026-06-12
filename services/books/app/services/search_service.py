@@ -74,321 +74,165 @@ def _normalize_scores(
     return results
 
 
-def _build_full_search_books_query(
-    query: str, language: str
+_BOOKS_EXACT_FIELDS = [("title.exact", 10.0), ("authors_names.exact", 7.0), ("series_name.exact", 5.0)]
+_BOOKS_PHRASE_FIELDS = [("title", 5.0), ("authors_names", 3.0), ("series_name", 2.0)]
+_BOOKS_MULTI_FIELDS = ["title^3", "authors_names^2", "series_name"]
+_BOOKS_PREFIX_FIELDS = [("title.exact", 4.0), ("authors_names.exact", 2.5)]
+_BOOKS_SUGGEST_FIELDS = [
+    "title.suggest^3",
+    "title.suggest._2gram",
+    "title.suggest._3gram",
+    "authors_names.suggest^2",
+    "authors_names.suggest._2gram",
+    "authors_names.suggest._3gram",
+]
+
+_NAME_EXACT_FIELDS = [("name.exact", 10.0)]
+_NAME_PHRASE_FIELDS = [("name", 5.0)]
+_NAME_MULTI_FIELDS = ["name^3"]
+_NAME_PREFIX_FIELDS = [("name.exact", 4.0)]
+_NAME_SUGGEST_FIELDS = [
+    "name.suggest^3",
+    "name.suggest._2gram",
+    "name.suggest._3gram",
+]
+
+
+def _with_popularity_and_language(
+    query_part: typing.Dict[str, typing.Any], language: str
 ) -> typing.Dict[str, typing.Any]:
-    q_lower = _normalize_query(query)
     return {
         "function_score": {
-            "query": {
-                "bool": {
-                    "should": [
-                        {"term": {"title.exact": {"value": q_lower, "boost": 10.0}}},
-                        {
-                            "term": {
-                                "authors_names.exact": {
-                                    "value": q_lower,
-                                    "boost": 7.0,
-                                }
-                            }
-                        },
-                        {
-                            "term": {
-                                "series_name.exact": {"value": q_lower, "boost": 5.0}
-                            }
-                        },
-                        {
-                            "match_phrase": {
-                                "title": {"query": query, "slop": 1, "boost": 5.0}
-                            }
-                        },
-                        {
-                            "match_phrase": {
-                                "authors_names": {
-                                    "query": query,
-                                    "slop": 1,
-                                    "boost": 3.0,
-                                }
-                            }
-                        },
-                        {
-                            "match_phrase": {
-                                "series_name": {
-                                    "query": query,
-                                    "slop": 1,
-                                    "boost": 2.0,
-                                }
-                            }
-                        },
-                        {
-                            "multi_match": {
-                                "query": query,
-                                "fields": [
-                                    "title^3",
-                                    "authors_names^2",
-                                    "series_name",
-                                ],
-                                "type": "cross_fields",
-                                "operator": "and",
-                                "tie_breaker": 0.3,
-                            }
-                        },
-                        {
-                            "multi_match": {
-                                "query": query,
-                                "fields": [
-                                    "title^3",
-                                    "authors_names^2",
-                                    "series_name",
-                                ],
-                                "type": "best_fields",
-                                "operator": "or",
-                                "fuzziness": "AUTO",
-                                "boost": 0.5,
-                            }
-                        },
-                    ],
-                    "minimum_should_match": 1,
-                }
-            },
+            "query": query_part,
             "functions": [
                 {"script_score": {"script": {"source": _POPULARITY_SCRIPT}}},
-                {"filter": {"term": {"language": language}}, "weight": app.services._language_boost.LANGUAGE_BOOST_WEIGHT},
+                {
+                    "filter": {"term": {"language": language}},
+                    "weight": app.services._language_boost.LANGUAGE_BOOST_WEIGHT,
+                },
             ],
             "score_mode": "multiply",
             "boost_mode": "multiply",
         }
     }
+
+
+def _build_full_search_query(
+    query: str,
+    language: str,
+    exact_fields: typing.List[typing.Tuple[str, float]],
+    phrase_fields: typing.List[typing.Tuple[str, float]],
+    multi_fields: typing.List[str],
+) -> typing.Dict[str, typing.Any]:
+    q_lower = _normalize_query(query)
+    should: typing.List[typing.Dict[str, typing.Any]] = [
+        {"term": {field: {"value": q_lower, "boost": boost}}}
+        for field, boost in exact_fields
+    ]
+    should.extend(
+        {"match_phrase": {field: {"query": query, "slop": 1, "boost": boost}}}
+        for field, boost in phrase_fields
+    )
+    should.append(
+        {
+            "multi_match": {
+                "query": query,
+                "fields": multi_fields,
+                "type": "cross_fields",
+                "operator": "and",
+                "tie_breaker": 0.3,
+            }
+        }
+    )
+    should.append(
+        {
+            "multi_match": {
+                "query": query,
+                "fields": multi_fields,
+                "type": "best_fields",
+                "operator": "or",
+                "fuzziness": "AUTO",
+                "boost": 0.5,
+            }
+        }
+    )
+    return _with_popularity_and_language(
+        {"bool": {"should": should, "minimum_should_match": 1}}, language
+    )
+
+
+def _build_suggest_query(
+    query: str,
+    language: str,
+    prefix_fields: typing.List[typing.Tuple[str, float]],
+    suggest_fields: typing.List[str],
+    fuzziness: typing.Optional[str] = None,
+) -> typing.Dict[str, typing.Any]:
+    q_lower = _normalize_query(query)
+    suggest_clause: typing.Dict[str, typing.Any] = {
+        "query": query,
+        "type": "bool_prefix",
+        "fields": suggest_fields,
+    }
+    if fuzziness:
+        suggest_clause["fuzziness"] = fuzziness
+
+    should: typing.List[typing.Dict[str, typing.Any]] = [
+        {"prefix": {field: {"value": q_lower, "boost": boost}}}
+        for field, boost in prefix_fields
+    ]
+    should.append({"multi_match": suggest_clause})
+    return _with_popularity_and_language(
+        {"bool": {"should": should, "minimum_should_match": 1}}, language
+    )
+
+
+def _build_full_search_books_query(
+    query: str, language: str
+) -> typing.Dict[str, typing.Any]:
+    return _build_full_search_query(
+        query, language, _BOOKS_EXACT_FIELDS, _BOOKS_PHRASE_FIELDS, _BOOKS_MULTI_FIELDS
+    )
 
 
 def _build_full_search_authors_query(
     query: str, language: str
 ) -> typing.Dict[str, typing.Any]:
-    q_lower = _normalize_query(query)
-    return {
-        "function_score": {
-            "query": {
-                "bool": {
-                    "should": [
-                        {"term": {"name.exact": {"value": q_lower, "boost": 10.0}}},
-                        {
-                            "match_phrase": {
-                                "name": {"query": query, "slop": 1, "boost": 5.0}
-                            }
-                        },
-                        {
-                            "multi_match": {
-                                "query": query,
-                                "fields": ["name^3"],
-                                "type": "cross_fields",
-                                "operator": "and",
-                                "tie_breaker": 0.3,
-                            }
-                        },
-                        {
-                            "multi_match": {
-                                "query": query,
-                                "fields": ["name^3"],
-                                "type": "best_fields",
-                                "operator": "or",
-                                "fuzziness": "AUTO",
-                                "boost": 0.5,
-                            }
-                        },
-                    ],
-                    "minimum_should_match": 1,
-                }
-            },
-            "functions": [
-                {"script_score": {"script": {"source": _POPULARITY_SCRIPT}}},
-                {"filter": {"term": {"language": language}}, "weight": app.services._language_boost.LANGUAGE_BOOST_WEIGHT},
-            ],
-            "score_mode": "multiply",
-            "boost_mode": "multiply",
-        }
-    }
+    return _build_full_search_query(
+        query, language, _NAME_EXACT_FIELDS, _NAME_PHRASE_FIELDS, _NAME_MULTI_FIELDS
+    )
 
 
 def _build_full_search_series_query(
     query: str, language: str
 ) -> typing.Dict[str, typing.Any]:
-    q_lower = _normalize_query(query)
-    return {
-        "function_score": {
-            "query": {
-                "bool": {
-                    "should": [
-                        {"term": {"name.exact": {"value": q_lower, "boost": 10.0}}},
-                        {
-                            "match_phrase": {
-                                "name": {"query": query, "slop": 1, "boost": 5.0}
-                            }
-                        },
-                        {
-                            "multi_match": {
-                                "query": query,
-                                "fields": ["name^3"],
-                                "type": "cross_fields",
-                                "operator": "and",
-                                "tie_breaker": 0.3,
-                            }
-                        },
-                        {
-                            "multi_match": {
-                                "query": query,
-                                "fields": ["name^3"],
-                                "type": "best_fields",
-                                "operator": "or",
-                                "fuzziness": "AUTO",
-                                "boost": 0.5,
-                            }
-                        },
-                    ],
-                    "minimum_should_match": 1,
-                }
-            },
-            "functions": [
-                {"script_score": {"script": {"source": _POPULARITY_SCRIPT}}},
-                {"filter": {"term": {"language": language}}, "weight": app.services._language_boost.LANGUAGE_BOOST_WEIGHT},
-            ],
-            "score_mode": "multiply",
-            "boost_mode": "multiply",
-        }
-    }
+    return _build_full_search_query(
+        query, language, _NAME_EXACT_FIELDS, _NAME_PHRASE_FIELDS, _NAME_MULTI_FIELDS
+    )
 
 
 def _build_suggest_books_query(
     query: str, language: str, fuzziness: typing.Optional[str] = None
 ) -> typing.Dict[str, typing.Any]:
-    q_lower = _normalize_query(query)
-    suggest_clause: typing.Dict[str, typing.Any] = {
-        "query": query,
-        "type": "bool_prefix",
-        "fields": [
-            "title.suggest^3",
-            "title.suggest._2gram",
-            "title.suggest._3gram",
-            "authors_names.suggest^2",
-            "authors_names.suggest._2gram",
-            "authors_names.suggest._3gram",
-        ],
-    }
-    if fuzziness:
-        suggest_clause["fuzziness"] = fuzziness
-
-    return {
-        "function_score": {
-            "query": {
-                "bool": {
-                    "should": [
-                        {
-                            "prefix": {
-                                "title.exact": {"value": q_lower, "boost": 4.0}
-                            }
-                        },
-                        {
-                            "prefix": {
-                                "authors_names.exact": {
-                                    "value": q_lower,
-                                    "boost": 2.5,
-                                }
-                            }
-                        },
-                        {"multi_match": suggest_clause},
-                    ],
-                    "minimum_should_match": 1,
-                }
-            },
-            "functions": [
-                {"script_score": {"script": {"source": _POPULARITY_SCRIPT}}},
-                {"filter": {"term": {"language": language}}, "weight": app.services._language_boost.LANGUAGE_BOOST_WEIGHT},
-            ],
-            "score_mode": "multiply",
-            "boost_mode": "multiply",
-        }
-    }
+    return _build_suggest_query(
+        query, language, _BOOKS_PREFIX_FIELDS, _BOOKS_SUGGEST_FIELDS, fuzziness
+    )
 
 
 def _build_suggest_authors_query(
     query: str, language: str, fuzziness: typing.Optional[str] = None
 ) -> typing.Dict[str, typing.Any]:
-    q_lower = _normalize_query(query)
-    suggest_clause: typing.Dict[str, typing.Any] = {
-        "query": query,
-        "type": "bool_prefix",
-        "fields": [
-            "name.suggest^3",
-            "name.suggest._2gram",
-            "name.suggest._3gram",
-        ],
-    }
-    if fuzziness:
-        suggest_clause["fuzziness"] = fuzziness
-
-    return {
-        "function_score": {
-            "query": {
-                "bool": {
-                    "should": [
-                        {
-                            "prefix": {
-                                "name.exact": {"value": q_lower, "boost": 4.0}
-                            }
-                        },
-                        {"multi_match": suggest_clause},
-                    ],
-                    "minimum_should_match": 1,
-                }
-            },
-            "functions": [
-                {"script_score": {"script": {"source": _POPULARITY_SCRIPT}}},
-                {"filter": {"term": {"language": language}}, "weight": app.services._language_boost.LANGUAGE_BOOST_WEIGHT},
-            ],
-            "score_mode": "multiply",
-            "boost_mode": "multiply",
-        }
-    }
+    return _build_suggest_query(
+        query, language, _NAME_PREFIX_FIELDS, _NAME_SUGGEST_FIELDS, fuzziness
+    )
 
 
 def _build_suggest_series_query(
     query: str, language: str, fuzziness: typing.Optional[str] = None
 ) -> typing.Dict[str, typing.Any]:
-    q_lower = _normalize_query(query)
-    suggest_clause: typing.Dict[str, typing.Any] = {
-        "query": query,
-        "type": "bool_prefix",
-        "fields": [
-            "name.suggest^3",
-            "name.suggest._2gram",
-            "name.suggest._3gram",
-        ],
-    }
-    if fuzziness:
-        suggest_clause["fuzziness"] = fuzziness
-
-    return {
-        "function_score": {
-            "query": {
-                "bool": {
-                    "should": [
-                        {
-                            "prefix": {
-                                "name.exact": {"value": q_lower, "boost": 4.0}
-                            }
-                        },
-                        {"multi_match": suggest_clause},
-                    ],
-                    "minimum_should_match": 1,
-                }
-            },
-            "functions": [
-                {"script_score": {"script": {"source": _POPULARITY_SCRIPT}}},
-                {"filter": {"term": {"language": language}}, "weight": app.services._language_boost.LANGUAGE_BOOST_WEIGHT},
-            ],
-            "score_mode": "multiply",
-            "boost_mode": "multiply",
-        }
-    }
+    return _build_suggest_query(
+        query, language, _NAME_PREFIX_FIELDS, _NAME_SUGGEST_FIELDS, fuzziness
+    )
 
 
 async def search_books_and_authors(
