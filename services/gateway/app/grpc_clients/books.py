@@ -206,11 +206,11 @@ class BooksClient(base.GrpcClientBase):
 
         return await self._call("OpenPack", request)
 
-    async def list_categories(self) -> typing.Dict[str, typing.Any]:
+    async def list_categories(self) -> app.proto.books_pb2.ListCategoriesResponse:
         request = app.proto.books_pb2.ListCategoriesRequest()
         return await self._call("ListCategories", request)
 
-    async def get_category(self, category_slug: str) -> typing.Dict[str, typing.Any]:
+    async def get_category(self, category_slug: str) -> app.proto.books_pb2.CategoryResponse:
         request = app.proto.books_pb2.GetCategoryRequest(category_slug=category_slug)
         return await self._call("GetCategory", request)
 

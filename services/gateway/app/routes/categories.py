@@ -55,7 +55,8 @@ async def get_popular_categories(
 async def list_categories():
     try:
         response = await app.grpc_clients.books_client.list_categories()
-        return {"success": True, "data": {"categories": response.get("categories", [])}}
+        response_dict = google.protobuf.json_format.MessageToDict(response, preserving_proto_field_name=True)
+        return {"success": True, "data": {"categories": response_dict.get("categories", [])}}
     except Exception as e:
         logger.error(f"Error fetching categories: {str(e)}")
         raise fastapi.HTTPException(status_code=500, detail="Failed to fetch categories")
@@ -78,7 +79,8 @@ async def get_category(
 ):
     try:
         response = await app.grpc_clients.books_client.get_category(category_slug)
-        return {"success": True, "data": response.get("category", {})}
+        response_dict = google.protobuf.json_format.MessageToDict(response, preserving_proto_field_name=True)
+        return {"success": True, "data": response_dict.get("category", {})}
     except Exception as e:
         logger.error(f"Error fetching category {category_slug}: {str(e)}")
         if "Category not found" in str(e):
