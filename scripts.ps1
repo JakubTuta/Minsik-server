@@ -36,7 +36,6 @@ if (Test-Path "venv/Scripts/python.exe") {
     $env:PATH = ($env:PATH -split ';' | Where-Object { $_ -notmatch 'WindowsApps' }) -join ';'
 }
 
-# Colors for output
 $ColorSuccess = "Green"
 $ColorError = "Red"
 $ColorInfo = "Cyan"
@@ -64,7 +63,7 @@ COMMANDS:
 
   Deployment:
     -Deploy                        Start dev environment (docker-compose up)
-      -Environment prod              Build and push images to GAR (production)
+      -Environment prod              Build and push images to container registry (production)
 
     -Migrate                       Run database migrations manually (docker run --rm db-migrator)
 
@@ -248,8 +247,35 @@ function Create-Admin-User {
     }
 }
 
+function Connect-Registry {
+    param(
+        [string]$Registry,
+        [string]$Username = "",
+        [string]$Password = ""
+    )
+
+    Write-Host "  Authenticating with $Registry..." -ForegroundColor Gray
+
+    if ($Username -and $Password) {
+        $Password | & docker login $Registry --username $Username --password-stdin
+    } else {
+        & docker login $Registry
+    }
+
+    if ($LASTEXITCODE -ne 0) {
+        Write-Error-Message "Docker login to $Registry failed"
+        return $false
+    }
+
+    return $true
+}
+
 function Build-And-Push-Images {
-    $GAR_REGISTRY = "container-registry.jtuta.cloud/minsik"
+    param(
+        [string]$Registry,
+        [string]$Username = "",
+        [string]$Password = ""
+    )
 
     $services = @(
         @{ Name = "Auth Service";           Dockerfile = "services/auth/Dockerfile";           ImageName = "auth-service" },
@@ -258,25 +284,19 @@ function Build-And-Push-Images {
         @{ Name = "Books Service";          Dockerfile = "services/books/Dockerfile";          ImageName = "books-service" },
         @{ Name = "User Data Service";      Dockerfile = "services/user_data/Dockerfile";      ImageName = "user-data-service" },
         @{ Name = "Recommendation Service"; Dockerfile = "services/recommendation/Dockerfile"; ImageName = "recommendation-service" },
-        @{ Name = "DB Migrator";            Dockerfile = "services/db_migrator/Dockerfile";  ImageName = "db-migrator" },
+        @{ Name = "DB Migrator";            Dockerfile = "services/db_migrator/Dockerfile";    ImageName = "db-migrator" },
         @{ Name = "RQ Worker";              Dockerfile = "services/ingestion/Dockerfile";      ImageName = "rq-worker" }
     )
 
-    Write-Step "Building and pushing images to Google Artifact Registry..."
+    Write-Step "Building and pushing images to $Registry..."
 
-    # Write-Host "  Configuring Docker authentication..." -ForegroundColor Gray
-    # & gcloud auth configure-docker europe-central2-docker.pkg.dev --quiet
-
-    Write-Host "  Configuring Docker authentication..." -ForegroundColor Gray
-    & docker login container-registry.jtuta.cloud
-
-    if ($LASTEXITCODE -ne 0) {
-        Write-Error-Message "Failed to configure Docker authentication. Run 'gcloud auth login' first."
+    $loginResult = Connect-Registry -Registry $Registry -Username $Username -Password $Password
+    if (-not $loginResult) {
         return $false
     }
 
     foreach ($service in $services) {
-        $imageTag = "$GAR_REGISTRY/$($service.ImageName):latest"
+        $imageTag = "$Registry/$($service.ImageName):latest"
 
         Write-Host "  Building $($service.Name)..." -ForegroundColor Gray
 
@@ -343,7 +363,7 @@ function Deploy-Services {
         }
 
     } elseif ($Environment -eq "prod") {
-        Build-And-Push-Images
+        Write-Error-Message "Production deploy requires credentials. Use scripts.private.ps1 instead."
 
     } else {
         Write-Error-Message "Invalid environment: $Environment (use 'dev' or 'prod')"

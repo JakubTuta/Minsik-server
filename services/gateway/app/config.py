@@ -26,6 +26,10 @@ class Settings(pydantic_settings.BaseSettings):
     recommendation_service_host: str = pydantic.Field(default="recommendation-service")
     recommendation_grpc_port: int = pydantic.Field(default=50056)
 
+    redis_host: str = pydantic.Field(default="localhost")
+    redis_port: int = pydantic.Field(default=6379)
+    redis_password: str = pydantic.Field(default="")
+
     jwt_secret_key: str = pydantic.Field(default="changeme")
     jwt_algorithm: str = pydantic.Field(default="HS256")
     jwt_access_token_expire_minutes: int = pydantic.Field(default=15)
@@ -51,7 +55,6 @@ class Settings(pydantic_settings.BaseSettings):
     rate_limit_per_minute: int = pydantic.Field(default=60)
     rate_limit_admin_per_minute: int = pydantic.Field(default=20)
     rate_limit_suggest_per_minute: int = pydantic.Field(default=120)
-    rate_limit_storage_uri: str = pydantic.Field(default="")
 
     ledger_api_key: str = pydantic.Field(default="")
 
@@ -66,6 +69,12 @@ class Settings(pydantic_settings.BaseSettings):
                 "JWT_SECRET_KEY must be set to a strong secret in production"
             )
         return self
+
+    @property
+    def rate_limit_storage_uri(self) -> str:
+        if self.redis_password:
+            return f"redis://:{self.redis_password}@{self.redis_host}:{self.redis_port}/1"
+        return f"redis://{self.redis_host}:{self.redis_port}/1"
 
     @property
     def ingestion_service_url(self) -> str:

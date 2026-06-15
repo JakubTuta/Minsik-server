@@ -9,15 +9,12 @@ services:
       POSTGRES_DB: ${DB_NAME}
       POSTGRES_USER: ${DB_USER}
       POSTGRES_PASSWORD: ${DB_PASSWORD}
-      # Development-friendly settings
       POSTGRES_INITDB_ARGS: "--encoding=UTF8"
     ports:
       # EXPOSED for local access (DB clients, debugging)
-      - "${DB_PORT}:5432"
+      - "5432:5432"
     volumes:
-      # Data persistence
       - postgres_data_dev:/var/lib/postgresql/data
-      # Initialize database schemas on first run
       - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
@@ -28,7 +25,6 @@ services:
     networks:
       - minsik-network
     restart: unless-stopped
-    # No resource limits in development (use all available)
 
   # ============================================================================
   # Redis - Development Configuration
@@ -45,9 +41,8 @@ services:
       --appendonly no
     ports:
       # EXPOSED for local access (Redis CLI, debugging)
-      - "${REDIS_PORT}:6379"
+      - "6379:6379"
     volumes:
-      # Data persistence (optional in dev, useful for testing)
       - redis_data_dev:/data
     healthcheck:
       test: ["CMD", "redis-cli", "--raw", "incr", "ping"]
@@ -86,7 +81,6 @@ services:
     networks:
       - minsik-network
     restart: unless-stopped
-    # No resource limits in development
 
   # ============================================================================
   # DB Migrator - Development (runs all migrations before services start)
@@ -98,7 +92,6 @@ services:
     container_name: minsik-db-migrator-dev
     environment:
       DB_HOST: ${DB_HOST}
-      DB_PORT: ${DB_PORT}
       DB_NAME: ${DB_NAME}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
@@ -119,44 +112,16 @@ services:
     container_name: minsik-gateway-service-dev
     command: sh -c "sh /app/scripts/dev-compile-protos.sh ingestion books auth user_data recommendation && exec uvicorn app.main:app --host 0.0.0.0 --port 8040 --reload --reload-dir /app/app"
     environment:
-      ENV: development
+      ENV: ${ENV}
       DEBUG: ${DEBUG}
       LOG_LEVEL: ${LOG_LEVEL}
-      GATEWAY_HOST: ${GATEWAY_HOST:-0.0.0.0}
-      GATEWAY_HTTP_PORT: ${GATEWAY_HTTP_PORT}
-      GATEWAY_WORKERS: ${GATEWAY_WORKERS}
-      INGESTION_SERVICE_HOST: ${INGESTION_SERVICE_HOST:-ingestion-service}
-      INGESTION_GRPC_PORT: ${INGESTION_GRPC_PORT:-50054}
-      BOOKS_SERVICE_HOST: ${BOOKS_SERVICE_HOST:-books-service}
-      BOOKS_GRPC_PORT: ${BOOKS_GRPC_PORT:-50055}
-      AUTH_SERVICE_HOST: ${AUTH_SERVICE_HOST:-auth-service}
-      AUTH_GRPC_PORT: ${AUTH_GRPC_PORT:-50051}
-      USER_DATA_SERVICE_HOST: ${USER_DATA_SERVICE_HOST:-user-data-service}
-      USER_DATA_GRPC_PORT: ${USER_DATA_GRPC_PORT:-50053}
-      GRPC_KEEPALIVE_TIME_MS: ${GRPC_KEEPALIVE_TIME_MS:-300000}
-      GRPC_KEEPALIVE_TIMEOUT_MS: ${GRPC_KEEPALIVE_TIMEOUT_MS:-10000}
-      GRPC_TIMEOUT: ${GRPC_TIMEOUT:-10.0}
-      GRPC_RECOMMENDATION_TIMEOUT: ${GRPC_RECOMMENDATION_TIMEOUT:-30.0}
-      GRPC_ADMIN_TIMEOUT: ${GRPC_ADMIN_TIMEOUT:-60.0}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
-      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
-      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-15}
-      RECOMMENDATION_SERVICE_HOST: ${RECOMMENDATION_SERVICE_HOST:-recommendation-service}
-      RECOMMENDATION_GRPC_PORT: ${RECOMMENDATION_GRPC_PORT:-50056}
-      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:3000}
-      CORS_ALLOW_CREDENTIALS: "true"
-      CORS_ALLOW_METHODS: "GET,POST,PUT,DELETE,PATCH,OPTIONS"
-      CORS_ALLOW_HEADERS: "Content-Type,Authorization,X-CSRF-Token"
-      COOKIE_SECURE: ${COOKIE_SECURE:-false}
-      COOKIE_SAMESITE: ${COOKIE_SAMESITE:-lax}
-      COOKIE_DOMAIN: ${COOKIE_DOMAIN:-}
-      REFRESH_TOKEN_EXPIRE_DAYS: ${REFRESH_TOKEN_EXPIRE_DAYS:-30}
-      RATE_LIMIT_ENABLED: ${RATE_LIMIT_ENABLED}
-      RATE_LIMIT_PER_MINUTE: ${RATE_LIMIT_PER_MINUTE}
-      RATE_LIMIT_ADMIN_PER_MINUTE: ${RATE_LIMIT_ADMIN_PER_MINUTE}
-      RATE_LIMIT_SUGGEST_PER_MINUTE: ${RATE_LIMIT_SUGGEST_PER_MINUTE}
-      RATE_LIMIT_STORAGE_URI: redis://:${REDIS_PASSWORD}@redis:6379/1
-      RECOMMENDATION_RECOMPUTE_ON_USER_WRITE: ${RECOMMENDATION_RECOMPUTE_ON_USER_WRITE:-true}
+      CORS_ORIGINS: ${CORS_ORIGINS}
+      COOKIE_SECURE: ${COOKIE_SECURE}
+      COOKIE_SAMESITE: ${COOKIE_SAMESITE}
+      COOKIE_DOMAIN: ${COOKIE_DOMAIN}
       LEDGER_API_KEY: ${LEDGER_API_KEY}
     ports:
       # EXPOSED for client access
@@ -182,7 +147,6 @@ services:
     networks:
       - minsik-network
     restart: unless-stopped
-    # No resource limits in development
 
   # ============================================================================
   # Ingestion Service - Development Configuration
@@ -195,70 +159,20 @@ services:
     stop_grace_period: 30s
     command: sh -c "sh /app/scripts/dev-compile-protos.sh ingestion && exec watchfiles 'python -m app.main' /app/app"
     environment:
-      ENV: development
+      ENV: ${ENV}
       DEBUG: ${DEBUG}
       LOG_LEVEL: ${LOG_LEVEL}
       DB_HOST: ${DB_HOST}
-      DB_PORT: ${DB_PORT}
       DB_NAME: ${DB_NAME}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
-      DB_POOL_SIZE: ${DB_POOL_SIZE}
-      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW}
       REDIS_HOST: ${REDIS_HOST}
-      REDIS_PORT: ${REDIS_PORT}
-      REDIS_DB: ${REDIS_DB:-0}
       REDIS_PASSWORD: ${REDIS_PASSWORD}
-      REDIS_MAX_CONNECTIONS: ${REDIS_MAX_CONNECTIONS:-20}
-      INGESTION_SERVICE_HOST: ${INGESTION_SERVICE_HOST:-ingestion-service}
-      INGESTION_GRPC_PORT: ${INGESTION_GRPC_PORT:-50054}
-      OPEN_LIBRARY_API_URL: ${OPEN_LIBRARY_API_URL:-https://openlibrary.org}
-      OPEN_LIBRARY_RATE_LIMIT: ${OPEN_LIBRARY_RATE_LIMIT:-50}
-      GOOGLE_BOOKS_API_URL: ${GOOGLE_BOOKS_API_URL:-https://www.googleapis.com/books/v1}
       GOOGLE_BOOKS_API_KEY: ${GOOGLE_BOOKS_API_KEY}
-      REQUEST_TIMEOUT: ${REQUEST_TIMEOUT:-30.0}
-      INGESTION_BATCH_SIZE: ${INGESTION_BATCH_SIZE:-50}
-      INGESTION_MAX_RETRIES: ${INGESTION_MAX_RETRIES:-3}
-      INGESTION_RETRY_DELAY: ${INGESTION_RETRY_DELAY:-5}
-      CONTINUOUS_FETCH_ENABLED: ${CONTINUOUS_FETCH_ENABLED:-true}
-      CONTINUOUS_OL_CRON: ${CONTINUOUS_OL_CRON:-0 * * * *}
-      CONTINUOUS_OL_BOOKS_PER_RUN: ${CONTINUOUS_OL_BOOKS_PER_RUN:-100}
-      CONTINUOUS_GB_CRON: ${CONTINUOUS_GB_CRON:-0 4,10,16,22 * * *}
-      CONTINUOUS_GB_BOOKS_PER_RUN: ${CONTINUOUS_GB_BOOKS_PER_RUN:-40}
-      DESCRIPTION_ENRICH_ENABLED: ${DESCRIPTION_ENRICH_ENABLED:-true}
-      DESCRIPTION_ENRICH_CRON: ${DESCRIPTION_ENRICH_CRON:-30 */2 * * *}
-      DESCRIPTION_ENRICH_BATCH_SIZE: ${DESCRIPTION_ENRICH_BATCH_SIZE:-5}
-      DESCRIPTION_MIN_LENGTH: ${DESCRIPTION_MIN_LENGTH:-100}
-      OL_DUMP_BASE_URL: ${OL_DUMP_BASE_URL:-https://openlibrary.org/data}
-      DUMP_BATCH_SIZE: ${DUMP_BATCH_SIZE:-500}
-      DUMP_TMP_DIR: ${DUMP_TMP_DIR:-/tmp}
-      DUMP_COMMIT_INTERVAL: ${DUMP_COMMIT_INTERVAL:-5000}
-      DUMP_EDITION_BATCH_SIZE: ${DUMP_EDITION_BATCH_SIZE:-500}
-      DUMP_EDITIONS_ENABLED: ${DUMP_EDITIONS_ENABLED:-true}
-      DUMP_RATINGS_ENABLED: ${DUMP_RATINGS_ENABLED:-true}
-      DUMP_READING_LOG_ENABLED: ${DUMP_READING_LOG_ENABLED:-true}
-      DUMP_WIKIDATA_ENABLED: ${DUMP_WIKIDATA_ENABLED:-true}
-      DUMP_EDITION_FLUSH_INTERVAL: ${DUMP_EDITION_FLUSH_INTERVAL:-100000}
-      DUMP_WORK_MIN_QUALITY_SCORE: ${DUMP_WORK_MIN_QUALITY_SCORE:-2}
-      DUMP_AUTHOR_MIN_QUALITY_SCORE: ${DUMP_AUTHOR_MIN_QUALITY_SCORE:-2}
-      CLEANUP_ENABLED: ${CLEANUP_ENABLED:-true}
-      CLEANUP_CRON: ${CLEANUP_CRON:-0 3,15 * * *}
-      CLEANUP_BOOK_MIN_QUALITY_SCORE: ${CLEANUP_BOOK_MIN_QUALITY_SCORE:-7}
-      CLEANUP_AUTHOR_MIN_BOOKS: ${CLEANUP_AUTHOR_MIN_BOOKS:-5}
-      CLEANUP_BOOK_BATCH_SIZE: ${CLEANUP_BOOK_BATCH_SIZE:-100}
-      CLEANUP_AUTHOR_BATCH_SIZE: ${CLEANUP_AUTHOR_BATCH_SIZE:-50}
-      CLEANUP_SERIES_BATCH_SIZE: ${CLEANUP_SERIES_BATCH_SIZE:-500}
-      CLEANUP_GENRE_BATCH_SIZE: ${CLEANUP_GENRE_BATCH_SIZE:-1000}
-      CLEANUP_AUTHOR_MAX_BOOKS: ${CLEANUP_AUTHOR_MAX_BOOKS:-500}
-      CLEANUP_SERIES_MIN_BOOKS: ${CLEANUP_SERIES_MIN_BOOKS:-3}
-      CLEANUP_SERIES_MAX_BOOKS: ${CLEANUP_SERIES_MAX_BOOKS:-30}
-      GENRE_BUBBLE_ENABLED: ${GENRE_BUBBLE_ENABLED:-true}
-      GENRE_BUBBLE_CRON: ${GENRE_BUBBLE_CRON:-0 6 * * 0}
-      GENRE_BUBBLE_MIN_PAIR_COUNT: ${GENRE_BUBBLE_MIN_PAIR_COUNT:-5}
       LEDGER_API_KEY: ${LEDGER_API_KEY}
     ports:
       # EXPOSED for local access (gRPC debugging)
-      - "${INGESTION_GRPC_PORT:-50054}:50054"
+      - "50054:50054"
     volumes:
       - ./services/ingestion/app:/app/app
       - ./services/ingestion/tests:/app/tests
@@ -274,7 +188,6 @@ services:
     networks:
       - minsik-network
     restart: unless-stopped
-    # No resource limits in development
 
   # ============================================================================
   # Books Service - Development Configuration
@@ -286,49 +199,19 @@ services:
     container_name: minsik-books-service-dev
     command: sh -c "sh /app/scripts/dev-compile-protos.sh books && exec watchfiles 'python -m app.main' /app/app"
     environment:
-      ENV: development
+      ENV: ${ENV}
       DEBUG: ${DEBUG}
       LOG_LEVEL: ${LOG_LEVEL}
       DB_HOST: ${DB_HOST}
-      DB_PORT: ${DB_PORT}
       DB_NAME: ${DB_NAME}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
-      DB_POOL_SIZE: ${DB_POOL_SIZE}
-      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW}
       REDIS_HOST: ${REDIS_HOST}
-      REDIS_PORT: ${REDIS_PORT}
-      REDIS_DB: ${REDIS_DB:-0}
       REDIS_PASSWORD: ${REDIS_PASSWORD}
-      REDIS_MAX_CONNECTIONS: ${REDIS_MAX_CONNECTIONS:-20}
-      BOOKS_SERVICE_HOST: ${BOOKS_SERVICE_HOST:-books-service}
-      BOOKS_GRPC_PORT: ${BOOKS_GRPC_PORT:-50055}
-      CACHE_BOOK_DETAIL_TTL: ${CACHE_BOOK_DETAIL_TTL:-3600}
-      CACHE_AUTHOR_DETAIL_TTL: ${CACHE_AUTHOR_DETAIL_TTL:-3600}
-      CACHE_AUTHOR_BOOKS_TTL: ${CACHE_AUTHOR_BOOKS_TTL:-1800}
-      CACHE_SEARCH_TTL: ${CACHE_SEARCH_TTL:-900}
-      CACHE_POPULAR_TTL: ${CACHE_POPULAR_TTL:-21600}
-      CACHE_CATEGORY_TOP_BOOKS_TTL: ${CACHE_CATEGORY_TOP_BOOKS_TTL:-93600}
-      CACHE_GENRE_BUBBLE_TTL: ${CACHE_GENRE_BUBBLE_TTL:-21600}
-      CATEGORY_CACHE_REFRESH_ENABLED: ${CATEGORY_CACHE_REFRESH_ENABLED:-true}
-      CATEGORY_CACHE_REFRESH_CRON: ${CATEGORY_CACHE_REFRESH_CRON:-0 0 * * *}
-      VIEW_COUNT_FLUSH_ENABLED: ${VIEW_COUNT_FLUSH_ENABLED:-true}
-      VIEW_COUNT_FLUSH_CRON: ${VIEW_COUNT_FLUSH_CRON:-*/5 * * * *}
-      VIEW_COUNT_FLUSH_BATCH_SIZE: ${VIEW_COUNT_FLUSH_BATCH_SIZE:-100}
-      SEARCH_DEFAULT_LIMIT: ${SEARCH_DEFAULT_LIMIT:-10}
-      SEARCH_MAX_LIMIT: ${SEARCH_MAX_LIMIT:-100}
-      SEARCH_AUTHOR_BOOKS_EXPANSION: ${SEARCH_AUTHOR_BOOKS_EXPANSION:-3}
-      ES_HOST: ${ES_HOST:-elasticsearch}
-      ES_PORT: ${ES_PORT:-9200}
-      ES_INDEX_BOOKS: ${ES_INDEX_BOOKS:-books}
-      ES_INDEX_AUTHORS: ${ES_INDEX_AUTHORS:-authors}
-      ES_INDEX_SERIES: ${ES_INDEX_SERIES:-series}
-      ES_REINDEX_ENABLED: ${ES_REINDEX_ENABLED:-true}
-      ES_REINDEX_CRON: ${ES_REINDEX_CRON:-0 */6 * * *}
-      ES_REINDEX_BATCH_SIZE: ${ES_REINDEX_BATCH_SIZE:-1000}
+      LEDGER_API_KEY: ${LEDGER_API_KEY}
     ports:
       # EXPOSED for local access (gRPC debugging)
-      - "${BOOKS_GRPC_PORT:-50055}:50055"
+      - "50055:50055"
     volumes:
       - ./services/books/app:/app/app
       - ./services/books/tests:/app/tests
@@ -346,7 +229,6 @@ services:
     networks:
       - minsik-network
     restart: unless-stopped
-    # No resource limits in development
 
   # ============================================================================
   # Auth Service - Development Configuration
@@ -358,30 +240,20 @@ services:
     container_name: minsik-auth-service-dev
     command: sh -c "sh /app/scripts/dev-compile-protos.sh auth && exec watchfiles 'python -m app.main' /app/app"
     environment:
-      ENV: development
+      ENV: ${ENV}
       DEBUG: ${DEBUG}
       LOG_LEVEL: ${LOG_LEVEL}
       DB_HOST: ${DB_HOST}
-      DB_PORT: ${DB_PORT}
       DB_NAME: ${DB_NAME}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
-      DB_POOL_SIZE: ${DB_POOL_SIZE}
-      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW}
-      AUTH_SERVICE_HOST: ${AUTH_SERVICE_HOST:-auth-service}
-      AUTH_GRPC_PORT: ${AUTH_GRPC_PORT:-50051}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
-      JWT_ALGORITHM: ${JWT_ALGORITHM:-HS256}
-      JWT_ACCESS_TOKEN_EXPIRE_MINUTES: ${JWT_ACCESS_TOKEN_EXPIRE_MINUTES:-15}
-      JWT_REFRESH_TOKEN_EXPIRE_DAYS: ${JWT_REFRESH_TOKEN_EXPIRE_DAYS:-30}
       GOOGLE_CLIENT_ID: ${GOOGLE_CLIENT_ID}
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
-      BCRYPT_ROUNDS: ${BCRYPT_ROUNDS:-12}
-      MAX_FAILED_LOGIN_ATTEMPTS: ${MAX_FAILED_LOGIN_ATTEMPTS:-5}
-      LOCKOUT_DURATION_MINUTES: ${LOCKOUT_DURATION_MINUTES:-30}
+      LEDGER_API_KEY: ${LEDGER_API_KEY}
     ports:
       # EXPOSED for local access (gRPC debugging)
-      - "${AUTH_GRPC_PORT:-50051}:50051"
+      - "50051:50051"
     volumes:
       - ./services/auth/app:/app/app
       - ./services/auth/tests:/app/tests
@@ -395,7 +267,6 @@ services:
     networks:
       - minsik-network
     restart: unless-stopped
-    # No resource limits in development
 
   # ============================================================================
   # User Data Service - Development Configuration
@@ -407,26 +278,19 @@ services:
     container_name: minsik-user-data-service-dev
     command: sh -c "sh /app/scripts/dev-compile-protos.sh user_data && exec watchfiles 'python -m app.main' /app/app"
     environment:
-      ENV: development
+      ENV: ${ENV}
       DEBUG: ${DEBUG}
       LOG_LEVEL: ${LOG_LEVEL}
       DB_HOST: ${DB_HOST}
-      DB_PORT: ${DB_PORT}
       DB_NAME: ${DB_NAME}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
-      DB_POOL_SIZE: ${DB_POOL_SIZE}
-      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW}
       REDIS_HOST: ${REDIS_HOST}
-      REDIS_PORT: ${REDIS_PORT}
-      REDIS_DB: ${REDIS_DB:-0}
       REDIS_PASSWORD: ${REDIS_PASSWORD}
-      REDIS_MAX_CONNECTIONS: ${REDIS_MAX_CONNECTIONS:-20}
-      USER_DATA_SERVICE_HOST: ${USER_DATA_SERVICE_HOST:-user-data-service}
-      USER_DATA_GRPC_PORT: ${USER_DATA_GRPC_PORT:-50053}
+      LEDGER_API_KEY: ${LEDGER_API_KEY}
     ports:
       # EXPOSED for local access (gRPC debugging)
-      - "${USER_DATA_GRPC_PORT:-50053}:50053"
+      - "50053:50053"
     volumes:
       - ./services/user_data/app:/app/app
       - ./services/user_data/tests:/app/tests
@@ -442,7 +306,6 @@ services:
     networks:
       - minsik-network
     restart: unless-stopped
-    # No resource limits in development
 
   # ============================================================================
   # Recommendation Service - Development Configuration
@@ -454,51 +317,20 @@ services:
     container_name: minsik-recommendation-service-dev
     command: sh -c "sh /app/scripts/dev-compile-protos.sh recommendation && exec watchfiles 'python -m app.main' /app/app"
     environment:
-      ENV: development
+      ENV: ${ENV}
       DEBUG: ${DEBUG}
       LOG_LEVEL: ${LOG_LEVEL}
       DB_HOST: ${DB_HOST}
-      DB_PORT: ${DB_PORT}
       DB_NAME: ${DB_NAME}
       DB_USER: ${DB_USER}
       DB_PASSWORD: ${DB_PASSWORD}
-      DB_POOL_SIZE: ${DB_POOL_SIZE}
-      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW}
-      RECOMMENDATION_DB_POOL_SIZE: ${RECOMMENDATION_DB_POOL_SIZE:-10}
-      RECOMMENDATION_DB_MAX_OVERFLOW: ${RECOMMENDATION_DB_MAX_OVERFLOW:-20}
       REDIS_HOST: ${REDIS_HOST}
-      REDIS_PORT: ${REDIS_PORT}
-      REDIS_DB: ${REDIS_DB:-0}
       REDIS_PASSWORD: ${REDIS_PASSWORD}
-      REDIS_MAX_CONNECTIONS: ${REDIS_MAX_CONNECTIONS:-20}
-      RECOMMENDATION_SERVICE_HOST: ${RECOMMENDATION_SERVICE_HOST:-recommendation-service}
-      RECOMMENDATION_GRPC_PORT: ${RECOMMENDATION_GRPC_PORT:-50056}
-      LIST_DEFAULT_SIZE: ${LIST_DEFAULT_SIZE:-50}
-      CACHE_RECOMMENDATION_TTL: ${CACHE_RECOMMENDATION_TTL:-86400}
-      CACHE_CONTEXTUAL_TTL: ${CACHE_CONTEXTUAL_TTL:-21600}
-      CACHE_PROFILE_TTL: ${CACHE_PROFILE_TTL:-86400}
-      CACHE_PERSONAL_TTL: ${CACHE_PERSONAL_TTL:-86400}
-      CACHE_PERSONAL_CONTEXTUAL_TTL: ${CACHE_PERSONAL_CONTEXTUAL_TTL:-1800}
-      PERSONAL_COLD_START_THRESHOLD: ${PERSONAL_COLD_START_THRESHOLD:-5}
-      HOME_BOOK_CATEGORIES: ${HOME_BOOK_CATEGORIES}
-      HOME_AUTHOR_CATEGORIES: ${HOME_AUTHOR_CATEGORIES}
-      CACHE_CASE_POOL_TTL: ${CACHE_CASE_POOL_TTL:-7200}
-      GENERAL_REFRESH_ENABLED: ${GENERAL_REFRESH_ENABLED:-true}
-      GENERAL_REFRESH_CRON: ${GENERAL_REFRESH_CRON:-0 0 * * *}
-      PERSONAL_REFRESH_ENABLED: ${PERSONAL_REFRESH_ENABLED:-true}
-      PERSONAL_REFRESH_CRON: ${PERSONAL_REFRESH_CRON:-0 1 * * *}
-      CONTEXTUAL_PRECOMPUTE_ENABLED: ${CONTEXTUAL_PRECOMPUTE_ENABLED:-true}
-      CONTEXTUAL_PRECOMPUTE_CRON: ${CONTEXTUAL_PRECOMPUTE_CRON:-0 2 * * *}
-      CASE_POOL_REFRESH_ENABLED: ${CASE_POOL_REFRESH_ENABLED:-true}
-      CASE_POOL_REFRESH_CRON: ${CASE_POOL_REFRESH_CRON:-30 * * * *}
-      BOOK_OF_WEEK_ENABLED: ${BOOK_OF_WEEK_ENABLED:-true}
-      BOOK_OF_WEEK_CRON: ${BOOK_OF_WEEK_CRON:-30 3 * * 1}
-      CONTEXTUAL_PRECOMPUTE_MIN_RATINGS: ${CONTEXTUAL_PRECOMPUTE_MIN_RATINGS:-500}
-      CONTEXTUAL_COLD_TTL: ${CONTEXTUAL_COLD_TTL:-1800}
       AVAILABLE_LANGUAGES: ${AVAILABLE_LANGUAGES}
+      LEDGER_API_KEY: ${LEDGER_API_KEY}
     ports:
       # EXPOSED for local access (gRPC debugging)
-      - "${RECOMMENDATION_GRPC_PORT:-50056}:50056"
+      - "50056:50056"
     volumes:
       - ./services/recommendation/app:/app/app
       - ./services/recommendation/tests:/app/tests
@@ -514,7 +346,6 @@ services:
     networks:
       - minsik-network
     restart: unless-stopped
-    # No resource limits in development
 
   # ============================================================================
   # RQ Worker - Development Configuration
@@ -524,33 +355,23 @@ services:
       context: .
       dockerfile: services/ingestion/Dockerfile
     container_name: minsik-rq-worker-dev
-    command: sh -c "sh /app/scripts/dev-compile-protos.sh ingestion && exec rq worker ingestion --url redis://:${REDIS_PASSWORD}@${REDIS_HOST}:${REDIS_PORT}/${REDIS_DB:-0}"
+    command: sh -c "sh /app/scripts/dev-compile-protos.sh ingestion && exec rq worker ingestion --url redis://:${REDIS_PASSWORD}@${REDIS_HOST}:6379/0"
+    environment:
+      ENV: ${ENV}
+      DEBUG: ${DEBUG}
+      LOG_LEVEL: ${LOG_LEVEL}
+      DB_HOST: ${DB_HOST}
+      DB_NAME: ${DB_NAME}
+      DB_USER: ${DB_USER}
+      DB_PASSWORD: ${DB_PASSWORD}
+      REDIS_HOST: ${REDIS_HOST}
+      REDIS_PASSWORD: ${REDIS_PASSWORD}
+      GOOGLE_BOOKS_API_KEY: ${GOOGLE_BOOKS_API_KEY}
     volumes:
       - ./services/ingestion/app:/app/app
       - ./services/ingestion/tests:/app/tests
       - ./proto:/app/proto_src:ro
       - ./scripts:/app/scripts:ro
-    environment:
-      ENV: development
-      DEBUG: ${DEBUG}
-      LOG_LEVEL: ${LOG_LEVEL}
-      DB_HOST: ${DB_HOST}
-      DB_PORT: ${DB_PORT}
-      DB_NAME: ${DB_NAME}
-      DB_USER: ${DB_USER}
-      DB_PASSWORD: ${DB_PASSWORD}
-      DB_POOL_SIZE: ${DB_POOL_SIZE}
-      DB_MAX_OVERFLOW: ${DB_MAX_OVERFLOW}
-      REDIS_HOST: ${REDIS_HOST}
-      REDIS_PORT: ${REDIS_PORT}
-      REDIS_DB: ${REDIS_DB:-0}
-      REDIS_PASSWORD: ${REDIS_PASSWORD}
-      REDIS_MAX_CONNECTIONS: ${REDIS_MAX_CONNECTIONS:-20}
-      OPEN_LIBRARY_API_URL: ${OPEN_LIBRARY_API_URL:-https://openlibrary.org}
-      OPEN_LIBRARY_RATE_LIMIT: ${OPEN_LIBRARY_RATE_LIMIT:-50}
-      GOOGLE_BOOKS_API_URL: ${GOOGLE_BOOKS_API_URL:-https://www.googleapis.com/books/v1}
-      GOOGLE_BOOKS_API_KEY: ${GOOGLE_BOOKS_API_KEY}
-      REQUEST_TIMEOUT: ${REQUEST_TIMEOUT:-30.0}
     depends_on:
       db-migrator:
         condition: service_completed_successfully
@@ -561,7 +382,6 @@ services:
     networks:
       - minsik-network
     restart: unless-stopped
-    # No resource limits in development
 
 # ============================================================================
 # Volumes - Development (named volumes for easy cleanup)
