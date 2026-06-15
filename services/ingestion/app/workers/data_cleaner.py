@@ -4,9 +4,11 @@ import typing
 
 import app.config
 import app.models
+import app.models.series
 import app.utils
 import redis
 import sqlalchemy
+import sqlalchemy.dialects.postgresql
 import sqlalchemy.engine
 import sqlalchemy.ext.asyncio
 
@@ -372,69 +374,196 @@ async def cleanup_orphan_authors(
     return {"deleted": total_deleted}
 
 
-async def cleanup_underrepresented_series(
+async def consolidate_series(
     session_factory: SessionFactory,
     min_books: int,
     max_books: int,
     batch_size: int,
     stop_check: typing.Callable[[], bool] = lambda: False,
-) -> int:
-    total_deleted = 0
+) -> typing.Dict[str, int]:
+    stats = {"linked": 0, "unlinked": 0, "rows_created": 0, "rows_deleted": 0}
+
+    # Phase A: renormalize legacy series_slug values that contain position suffixes.
+    # Works in batches over distinct (series_name, series_slug) pairs.
+    offset = 0
+    while True:
+        if stop_check():
+            logger.info("[cleanup] Stopping series renormalize: dump import started")
+            return stats
+        try:
+            async with session_factory() as session:
+                result = await session.execute(
+                    sqlalchemy.text(
+                        """
+                        SELECT DISTINCT series_name, series_slug
+                        FROM books.books
+                        WHERE series_slug IS NOT NULL AND series_name IS NOT NULL
+                        ORDER BY series_slug
+                        LIMIT :batch_size OFFSET :offset
+                        """
+                    ),
+                    {"batch_size": batch_size, "offset": offset},
+                )
+                rows = result.fetchall()
+        except Exception as e:
+            logger.error(f"[cleanup] Series renormalize fetch failed: {e}")
+            break
+
+        if not rows:
+            break
+
+        for row in rows:
+            old_name: str = row[0]
+            old_slug: str = row[1]
+            parsed = app.utils.parse_series_descriptor(old_name)
+            if not parsed:
+                continue
+            canonical_name: str = parsed["name"]
+            canonical_slug: str = app.utils.slugify(canonical_name)
+            parsed_pos: typing.Optional[float] = parsed.get("position")
+
+            if canonical_slug == old_slug:
+                continue
+
+            try:
+                async with session_factory() as session:
+                    await session.execute(
+                        sqlalchemy.text(
+                            """
+                            UPDATE books.books
+                            SET series_slug = :new_slug,
+                                series_name = :new_name,
+                                series_position = COALESCE(series_position, :parsed_pos)
+                            WHERE series_slug = :old_slug AND series_name = :old_name
+                            """
+                        ),
+                        {
+                            "new_slug": canonical_slug,
+                            "new_name": canonical_name,
+                            "old_slug": old_slug,
+                            "old_name": old_name,
+                            "parsed_pos": parsed_pos,
+                        },
+                    )
+                    await session.commit()
+            except Exception as e:
+                logger.error(
+                    f"[cleanup] Series renormalize update failed for slug={old_slug}: {e}"
+                )
+
+        offset += batch_size
+        await asyncio.sleep(0.1)
+
+    logger.info("[cleanup] Series renormalize complete")
+
+    # Phase B: build/link series rows per (slug, language); unlink out-of-range pairs.
+    b_offset = 0
     consecutive_failures = 0
     while True:
         if stop_check():
-            logger.info("[cleanup] Stopping series cleanup: dump import started")
+            logger.info("[cleanup] Stopping series consolidation: dump import started")
             break
 
-        deleted = 0
         try:
             async with session_factory() as session:
-                series_id_result = await session.execute(
+                counts_result = await session.execute(
                     sqlalchemy.text(
                         """
-                        SELECT s.series_id
-                        FROM books.series s
-                        LEFT JOIN (
-                            SELECT series_id, COUNT(*) AS book_count
-                            FROM books.books
-                            WHERE series_id IS NOT NULL
-                            GROUP BY series_id
-                        ) bc ON bc.series_id = s.series_id
-                        WHERE COALESCE(bc.book_count, 0) < :min_books
-                           OR COALESCE(bc.book_count, 0) > :max_books
-                           OR s.name !~ '[A-Za-z]'
-                           OR char_length(btrim(s.name)) < 2
-                        LIMIT :batch_size
+                        SELECT series_slug, language, COUNT(*) AS c,
+                               MIN(series_name) AS rep_name
+                        FROM books.books
+                        WHERE series_slug IS NOT NULL
+                        GROUP BY series_slug, language
+                        ORDER BY series_slug, language
+                        LIMIT :batch_size OFFSET :offset
                         """
                     ),
-                    {"min_books": min_books, "max_books": max_books, "batch_size": batch_size},
+                    {"batch_size": batch_size, "offset": b_offset},
                 )
-                series_ids = [row[0] for row in series_id_result.fetchall()]
+                count_rows = counts_result.fetchall()
 
-                if not series_ids:
+                if not count_rows:
                     break
 
-                await session.execute(
-                    sqlalchemy.text(
-                        """
-                        UPDATE books.books
-                        SET series_id = NULL, series_position = NULL
-                        WHERE series_id = ANY(:series_ids)
-                        """
-                    ),
-                    {"series_ids": series_ids},
-                )
+                qualifying: list[dict] = []
+                disqualifying: list[dict] = []
+                slug_to_name: dict[str, str] = {}
 
-                result = await session.execute(
-                    sqlalchemy.text(
-                        "DELETE FROM books.series WHERE series_id = ANY(:series_ids)"
-                    ),
-                    {"series_ids": series_ids},
-                )
-                deleted = typing.cast(sqlalchemy.engine.CursorResult, result).rowcount
+                for row in count_rows:
+                    s_slug, lang, c, rep_name = row
+                    if rep_name:
+                        slug_to_name[s_slug] = rep_name
+                    if min_books <= c <= max_books:
+                        qualifying.append({"slug": s_slug, "lang": lang})
+                    else:
+                        disqualifying.append({"slug": s_slug, "lang": lang})
+
+                qualifying_slugs = list({q["slug"] for q in qualifying})
+                slug_to_id: dict[str, int] = {}
+
+                if qualifying_slugs:
+                    series_data = [
+                        {"name": slug_to_name.get(s, s), "slug": s}
+                        for s in qualifying_slugs
+                    ]
+                    series_data.sort(key=lambda r: r["slug"])
+                    stmt = sqlalchemy.dialects.postgresql.insert(
+                        app.models.series.Series
+                    ).values(series_data)
+                    stmt = stmt.on_conflict_do_update(
+                        index_elements=["slug"],
+                        set_={"name": stmt.excluded.name},
+                    )
+                    stmt = stmt.returning(
+                        app.models.series.Series.slug,
+                        app.models.series.Series.series_id,
+                    )
+                    result = await session.execute(stmt)
+                    for r in result:
+                        slug_to_id[r.slug] = r.series_id
+                    stats["rows_created"] += len(qualifying_slugs)
+
+                for q in qualifying:
+                    s_id = slug_to_id.get(q["slug"])
+                    if s_id is None:
+                        continue
+                    link_result = await session.execute(
+                        sqlalchemy.text(
+                            """
+                            UPDATE books.books
+                            SET series_id = :sid
+                            WHERE series_slug = :slug
+                              AND language = :lang
+                              AND series_id IS DISTINCT FROM :sid
+                            """
+                        ),
+                        {"sid": s_id, "slug": q["slug"], "lang": q["lang"]},
+                    )
+                    stats["linked"] += typing.cast(
+                        sqlalchemy.engine.CursorResult, link_result
+                    ).rowcount
+
+                for dq in disqualifying:
+                    unlink_result = await session.execute(
+                        sqlalchemy.text(
+                            """
+                            UPDATE books.books
+                            SET series_id = NULL
+                            WHERE series_slug = :slug
+                              AND language = :lang
+                              AND series_id IS NOT NULL
+                            """
+                        ),
+                        {"slug": dq["slug"], "lang": dq["lang"]},
+                    )
+                    stats["unlinked"] += typing.cast(
+                        sqlalchemy.engine.CursorResult, unlink_result
+                    ).rowcount
+
                 await session.commit()
+
         except Exception as e:
-            logger.error(f"[cleanup] Series cleanup batch failed: {e}")
+            logger.error(f"[cleanup] Series consolidation batch failed: {e}")
             consecutive_failures += 1
             if consecutive_failures >= 3:
                 break
@@ -442,11 +571,45 @@ async def cleanup_underrepresented_series(
             continue
 
         consecutive_failures = 0
-        total_deleted += deleted
-        logger.info(f"[cleanup] Deleted {total_deleted} series so far")
+        b_offset += batch_size
         await asyncio.sleep(0.5)
 
-    return total_deleted
+    # Clean up orphan series rows and refresh total_books in a final pass.
+    try:
+        async with session_factory() as session:
+            del_result = await session.execute(
+                sqlalchemy.text(
+                    """
+                    DELETE FROM books.series
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM books.books b WHERE b.series_id = books.series.series_id
+                    )
+                    """
+                )
+            )
+            stats["rows_deleted"] += typing.cast(
+                sqlalchemy.engine.CursorResult, del_result
+            ).rowcount
+            await session.execute(
+                sqlalchemy.text(
+                    """
+                    UPDATE books.series s
+                    SET total_books = (
+                        SELECT COUNT(*) FROM books.books b WHERE b.series_id = s.series_id
+                    )
+                    """
+                )
+            )
+            await session.commit()
+    except Exception as e:
+        logger.error(f"[cleanup] Series post-consolidation cleanup failed: {e}")
+
+    logger.info(
+        f"[cleanup] Series consolidation complete: linked={stats['linked']}, "
+        f"unlinked={stats['unlinked']}, rows_created={stats['rows_created']}, "
+        f"rows_deleted={stats['rows_deleted']}"
+    )
+    return stats
 
 
 async def normalize_and_merge_genres(
@@ -729,7 +892,7 @@ async def run_cleanup_cycle(
         "books": {"deleted": 0},
         "duplicates": {"deleted": 0},
         "authors": {"deleted": 0},
-        "series_deleted": 0,
+        "series": {"linked": 0, "unlinked": 0, "rows_created": 0, "rows_deleted": 0},
         "genres_normalized": 0,
         "genres_deleted": 0,
         "underrepresented_genres_deleted": 0,
@@ -759,7 +922,7 @@ async def run_cleanup_cycle(
     if stop_check():
         return stats
 
-    stats["series_deleted"] = await cleanup_underrepresented_series(
+    stats["series"] = await consolidate_series(
         session_factory, min_series_books, max_series_books, series_batch, stop_check
     )
     if stop_check():
@@ -827,7 +990,8 @@ async def run_cleanup_job(force: bool = False) -> None:
             f"{stats['books']['deleted']} books, "
             f"{stats['duplicates']['deleted']} duplicate books, "
             f"{stats['authors']['deleted']} authors, "
-            f"{stats['series_deleted']} series, "
+            f"series linked={stats['series']['linked']} unlinked={stats['series']['unlinked']} "
+            f"rows_created={stats['series']['rows_created']} rows_deleted={stats['series']['rows_deleted']}, "
             f"{stats['genres_normalized']} genres normalized, "
             f"{stats['genres_deleted']} orphan genres, "
             f"{stats['underrepresented_genres_deleted']} underrepresented genres, "

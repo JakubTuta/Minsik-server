@@ -241,30 +241,12 @@ class OpenLibraryFetcher(app.fetcher_base.BaseFetcher):
 
         for edition in editions_data["entries"]:
             series_list = edition.get("series")
-            if series_list and len(series_list) > 0:
-                series_str = series_list[0]
-                if not series_str or not isinstance(series_str, str):
-                    continue
-                series_str = series_str.strip()
-                if "#" in series_str:
-                    parts = series_str.split("#")
-                    name = parts[0].strip().rstrip(",").strip()
-                    position_str = parts[1].strip()
-                    position = None
-                    try:
-                        if "." in position_str:
-                            position = float(position_str)
-                        else:
-                            position = float(position_str.split()[0])
-                    except (ValueError, IndexError):
-                        position = None
-                    return {"name": name, "slug": app.utils.slugify(name), "position": position}
-                else:
-                    return {
-                        "name": series_str,
-                        "slug": app.utils.slugify(series_str),
-                        "position": None,
-                    }
+            if not series_list:
+                continue
+            for series_str in series_list:
+                result = app.utils.parse_series_descriptor(series_str)
+                if result:
+                    return result
         return None
 
     def _extract_best_edition_metadata(

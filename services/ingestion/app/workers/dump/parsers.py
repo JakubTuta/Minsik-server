@@ -1,6 +1,5 @@
 import datetime
 import logging
-import re
 import typing
 
 import app.utils
@@ -158,16 +157,9 @@ def parse_series_string(series_strs: typing.Optional[list]) -> typing.Optional[d
     if not series_strs or not isinstance(series_strs, list):
         return None
     for s in series_strs:
-        if not isinstance(s, str):
-            continue
-        match = re.match(r"^(.+?)(?:\s*[#,]\s*(\d+(?:\.\d+)?))?$", s.strip())
-        if match:
-            name = match.group(1).strip()
-            position = match.group(2)
-            return {
-                "name": name,
-                "position": float(position) if position else None,
-            }
+        result = app.utils.parse_series_descriptor(s)
+        if result:
+            return result
     return None
 
 

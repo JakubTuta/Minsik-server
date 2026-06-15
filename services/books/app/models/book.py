@@ -76,6 +76,8 @@ class Book(app.db_base.Base):
 
     series_id = sqlalchemy.Column(sqlalchemy.BigInteger, sqlalchemy.ForeignKey("books.series.series_id"))
     series_position = sqlalchemy.Column(sqlalchemy.DECIMAL(5, 2))
+    series_slug = sqlalchemy.Column(sqlalchemy.String(550))
+    series_name = sqlalchemy.Column(sqlalchemy.String(500))
 
     authors = sqlalchemy.orm.relationship(
         "Author", secondary="books.book_authors", back_populates="books"

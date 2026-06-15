@@ -148,3 +148,31 @@ def clamp_series_position(value: typing.Any) -> typing.Optional[float]:
     if numeric < 0 or numeric > 999.99:
         return None
     return numeric
+
+
+_SERIES_POSITION_PATTERNS: typing.List[re.Pattern] = [
+    re.compile(r"^(.+?)\s*\((\d+(?:\.\d+)?)\)\s*$"),
+    re.compile(r"^(.+?)\s*#\s*(\d+(?:\.\d+)?)\s*$"),
+    re.compile(r"^(.+?),\s*(\d+(?:\.\d+)?)\s*$"),
+    re.compile(
+        r"^(.+?)\s+(?:Book|Volume|Vol\.|Part|No\.)\s+(\d+(?:\.\d+)?)\s*$",
+        re.IGNORECASE,
+    ),
+]
+
+
+def parse_series_descriptor(value: typing.Optional[str]) -> typing.Optional[typing.Dict[str, typing.Any]]:
+    if not value or not isinstance(value, str):
+        return None
+    value = value.strip()
+    if not value:
+        return None
+    for pattern in _SERIES_POSITION_PATTERNS:
+        m = pattern.match(value)
+        if m:
+            name = m.group(1).strip().rstrip(",:").strip()
+            if not name:
+                continue
+            position = clamp_series_position(m.group(2))
+            return {"name": name, "position": position}
+    return {"name": value, "position": None}

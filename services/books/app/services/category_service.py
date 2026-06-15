@@ -182,8 +182,13 @@ class CategoryService:
 
         lang_boost = app.services._language_boost.lang_boost_sql()
 
-        books_query = sqlalchemy.text(
+        query = sqlalchemy.text(
             f"""
+            WITH genre_books AS (
+                SELECT DISTINCT book_id
+                FROM books.book_genres
+                WHERE genre_id = ANY(:genre_ids)
+            )
             SELECT
                 b.book_id,
                 b.title,
@@ -209,44 +214,27 @@ class CategoryService:
                     FROM books.book_authors ba2
                     JOIN books.authors a2 ON ba2.author_id = a2.author_id
                     WHERE ba2.book_id = b.book_id
-                ) AS authors
+                ) AS authors,
+                COUNT(*) OVER() AS total_count
             FROM books.books b
+            JOIN genre_books gb ON b.book_id = gb.book_id
             WHERE b.primary_cover_url IS NOT NULL
-              AND EXISTS (
-                SELECT 1 FROM books.book_genres bg
-                WHERE bg.book_id = b.book_id AND bg.genre_id = ANY(:genre_ids)
-            )
             ORDER BY {lang_boost} DESC, {sort_col} {order_dir} NULLS LAST, b.book_id DESC
             LIMIT :limit OFFSET :offset
             """
         )
 
-        count_query = sqlalchemy.text(
-            """
-            SELECT COUNT(*)
-            FROM books.books b
-            WHERE b.primary_cover_url IS NOT NULL
-              AND EXISTS (
-                SELECT 1 FROM books.book_genres bg
-                WHERE bg.book_id = b.book_id AND bg.genre_id = ANY(:genre_ids)
-            )
-            """
-        )
-
-        base_params = {"language": language, "genre_ids": genre_ids_list}
-
         async with app.db.async_session_maker() as session:
-            async with session.begin():
-                count_result = await session.execute(
-                    count_query, {"genre_ids": genre_ids_list}
-                )
-                total_count = count_result.scalar() or 0
+            result = await session.execute(
+                query,
+                {"language": language, "genre_ids": genre_ids_list, "limit": limit, "offset": offset},
+            )
+            raw_rows = result.fetchall()
 
-                books_result = await session.execute(
-                    books_query,
-                    {**base_params, "limit": limit, "offset": offset},
-                )
-                raw_rows = books_result.fetchall()
+        if not raw_rows:
+            return [], 0
+
+        total_count = raw_rows[0].total_count
 
         books_data = []
         for row in raw_rows:

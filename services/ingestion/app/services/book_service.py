@@ -8,7 +8,6 @@ import app.models.book
 import app.models.book_author
 import app.models.book_genre
 import app.models.genre
-import app.models.series
 import app.utils
 import sqlalchemy
 import sqlalchemy.dialects.postgresql
@@ -24,7 +23,7 @@ async def insert_books_batch(
     commit: bool = True,
     author_id_map: typing.Optional[typing.Dict[str, int]] = None,
     genre_id_cache: typing.Optional[typing.Dict[str, int]] = None,
-    series_id_cache: typing.Optional[typing.Dict[str, int]] = None,
+    series_id_cache: typing.Optional[typing.Dict[str, int]] = None,  # kept for backward compat, unused
 ) -> typing.Dict[str, int]:
     if not books_data:
         return {"successful": 0, "failed": 0, "updated": 0}
@@ -60,12 +59,9 @@ async def insert_books_batch(
         genre_id_map = await _bulk_insert_genres(
             session, cleaned_books, dedup_cache, genre_id_cache
         )
-        series_id_map = await _bulk_insert_series(
-            session, cleaned_books, dedup_cache, series_id_cache
-        )
 
         book_results = await _bulk_insert_books(
-            session, cleaned_books, dedup_cache, series_id_map
+            session, cleaned_books, dedup_cache
         )
         successful = book_results["inserted"]
         updated = book_results["updated"]
@@ -108,13 +104,14 @@ def _validate_and_clean_book(book_data: typing.Dict[str, typing.Any]) -> typing.
     slug = app.utils.slugify(title)
 
     series_name = None
-    series_id = None
+    series_slug = None
     series_position = None
 
     series_data = book_data.get("series")
     if series_data:
         series_name = series_data.get("name")
-        series_id = None
+        if series_name:
+            series_slug = app.utils.slugify(series_name)
         series_position = series_data.get("position")
         series_position = app.utils.clamp_series_position(series_position)
 
@@ -157,8 +154,9 @@ def _validate_and_clean_book(book_data: typing.Dict[str, typing.Any]) -> typing.
         "primary_cover_url": primary_cover_url,
         "open_library_id": book_data.get("open_library_id"),
         "google_books_id": book_data.get("google_books_id"),
-        "series_data": series_data,
+        "series_slug": series_slug,
         "series_name": series_name,
+        "series_position": series_position,
         "formats": formats,
         "isbn": isbn,
         "publisher": publisher,
@@ -170,7 +168,7 @@ def _validate_and_clean_book(book_data: typing.Dict[str, typing.Any]) -> typing.
 
 
 def _build_dedup_cache(cleaned_books: typing.List[typing.Dict[str, typing.Any]]) -> typing.Dict[str, typing.Any]:
-    cache = {"authors": {}, "genres": {}, "series": {}}
+    cache: typing.Dict[str, typing.Any] = {"authors": {}, "genres": {}}
 
     for book in cleaned_books:
         for author_data in book.get("authors", []):
@@ -185,11 +183,6 @@ def _build_dedup_cache(cleaned_books: typing.List[typing.Dict[str, typing.Any]])
             genre_slug = app.utils.slugify(genre_name)[:150]
             if genre_slug and genre_slug not in cache["genres"]:
                 cache["genres"][genre_slug] = {"name": genre_name, "slug": genre_slug}
-
-        if book.get("series_data"):
-            series_slug = app.utils.slugify(book["series_data"].get("name", ""))
-            if series_slug and series_slug not in cache["series"]:
-                cache["series"][series_slug] = book["series_data"]
 
     return cache
 
@@ -315,51 +308,10 @@ async def _bulk_insert_genres(
     return {s: genre_id_cache[s] for s in dedup_cache["genres"] if s in genre_id_cache}
 
 
-async def _bulk_insert_series(
-    session: sqlalchemy.ext.asyncio.AsyncSession,
-    cleaned_books: typing.List[typing.Dict[str, typing.Any]],
-    dedup_cache: typing.Dict[str, typing.Any],
-    series_id_cache: typing.Optional[typing.Dict[str, int]] = None,
-) -> typing.Dict[str, int]:
-    if not dedup_cache["series"]:
-        return series_id_cache or {}
-
-    if series_id_cache is None:
-        series_id_cache = {}
-
-    new_slugs = [s for s in dedup_cache["series"] if s not in series_id_cache]
-    if new_slugs:
-        insert_data = [
-            {
-                "name": dedup_cache["series"][s].get("name"),
-                "slug": s,
-                "description": dedup_cache["series"][s].get("description"),
-            }
-            for s in new_slugs
-        ]
-        insert_data.sort(key=lambda r: r["slug"])
-        stmt = sqlalchemy.dialects.postgresql.insert(app.models.series.Series).values(insert_data)
-        stmt = stmt.on_conflict_do_update(
-            index_elements=["slug"], set_={"description": stmt.excluded.description}
-        )
-        stmt = stmt.returning(
-            app.models.series.Series.slug,
-            app.models.series.Series.series_id,
-        )
-        result = await session.execute(stmt)
-        for row in result:
-            series_id_cache[row.slug] = row.series_id
-
-    return {
-        s: series_id_cache[s] for s in dedup_cache["series"] if s in series_id_cache
-    }
-
-
 async def _bulk_insert_books(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     cleaned_books: typing.List[typing.Dict[str, typing.Any]],
     dedup_cache: typing.Dict[str, typing.Any],
-    series_id_map: typing.Dict[str, int],
 ) -> typing.Dict[str, typing.Any]:
     seen_slugs: dict[str, int] = {}
     for idx, book in enumerate(cleaned_books):
@@ -370,11 +322,6 @@ async def _bulk_insert_books(
     insert_data = []
 
     for book in cleaned_books:
-        series_id = None
-        if book.get("series_data"):
-            series_slug = app.utils.slugify(book["series_data"].get("name", ""))
-            series_id = series_id_map.get(series_slug)
-
         book_entry = {
             "title": book["title"],
             "language": book["language"],
@@ -385,10 +332,9 @@ async def _bulk_insert_books(
             "primary_cover_url": book["primary_cover_url"],
             "open_library_id": book["open_library_id"],
             "google_books_id": book["google_books_id"],
-            "series_id": series_id,
-            "series_position": (
-                book["series_data"].get("position") if book.get("series_data") else None
-            ),
+            "series_slug": book.get("series_slug"),
+            "series_name": book.get("series_name"),
+            "series_position": book.get("series_position"),
             "formats": book["formats"],
             "isbn": book.get("isbn", []),
             "publisher": book.get("publisher"),
@@ -417,6 +363,27 @@ async def _bulk_insert_books(
             "number_of_pages": stmt.excluded.number_of_pages,
             "external_ids": stmt.excluded.external_ids,
             "formats": stmt.excluded.formats,
+            "series_slug": sqlalchemy.case(
+                (
+                    stmt.excluded.series_slug.isnot(None),
+                    stmt.excluded.series_slug,
+                ),
+                else_=app.models.book.Book.series_slug,
+            ),
+            "series_name": sqlalchemy.case(
+                (
+                    stmt.excluded.series_name.isnot(None),
+                    stmt.excluded.series_name,
+                ),
+                else_=app.models.book.Book.series_name,
+            ),
+            "series_position": sqlalchemy.case(
+                (
+                    app.models.book.Book.series_position.is_(None),
+                    stmt.excluded.series_position,
+                ),
+                else_=app.models.book.Book.series_position,
+            ),
         },
     )
 

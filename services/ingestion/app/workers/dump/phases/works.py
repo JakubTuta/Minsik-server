@@ -54,7 +54,6 @@ async def process_works_dump(file_path: str) -> int:
     commit_interval = app.config.settings.dump_commit_interval
 
     genre_id_cache: dict[str, int] = {}
-    series_id_cache: dict[str, int] = {}
 
     session = await _open_session()
     try:
@@ -177,7 +176,6 @@ async def process_works_dump(file_path: str) -> int:
                             commit=False,
                             author_id_map=prebuilt_author_id_map,
                             genre_id_cache=genre_id_cache,
-                            series_id_cache=series_id_cache,
                         )
                         successful += result["successful"]
                         failed += result["failed"]

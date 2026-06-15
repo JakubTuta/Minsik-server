@@ -92,7 +92,6 @@ async def start_server() -> None:
         logger.info(
             f"[books] Category cache refresh scheduled (cron: '{app.config.settings.category_cache_refresh_cron}')"
         )
-
     await scheduler.start_in_background()
 
     logger.info("Books service is running")
