@@ -19,7 +19,7 @@ class Settings(pydantic_settings.BaseSettings):
     redis_port: int = pydantic.Field(default=6379)
     redis_db: int = pydantic.Field(default=0)
     redis_password: str = pydantic.Field(default="")
-    redis_max_connections: int = pydantic.Field(default=5)
+    redis_max_connections: int = pydantic.Field(default=20)
 
     user_data_service_host: str = pydantic.Field(default="0.0.0.0")
     user_data_grpc_port: int = pydantic.Field(default=50053)
@@ -36,7 +36,9 @@ class Settings(pydantic_settings.BaseSettings):
 
     @property
     def redis_url(self) -> str:
-        return f"redis://:{self.redis_password}@{self.redis_host}:{self.redis_port}/{self.redis_db}"
+        if self.redis_password:
+            return f"redis://:{self.redis_password}@{self.redis_host}:{self.redis_port}/{self.redis_db}"
+        return f"redis://{self.redis_host}:{self.redis_port}/{self.redis_db}"
 
     @property
     def listen_address(self) -> str:

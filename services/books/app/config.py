@@ -28,7 +28,6 @@ class Settings(pydantic_settings.BaseSettings):
     cache_author_detail_ttl: int = pydantic.Field(default=3600)
     cache_author_books_ttl: int = pydantic.Field(default=1800)
     cache_search_ttl: int = pydantic.Field(default=900)
-    cache_popular_ttl: int = pydantic.Field(default=21600)
     cache_category_top_books_ttl: int = pydantic.Field(default=93600)
     cache_genre_bubble_ttl: int = pydantic.Field(default=21600)
 
@@ -37,10 +36,7 @@ class Settings(pydantic_settings.BaseSettings):
 
     view_count_flush_enabled: bool = pydantic.Field(default=True)
     view_count_flush_cron: str = pydantic.Field(default="*/5 * * * *")
-    view_count_flush_batch_size: int = pydantic.Field(default=100)
 
-    search_default_limit: int = pydantic.Field(default=10)
-    search_max_limit: int = pydantic.Field(default=100)
     search_author_books_expansion: int = pydantic.Field(default=3)
 
     es_host: str = pydantic.Field(default="elasticsearch")

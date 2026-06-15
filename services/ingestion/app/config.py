@@ -12,14 +12,13 @@ class Settings(pydantic_settings.BaseSettings):
     db_name: str = pydantic.Field(default="minsik_db")
     db_user: str = pydantic.Field(default="postgres")
     db_password: str = pydantic.Field(default="postgres")
-    db_pool_size: int = pydantic.Field(default=3)
-    db_max_overflow: int = pydantic.Field(default=5)
+    db_pool_size: int = pydantic.Field(default=5)
+    db_max_overflow: int = pydantic.Field(default=10)
 
     redis_host: str = pydantic.Field(default="localhost")
     redis_port: int = pydantic.Field(default=6379)
     redis_db: int = pydantic.Field(default=0)
     redis_password: str = pydantic.Field(default="")
-    redis_max_connections: int = pydantic.Field(default=10)
 
     ingestion_service_host: str = pydantic.Field(default="0.0.0.0")
     ingestion_grpc_port: int = pydantic.Field(default=50054)
@@ -32,7 +31,6 @@ class Settings(pydantic_settings.BaseSettings):
 
     request_timeout: float = pydantic.Field(default=30.0)
 
-    ingestion_batch_size: int = pydantic.Field(default=50)
     ingestion_max_retries: int = pydantic.Field(default=3)
     ingestion_retry_delay: int = pydantic.Field(default=5)
 

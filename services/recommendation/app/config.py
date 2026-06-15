@@ -12,8 +12,6 @@ class Settings(pydantic_settings.BaseSettings):
     db_name: str = pydantic.Field(default="minsik_db")
     db_user: str = pydantic.Field(default="postgres")
     db_password: str = pydantic.Field(default="postgres")
-    db_pool_size: int = pydantic.Field(default=5)
-    db_max_overflow: int = pydantic.Field(default=10)
     recommendation_db_pool_size: int = pydantic.Field(default=10)
     recommendation_db_max_overflow: int = pydantic.Field(default=20)
 

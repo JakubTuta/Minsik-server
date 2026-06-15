@@ -3,8 +3,7 @@ import pydantic_settings
 
 
 class Settings(pydantic_settings.BaseSettings):
-    env: str = pydantic.Field(default="development")
-    debug: bool = pydantic.Field(default=False)
+    env: str = pydantic.Field(default="production")
     log_level: str = pydantic.Field(default="ERROR")
 
     gateway_host: str = pydantic.Field(default="0.0.0.0")
