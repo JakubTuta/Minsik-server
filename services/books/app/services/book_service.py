@@ -208,6 +208,23 @@ async def update_book(
     for field, value in updates.items():
         setattr(book, field, value)
 
+    if "series_id" in updates:
+        new_series_id = updates["series_id"]
+        if new_series_id is None:
+            if "series_position" not in updates:
+                book.series_position = None
+            book.series_slug = None
+            book.series_name = None
+        else:
+            series_row_result = await session.execute(
+                sqlalchemy.text("SELECT slug, name FROM books.series WHERE series_id = :id"),
+                {"id": new_series_id},
+            )
+            series_row = series_row_result.first()
+            if series_row:
+                book.series_slug = series_row.slug
+                book.series_name = series_row.name
+
     await session.commit()
 
     fresh_stmt = (

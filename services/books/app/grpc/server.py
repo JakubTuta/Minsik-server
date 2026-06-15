@@ -394,6 +394,16 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
             )
             return
 
+        primary_author_proto = None
+        if series.get("primary_author"):
+            pa = series["primary_author"]
+            primary_author_proto = app.proto.books_pb2.AuthorInfo(
+                author_id=pa["author_id"],
+                name=pa["name"],
+                slug=pa["slug"],
+                photo_url=pa.get("photo_url") or "",
+            )
+
         series_detail = app.proto.books_pb2.SeriesDetail(
             series_id=series["series_id"],
             name=series["name"],
@@ -414,6 +424,8 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
             ol_want_to_read_count=series["ol_want_to_read_count"],
             ol_currently_reading_count=series["ol_currently_reading_count"],
             ol_already_read_count=series["ol_already_read_count"],
+            total_pages=series.get("total_pages", 0),
+            primary_author=primary_author_proto,
         )
 
         return app.proto.books_pb2.SeriesDetailResponse(series=series_detail)
@@ -707,6 +719,11 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
     ) -> app.proto.books_pb2.SeriesDetailResponse:
         try:
             async with app.db.async_session_maker() as session:
+                if request.HasField("remove_author_id"):
+                    await app.services.series_service.remove_series_author(
+                        session, request.series_id, request.remove_author_id
+                    )
+
                 updates: typing.Dict[str, typing.Any] = {}
 
                 if request.HasField("name"):

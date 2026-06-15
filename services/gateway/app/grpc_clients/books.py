@@ -151,6 +151,14 @@ class BooksClient(base.GrpcClientBase):
         )
         return await self._call("UpdateBook", request, timeout=app.config.settings.grpc_admin_timeout)
 
+    async def remove_series_author(
+        self, series_id: int, author_id: int
+    ) -> app.proto.books_pb2.SeriesDetailResponse:
+        request = app.proto.books_pb2.UpdateSeriesRequest(
+            series_id=series_id, remove_author_id=author_id
+        )
+        return await self._call("UpdateSeries", request, timeout=app.config.settings.grpc_admin_timeout)
+
     async def delete_book(self, book_id: int) -> app.proto.books_pb2.DeleteEntityResponse:
         request = app.proto.books_pb2.DeleteBookRequest(book_id=book_id)
         return await self._call("DeleteBook", request, timeout=app.config.settings.grpc_admin_timeout)

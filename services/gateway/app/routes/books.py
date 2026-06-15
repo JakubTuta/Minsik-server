@@ -625,6 +625,13 @@ async def get_series(
                 "ol_want_to_read_count": series.ol_want_to_read_count,
                 "ol_currently_reading_count": series.ol_currently_reading_count,
                 "ol_already_read_count": series.ol_already_read_count,
+                "total_pages": series.total_pages,
+                "author": {
+                    "author_id": series.primary_author.author_id,
+                    "name": series.primary_author.name,
+                    "slug": series.primary_author.slug,
+                    "photo_url": series.primary_author.photo_url or None,
+                } if series.HasField("primary_author") else None,
             },
             "error": None,
         }

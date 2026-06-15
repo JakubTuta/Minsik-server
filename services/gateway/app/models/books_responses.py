@@ -208,6 +208,7 @@ class BookSummarySchema(pydantic.BaseModel):
     app_read_count: int = 0
     series_position: typing.Optional[float] = None
     rarity: typing.Optional[str] = None
+    number_of_pages: typing.Optional[int] = None
 
 
 class AuthorBooksData(pydantic.BaseModel):
@@ -314,6 +315,8 @@ class SeriesDetailData(pydantic.BaseModel):
     ol_want_to_read_count: int = 0
     ol_currently_reading_count: int = 0
     ol_already_read_count: int = 0
+    total_pages: int = 0
+    author: typing.Optional[AuthorMinimalSchema] = None
 
 
 class SeriesDetailResponse(pydantic.BaseModel):

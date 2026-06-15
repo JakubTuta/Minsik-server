@@ -347,6 +347,8 @@ message SeriesDetail {
   int32 ol_want_to_read_count = 18;
   int32 ol_currently_reading_count = 19;
   int32 ol_already_read_count = 20;
+  int32 total_pages = 21;
+  AuthorInfo primary_author = 22;
 }
 
 message SeriesDetailResponse {
@@ -411,6 +413,7 @@ message UpdateSeriesRequest {
   optional string slug = 3;
   optional string description = 4;
   optional int32 total_books = 5;
+  optional int64 remove_author_id = 6;
 }
 
 message OpenCaseRequest {

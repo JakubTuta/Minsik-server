@@ -83,7 +83,23 @@ async def get_series_by_slug(
     )
     stats = stats_result.first()
 
-    series_data = _series_to_dict(series, stats)
+    primary_author_query = sqlalchemy.text(
+        """
+        SELECT a.author_id, a.name, a.slug, a.photo_url
+        FROM books.book_authors ba
+        JOIN books.authors a ON ba.author_id = a.author_id
+        JOIN books.books b ON ba.book_id = b.book_id
+        WHERE b.series_id = :series_id AND b.language = :language
+        ORDER BY b.series_position ASC NULLS LAST, b.created_at ASC
+        LIMIT 1
+        """
+    )
+    primary_author_result = await session.execute(
+        primary_author_query, {"series_id": series.series_id, "language": language}
+    )
+    primary_author = primary_author_result.first()
+
+    series_data = _series_to_dict(series, stats, primary_author)
 
     await app.cache.set_cached(
         cache_key, series_data, app.config.settings.cache_author_detail_ttl
@@ -226,7 +242,9 @@ async def get_series_books(
 
 
 def _series_to_dict(
-    series: app.models.series.Series, stats: typing.Any
+    series: app.models.series.Series,
+    stats: typing.Any,
+    primary_author: typing.Any = None,
 ) -> typing.Dict[str, typing.Any]:
     return {
         "series_id": series.series_id,
@@ -263,6 +281,12 @@ def _series_to_dict(
         ),
         "app_read_count": int(stats.app_read_count) if stats.app_read_count else 0,
         "total_pages": int(stats.total_pages) if stats.total_pages else 0,
+        "primary_author": {
+            "author_id": primary_author.author_id,
+            "name": primary_author.name,
+            "slug": primary_author.slug,
+            "photo_url": primary_author.photo_url or None,
+        } if primary_author else None,
     }
 
 
@@ -380,6 +404,36 @@ async def update_series(
     return _series_to_dict(series, stats)
 
 
+async def remove_series_author(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    series_id: int,
+    author_id: int,
+) -> int:
+    result = await session.execute(
+        sqlalchemy.text(
+            """
+            DELETE FROM books.book_authors ba
+            USING books.books b
+            WHERE ba.book_id = b.book_id
+              AND b.series_id = :series_id
+              AND ba.author_id = :author_id
+            """
+        ),
+        {"series_id": series_id, "author_id": author_id},
+    )
+    await session.commit()
+
+    series_stmt = sqlalchemy.select(app.models.series.Series).filter(
+        app.models.series.Series.series_id == series_id
+    )
+    series_result = await session.execute(series_stmt)
+    series = series_result.scalars().first()
+    if series:
+        await app.cache.delete_cached(f"series_slug:{series.slug}:en")
+
+    return result.rowcount
+
+
 async def _track_series_view(series_id: int) -> None:
     try:
         await app.cache.increment_view_count("series", series_id)
@@ -407,7 +461,7 @@ async def delete_series(
         sqlalchemy.text(
             """
             UPDATE books.books
-            SET series_id = NULL, series_position = NULL
+            SET series_id = NULL, series_position = NULL, series_slug = NULL, series_name = NULL
             WHERE series_id = :series_id
             """
         ),

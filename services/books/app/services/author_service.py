@@ -460,9 +460,125 @@ async def delete_author(
     slug = author.slug
     name = author.name
 
+    sole_books_result = await session.execute(
+        sqlalchemy.text(
+            """
+            SELECT b.book_id, b.slug, b.language, b.series_id
+            FROM books.books b
+            JOIN books.book_authors ba ON b.book_id = ba.book_id
+            WHERE ba.author_id = :author_id
+            GROUP BY b.book_id, b.slug, b.language, b.series_id
+            HAVING COUNT(ba.author_id) = 1
+            """
+        ),
+        {"author_id": author_id},
+    )
+    sole_books = sole_books_result.fetchall()
+    sole_book_ids = [row.book_id for row in sole_books]
+
+    if sole_book_ids:
+        ids_placeholder = ",".join(str(bid) for bid in sole_book_ids)
+
+        affected_users_result = await session.execute(
+            sqlalchemy.text(
+                f"""
+                SELECT DISTINCT user_id FROM user_data.bookshelves WHERE book_id IN ({ids_placeholder})
+                UNION
+                SELECT DISTINCT user_id FROM user_data.ratings WHERE book_id IN ({ids_placeholder})
+                UNION
+                SELECT DISTINCT user_id FROM user_data.comments WHERE book_id IN ({ids_placeholder})
+                """
+            )
+        )
+        affected_user_ids = [row.user_id for row in affected_users_result.fetchall()]
+
+        await session.execute(
+            sqlalchemy.text(f"DELETE FROM user_data.comments WHERE book_id IN ({ids_placeholder})")
+        )
+        await session.execute(
+            sqlalchemy.text(f"DELETE FROM user_data.ratings WHERE book_id IN ({ids_placeholder})")
+        )
+        await session.execute(
+            sqlalchemy.text(f"DELETE FROM user_data.bookshelves WHERE book_id IN ({ids_placeholder})")
+        )
+
+        for user_id in affected_user_ids:
+            await session.execute(
+                sqlalchemy.text(
+                    """
+                    INSERT INTO user_data.user_stats (user_id, want_to_read_count, reading_count, read_count, abandoned_count, favourites_count)
+                    SELECT
+                        :user_id,
+                        COUNT(CASE WHEN status = 'want_to_read' THEN 1 END),
+                        COUNT(CASE WHEN status = 'reading' THEN 1 END),
+                        COUNT(CASE WHEN status = 'read' THEN 1 END),
+                        COUNT(CASE WHEN status = 'abandoned' THEN 1 END),
+                        COUNT(CASE WHEN is_favorite THEN 1 END)
+                    FROM user_data.bookshelves
+                    WHERE user_id = :user_id
+                    ON CONFLICT (user_id) DO UPDATE SET
+                        want_to_read_count = EXCLUDED.want_to_read_count,
+                        reading_count = EXCLUDED.reading_count,
+                        read_count = EXCLUDED.read_count,
+                        abandoned_count = EXCLUDED.abandoned_count,
+                        favourites_count = EXCLUDED.favourites_count
+                    """
+                ),
+                {"user_id": user_id},
+            )
+            await session.execute(
+                sqlalchemy.text(
+                    """
+                    INSERT INTO user_data.user_stats (user_id, ratings_count)
+                    SELECT :user_id, COUNT(*) FROM user_data.ratings WHERE user_id = :user_id
+                    ON CONFLICT (user_id) DO UPDATE SET ratings_count = EXCLUDED.ratings_count
+                    """
+                ),
+                {"user_id": user_id},
+            )
+            await session.execute(
+                sqlalchemy.text(
+                    """
+                    INSERT INTO user_data.user_stats (user_id, comments_count)
+                    SELECT :user_id, COUNT(*) FROM user_data.comments WHERE user_id = :user_id
+                    ON CONFLICT (user_id) DO UPDATE SET comments_count = EXCLUDED.comments_count
+                    """
+                ),
+                {"user_id": user_id},
+            )
+
+        await session.execute(
+            sqlalchemy.text(f"DELETE FROM books.book_genres WHERE book_id IN ({ids_placeholder})")
+        )
+        await session.execute(
+            sqlalchemy.text(f"DELETE FROM books.book_authors WHERE book_id IN ({ids_placeholder})")
+        )
+        await session.execute(
+            sqlalchemy.text(f"DELETE FROM books.books WHERE book_id IN ({ids_placeholder})")
+        )
+
     await session.delete(author)
+    await session.flush()
+
+    sole_book_series_ids = list({row.series_id for row in sole_books if row.series_id is not None})
+    if sole_book_series_ids:
+        series_placeholder = ",".join(str(sid) for sid in sole_book_series_ids)
+        await session.execute(
+            sqlalchemy.text(
+                f"""
+                DELETE FROM books.series
+                WHERE series_id IN ({series_placeholder})
+                  AND NOT EXISTS (
+                      SELECT 1 FROM books.books b WHERE b.series_id = books.series.series_id
+                  )
+                """
+            )
+        )
+
     await session.commit()
 
     await app.cache.delete_cached(f"author_slug:{slug}:en")
+    for book in sole_books:
+        await app.cache.delete_cached(f"book_slug:{book.slug}:{book.language}")
 
     return {"author_id": author_id, "name": name}

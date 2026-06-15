@@ -325,6 +325,8 @@ async def update_book(
             proto_fields["external_ids_json"] = json.dumps(value)
         elif field == "series_position":
             proto_fields["series_position"] = str(value) if value is not None else ""
+        elif field == "series_id":
+            proto_fields["series_id"] = value if value is not None else 0
         else:
             proto_fields[field] = value
 
@@ -597,6 +599,51 @@ async def remove_book_author(request: fastapi.Request, book_id: int, author_id: 
         )
     except Exception as e:
         logger.error(f"Unexpected error removing book author: {str(e)}")
+        return app.utils.responses.error_response(
+            code="INTERNAL_ERROR",
+            message="An unexpected error occurred",
+            status_code=500,
+        )
+
+
+@router.delete(
+    "/series/{series_id}/authors/{author_id}",
+    response_model=app.models.responses.APIResponse,
+    summary="Remove an author from a series",
+    description="Remove the author from all books belonging to the series. Neither the series, the books, nor the author is deleted.",
+    dependencies=[
+        fastapi.Depends(app.middleware.auth.require_admin),
+    ],
+    responses={
+        200: {"description": "Author removed from series books"},
+        404: {"description": "Series or author not found"},
+        **_AUTH_RESPONSES,
+        500: {"description": "Internal server error"},
+    },
+)
+@limiter.limit(app.middleware.rate_limit.get_admin_limit())
+async def remove_series_author(request: fastapi.Request, series_id: int, author_id: int):
+    try:
+        await app.grpc_clients.books_client.remove_series_author(
+            series_id=series_id, author_id=author_id
+        )
+        return app.utils.responses.success_response(
+            {"series_id": series_id, "removed_author_id": author_id}
+        )
+    except grpc.RpcError as e:
+        app.utils.responses.log_grpc_error(logger, "removing series author", e)
+        if e.code() == grpc.StatusCode.NOT_FOUND:
+            return app.utils.responses.error_response(
+                code="NOT_FOUND", message=e.details(), status_code=404
+            )
+        return app.utils.responses.error_response(
+            code="INTERNAL_ERROR",
+            message="Failed to remove author from series",
+            details={"grpc_code": e.code().name},
+            status_code=500,
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error removing series author: {str(e)}")
         return app.utils.responses.error_response(
             code="INTERNAL_ERROR",
             message="An unexpected error occurred",
