@@ -6,45 +6,9 @@ The backend for [Minsik](https://minsik.jtuta.cloud) — a book discovery and tr
 
 ---
 
-Minsik lets you track what you're reading, rate books across nine dimensions, write reviews, and explore authors and series. This repository is the backend: a set of microservices behind a single REST gateway. The web frontend lives in [Minsik-web](https://github.com/JakubTuta/Minsik-web).
+A set of microservices behind a single REST gateway. The web frontend lives in [Minsik-web](https://github.com/JakubTuta/Minsik-web).
 
-## ✨ Features
-
-- **Full-text search** across books, authors, and series with type filters — powered by Elasticsearch with BM25 scoring, popularity and recency signals
-- **9-dimension ratings** — an overall star rating plus eight sub-dimensions: Pacing, Emotional Impact, Intellectual Depth, Writing Quality, Rereadability, Readability, Plot Complexity, and Humor
-- **Bookshelves** with four statuses (Want to Read, Reading, Read, Abandoned), favourites, and comments with optional spoiler flag
-- **Continuous ingestion** from Open Library (bulk dump + incremental API) and Google Books, with automatic description enrichment and quality-based cleanup
-- **JWT authentication** with short-lived access tokens and rotating refresh tokens
-
-## 🛠 Tech Stack
-
-|                         |                            |
-| ----------------------- | -------------------------- |
-| Gateway                 | FastAPI + uvicorn          |
-| Internal communication  | gRPC + Protocol Buffers    |
-| Database                | PostgreSQL 15              |
-| Search                  | Elasticsearch 8            |
-| Cache / Background jobs | Redis 7 + RQ + APScheduler |
-| Auth                    | JWT (HS256)                |
-| Migrations              | Alembic                    |
-
-## 🏗 Architecture
-
-The gateway is the only publicly exposed service. All internal services communicate exclusively over gRPC. Proto definitions live in `proto/` and are compiled into each service container at startup.
-
-| Service                  | Port         | Role                                                   |
-| ------------------------ | ------------ | ------------------------------------------------------ |
-| `gateway-service`        | 8040 (HTTP)  | Public REST API, routes requests to internal services  |
-| `auth-service`           | 50051 (gRPC) | Registration, login, JWT issuance and validation       |
-| `books-service`          | 50055 (gRPC) | Book, author, and series catalog; Elasticsearch search |
-| `user-data-service`      | 50053 (gRPC) | Bookshelves, ratings, favourites, comments             |
-| `ingestion-service`      | 50054 (gRPC) | Data import from Open Library and Google Books         |
-| `recommendation-service` | 50056 (gRPC) | Generic and personalized book/author recommendations   |
-| `rq-worker`              | —            | Background job worker for the ingestion queue          |
-
-Infrastructure: PostgreSQL 15, Redis 7, Elasticsearch 8.
-
-## 🚀 Getting Started
+## Getting Started
 
 ```bash
 git clone https://github.com/JakubTuta/Minsik-server
@@ -53,11 +17,29 @@ cp .env.example .env
 docker compose up -d --build
 ```
 
-The API will be available at `http://localhost:8040`. See the [Environment Variables](#-environment-variables) section below before running in production.
+The API will be available at `http://localhost:8040`. See `.env.example` for all configuration options — every variable is commented.
 
-## ⚙️ Environment Variables
+## API Documentation
 
-The full reference is in `.env.example` — every variable is commented. Below is what matters most.
+Interactive Swagger UI with all endpoints and schemas:
+**[minsik.api.jtuta.cloud/docs](https://minsik.api.jtuta.cloud/docs)**
+
+---
+
+## What's inside
+
+- **Full-text search** across books, authors, and series with type filters
+- **9-dimension ratings** — overall stars plus Pacing, Emotional Impact, Intellectual Depth, Writing Quality, Rereadability, Readability, Plot Complexity, and Humor
+- **Bookshelves** with four statuses (Want to Read, Reading, Read, Abandoned), favourites, and comments with optional spoiler flag
+- **Continuous data ingestion** from Open Library and Google Books, with automatic description enrichment
+- **JWT authentication** with short-lived access tokens and rotating refresh tokens
+- **Recommendations** — generic and personalized book and author suggestions
+
+---
+
+## Configuration
+
+The full reference is in `.env.example`. Below is what matters most.
 
 ### Required for production
 
@@ -73,17 +55,44 @@ The full reference is in `.env.example` — every variable is commented. Below i
 
 ### Notable optional settings
 
-- **Cache TTLs** — how long book, author, and search results are cached in Redis (`CACHE_*_TTL`)
+- **Cache TTLs** — how long book, author, and search results are cached (`CACHE_*_TTL`)
 - **Rate limiting** — requests per minute for regular and admin endpoints (`RATE_LIMIT_*`)
-- **Elasticsearch reindex** — cron schedule for search index rebuilds (`ES_REINDEX_CRON`)
-- **Continuous ingestion** — toggle and configure polling intervals and batch sizes for Open Library and Google Books (`CONTINUOUS_*`)
-- **Data cleanup** — minimum quality score and author book count thresholds for automatic pruning (`CLEANUP_*`)
+- **Continuous ingestion** — toggle and configure polling intervals for Open Library and Google Books (`CONTINUOUS_*`)
+- **Data cleanup** — minimum quality score thresholds for automatic pruning (`CLEANUP_*`)
+- **Search reindex** — cron schedule for Elasticsearch index rebuilds (`ES_REINDEX_CRON`)
 
-## 📖 API Documentation
+---
 
-Interactive Swagger UI with all request/response schemas:
-**[minsik.api.jtuta.cloud/docs](https://minsik.api.jtuta.cloud/docs)**
+## Architecture
 
-## ⚖️ License
+The gateway is the only publicly exposed service. All internal services communicate over gRPC.
+
+| Service                  | Role                                                  |
+| ------------------------ | ----------------------------------------------------- |
+| `gateway-service`        | Public REST API, routes requests to internal services |
+| `auth-service`           | Registration, login, JWT issuance and validation      |
+| `books-service`          | Book, author, and series catalog; search              |
+| `user-data-service`      | Bookshelves, ratings, favourites, comments            |
+| `ingestion-service`      | Data import from Open Library and Google Books        |
+| `recommendation-service` | Generic and personalized book/author recommendations  |
+| `rq-worker`              | Background job worker for the ingestion queue         |
+
+Infrastructure: PostgreSQL 15, Redis 7, Elasticsearch 8.
+
+## Tech Stack
+
+|                        |                            |
+| ---------------------- | -------------------------- |
+| Gateway                | FastAPI + uvicorn          |
+| Internal communication | gRPC + Protocol Buffers    |
+| Database               | PostgreSQL 15              |
+| Search                 | Elasticsearch 8            |
+| Cache / Background     | Redis 7 + RQ + APScheduler |
+| Auth                   | JWT (HS256)                |
+| Migrations             | Alembic                    |
+
+---
+
+## License
 
 Distributed under the MIT License. Copyright © 2025 Jakub Tutka.
