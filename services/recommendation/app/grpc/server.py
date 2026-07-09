@@ -208,6 +208,28 @@ class RecommendationServicer(app.proto.recommendation_pb2_grpc.RecommendationSer
             logger.error(f"Error in RefreshPersonalRecommendations: {str(e)}")
             await context.abort(grpc.StatusCode.INTERNAL, f"Refresh failed: {str(e)}")
 
+    async def InvalidateUserRecommendations(
+        self,
+        request: app.proto.recommendation_pb2.InvalidateUserRecommendationsRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> app.proto.recommendation_pb2.InvalidateUserRecommendationsResponse:
+        if not request.user_id:
+            await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "user_id is required")
+            return
+        try:
+            deleted = await app.cache.invalidate_user_personal_recommendations(
+                request.user_id
+            )
+            return app.proto.recommendation_pb2.InvalidateUserRecommendationsResponse(
+                success=True,
+                deleted_keys=deleted,
+            )
+        except grpc.aio.AbortError:
+            raise
+        except Exception as e:
+            logger.error(f"Error in InvalidateUserRecommendations: {str(e)}")
+            await context.abort(grpc.StatusCode.INTERNAL, f"Invalidation failed: {str(e)}")
+
     async def RefreshUserPersonalRecommendations(
         self,
         request: app.proto.recommendation_pb2.RefreshUserPersonalRecommendationsRequest,

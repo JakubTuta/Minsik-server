@@ -3,7 +3,8 @@ import typing
 import app.config
 import grpc
 import ledger
-import ledger.tracing
+import opentelemetry.trace as trace_api
+from opentelemetry import propagate
 
 _ledger: typing.Optional[ledger.LedgerClient] = None
 
@@ -14,12 +15,10 @@ class TracingServerInterceptor(grpc.aio.ServerInterceptor):
         continuation: typing.Callable,
         handler_call_details: grpc.HandlerCallDetails,
     ) -> grpc.RpcMethodHandler:
-        tracer = ledger.tracing.get_tracer()
-        if tracer is None:
-            return await continuation(handler_call_details)
+        tracer = trace_api.get_tracer(__name__)
 
         metadata_dict = dict(handler_call_details.invocation_metadata)
-        ctx = ledger.tracing.propagation.extract(metadata_dict)
+        ctx = propagate.extract(metadata_dict)
         method = handler_call_details.method
 
         handler = await continuation(handler_call_details)
@@ -32,7 +31,9 @@ class TracingServerInterceptor(grpc.aio.ServerInterceptor):
             async def traced_unary_unary(
                 request: typing.Any, context: grpc.aio.ServicerContext
             ) -> typing.Any:
-                with tracer.start_as_current_span(f"grpc.server{method}", parent=ctx):
+                with tracer.start_as_current_span(
+                    f"grpc.server{method}", kind=trace_api.SpanKind.SERVER, context=ctx
+                ):
                     return await original(request, context)
 
             return handler._replace(unary_unary=traced_unary_unary)

@@ -198,6 +198,20 @@ class InvalidateContextualCacheResponse(_message.Message):
     message: str
     def __init__(self, success: bool = ..., message: _Optional[str] = ...) -> None: ...
 
+class InvalidateUserRecommendationsRequest(_message.Message):
+    __slots__ = ("user_id",)
+    USER_ID_FIELD_NUMBER: _ClassVar[int]
+    user_id: int
+    def __init__(self, user_id: _Optional[int] = ...) -> None: ...
+
+class InvalidateUserRecommendationsResponse(_message.Message):
+    __slots__ = ("success", "deleted_keys")
+    SUCCESS_FIELD_NUMBER: _ClassVar[int]
+    DELETED_KEYS_FIELD_NUMBER: _ClassVar[int]
+    success: bool
+    deleted_keys: int
+    def __init__(self, success: bool = ..., deleted_keys: _Optional[int] = ...) -> None: ...
+
 class GetBookRecommendationsRequest(_message.Message):
     __slots__ = ("book_id", "limit_per_section", "user_id")
     BOOK_ID_FIELD_NUMBER: _ClassVar[int]

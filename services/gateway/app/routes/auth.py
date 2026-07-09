@@ -58,7 +58,8 @@ def _auth_success(response, status_code: int) -> fastapi.responses.JSONResponse:
     - `username`: 3–50 characters, alphanumeric plus `_` and `-`, must be unique
     - `password`: 8–64 characters, must contain at least one uppercase letter, one lowercase letter, and one digit
 
-    Returns JWT access token, refresh token, and user profile on success.
+    Returns the user profile on success. The JWT access token and refresh token are
+    set as httpOnly cookies, not returned in the response body.
     """,
     responses={
         201: {
@@ -68,9 +69,7 @@ def _auth_success(response, status_code: int) -> fastapi.responses.JSONResponse:
                     "example": {
                         "success": True,
                         "data": {
-                            "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-                            "refresh_token": "550e8400-e29b-41d4-a716-446655440000",
-                            "token_type": "Bearer",
+                            "expires_in": 900,
                             "user": {
                                 "user_id": 1,
                                 "email": "user@example.com",
@@ -154,10 +153,11 @@ async def register(
     description="""
     Authenticate with email and password.
 
-    Returns JWT access token (15-minute expiry), refresh token (30-day expiry), and user profile.
+    Returns the user profile. The access token (15-minute expiry) and refresh token
+    (30-day expiry) are set as httpOnly cookies, not returned in the response body.
 
-    Store the refresh token securely. Use `POST /api/v1/auth/refresh` to obtain a new access token
-    when it expires.
+    The refresh token cookie is scoped to `/api/v1/auth` and used automatically by
+    `POST /api/v1/auth/refresh` to obtain a new access token when it expires.
     """,
     responses={
         200: {
@@ -167,9 +167,7 @@ async def register(
                     "example": {
                         "success": True,
                         "data": {
-                            "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-                            "refresh_token": "550e8400-e29b-41d4-a716-446655440000",
-                            "token_type": "Bearer",
+                            "expires_in": 900,
                             "user": {
                                 "user_id": 1,
                                 "email": "user@example.com",
@@ -329,9 +327,7 @@ async def logout(
                     "example": {
                         "success": True,
                         "data": {
-                            "access_token": "eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9...",
-                            "refresh_token": "6ba7b810-9dad-11d1-80b4-00c04fd430c8",
-                            "token_type": "Bearer",
+                            "expires_in": 900,
                             "user": {
                                 "user_id": 1,
                                 "email": "user@example.com",
@@ -597,15 +593,31 @@ async def delete_account(
     request: fastapi.Request,
     current_user: typing.Dict[str, typing.Any] = fastapi.Depends(app.middleware.auth.require_user)
 ):
+    user_id = current_user["user_id"]
+
+    # Delete user_data first and fail closed: if it errors, the account (and its
+    # auth row) stays intact so the user can simply retry. Deleting auth first would
+    # leave orphaned bookshelves/ratings/comments with no owner and no retry path,
+    # since the two tables live in separate schemas with no cross-schema FK.
     try:
-        user_id = current_user["user_id"]
+        await app.grpc_clients.user_data_client.delete_user_data(user_id=user_id)
+    except grpc.RpcError as e:
+        app.utils.responses.log_grpc_error(logger, "deleting user data in delete_account", e)
+        return app.utils.responses.error_response(
+            code="INTERNAL_ERROR",
+            message="Account deletion failed. Please try again.",
+            status_code=503
+        )
+
+    try:
+        await app.grpc_clients.recommendation_client.invalidate_user_recommendations(user_id=user_id)
+    except grpc.RpcError as e:
+        app.utils.responses.log_grpc_error(
+            logger, f"invalidating recommendation cache for removed account {user_id}", e
+        )
+
+    try:
         await app.grpc_clients.auth_client.delete_account(user_id=user_id)
-        try:
-            await app.grpc_clients.user_data_client.delete_user_data(user_id=user_id)
-        except grpc.RpcError as e:
-            app.utils.responses.log_grpc_error(
-                logger, f"deleting user data for removed account {user_id}", e
-            )
         response = fastapi.Response(status_code=204)
         app.utils.cookies.clear_auth_cookies(response)
         return response
@@ -646,7 +658,8 @@ async def delete_account(
     If the Google account email matches an existing Minsik account, the accounts are linked
     automatically and the existing user is returned.
 
-    Returns JWT access token, refresh token, and user profile on success.
+    Returns the user profile on success. The JWT access token and refresh token are
+    set as httpOnly cookies, not returned in the response body.
     """,
     responses={
         200: {"description": "Google sign-in successful"},

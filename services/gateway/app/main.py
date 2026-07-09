@@ -166,5 +166,5 @@ if __name__ == "__main__":
         log_level=settings.log_level.lower(),
         access_log=True,
         proxy_headers=True,
-        forwarded_allow_ips="*",
+        forwarded_allow_ips=settings.trusted_proxy_ips_list,
     )

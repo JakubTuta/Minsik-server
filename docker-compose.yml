@@ -123,6 +123,7 @@ services:
       COOKIE_SAMESITE: ${COOKIE_SAMESITE}
       COOKIE_DOMAIN: ${COOKIE_DOMAIN}
       LEDGER_API_KEY: ${LEDGER_API_KEY}
+      TRUSTED_PROXY_IPS: ${TRUSTED_PROXY_IPS}
     ports:
       # EXPOSED for client access
       - "${GATEWAY_HTTP_PORT}:8040"

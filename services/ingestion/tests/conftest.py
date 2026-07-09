@@ -46,7 +46,47 @@ async def test_engine():
             CREATE TABLE IF NOT EXISTS user_data.bookshelves (
                 bookshelf_id BIGSERIAL PRIMARY KEY,
                 user_id BIGINT NOT NULL,
+                book_id BIGINT NOT NULL,
+                status VARCHAR(20) NOT NULL DEFAULT 'want_to_read',
+                is_favorite BOOLEAN NOT NULL DEFAULT FALSE
+            )
+        """
+            )
+        )
+        await conn.execute(
+            text(
+                """
+            CREATE TABLE IF NOT EXISTS user_data.ratings (
+                rating_id BIGSERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL,
                 book_id BIGINT NOT NULL
+            )
+        """
+            )
+        )
+        await conn.execute(
+            text(
+                """
+            CREATE TABLE IF NOT EXISTS user_data.comments (
+                comment_id BIGSERIAL PRIMARY KEY,
+                user_id BIGINT NOT NULL,
+                book_id BIGINT NOT NULL
+            )
+        """
+            )
+        )
+        await conn.execute(
+            text(
+                """
+            CREATE TABLE IF NOT EXISTS user_data.user_stats (
+                user_id BIGINT PRIMARY KEY,
+                want_to_read_count INT NOT NULL DEFAULT 0,
+                reading_count INT NOT NULL DEFAULT 0,
+                read_count INT NOT NULL DEFAULT 0,
+                abandoned_count INT NOT NULL DEFAULT 0,
+                favourites_count INT NOT NULL DEFAULT 0,
+                ratings_count INT NOT NULL DEFAULT 0,
+                comments_count INT NOT NULL DEFAULT 0
             )
         """
             )
@@ -87,7 +127,8 @@ async def commit_session(test_engine) -> AsyncGenerator[AsyncSession, None]:
         await session.execute(
             text(
                 "TRUNCATE books.book_authors, books.book_genres, books.books, "
-                "books.authors, books.genres, books.series, user_data.bookshelves CASCADE"
+                "books.authors, books.genres, books.series, user_data.bookshelves, "
+                "user_data.ratings, user_data.comments, user_data.user_stats CASCADE"
             )
         )
         await session.commit()

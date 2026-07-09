@@ -67,6 +67,50 @@ async def _delete_book_user_data(
     return affected_user_ids
 
 
+async def _remap_book_user_data(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    loser_book_id: int,
+    winner_book_id: int,
+) -> typing.List[int]:
+    affected_users_result = await session.execute(
+        sqlalchemy.text(
+            """
+            SELECT DISTINCT user_id FROM user_data.bookshelves WHERE book_id = :loser_id
+            UNION
+            SELECT DISTINCT user_id FROM user_data.ratings WHERE book_id = :loser_id
+            UNION
+            SELECT DISTINCT user_id FROM user_data.comments WHERE book_id = :loser_id
+            """
+        ),
+        {"loser_id": loser_book_id},
+    )
+    affected_user_ids = [row[0] for row in affected_users_result.fetchall()]
+
+    for table in ("bookshelves", "ratings", "comments"):
+        await session.execute(
+            sqlalchemy.text(
+                f"""
+                DELETE FROM user_data.{table} loser
+                WHERE loser.book_id = :loser_id
+                  AND EXISTS (
+                      SELECT 1 FROM user_data.{table} winner
+                      WHERE winner.user_id = loser.user_id
+                        AND winner.book_id = :winner_id
+                  )
+                """
+            ),
+            {"loser_id": loser_book_id, "winner_id": winner_book_id},
+        )
+        await session.execute(
+            sqlalchemy.text(
+                f"UPDATE user_data.{table} SET book_id = :winner_id WHERE book_id = :loser_id"
+            ),
+            {"loser_id": loser_book_id, "winner_id": winner_book_id},
+        )
+
+    return affected_user_ids
+
+
 async def _recompute_user_stats(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     user_ids: typing.List[int],
@@ -170,6 +214,9 @@ async def cleanup_low_quality_books(
                               AND ({quality_score_sql}) < 5
                             )
                           )
+                          AND NOT EXISTS (SELECT 1 FROM user_data.bookshelves ub WHERE ub.book_id = b.book_id)
+                          AND NOT EXISTS (SELECT 1 FROM user_data.ratings ur WHERE ur.book_id = b.book_id)
+                          AND NOT EXISTS (SELECT 1 FROM user_data.comments uc WHERE uc.book_id = b.book_id)
                         LIMIT :batch_size
                         """
                     ),
@@ -232,6 +279,17 @@ async def cleanup_duplicate_books(
                         WITH ranked AS (
                             SELECT
                                 b.book_id,
+                                FIRST_VALUE(b.book_id) OVER (
+                                    PARTITION BY
+                                        lower(btrim(b.title)),
+                                        b.language,
+                                        (SELECT MIN(ba.author_id)
+                                         FROM books.book_authors ba
+                                         WHERE ba.book_id = b.book_id)
+                                    ORDER BY
+                                        (b.view_count + b.rating_count + COALESCE(b.ol_rating_count, 0)) DESC,
+                                        b.book_id ASC
+                                ) AS winner_book_id,
                                 ROW_NUMBER() OVER (
                                     PARTITION BY
                                         lower(btrim(b.title)),
@@ -248,24 +306,32 @@ async def cleanup_duplicate_books(
                                 SELECT 1 FROM books.book_authors ba WHERE ba.book_id = b.book_id
                             )
                         )
-                        SELECT book_id FROM ranked WHERE rn > 1
+                        SELECT book_id, winner_book_id FROM ranked WHERE rn > 1
                         LIMIT :batch_size
                         """
                     ),
                     {"batch_size": batch_size},
                 )
-                book_ids = [row[0] for row in id_result.fetchall()]
+                dup_pairs = [(row[0], row[1]) for row in id_result.fetchall()]
 
-                if not book_ids:
+                if not dup_pairs:
                     break
 
-                affected_user_ids = await _delete_book_user_data(session, book_ids)
+                book_ids = [loser_id for loser_id, _ in dup_pairs]
+
+                affected_user_ids: typing.Set[int] = set()
+                for loser_id, winner_id in dup_pairs:
+                    remapped_users = await _remap_book_user_data(
+                        session, loser_id, winner_id
+                    )
+                    affected_user_ids.update(remapped_users)
+
                 result = await session.execute(
                     sqlalchemy.text("DELETE FROM books.books WHERE book_id = ANY(:book_ids)"),
                     {"book_ids": book_ids},
                 )
                 deleted = typing.cast(sqlalchemy.engine.CursorResult, result).rowcount
-                await _recompute_user_stats(session, affected_user_ids)
+                await _recompute_user_stats(session, list(affected_user_ids))
                 await session.commit()
         except Exception as e:
             logger.error(f"[cleanup] Duplicate book cleanup batch failed: {e}")
@@ -337,7 +403,30 @@ async def cleanup_orphan_authors(
                     ),
                     {"author_ids": author_ids},
                 )
-                sole_book_ids = [row[0] for row in book_id_result.fetchall() if row[1] == 1]
+                candidate_sole_book_ids = [
+                    row[0] for row in book_id_result.fetchall() if row[1] == 1
+                ]
+
+                sole_book_ids = candidate_sole_book_ids
+                if candidate_sole_book_ids:
+                    engaged_result = await session.execute(
+                        sqlalchemy.text(
+                            """
+                            SELECT DISTINCT book_id FROM user_data.bookshelves WHERE book_id = ANY(:book_ids)
+                            UNION
+                            SELECT DISTINCT book_id FROM user_data.ratings WHERE book_id = ANY(:book_ids)
+                            UNION
+                            SELECT DISTINCT book_id FROM user_data.comments WHERE book_id = ANY(:book_ids)
+                            """
+                        ),
+                        {"book_ids": candidate_sole_book_ids},
+                    )
+                    engaged_book_ids = {row[0] for row in engaged_result.fetchall()}
+                    sole_book_ids = [
+                        book_id
+                        for book_id in candidate_sole_book_ids
+                        if book_id not in engaged_book_ids
+                    ]
 
                 for i in range(0, len(sole_book_ids), _SOLE_BOOK_SUB_BATCH):
                     sub_batch = sole_book_ids[i : i + _SOLE_BOOK_SUB_BATCH]

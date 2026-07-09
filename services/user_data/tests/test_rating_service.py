@@ -52,6 +52,17 @@ class TestDeleteRating:
             await rating_service.delete_rating(mock_session, 10, 999)
 
 
+class TestUpdateBookStatsAggregatesAcrossLanguages:
+    @pytest.mark.asyncio
+    async def test_stats_query_aggregates_by_slug_not_single_book_id(
+        self, mock_session
+    ):
+        await rating_service._update_book_stats(mock_session, 100)
+        executed_sql = str(mock_session.execute.call_args[0][0])
+        assert "sibling_books" in executed_sql
+        assert "WHERE book_id IN (SELECT book_id FROM sibling_books)" in executed_sql
+
+
 class TestGetRating:
     @pytest.mark.asyncio
     async def test_get_success(self, mock_session, mock_rating):

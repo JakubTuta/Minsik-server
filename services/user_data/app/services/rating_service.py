@@ -16,6 +16,11 @@ async def _update_book_stats(
         WITH canonical AS (
             SELECT slug FROM books.books WHERE book_id = :book_id
         ),
+        sibling_books AS (
+            SELECT b.book_id
+            FROM books.books b, canonical
+            WHERE b.slug = canonical.slug
+        ),
         stats AS (
             SELECT
                 ROUND(AVG(overall_rating)::NUMERIC, 2)    AS avg_overall,
@@ -37,7 +42,7 @@ async def _update_book_stats(
                 ROUND(AVG(humor)::NUMERIC, 2)             AS avg_humor,
                 COUNT(humor)                               AS humor_count
             FROM user_data.ratings
-            WHERE book_id = :book_id
+            WHERE book_id IN (SELECT book_id FROM sibling_books)
         ),
         dist AS (
             SELECT COALESCE(
@@ -47,7 +52,7 @@ async def _update_book_stats(
             FROM (
                 SELECT overall_rating, COUNT(*) AS cnt
                 FROM user_data.ratings
-                WHERE book_id = :book_id
+                WHERE book_id IN (SELECT book_id FROM sibling_books)
                 GROUP BY overall_rating
             ) t
         )

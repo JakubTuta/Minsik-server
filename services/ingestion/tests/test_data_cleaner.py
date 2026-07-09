@@ -3,7 +3,7 @@ import datetime
 import pytest
 from app.models import Author, Book, BookAuthor, BookGenre, Genre, Series
 from app.workers import data_cleaner
-from sqlalchemy import func, select
+from sqlalchemy import func, select, text
 
 OLD_DATE = datetime.datetime(2020, 1, 1)
 
@@ -133,6 +133,96 @@ async def test_cleanup_keeps_book_with_high_ratings(commit_session, session_fact
     result = await commit_session.execute(select(func.count()).select_from(Book))
     assert result.scalar_one() == 1
     assert stats["deleted"] == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_cleanup_never_deletes_user_engaged_low_quality_book(
+    commit_session, session_factory_for_testing
+):
+    book = Book(
+        title="Bad But Shelved Book",
+        language="en",
+        slug="bad-but-shelved-book",
+        formats=[],
+        created_at=OLD_DATE,
+    )
+    commit_session.add(book)
+    await commit_session.flush()
+    await commit_session.execute(
+        text(
+            "INSERT INTO user_data.bookshelves (user_id, book_id) VALUES (1, :book_id)"
+        ),
+        {"book_id": book.book_id},
+    )
+    await commit_session.commit()
+
+    stats = await data_cleaner.cleanup_low_quality_books(
+        session_factory_for_testing,
+        min_quality_score=3,
+        engagement_threshold=10,
+        min_publication_year=1450,
+        batch_size=100,
+    )
+
+    result = await commit_session.execute(select(func.count()).select_from(Book))
+    assert result.scalar_one() == 1
+    assert stats["deleted"] == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_cleanup_duplicate_books_remaps_user_data_to_winner(
+    commit_session, session_factory_for_testing
+):
+    author = Author(name="Same Author", slug="same-author")
+    commit_session.add(author)
+    await commit_session.flush()
+
+    winner = Book(
+        title="Duplicate Title",
+        language="en",
+        slug="duplicate-title",
+        view_count=10,
+        formats=[],
+    )
+    loser = Book(
+        title="Duplicate Title",
+        language="en",
+        slug="duplicate-title-2",
+        view_count=0,
+        formats=[],
+    )
+    commit_session.add_all([winner, loser])
+    await commit_session.flush()
+
+    commit_session.add_all(
+        [
+            BookAuthor(book_id=winner.book_id, author_id=author.author_id),
+            BookAuthor(book_id=loser.book_id, author_id=author.author_id),
+        ]
+    )
+    await commit_session.execute(
+        text(
+            "INSERT INTO user_data.bookshelves (user_id, book_id) VALUES (1, :book_id)"
+        ),
+        {"book_id": loser.book_id},
+    )
+    await commit_session.commit()
+
+    stats = await data_cleaner.cleanup_duplicate_books(
+        session_factory_for_testing, batch_size=100
+    )
+    assert stats["deleted"] == 1
+
+    remaining_books = await commit_session.execute(select(Book.book_id))
+    remaining_ids = {row[0] for row in remaining_books.fetchall()}
+    assert remaining_ids == {winner.book_id}
+
+    shelf_result = await commit_session.execute(
+        text("SELECT book_id FROM user_data.bookshelves WHERE user_id = 1")
+    )
+    assert shelf_result.scalar_one() == winner.book_id
 
 
 @pytest.mark.asyncio

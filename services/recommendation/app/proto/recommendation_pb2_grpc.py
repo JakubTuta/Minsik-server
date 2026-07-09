@@ -79,6 +79,11 @@ class RecommendationServiceStub(object):
                 request_serializer=recommendation__pb2.InvalidateContextualCacheRequest.SerializeToString,
                 response_deserializer=recommendation__pb2.InvalidateContextualCacheResponse.FromString,
                 _registered_method=True)
+        self.InvalidateUserRecommendations = channel.unary_unary(
+                '/recommendation.v1.RecommendationService/InvalidateUserRecommendations',
+                request_serializer=recommendation__pb2.InvalidateUserRecommendationsRequest.SerializeToString,
+                response_deserializer=recommendation__pb2.InvalidateUserRecommendationsResponse.FromString,
+                _registered_method=True)
         self.GetBookRecommendations = channel.unary_unary(
                 '/recommendation.v1.RecommendationService/GetBookRecommendations',
                 request_serializer=recommendation__pb2.GetBookRecommendationsRequest.SerializeToString,
@@ -158,6 +163,12 @@ class RecommendationServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def InvalidateUserRecommendations(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def GetBookRecommendations(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -229,6 +240,11 @@ def add_RecommendationServiceServicer_to_server(servicer, server):
                     servicer.InvalidateContextualCache,
                     request_deserializer=recommendation__pb2.InvalidateContextualCacheRequest.FromString,
                     response_serializer=recommendation__pb2.InvalidateContextualCacheResponse.SerializeToString,
+            ),
+            'InvalidateUserRecommendations': grpc.unary_unary_rpc_method_handler(
+                    servicer.InvalidateUserRecommendations,
+                    request_deserializer=recommendation__pb2.InvalidateUserRecommendationsRequest.FromString,
+                    response_serializer=recommendation__pb2.InvalidateUserRecommendationsResponse.SerializeToString,
             ),
             'GetBookRecommendations': grpc.unary_unary_rpc_method_handler(
                     servicer.GetBookRecommendations,
@@ -494,6 +510,33 @@ class RecommendationService(object):
             '/recommendation.v1.RecommendationService/InvalidateContextualCache',
             recommendation__pb2.InvalidateContextualCacheRequest.SerializeToString,
             recommendation__pb2.InvalidateContextualCacheResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def InvalidateUserRecommendations(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/recommendation.v1.RecommendationService/InvalidateUserRecommendations',
+            recommendation__pb2.InvalidateUserRecommendationsRequest.SerializeToString,
+            recommendation__pb2.InvalidateUserRecommendationsResponse.FromString,
             options,
             channel_credentials,
             insecure,

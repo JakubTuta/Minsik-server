@@ -12,6 +12,7 @@ service RecommendationService {
   rpc RefreshUserPersonalRecommendations(RefreshUserPersonalRecommendationsRequest) returns (RefreshUserPersonalRecommendationsResponse);
   rpc RefreshContextualRecommendations(RefreshContextualRecommendationsRequest) returns (RefreshContextualRecommendationsResponse);
   rpc InvalidateContextualCache(InvalidateContextualCacheRequest) returns (InvalidateContextualCacheResponse);
+  rpc InvalidateUserRecommendations(InvalidateUserRecommendationsRequest) returns (InvalidateUserRecommendationsResponse);
   rpc GetBookRecommendations(GetBookRecommendationsRequest) returns (BookRecommendationsResponse);
   rpc GetAuthorRecommendations(GetAuthorRecommendationsRequest) returns (AuthorRecommendationsResponse);
   rpc GetSeriesRecommendations(GetSeriesRecommendationsRequest) returns (SeriesRecommendationsResponse);
@@ -128,6 +129,15 @@ message InvalidateContextualCacheRequest {
 message InvalidateContextualCacheResponse {
   bool success = 1;
   string message = 2;
+}
+
+message InvalidateUserRecommendationsRequest {
+  int64 user_id = 1;
+}
+
+message InvalidateUserRecommendationsResponse {
+  bool success = 1;
+  int32 deleted_keys = 2;
 }
 
 message GetBookRecommendationsRequest {

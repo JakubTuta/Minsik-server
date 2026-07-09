@@ -57,6 +57,8 @@ class Settings(pydantic_settings.BaseSettings):
 
     ledger_api_key: str = pydantic.Field(default="")
 
+    trusted_proxy_ips: str = pydantic.Field(default="127.0.0.1")
+
     class Config:
         env_file = ".env"
         case_sensitive = False
@@ -98,6 +100,10 @@ class Settings(pydantic_settings.BaseSettings):
     @property
     def cors_origins_list(self) -> list[str]:
         return [origin.strip() for origin in self.cors_origins.split(",")]
+
+    @property
+    def trusted_proxy_ips_list(self) -> list[str]:
+        return [ip.strip() for ip in self.trusted_proxy_ips.split(",") if ip.strip()]
 
 
 settings = Settings()

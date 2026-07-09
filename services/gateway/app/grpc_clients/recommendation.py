@@ -102,6 +102,15 @@ class RecommendationClient(base.GrpcClientBase):
         )
         return await self._call("InvalidateContextualCache", request, timeout=app.config.settings.grpc_admin_timeout)
 
+    async def invalidate_user_recommendations(
+        self,
+        user_id: int,
+    ) -> app.proto.recommendation_pb2.InvalidateUserRecommendationsResponse:
+        request = app.proto.recommendation_pb2.InvalidateUserRecommendationsRequest(
+            user_id=user_id,
+        )
+        return await self._call("InvalidateUserRecommendations", request, timeout=app.config.settings.grpc_timeout)
+
     async def refresh_book_of_the_week(
         self,
     ) -> app.proto.recommendation_pb2.RefreshBookOfTheWeekResponse:

@@ -3,7 +3,8 @@ import typing
 import app.config
 import grpc
 import ledger
-import ledger.tracing
+import opentelemetry.trace as trace_api
+from opentelemetry import propagate
 
 _ledger: typing.Optional[ledger.LedgerClient] = None
 _client_interceptor: typing.Optional["TracingClientInterceptor"] = None
@@ -25,17 +26,15 @@ class TracingClientInterceptor(grpc.aio.UnaryUnaryClientInterceptor):
         client_call_details: grpc.aio.ClientCallDetails,
         request: typing.Any,
     ) -> typing.Any:
-        tracer = ledger.tracing.get_tracer()
-        if tracer is None:
-            return await continuation(client_call_details, request)
+        tracer = trace_api.get_tracer(__name__)
 
         method = client_call_details.method
         if isinstance(method, bytes):
             method = method.decode()
 
-        with tracer.start_as_current_span(f"grpc.client{method}") as span:
+        with tracer.start_as_current_span(f"grpc.client{method}", kind=trace_api.SpanKind.CLIENT):
             carrier: dict[str, str] = {}
-            ledger.tracing.propagation.inject(carrier, span)
+            propagate.inject(carrier)
 
             metadata = list(client_call_details.metadata or [])
             for k, v in carrier.items():

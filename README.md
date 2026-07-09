@@ -52,6 +52,7 @@ The full reference is in `.env.example`. Below is what matters most.
 | `ENV`                  | Set to `production`                                                   |
 | `DEBUG`                | Set to `false`                                                        |
 | `LOG_LEVEL`            | Set to `ERROR`                                                        |
+| `TRUSTED_PROXY_IPS`    | Set to your reverse proxy's IP — never leave it open to any address    |
 
 ### Notable optional settings
 
