@@ -16,6 +16,7 @@ logger = logging.getLogger(__name__)
 
 _DUMP_RUNNING_KEY = "dump_import_running"
 _SOLE_BOOK_SUB_BATCH = 100
+_NAME_JUNK_CHARS = " \t\r\n,;:|/\\=*^<>-–—·•"
 
 SessionFactory = sqlalchemy.ext.asyncio.async_sessionmaker
 
@@ -463,6 +464,87 @@ async def cleanup_orphan_authors(
     return {"deleted": total_deleted}
 
 
+async def _heal_table_names(
+    session_factory: SessionFactory,
+    table: str,
+    id_col: str,
+    name_col: str,
+    batch_size: int,
+    stop_check: typing.Callable[[], bool],
+) -> int:
+    total_healed = 0
+    last_id = 0
+    while True:
+        if stop_check():
+            logger.info(f"[cleanup] Stopping {table} name healing: dump import started")
+            break
+        try:
+            async with session_factory() as session:
+                result = await session.execute(
+                    sqlalchemy.text(
+                        f"""
+                        SELECT {id_col}, {name_col} FROM books.{table}
+                        WHERE {id_col} > :last_id
+                          AND ({name_col} <> btrim({name_col}, :junk_chars) OR {name_col} LIKE '%  %')
+                        ORDER BY {id_col}
+                        LIMIT :batch_size
+                        """
+                    ),
+                    {"last_id": last_id, "junk_chars": _NAME_JUNK_CHARS, "batch_size": batch_size},
+                )
+                rows = result.fetchall()
+
+                if not rows:
+                    break
+
+                for row_id, raw_name in rows:
+                    cleaned = app.utils.clean_name(raw_name)
+                    if cleaned and cleaned != raw_name:
+                        await session.execute(
+                            sqlalchemy.text(
+                                f"UPDATE books.{table} SET {name_col} = :cleaned WHERE {id_col} = :row_id"
+                            ),
+                            {"cleaned": cleaned, "row_id": row_id},
+                        )
+                        total_healed += 1
+
+                await session.commit()
+        except Exception as e:
+            logger.error(f"[cleanup] {table} name healing batch failed: {e}")
+            break
+
+        last_id = rows[-1][0]
+        if len(rows) < batch_size:
+            break
+        await asyncio.sleep(0.5)
+
+    return total_healed
+
+
+async def heal_entity_names(
+    session_factory: SessionFactory,
+    batch_size: int,
+    stop_check: typing.Callable[[], bool] = lambda: False,
+) -> typing.Dict[str, int]:
+    stats = {"books_healed": 0, "authors_healed": 0}
+
+    stats["books_healed"] = await _heal_table_names(
+        session_factory, "books", "book_id", "title", batch_size, stop_check
+    )
+    if stop_check():
+        return stats
+
+    stats["authors_healed"] = await _heal_table_names(
+        session_factory, "authors", "author_id", "name", batch_size, stop_check
+    )
+
+    logger.info(
+        f"[cleanup] Name healing complete: books_healed={stats['books_healed']}, "
+        f"authors_healed={stats['authors_healed']}"
+    )
+    return stats
+
+
 async def consolidate_series(
     session_factory: SessionFactory,
     min_books: int,
@@ -511,7 +593,7 @@ async def consolidate_series(
             canonical_slug: str = app.utils.slugify(canonical_name)
             parsed_pos: typing.Optional[float] = parsed.get("position")
 
-            if canonical_slug == old_slug:
+            if canonical_slug == old_slug and canonical_name == old_name:
                 continue
 
             try:
@@ -684,6 +766,9 @@ async def consolidate_series(
                     """
                     UPDATE books.series s
                     SET total_books = (
+                        SELECT COUNT(*) FROM books.books b WHERE b.series_id = s.series_id
+                    )
+                    WHERE s.total_books IS DISTINCT FROM (
                         SELECT COUNT(*) FROM books.books b WHERE b.series_id = s.series_id
                     )
                     """
@@ -978,6 +1063,7 @@ async def run_cleanup_cycle(
     max_series_books = app.config.settings.cleanup_series_max_books
 
     stats: typing.Dict[str, typing.Any] = {
+        "names_healed": {"books_healed": 0, "authors_healed": 0},
         "books": {"deleted": 0},
         "duplicates": {"deleted": 0},
         "authors": {"deleted": 0},
@@ -987,6 +1073,12 @@ async def run_cleanup_cycle(
         "underrepresented_genres_deleted": 0,
         "invalid_name_genres_deleted": 0,
     }
+
+    stats["names_healed"] = await heal_entity_names(
+        session_factory, book_batch, stop_check
+    )
+    if stop_check():
+        return stats
 
     stats["books"] = await cleanup_low_quality_books(
         session_factory,

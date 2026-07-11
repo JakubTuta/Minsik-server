@@ -47,6 +47,8 @@ class Settings(pydantic_settings.BaseSettings):
     es_reindex_enabled: bool = pydantic.Field(default=True)
     es_reindex_cron: str = pydantic.Field(default="0 5,11,17,23 * * *")
     es_reindex_batch_size: int = pydantic.Field(default=1000)
+    es_reconcile_enabled: bool = pydantic.Field(default=True)
+    es_reconcile_scan_size: int = pydantic.Field(default=1000)
 
     ledger_api_key: str = pydantic.Field(default="")
 

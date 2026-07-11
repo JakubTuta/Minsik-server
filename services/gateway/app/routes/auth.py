@@ -370,11 +370,13 @@ async def refresh_token(
 ):
     refresh_value = request.cookies.get(app.utils.cookies.REFRESH_COOKIE) or (body.refresh_token if body else None)
     if not refresh_value:
-        return app.utils.responses.error_response(
+        json_response = app.utils.responses.error_response(
             code="UNAUTHENTICATED",
             message="Refresh token is invalid or expired",
             status_code=401
         )
+        app.utils.cookies.clear_auth_cookies(json_response)
+        return json_response
     try:
         response = await app.grpc_clients.auth_client.refresh_token(
             refresh_token=refresh_value

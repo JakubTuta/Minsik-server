@@ -70,8 +70,8 @@ class Settings(pydantic_settings.BaseSettings):
     cleanup_genre_min_book_count: int = pydantic.Field(default=10)
     cleanup_author_min_books: int = pydantic.Field(default=5)
     cleanup_author_max_books: int = pydantic.Field(default=500)
-    cleanup_series_min_books: int = pydantic.Field(default=3)
-    cleanup_series_max_books: int = pydantic.Field(default=30)
+    cleanup_series_min_books: int = pydantic.Field(default=2)
+    cleanup_series_max_books: int = pydantic.Field(default=100)
 
     genre_bubble_enabled: bool = pydantic.Field(default=True)
     genre_bubble_cron: str = pydantic.Field(default="0 6 * * 0")

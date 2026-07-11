@@ -38,7 +38,7 @@ async def process_authors_dump(file_path: str) -> int:
                         name = author_data.get("name")
                         if not name:
                             continue
-                        name = name[:300]
+                        name = app.utils.clean_name(name, max_length=300) or name[:300]
 
                         bio_raw = author_data.get("bio")
                         bio = parsers.extract_description(bio_raw) if bio_raw else None

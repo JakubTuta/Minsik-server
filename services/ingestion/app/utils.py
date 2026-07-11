@@ -33,6 +33,33 @@ def slugify(text: str, max_length: int = 200) -> str:
     return text[:max_length]
 
 
+_NAME_EDGE_JUNK = re.compile(
+    r"^[\s,;:|/\\=*^<>\-–—·•]+"
+    r"|[\s,;:|/\\=*^<>\-–—·•]+$"
+)
+_NAME_INTERNAL_SPACES = re.compile(r"\s{2,}")
+
+
+def clean_name(value: typing.Optional[str], max_length: typing.Optional[int] = None) -> typing.Optional[str]:
+    if not value or not isinstance(value, str):
+        return value
+
+    stripped = value.strip()
+    if not stripped:
+        return value
+
+    cleaned = _NAME_EDGE_JUNK.sub("", stripped)
+    cleaned = _NAME_INTERNAL_SPACES.sub(" ", cleaned).strip()
+
+    if not cleaned:
+        cleaned = stripped
+
+    if max_length is not None:
+        cleaned = cleaned[:max_length]
+
+    return cleaned
+
+
 def parse_date(date_string: typing.Optional[str]) -> typing.Optional[datetime.date]:
     if not date_string or not isinstance(date_string, str):
         return None
@@ -170,9 +197,9 @@ def parse_series_descriptor(value: typing.Optional[str]) -> typing.Optional[typi
     for pattern in _SERIES_POSITION_PATTERNS:
         m = pattern.match(value)
         if m:
-            name = m.group(1).strip().rstrip(",:").strip()
+            name = clean_name(m.group(1).strip().rstrip(",:").strip())
             if not name:
                 continue
             position = clamp_series_position(m.group(2))
             return {"name": name, "position": position}
-    return {"name": value, "position": None}
+    return {"name": clean_name(value), "position": None}

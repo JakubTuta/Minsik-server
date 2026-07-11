@@ -429,7 +429,7 @@ async def _flush_edition_updates(
             s_pos = None
             if series and series.get("name"):
                 s_slug = app.utils.slugify(series["name"])[:550]
-                s_name = series["name"][:500]
+                s_name = (app.utils.clean_name(series["name"]) or series["name"])[:500]
                 s_pos = app.utils.clamp_series_position(series.get("position"))
 
             values_parts.append(
@@ -526,7 +526,7 @@ async def _insert_new_language_row(
     edition_series = update.get("series")
     if edition_series and edition_series.get("name"):
         s_slug = app.utils.slugify(edition_series["name"])[:550]
-        s_name = edition_series["name"][:500]
+        s_name = (app.utils.clean_name(edition_series["name"]) or edition_series["name"])[:500]
         s_pos = app.utils.clamp_series_position(edition_series.get("position"))
     else:
         s_slug = source.series_slug

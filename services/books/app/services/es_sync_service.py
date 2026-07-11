@@ -6,6 +6,7 @@ import app.cache
 import app.config
 import app.db
 import app.es_client
+import app.services.es_reconcile_service
 import elasticsearch.helpers
 import sqlalchemy
 
@@ -393,6 +394,12 @@ async def reindex_all_to_es(full: bool = False) -> None:
     logger.info(
         f"[ES] Reindex complete. books={books_indexed}, authors={authors_indexed}, series={series_indexed}"
     )
+
+    try:
+        await app.services.es_reconcile_service.reconcile_deleted_docs()
+    except Exception as e:
+        logger.error(f"[ES] Ghost reconciliation failed: {str(e)}")
+
     try:
         await app.cache.redis_client.delete(ES_REINDEX_RUNNING_KEY)
     except Exception:

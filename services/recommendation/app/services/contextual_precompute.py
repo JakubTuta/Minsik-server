@@ -7,6 +7,7 @@ import app.services.author_recommender
 import app.services.book_recommender
 import app.services.series_recommender
 import sqlalchemy
+import sqlalchemy.engine
 import sqlalchemy.orm
 
 logger = logging.getLogger(__name__)
@@ -117,6 +118,32 @@ async def _upsert_batch(
         await session.commit()
 
 
+async def _reconcile_sections(
+    session_maker: typing.Any,
+    entity_type: str,
+    reconcile_items: typing.List[typing.Tuple[int, typing.Set[str]]],
+) -> None:
+    if not reconcile_items:
+        return
+    params = [
+        {"entity_type": entity_type, "entity_id": eid, "keys": list(keys)}
+        for eid, keys in reconcile_items
+    ]
+    async with session_maker() as session:
+        await session.execute(
+            sqlalchemy.text(
+                """
+                DELETE FROM recommendation.contextual_recs
+                WHERE entity_type = :entity_type
+                  AND entity_id = :entity_id
+                  AND NOT (section_key = ANY(CAST(:keys AS text[])))
+                """
+            ),
+            params,
+        )
+        await session.commit()
+
+
 async def _precompute_entities(
     entity_type: str,
     entity_ids: typing.List[int],
@@ -129,17 +156,17 @@ async def _precompute_entities(
 
     sem = asyncio.Semaphore(_SEMAPHORE_SIZE)
     batch: typing.List[typing.Dict[str, typing.Any]] = []
+    reconcile_items: typing.List[typing.Tuple[int, typing.Set[str]]] = []
     success = 0
 
-    async def _one(eid: int) -> typing.List[typing.Dict[str, typing.Any]]:
+    async def _one(eid: int) -> typing.Optional[typing.List[typing.Dict[str, typing.Any]]]:
         async with sem:
             try:
                 sections = await asyncio.wait_for(
                     builder_fn(session_maker, eid, limit),
                     timeout=_PER_ENTITY_TIMEOUT,
                 )
-                if sections:
-                    return _extract_section_rows(entity_type, eid, sections)
+                return _extract_section_rows(entity_type, eid, sections) if sections else []
             except asyncio.TimeoutError:
                 logger.warning(
                     f"[rec:precompute] {entity_type} {eid} timed out after "
@@ -147,7 +174,7 @@ async def _precompute_entities(
                 )
             except Exception as e:
                 logger.error(f"[rec:precompute] {entity_type} {eid} failed: {e}")
-            return []
+            return None
 
     chunk_size = 100
     total = len(entity_ids)
@@ -155,10 +182,13 @@ async def _precompute_entities(
     for chunk_start in range(0, total, chunk_size):
         chunk = entity_ids[chunk_start : chunk_start + chunk_size]
         results = await asyncio.gather(*(_one(eid) for eid in chunk))
-        for rows in results:
+        for eid, rows in zip(chunk, results):
+            if rows is None:
+                continue
+            success += 1
+            reconcile_items.append((eid, {r["section_key"] for r in rows}))
             if rows:
                 batch.extend(rows)
-                success += 1
             if len(batch) >= _BATCH_SIZE:
                 await _upsert_batch(session_maker, batch)
                 batch = []
@@ -166,7 +196,43 @@ async def _precompute_entities(
     if batch:
         await _upsert_batch(session_maker, batch)
 
+    await _reconcile_sections(session_maker, entity_type, reconcile_items)
+
     logger.info(f"[rec:precompute] {entity_type}: {success}/{total} entities precomputed")
+
+
+async def _cleanup_stale_rows(session_maker: typing.Any) -> int:
+    async with session_maker() as session:
+        result = await session.execute(
+            sqlalchemy.text(
+                """
+                DELETE FROM recommendation.contextual_recs cr
+                WHERE (
+                    cr.entity_type = 'book'
+                    AND NOT EXISTS (SELECT 1 FROM books.books b WHERE b.book_id = cr.entity_id)
+                )
+                OR (
+                    cr.entity_type = 'author'
+                    AND NOT EXISTS (SELECT 1 FROM books.authors a WHERE a.author_id = cr.entity_id)
+                )
+                OR (
+                    cr.entity_type = 'series'
+                    AND NOT EXISTS (SELECT 1 FROM books.series s WHERE s.series_id = cr.entity_id)
+                )
+                OR (
+                    cr.entity_type = 'book'
+                    AND cr.section_key = 'more_from_series'
+                    AND NOT EXISTS (
+                        SELECT 1 FROM books.books b
+                        WHERE b.book_id = cr.entity_id AND b.series_id IS NOT NULL
+                    )
+                )
+                """
+            )
+        )
+        await session.commit()
+        deleted = typing.cast(sqlalchemy.engine.CursorResult, result).rowcount
+        return deleted if deleted and deleted > 0 else 0
 
 
 async def refresh_contextual_recs(session_maker: sqlalchemy.orm.sessionmaker) -> None:
@@ -175,6 +241,10 @@ async def refresh_contextual_recs(session_maker: sqlalchemy.orm.sessionmaker) ->
     limit = 20
 
     logger.info("[rec:precompute] Starting contextual precompute refresh")
+
+    stale_deleted = await _cleanup_stale_rows(session_maker)
+    if stale_deleted:
+        logger.info(f"[rec:precompute] Cleaned up {stale_deleted} stale contextual_recs rows")
 
     async with session_maker() as session:
         book_ids = await _fetch_popular_book_ids(session, min_ratings)

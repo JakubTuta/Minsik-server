@@ -100,6 +100,7 @@ def _validate_and_clean_book(book_data: typing.Dict[str, typing.Any]) -> typing.
     if isinstance(language, str):
         language = language.lower()
 
+    title = app.utils.clean_name(title) or title
     description = app.utils.clean_description(book_data.get("description"))
     slug = app.utils.slugify(title)
 
@@ -109,7 +110,7 @@ def _validate_and_clean_book(book_data: typing.Dict[str, typing.Any]) -> typing.
 
     series_data = book_data.get("series")
     if series_data:
-        series_name = series_data.get("name")
+        series_name = app.utils.clean_name(series_data.get("name"))
         if series_name:
             series_slug = app.utils.slugify(series_name)
         series_position = series_data.get("position")
@@ -197,7 +198,7 @@ async def _bulk_insert_authors(
 
     insert_data = []
     for author_slug, author_data in dedup_cache["authors"].items():
-        name = author_data.get("name")
+        name = app.utils.clean_name(author_data.get("name")) or author_data.get("name")
         insert_data.append(
             {
                 "name": name,
