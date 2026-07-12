@@ -42,6 +42,8 @@ class Author(app.db_base.Base):
 
     open_library_id = sqlalchemy.Column(sqlalchemy.String(100))
 
+    enrichment_attempted_at = sqlalchemy.Column(sqlalchemy.TIMESTAMP(timezone=True))
+
     books = sqlalchemy.orm.relationship(
         "Book", secondary="books.book_authors", back_populates="authors"
     )

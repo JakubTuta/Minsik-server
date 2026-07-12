@@ -463,12 +463,13 @@ async def _flush_edition_updates(
         await session.execute(
             sqlalchemy.text(
                 "UPDATE books.books AS b SET "
-                "isbn = CASE WHEN v.isbn IS NOT NULL THEN v.isbn ELSE b.isbn END, "
+                "isbn = CASE WHEN (b.isbn IS NULL OR b.isbn = '[]'::jsonb) "
+                "AND v.isbn IS NOT NULL THEN v.isbn ELSE b.isbn END, "
                 "number_of_pages = COALESCE(b.number_of_pages, v.pages), "
                 "publisher = COALESCE(b.publisher, v.pub), "
                 "external_ids = b.external_ids || v.ext, "
-                "open_library_id = v.olid, "
-                "google_books_id = v.gbid, "
+                "open_library_id = COALESCE(b.open_library_id, v.olid), "
+                "google_books_id = COALESCE(b.google_books_id, v.gbid), "
                 "primary_cover_url = COALESCE(b.primary_cover_url, v.cover), "
                 "description = COALESCE(b.description, v.descr), "
                 "first_sentence = COALESCE(b.first_sentence, v.fsen), "

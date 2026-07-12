@@ -249,7 +249,13 @@ async def _bulk_insert_authors(
                 ),
                 else_=app.models.author.Author.photo_url,
             ),
-            "open_library_id": stmt.excluded.open_library_id,
+            "open_library_id": sqlalchemy.case(
+                (
+                    app.models.author.Author.open_library_id.is_(None),
+                    stmt.excluded.open_library_id,
+                ),
+                else_=app.models.author.Author.open_library_id,
+            ),
             "wikidata_id": sqlalchemy.case(
                 (
                     app.models.author.Author.wikidata_id.is_(None),
@@ -264,8 +270,17 @@ async def _bulk_insert_authors(
                 ),
                 else_=app.models.author.Author.wikipedia_url,
             ),
-            "remote_ids": stmt.excluded.remote_ids,
-            "alternate_names": stmt.excluded.alternate_names,
+            "remote_ids": stmt.excluded.remote_ids.op("||")(app.models.author.Author.remote_ids),
+            "alternate_names": sqlalchemy.case(
+                (
+                    sqlalchemy.or_(
+                        app.models.author.Author.alternate_names.is_(None),
+                        app.models.author.Author.alternate_names == sqlalchemy.text("'[]'::jsonb"),
+                    ),
+                    stmt.excluded.alternate_names,
+                ),
+                else_=app.models.author.Author.alternate_names,
+            ),
         },
     )
 
@@ -349,7 +364,22 @@ async def _bulk_insert_books(
     stmt = stmt.on_conflict_do_update(
         index_elements=["language", "slug"],
         set_={
-            "description": stmt.excluded.description,
+            "description": sqlalchemy.case(
+                (
+                    stmt.excluded.description.is_(None),
+                    app.models.book.Book.description,
+                ),
+                (
+                    app.models.book.Book.description.is_(None),
+                    stmt.excluded.description,
+                ),
+                (
+                    sqlalchemy.func.length(stmt.excluded.description)
+                    > sqlalchemy.func.length(app.models.book.Book.description),
+                    stmt.excluded.description,
+                ),
+                else_=app.models.book.Book.description,
+            ),
             "first_sentence": sqlalchemy.case(
                 (
                     app.models.book.Book.first_sentence.is_(None),
@@ -357,23 +387,77 @@ async def _bulk_insert_books(
                 ),
                 else_=app.models.book.Book.first_sentence,
             ),
-            "open_library_id": stmt.excluded.open_library_id,
-            "google_books_id": stmt.excluded.google_books_id,
-            "isbn": stmt.excluded.isbn,
-            "publisher": stmt.excluded.publisher,
-            "number_of_pages": stmt.excluded.number_of_pages,
-            "external_ids": stmt.excluded.external_ids,
-            "formats": stmt.excluded.formats,
+            "open_library_id": sqlalchemy.case(
+                (
+                    app.models.book.Book.open_library_id.is_(None),
+                    stmt.excluded.open_library_id,
+                ),
+                else_=app.models.book.Book.open_library_id,
+            ),
+            "google_books_id": sqlalchemy.case(
+                (
+                    app.models.book.Book.google_books_id.is_(None),
+                    stmt.excluded.google_books_id,
+                ),
+                else_=app.models.book.Book.google_books_id,
+            ),
+            "isbn": sqlalchemy.case(
+                (
+                    sqlalchemy.or_(
+                        app.models.book.Book.isbn.is_(None),
+                        app.models.book.Book.isbn == sqlalchemy.text("'[]'::jsonb"),
+                    ),
+                    stmt.excluded.isbn,
+                ),
+                else_=app.models.book.Book.isbn,
+            ),
+            "publisher": sqlalchemy.case(
+                (
+                    app.models.book.Book.publisher.is_(None),
+                    stmt.excluded.publisher,
+                ),
+                else_=app.models.book.Book.publisher,
+            ),
+            "number_of_pages": sqlalchemy.case(
+                (
+                    sqlalchemy.or_(
+                        app.models.book.Book.number_of_pages.is_(None),
+                        app.models.book.Book.number_of_pages <= 0,
+                    ),
+                    stmt.excluded.number_of_pages,
+                ),
+                else_=app.models.book.Book.number_of_pages,
+            ),
+            "external_ids": sqlalchemy.case(
+                (
+                    sqlalchemy.or_(
+                        app.models.book.Book.external_ids.is_(None),
+                        app.models.book.Book.external_ids == sqlalchemy.text("'{}'::jsonb"),
+                    ),
+                    stmt.excluded.external_ids,
+                ),
+                else_=app.models.book.Book.external_ids,
+            ),
+            "formats": sqlalchemy.case(
+                (
+                    sqlalchemy.or_(
+                        app.models.book.Book.formats.is_(None),
+                        app.models.book.Book.formats == sqlalchemy.text("'[]'::jsonb"),
+                    ),
+                    stmt.excluded.formats,
+                ),
+                else_=app.models.book.Book.formats,
+            ),
             "series_slug": sqlalchemy.case(
                 (
-                    stmt.excluded.series_slug.isnot(None),
+                    app.models.book.Book.series_slug.is_(None),
                     stmt.excluded.series_slug,
                 ),
                 else_=app.models.book.Book.series_slug,
             ),
             "series_name": sqlalchemy.case(
                 (
-                    stmt.excluded.series_name.isnot(None),
+                    app.models.book.Book.series_name.is_(None),
                     stmt.excluded.series_name,
                 ),
                 else_=app.models.book.Book.series_name,

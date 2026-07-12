@@ -207,7 +207,6 @@ async def process_works_dump(file_path: str) -> int:
                 if commits_since_recycle >= _SESSION_RECYCLE_AFTER_COMMITS:
                     await session.close()
                     genre_id_cache.clear()
-                    series_id_cache.clear()
                     gc.collect()
                     _trim_heap()
                     session = await _open_session()

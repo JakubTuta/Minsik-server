@@ -114,7 +114,14 @@ class TestSeriesService:
         mock_stats_result = MagicMock()
         mock_stats_result.first.return_value = mock_stats_row
 
-        mock_session.execute.side_effect = [mock_result, mock_stats_result]
+        mock_primary_author_result = MagicMock()
+        mock_primary_author_result.first.return_value = None
+
+        mock_session.execute.side_effect = [
+            mock_result,
+            mock_stats_result,
+            mock_primary_author_result,
+        ]
 
         with patch("app.cache.get_cached", return_value=None), patch(
             "app.cache.set_cached"
@@ -236,6 +243,51 @@ class TestSeriesService:
 
             assert len(books) == 1
             assert total == 7
+
+    @pytest.mark.asyncio
+    async def test_get_series_by_slug_filters_by_language(self, mock_session, mock_series):
+        mock_result = MagicMock()
+        mock_result.scalars.return_value.first.return_value = mock_series
+
+        mock_stats_row = MagicMock()
+        mock_stats_row.total_books = 3
+        mock_stats_row.rating_count = 0
+        mock_stats_row.avg_rating = None
+        mock_stats_row.ol_rating_count = 0
+        mock_stats_row.ol_avg_rating = None
+        mock_stats_row.ol_want_to_read_count = 0
+        mock_stats_row.ol_currently_reading_count = 0
+        mock_stats_row.ol_already_read_count = 0
+        mock_stats_row.app_want_to_read_count = 0
+        mock_stats_row.app_reading_count = 0
+        mock_stats_row.app_read_count = 0
+        mock_stats_row.total_pages = 0
+        mock_stats_row.fallback_description = None
+        mock_stats_result = MagicMock()
+        mock_stats_result.first.return_value = mock_stats_row
+
+        mock_primary_author_result = MagicMock()
+        mock_primary_author_result.first.return_value = None
+
+        mock_session.execute.side_effect = [
+            mock_result,
+            mock_stats_result,
+            mock_primary_author_result,
+        ]
+
+        with patch("app.cache.get_cached", return_value=None), patch(
+            "app.cache.set_cached"
+        ), patch("app.cache.increment_view_count"):
+            await series_service.get_series_by_slug(
+                mock_session, "harry-potter", language="fr"
+            )
+
+        series_lookup_stmt = mock_session.execute.call_args_list[0].args[0]
+        compiled_sql = str(
+            series_lookup_stmt.compile(compile_kwargs={"literal_binds": True})
+        )
+        assert "harry-potter" in compiled_sql
+        assert "'fr'" in compiled_sql
 
     def test_series_to_dict(self, mock_series):
         stats = MagicMock()

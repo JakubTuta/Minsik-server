@@ -69,6 +69,8 @@ class Book(app.db_base.Base):
     open_library_id = sqlalchemy.Column(sqlalchemy.String(100))
     google_books_id = sqlalchemy.Column(sqlalchemy.String(100))
 
+    enrichment_attempted_at = sqlalchemy.Column(sqlalchemy.TIMESTAMP(timezone=True))
+
     series_id = sqlalchemy.Column(sqlalchemy.BigInteger, sqlalchemy.ForeignKey("books.series.series_id"))
     series_position = sqlalchemy.Column(sqlalchemy.DECIMAL(5, 2))
     series_slug = sqlalchemy.Column(sqlalchemy.String(550))

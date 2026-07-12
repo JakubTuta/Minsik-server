@@ -26,6 +26,9 @@ async def test_cleanup_removes_low_quality_book(commit_session, session_factory_
         min_quality_score=3,
         engagement_threshold=10,
         min_publication_year=1450,
+        max_title_length=300,
+        ol_min_rating_count=20,
+        ol_min_avg_rating=1.5,
         batch_size=100,
     )
 
@@ -64,6 +67,9 @@ async def test_cleanup_keeps_high_quality_book(commit_session, session_factory_f
         min_quality_score=3,
         engagement_threshold=10,
         min_publication_year=1450,
+        max_title_length=300,
+        ol_min_rating_count=20,
+        ol_min_avg_rating=1.5,
         batch_size=100,
     )
 
@@ -91,6 +97,9 @@ async def test_cleanup_keeps_book_with_views(commit_session, session_factory_for
         min_quality_score=3,
         engagement_threshold=10,
         min_publication_year=1450,
+        max_title_length=300,
+        ol_min_rating_count=20,
+        ol_min_avg_rating=1.5,
         batch_size=100,
     )
 
@@ -127,6 +136,9 @@ async def test_cleanup_keeps_book_with_high_ratings(commit_session, session_fact
         min_quality_score=3,
         engagement_threshold=10,
         min_publication_year=1450,
+        max_title_length=300,
+        ol_min_rating_count=20,
+        ol_min_avg_rating=1.5,
         batch_size=100,
     )
 
@@ -162,6 +174,9 @@ async def test_cleanup_never_deletes_user_engaged_low_quality_book(
         min_quality_score=3,
         engagement_threshold=10,
         min_publication_year=1450,
+        max_title_length=300,
+        ol_min_rating_count=20,
+        ol_min_avg_rating=1.5,
         batch_size=100,
     )
 
@@ -233,7 +248,12 @@ async def test_cleanup_orphan_authors(commit_session, session_factory_for_testin
     await commit_session.commit()
 
     stats = await data_cleaner.cleanup_orphan_authors(
-        session_factory_for_testing, min_books=2, max_books=1000, batch_size=100
+        session_factory_for_testing,
+        min_books=2,
+        max_books=1000,
+        batch_size=100,
+        spare_enriched=True,
+        junk_publisher_names=True,
     )
 
     result = await commit_session.execute(select(func.count()).select_from(Author))
@@ -262,7 +282,12 @@ async def test_cleanup_keeps_author_with_books(commit_session, session_factory_f
     await commit_session.commit()
 
     stats = await data_cleaner.cleanup_orphan_authors(
-        session_factory_for_testing, min_books=2, max_books=1000, batch_size=100
+        session_factory_for_testing,
+        min_books=2,
+        max_books=1000,
+        batch_size=100,
+        spare_enriched=True,
+        junk_publisher_names=True,
     )
 
     result = await commit_session.execute(select(func.count()).select_from(Author))
@@ -272,28 +297,24 @@ async def test_cleanup_keeps_author_with_books(commit_session, session_factory_f
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_cleanup_removes_short_series_without_deleting_books(
+async def test_consolidate_series_unlinks_underrepresented_group(
     commit_session, session_factory_for_testing
 ):
-    series = Series(name="Short Series", slug="short-series", created_at=OLD_DATE)
-    commit_session.add(series)
-    await commit_session.flush()
-
     book = Book(
         title="Short Book",
         language="en",
         slug="short-book",
-        series_id=series.series_id,
+        series_slug="short-series",
+        series_name="Short Series",
         series_position=1,
         formats=[],
     )
     commit_session.add(book)
     await commit_session.commit()
 
-    deleted = await data_cleaner.cleanup_underrepresented_series(
+    await data_cleaner.consolidate_series(
         session_factory_for_testing, min_books=2, max_books=100, batch_size=100
     )
-    assert deleted == 1
 
     series_count = await commit_session.execute(
         select(func.count()).select_from(Series)
@@ -301,52 +322,83 @@ async def test_cleanup_removes_short_series_without_deleting_books(
     assert series_count.scalar_one() == 0
 
     remaining_book = await commit_session.execute(
-        select(Book.series_id, Book.series_position).where(Book.slug == "short-book")
+        select(Book.series_id).where(Book.slug == "short-book")
     )
-    detached_series_id, detached_series_position = remaining_book.one()
-    assert detached_series_id is None
-    assert detached_series_position is None
+    assert remaining_book.scalar_one() is None
 
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_cleanup_removes_empty_series(commit_session, session_factory_for_testing):
-    empty_series = Series(name="Empty Series", slug="empty-series", created_at=OLD_DATE)
-    commit_session.add(empty_series)
-    await commit_session.commit()
-
-    deleted = await data_cleaner.cleanup_underrepresented_series(
-        session_factory_for_testing, min_books=2, max_books=100, batch_size=100
-    )
-    assert deleted == 1
-
-
-@pytest.mark.asyncio
-@pytest.mark.integration
-async def test_cleanup_keeps_series_with_many_books(
+async def test_consolidate_series_creates_per_language_rows(
     commit_session, session_factory_for_testing
 ):
-    series = Series(name="Long Series", slug="long-series", created_at=OLD_DATE)
-    commit_session.add(series)
-    await commit_session.flush()
-
-    for i in range(3):
-        book = Book(
-            title=f"Long Book {i}",
-            language="en",
-            slug=f"long-book-{i}",
-            series_id=series.series_id,
-            series_position=i + 1,
-            formats=[],
+    for i in range(2):
+        commit_session.add(
+            Book(
+                title=f"Harry Potter {i}",
+                language="en",
+                slug=f"harry-potter-{i}",
+                series_slug="harry-potter",
+                series_name="Harry Potter",
+                series_position=i + 1,
+                formats=[],
+            )
         )
-        commit_session.add(book)
-
+    for i in range(2):
+        commit_session.add(
+            Book(
+                title=f"Harry Potter FR {i}",
+                language="fr",
+                slug=f"harry-potter-fr-{i}",
+                series_slug="harry-potter",
+                series_name="Harry Potter",
+                series_position=i + 1,
+                formats=[],
+            )
+        )
     await commit_session.commit()
 
-    deleted = await data_cleaner.cleanup_underrepresented_series(
+    stats = await data_cleaner.consolidate_series(
         session_factory_for_testing, min_books=2, max_books=100, batch_size=100
     )
-    assert deleted == 0
+    assert stats["rows_created"] == 2
+
+    series_rows = await commit_session.execute(
+        select(Series.language, Series.total_books).where(Series.slug == "harry-potter")
+    )
+    rows = {row[0]: row[1] for row in series_rows.fetchall()}
+    assert rows == {"en": 2, "fr": 2}
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_consolidate_series_keeps_qualifying_series(
+    commit_session, session_factory_for_testing
+):
+    for i in range(3):
+        commit_session.add(
+            Book(
+                title=f"Long Book {i}",
+                language="en",
+                slug=f"long-book-{i}",
+                series_slug="long-series",
+                series_name="Long Series",
+                series_position=i + 1,
+                formats=[],
+            )
+        )
+    await commit_session.commit()
+
+    stats = await data_cleaner.consolidate_series(
+        session_factory_for_testing, min_books=2, max_books=100, batch_size=100
+    )
+    assert stats["rows_created"] == 1
+    assert stats["linked"] == 3
+
+    series_count = await commit_session.execute(
+        select(func.count()).select_from(Series)
+    )
+    assert series_count.scalar_one() == 1
 
 
 @pytest.mark.asyncio
@@ -453,3 +505,163 @@ async def test_cleanup_orphan_genres(commit_session, session_factory_for_testing
         session_factory_for_testing, batch_size=100
     )
     assert deleted == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_cleanup_removes_placeholder_title_book(
+    commit_session, session_factory_for_testing
+):
+    author = Author(name="Real Author", slug="real-author-2")
+    genre = Genre(name="Fiction", slug="fiction-2")
+    commit_session.add_all([author, genre])
+    await commit_session.flush()
+
+    book = Book(
+        title="Untitled",
+        language="en",
+        slug="untitled-book",
+        description="A real book with a proper description.",
+        primary_cover_url="http://example.com/cover.jpg",
+        original_publication_year=2020,
+        formats=["hardcover"],
+        created_at=OLD_DATE,
+    )
+    commit_session.add(book)
+    await commit_session.flush()
+
+    commit_session.add(BookAuthor(book_id=book.book_id, author_id=author.author_id))
+    commit_session.add(BookGenre(book_id=book.book_id, genre_id=genre.genre_id))
+    await commit_session.commit()
+
+    stats = await data_cleaner.cleanup_low_quality_books(
+        session_factory_for_testing,
+        min_quality_score=3,
+        engagement_threshold=10,
+        min_publication_year=1450,
+        max_title_length=300,
+        ol_min_rating_count=20,
+        ol_min_avg_rating=1.5,
+        batch_size=100,
+    )
+
+    result = await commit_session.execute(select(func.count()).select_from(Book))
+    assert result.scalar_one() == 0
+    assert stats["deleted"] == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_cleanup_removes_ol_condemned_book(
+    commit_session, session_factory_for_testing
+):
+    author = Author(name="Real Author", slug="real-author-3")
+    genre = Genre(name="Fiction", slug="fiction-3")
+    commit_session.add_all([author, genre])
+    await commit_session.flush()
+
+    book = Book(
+        title="Condemned Book",
+        language="en",
+        slug="condemned-book",
+        description="A real book with a proper description.",
+        primary_cover_url="http://example.com/cover.jpg",
+        original_publication_year=2020,
+        formats=["hardcover"],
+        ol_rating_count=25,
+        ol_avg_rating=1.0,
+        created_at=OLD_DATE,
+    )
+    commit_session.add(book)
+    await commit_session.flush()
+
+    commit_session.add(BookAuthor(book_id=book.book_id, author_id=author.author_id))
+    commit_session.add(BookGenre(book_id=book.book_id, genre_id=genre.genre_id))
+    await commit_session.commit()
+
+    stats = await data_cleaner.cleanup_low_quality_books(
+        session_factory_for_testing,
+        min_quality_score=3,
+        engagement_threshold=10,
+        min_publication_year=1450,
+        max_title_length=300,
+        ol_min_rating_count=20,
+        ol_min_avg_rating=1.5,
+        batch_size=100,
+    )
+
+    result = await commit_session.execute(select(func.count()).select_from(Book))
+    assert result.scalar_one() == 0
+    assert stats["deleted"] == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_cleanup_orphan_authors_spares_enriched_borderline_author(
+    commit_session, session_factory_for_testing
+):
+    author = Author(
+        name="Borderline Author",
+        slug="borderline-author",
+        bio="A well-documented author with a rich biography.",
+        created_at=OLD_DATE,
+    )
+    commit_session.add(author)
+    await commit_session.flush()
+
+    book = Book(title="Solo Book", language="en", slug="solo-book", formats=[])
+    commit_session.add(book)
+    await commit_session.flush()
+    commit_session.add(BookAuthor(book_id=book.book_id, author_id=author.author_id))
+    await commit_session.commit()
+
+    stats = await data_cleaner.cleanup_orphan_authors(
+        session_factory_for_testing,
+        min_books=2,
+        max_books=1000,
+        batch_size=100,
+        spare_enriched=True,
+        junk_publisher_names=True,
+    )
+
+    result = await commit_session.execute(select(func.count()).select_from(Author))
+    assert result.scalar_one() == 1
+    assert stats["deleted"] == 0
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_cleanup_orphan_authors_removes_junk_publisher_name(
+    commit_session, session_factory_for_testing
+):
+    author = Author(
+        name="Random House Publishing", slug="random-house-publishing", created_at=OLD_DATE
+    )
+    commit_session.add(author)
+    await commit_session.flush()
+
+    for i in range(3):
+        book = Book(
+            title=f"Publisher Book {i}",
+            language="en",
+            slug=f"publisher-book-{i}",
+            formats=[],
+        )
+        commit_session.add(book)
+        await commit_session.flush()
+        commit_session.add(BookAuthor(book_id=book.book_id, author_id=author.author_id))
+
+    await commit_session.commit()
+
+    stats = await data_cleaner.cleanup_orphan_authors(
+        session_factory_for_testing,
+        min_books=2,
+        max_books=1000,
+        batch_size=100,
+        spare_enriched=True,
+        junk_publisher_names=True,
+    )
+
+    result = await commit_session.execute(select(func.count()).select_from(Author))
+    assert result.scalar_one() == 0
+    assert stats["deleted"] == 1

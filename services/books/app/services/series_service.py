@@ -22,7 +22,8 @@ async def get_series_by_slug(
         return cached
 
     stmt = sqlalchemy.select(app.models.series.Series).filter(
-        app.models.series.Series.slug == slug
+        app.models.series.Series.slug == slug,
+        app.models.series.Series.language == language,
     )
 
     result = await session.execute(stmt)
@@ -125,7 +126,8 @@ async def get_series_books(
         return cached["books"], cached["total"]
 
     series_stmt = sqlalchemy.select(app.models.series.Series).filter(
-        app.models.series.Series.slug == series_slug
+        app.models.series.Series.slug == series_slug,
+        app.models.series.Series.language == language,
     )
     series_result = await session.execute(series_stmt)
     series = series_result.scalars().first()
@@ -429,7 +431,7 @@ async def remove_series_author(
     series_result = await session.execute(series_stmt)
     series = series_result.scalars().first()
     if series:
-        await app.cache.delete_cached(f"series_slug:{series.slug}:en")
+        await app.cache.delete_cached(f"series_slug:{series.slug}:{series.language}")
 
     return result.rowcount
 
@@ -456,6 +458,7 @@ async def delete_series(
 
     slug = series.slug
     name = series.name
+    language = series.language
 
     unlink_result = await session.execute(
         sqlalchemy.text(
@@ -472,6 +475,6 @@ async def delete_series(
     await session.delete(series)
     await session.commit()
 
-    await app.cache.delete_cached(f"series_slug:{slug}:en")
+    await app.cache.delete_cached(f"series_slug:{slug}:{language}")
 
     return {"series_id": series_id, "name": name, "books_unlinked": books_unlinked}

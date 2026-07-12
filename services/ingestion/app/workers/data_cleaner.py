@@ -1,5 +1,6 @@
 import asyncio
 import logging
+import re
 import typing
 
 import app.config
@@ -162,11 +163,17 @@ async def _recompute_user_stats(
         )
 
 
+_PLACEHOLDER_TITLES = ["untitled", "unknown", "no title", "n/a", "tbd", "test"]
+
+
 async def cleanup_low_quality_books(
     session_factory: SessionFactory,
     min_quality_score: int,
     engagement_threshold: int,
     min_publication_year: int,
+    max_title_length: int,
+    ol_min_rating_count: int,
+    ol_min_avg_rating: float,
     batch_size: int,
     stop_check: typing.Callable[[], bool] = lambda: False,
 ) -> typing.Dict[str, int]:
@@ -204,10 +211,23 @@ async def cleanup_low_quality_books(
                                 COALESCE(b.ol_already_read_count, 0) +
                                 (SELECT COUNT(*) FROM user_data.bookshelves bs WHERE bs.book_id = b.book_id)
                               ) < :engagement
+                              AND (
+                                COALESCE(b.ol_want_to_read_count, 0) +
+                                COALESCE(b.ol_currently_reading_count, 0)
+                              ) < :engagement
                             )
                             OR NOT EXISTS (SELECT 1 FROM books.book_authors ba WHERE ba.book_id = b.book_id)
                             OR b.title ~ '^[\\s\\W]*$'
                             OR char_length(btrim(b.title)) < 2
+                            OR char_length(b.title) > :max_title_length
+                            OR b.title ~ '^[0-9\\s[:punct:]]+$'
+                            OR b.title ~* '(https?://|www\\.)'
+                            OR lower(btrim(b.title)) = ANY(:placeholder_titles)
+                            OR b.language !~ '^[a-z]{{2,3}}(-[A-Za-z0-9]{{1,8}})?$'
+                            OR (
+                              COALESCE(b.ol_rating_count, 0) >= :ol_min_rating_count
+                              AND b.ol_avg_rating < :ol_min_avg_rating
+                            )
                             OR b.original_publication_year > EXTRACT(YEAR FROM NOW())::int + 1
                             OR b.original_publication_year < :min_year
                             OR (
@@ -225,6 +245,10 @@ async def cleanup_low_quality_books(
                         "min_score": min_quality_score,
                         "engagement": engagement_threshold,
                         "min_year": min_publication_year,
+                        "max_title_length": max_title_length,
+                        "placeholder_titles": _PLACEHOLDER_TITLES,
+                        "ol_min_rating_count": ol_min_rating_count,
+                        "ol_min_avg_rating": ol_min_avg_rating,
                         "batch_size": batch_size,
                     },
                 )
@@ -353,11 +377,16 @@ async def cleanup_duplicate_books(
     return {"deleted": total_deleted}
 
 
+_JUNK_PUBLISHER_NAME_PATTERN = r"\m(publishing|publishers|press|editions|verlag|editorial)\M\s*$"
+
+
 async def cleanup_orphan_authors(
     session_factory: SessionFactory,
     min_books: int,
     max_books: int,
     batch_size: int,
+    spare_enriched: bool,
+    junk_publisher_names: bool,
     stop_check: typing.Callable[[], bool] = lambda: False,
 ) -> typing.Dict[str, int]:
     total_deleted = 0
@@ -379,14 +408,28 @@ async def cleanup_orphan_authors(
                             FROM books.book_authors
                             GROUP BY author_id
                         ) ba ON ba.author_id = a.author_id
-                        WHERE COALESCE(ba.book_count, 0) < :min_books
+                        WHERE (
+                            COALESCE(ba.book_count, 0) < :min_books
+                            AND NOT (
+                              :spare_enriched
+                              AND (a.bio IS NOT NULL OR a.photo_url IS NOT NULL OR a.wikidata_id IS NOT NULL)
+                            )
+                          )
                            OR COALESCE(ba.book_count, 0) > :max_books
                            OR a.name !~ '[A-Za-z]'
                            OR char_length(btrim(a.name)) < 2
+                           OR (:junk_publisher_names AND a.name ~* :junk_publisher_pattern)
                         LIMIT :batch_size
                         """
                     ),
-                    {"min_books": min_books, "max_books": max_books, "batch_size": batch_size},
+                    {
+                        "min_books": min_books,
+                        "max_books": max_books,
+                        "spare_enriched": spare_enriched,
+                        "junk_publisher_names": junk_publisher_names,
+                        "junk_publisher_pattern": _JUNK_PUBLISHER_NAME_PATTERN,
+                        "batch_size": batch_size,
+                    },
                 )
                 author_ids = [row[0] for row in author_id_result.fetchall()]
 
@@ -588,6 +631,27 @@ async def consolidate_series(
             old_slug: str = row[1]
             parsed = app.utils.parse_series_descriptor(old_name)
             if not parsed:
+                stripped_name = old_name.strip(_NAME_JUNK_CHARS)
+                if not stripped_name or not re.search(r"[A-Za-z]", stripped_name):
+                    try:
+                        async with session_factory() as session:
+                            await session.execute(
+                                sqlalchemy.text(
+                                    """
+                                    UPDATE books.books
+                                    SET series_slug = NULL,
+                                        series_name = NULL,
+                                        series_id = NULL
+                                    WHERE series_slug = :old_slug AND series_name = :old_name
+                                    """
+                                ),
+                                {"old_slug": old_slug, "old_name": old_name},
+                            )
+                            await session.commit()
+                    except Exception as e:
+                        logger.error(
+                            f"[cleanup] Junk series clear failed for slug={old_slug}: {e}"
+                        )
                 continue
             canonical_name: str = parsed["name"]
             canonical_slug: str = app.utils.slugify(canonical_name)
@@ -658,44 +722,51 @@ async def consolidate_series(
 
                 qualifying: list[dict] = []
                 disqualifying: list[dict] = []
-                slug_to_name: dict[str, str] = {}
+                pair_to_name: dict[tuple[str, str], str] = {}
 
                 for row in count_rows:
                     s_slug, lang, c, rep_name = row
                     if rep_name:
-                        slug_to_name[s_slug] = rep_name
+                        pair_to_name[(s_slug, lang)] = rep_name
                     if min_books <= c <= max_books:
                         qualifying.append({"slug": s_slug, "lang": lang})
                     else:
                         disqualifying.append({"slug": s_slug, "lang": lang})
 
-                qualifying_slugs = list({q["slug"] for q in qualifying})
-                slug_to_id: dict[str, int] = {}
+                qualifying_pairs = list({(q["slug"], q["lang"]) for q in qualifying})
+                pair_to_id: dict[tuple[str, str], int] = {}
 
-                if qualifying_slugs:
+                if qualifying_pairs:
                     series_data = [
-                        {"name": slug_to_name.get(s, s), "slug": s}
-                        for s in qualifying_slugs
+                        {
+                            "name": pair_to_name.get((s, lang), s),
+                            "slug": s,
+                            "language": lang,
+                        }
+                        for s, lang in qualifying_pairs
                     ]
-                    series_data.sort(key=lambda r: r["slug"])
+                    series_data.sort(key=lambda r: (r["slug"], r["language"]))
                     stmt = sqlalchemy.dialects.postgresql.insert(
                         app.models.series.Series
                     ).values(series_data)
                     stmt = stmt.on_conflict_do_update(
-                        index_elements=["slug"],
+                        index_elements=["slug", "language"],
                         set_={"name": stmt.excluded.name},
                     )
                     stmt = stmt.returning(
                         app.models.series.Series.slug,
+                        app.models.series.Series.language,
                         app.models.series.Series.series_id,
+                        (sqlalchemy.column("xmax") == 0).label("inserted"),
                     )
                     result = await session.execute(stmt)
                     for r in result:
-                        slug_to_id[r.slug] = r.series_id
-                    stats["rows_created"] += len(qualifying_slugs)
+                        pair_to_id[(r.slug, r.language)] = r.series_id
+                        if r.inserted:
+                            stats["rows_created"] += 1
 
                 for q in qualifying:
-                    s_id = slug_to_id.get(q["slug"])
+                    s_id = pair_to_id.get((q["slug"], q["lang"]))
                     if s_id is None:
                         continue
                     link_result = await session.execute(
@@ -1061,6 +1132,11 @@ async def run_cleanup_cycle(
     max_author_books = app.config.settings.cleanup_author_max_books
     min_series_books = app.config.settings.cleanup_series_min_books
     max_series_books = app.config.settings.cleanup_series_max_books
+    max_title_length = app.config.settings.cleanup_book_max_title_length
+    ol_min_rating_count = app.config.settings.cleanup_book_ol_min_rating_count
+    ol_min_avg_rating = app.config.settings.cleanup_book_ol_min_avg_rating
+    author_spare_enriched = app.config.settings.cleanup_author_spare_enriched
+    author_junk_publisher_names = app.config.settings.cleanup_author_junk_publisher_names
 
     stats: typing.Dict[str, typing.Any] = {
         "names_healed": {"books_healed": 0, "authors_healed": 0},
@@ -1085,6 +1161,9 @@ async def run_cleanup_cycle(
         min_quality,
         engagement_threshold,
         min_publication_year,
+        max_title_length,
+        ol_min_rating_count,
+        ol_min_avg_rating,
         book_batch,
         stop_check,
     )
@@ -1098,7 +1177,13 @@ async def run_cleanup_cycle(
         return stats
 
     stats["authors"] = await cleanup_orphan_authors(
-        session_factory, min_author_books, max_author_books, author_batch, stop_check
+        session_factory,
+        min_author_books,
+        max_author_books,
+        author_batch,
+        author_spare_enriched,
+        author_junk_publisher_names,
+        stop_check,
     )
     if stop_check():
         return stats

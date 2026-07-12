@@ -42,7 +42,7 @@ class Settings(pydantic_settings.BaseSettings):
 
     description_enrich_enabled: bool = pydantic.Field(default=True)
     description_enrich_cron: str = pydantic.Field(default="30 */2 * * *")
-    description_enrich_batch_size: int = pydantic.Field(default=5)
+    description_enrich_batch_size: int = pydantic.Field(default=50)
     description_min_length: int = pydantic.Field(default=100)
 
     ol_dump_base_url: str = pydantic.Field(default="https://openlibrary.org/data")
@@ -71,7 +71,16 @@ class Settings(pydantic_settings.BaseSettings):
     cleanup_author_min_books: int = pydantic.Field(default=5)
     cleanup_author_max_books: int = pydantic.Field(default=500)
     cleanup_series_min_books: int = pydantic.Field(default=2)
-    cleanup_series_max_books: int = pydantic.Field(default=100)
+    cleanup_series_max_books: int = pydantic.Field(default=50)
+
+    cleanup_book_max_title_length: int = pydantic.Field(default=300)
+    cleanup_book_ol_min_rating_count: int = pydantic.Field(default=20)
+    cleanup_book_ol_min_avg_rating: float = pydantic.Field(default=1.5)
+    cleanup_author_spare_enriched: bool = pydantic.Field(default=True)
+    cleanup_author_junk_publisher_names: bool = pydantic.Field(default=True)
+
+    description_enrich_cooldown_days: int = pydantic.Field(default=30)
+    description_enrich_request_delay: float = pydantic.Field(default=1.0)
 
     genre_bubble_enabled: bool = pydantic.Field(default=True)
     genre_bubble_cron: str = pydantic.Field(default="0 6 * * 0")
