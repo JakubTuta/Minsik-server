@@ -18,8 +18,18 @@ logger = logging.getLogger(__name__)
 _DUMP_RUNNING_KEY = "dump_import_running"
 _SOLE_BOOK_SUB_BATCH = 100
 _NAME_JUNK_CHARS = " \t\r\n,;:|/\\=*^<>-–—·•"
+_DUMP_WAIT_INTERVAL = 30
 
 SessionFactory = sqlalchemy.ext.asyncio.async_sessionmaker
+
+
+async def _wait_for_dump_import(stop_check: typing.Callable[[], bool]) -> None:
+    if not stop_check():
+        return
+    logger.info("[cleanup] Dump import in progress: pausing cleanup until it completes")
+    while stop_check():
+        await asyncio.sleep(_DUMP_WAIT_INTERVAL)
+    logger.info("[cleanup] Dump import finished: resuming cleanup")
 
 
 def _create_redis_client() -> redis.Redis:
@@ -191,9 +201,7 @@ async def cleanup_low_quality_books(
     total_deleted = 0
     consecutive_failures = 0
     while True:
-        if stop_check():
-            logger.info("[cleanup] Stopping book cleanup: dump import started")
-            break
+        await _wait_for_dump_import(stop_check)
         deleted = 0
         try:
             async with session_factory() as session:
@@ -292,9 +300,7 @@ async def cleanup_duplicate_books(
     total_deleted = 0
     consecutive_failures = 0
     while True:
-        if stop_check():
-            logger.info("[cleanup] Stopping duplicate book cleanup: dump import started")
-            break
+        await _wait_for_dump_import(stop_check)
         deleted = 0
         try:
             async with session_factory() as session:
@@ -392,9 +398,7 @@ async def cleanup_orphan_authors(
     total_deleted = 0
     consecutive_failures = 0
     while True:
-        if stop_check():
-            logger.info("[cleanup] Stopping author cleanup: dump import started")
-            break
+        await _wait_for_dump_import(stop_check)
 
         deleted = 0
         try:
@@ -518,9 +522,7 @@ async def _heal_table_names(
     total_healed = 0
     last_id = 0
     while True:
-        if stop_check():
-            logger.info(f"[cleanup] Stopping {table} name healing: dump import started")
-            break
+        await _wait_for_dump_import(stop_check)
         try:
             async with session_factory() as session:
                 result = await session.execute(
@@ -574,8 +576,6 @@ async def heal_entity_names(
     stats["books_healed"] = await _heal_table_names(
         session_factory, "books", "book_id", "title", batch_size, stop_check
     )
-    if stop_check():
-        return stats
 
     stats["authors_healed"] = await _heal_table_names(
         session_factory, "authors", "author_id", "name", batch_size, stop_check
@@ -601,9 +601,7 @@ async def consolidate_series(
     # Works in batches over distinct (series_name, series_slug) pairs.
     offset = 0
     while True:
-        if stop_check():
-            logger.info("[cleanup] Stopping series renormalize: dump import started")
-            return stats
+        await _wait_for_dump_import(stop_check)
         try:
             async with session_factory() as session:
                 result = await session.execute(
@@ -695,9 +693,7 @@ async def consolidate_series(
     b_offset = 0
     consecutive_failures = 0
     while True:
-        if stop_check():
-            logger.info("[cleanup] Stopping series consolidation: dump import started")
-            break
+        await _wait_for_dump_import(stop_check)
 
         try:
             async with session_factory() as session:
@@ -866,9 +862,7 @@ async def normalize_and_merge_genres(
     offset = 0
 
     while True:
-        if stop_check():
-            logger.info("[cleanup] Stopping genre normalization: dump import started")
-            break
+        await _wait_for_dump_import(stop_check)
 
         try:
             async with session_factory() as session:
@@ -969,9 +963,7 @@ async def cleanup_orphan_genres(
     total_deleted = 0
     consecutive_failures = 0
     while True:
-        if stop_check():
-            logger.info("[cleanup] Stopping genre cleanup: dump import started")
-            break
+        await _wait_for_dump_import(stop_check)
         deleted = 0
         try:
             async with session_factory() as session:
@@ -1019,11 +1011,7 @@ async def cleanup_underrepresented_genres(
     total_deleted = 0
     consecutive_failures = 0
     while True:
-        if stop_check():
-            logger.info(
-                "[cleanup] Stopping underrepresented genre cleanup: dump import started"
-            )
-            break
+        await _wait_for_dump_import(stop_check)
         deleted = 0
         try:
             async with session_factory() as session:
@@ -1073,11 +1061,7 @@ async def cleanup_invalid_genre_names(
     total_deleted = 0
     consecutive_failures = 0
     while True:
-        if stop_check():
-            logger.info(
-                "[cleanup] Stopping invalid genre name cleanup: dump import started"
-            )
-            break
+        await _wait_for_dump_import(stop_check)
         deleted = 0
         try:
             async with session_factory() as session:
@@ -1150,11 +1134,13 @@ async def run_cleanup_cycle(
         "invalid_name_genres_deleted": 0,
     }
 
+    stats["series"] = await consolidate_series(
+        session_factory, min_series_books, max_series_books, series_batch, stop_check
+    )
+
     stats["names_healed"] = await heal_entity_names(
         session_factory, book_batch, stop_check
     )
-    if stop_check():
-        return stats
 
     stats["books"] = await cleanup_low_quality_books(
         session_factory,
@@ -1167,14 +1153,10 @@ async def run_cleanup_cycle(
         book_batch,
         stop_check,
     )
-    if stop_check():
-        return stats
 
     stats["duplicates"] = await cleanup_duplicate_books(
         session_factory, book_batch, stop_check
     )
-    if stop_check():
-        return stats
 
     stats["authors"] = await cleanup_orphan_authors(
         session_factory,
@@ -1185,32 +1167,18 @@ async def run_cleanup_cycle(
         author_junk_publisher_names,
         stop_check,
     )
-    if stop_check():
-        return stats
-
-    stats["series"] = await consolidate_series(
-        session_factory, min_series_books, max_series_books, series_batch, stop_check
-    )
-    if stop_check():
-        return stats
 
     stats["genres_normalized"] = await normalize_and_merge_genres(
         session_factory, genre_batch, stop_check
     )
-    if stop_check():
-        return stats
 
     stats["genres_deleted"] = await cleanup_orphan_genres(
         session_factory, genre_batch, stop_check
     )
-    if stop_check():
-        return stats
 
     stats["underrepresented_genres_deleted"] = await cleanup_underrepresented_genres(
         session_factory, genre_min_book_count, genre_batch, stop_check
     )
-    if stop_check():
-        return stats
 
     stats["invalid_name_genres_deleted"] = await cleanup_invalid_genre_names(
         session_factory, genre_batch, stop_check
@@ -1234,8 +1202,8 @@ async def run_cleanup_job(force: bool = False) -> None:
         logger.warning(f"[cleanup] Failed to connect to Redis: {e}")
 
     try:
-        if redis_client is not None and redis_client.get(_DUMP_RUNNING_KEY):
-            logger.info("Skipping cleanup cycle: dump import in progress")
+        if redis_client is not None and redis_client.get(_CLEANUP_RUNNING_KEY):
+            logger.info("Skipping cleanup cycle: another cleanup cycle is already running")
             return
 
         if redis_client is not None:
