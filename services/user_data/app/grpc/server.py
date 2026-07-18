@@ -368,6 +368,7 @@ def _year_in_review_to_proto(
                 books_finished=m.get("books_finished", 0),
                 pages_read=m.get("pages_read", 0),
                 ratings_given=m.get("ratings_given", 0),
+                books=[_make_year_book(b) for b in m.get("books", [])],
             )
             for m in data.get("monthly", [])
         ],

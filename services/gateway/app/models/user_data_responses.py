@@ -223,13 +223,6 @@ class ProfileOverviewResponse(pydantic.BaseModel):
     error: typing.Optional[app.models.responses.ErrorDetail] = None
 
 
-class MonthlyBucketSchema(pydantic.BaseModel):
-    month: int
-    books_finished: int = 0
-    pages_read: int = 0
-    ratings_given: int = 0
-
-
 class YearBookSchema(pydantic.BaseModel):
     book_slug: str = ""
     book_title: str = ""
@@ -239,6 +232,14 @@ class YearBookSchema(pydantic.BaseModel):
     number_of_pages: int = 0
     finished_at: str = ""
     my_rating: typing.Optional[float] = None
+
+
+class MonthlyBucketSchema(pydantic.BaseModel):
+    month: int
+    books_finished: int = 0
+    pages_read: int = 0
+    ratings_given: int = 0
+    books: typing.List[YearBookSchema] = []
 
 
 class YearInReviewSchema(pydantic.BaseModel):

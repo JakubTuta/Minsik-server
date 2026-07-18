@@ -615,6 +615,7 @@ async def get_year_in_review(
                             "books_finished": m.books_finished,
                             "pages_read": m.pages_read,
                             "ratings_given": m.ratings_given,
+                            "books": [_year_book(b, True) for b in m.books],
                         }
                         for m in r.monthly
                     ],

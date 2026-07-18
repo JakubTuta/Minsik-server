@@ -647,16 +647,18 @@ class GetYearInReviewRequest(_message.Message):
     def __init__(self, user_id: _Optional[int] = ..., year: _Optional[int] = ...) -> None: ...
 
 class MonthlyBucket(_message.Message):
-    __slots__ = ("month", "books_finished", "pages_read", "ratings_given")
+    __slots__ = ("month", "books_finished", "pages_read", "ratings_given", "books")
     MONTH_FIELD_NUMBER: _ClassVar[int]
     BOOKS_FINISHED_FIELD_NUMBER: _ClassVar[int]
     PAGES_READ_FIELD_NUMBER: _ClassVar[int]
     RATINGS_GIVEN_FIELD_NUMBER: _ClassVar[int]
+    BOOKS_FIELD_NUMBER: _ClassVar[int]
     month: int
     books_finished: int
     pages_read: int
     ratings_given: int
-    def __init__(self, month: _Optional[int] = ..., books_finished: _Optional[int] = ..., pages_read: _Optional[int] = ..., ratings_given: _Optional[int] = ...) -> None: ...
+    books: _containers.RepeatedCompositeFieldContainer[YearBook]
+    def __init__(self, month: _Optional[int] = ..., books_finished: _Optional[int] = ..., pages_read: _Optional[int] = ..., ratings_given: _Optional[int] = ..., books: _Optional[_Iterable[_Union[YearBook, _Mapping]]] = ...) -> None: ...
 
 class YearBook(_message.Message):
     __slots__ = ("book_slug", "book_title", "book_cover_url", "author_names", "author_slugs", "number_of_pages", "finished_at", "my_rating", "has_my_rating")

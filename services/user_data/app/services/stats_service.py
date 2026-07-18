@@ -227,6 +227,10 @@ async def get_year_in_review(
         for month in range(1, months_elapsed + 1)
     }
 
+    monthly_books: typing.Dict[int, typing.List[typing.Dict[str, typing.Any]]] = {
+        month: [] for month in range(1, months_elapsed + 1)
+    }
+
     total_pages_read = 0
     pages_book_count = 0
     finished_cover_urls: typing.List[str] = []
@@ -241,6 +245,7 @@ async def get_year_in_review(
             monthly[month]["books_finished"] += 1
             pages = int(row.number_of_pages) if row.number_of_pages else 0
             monthly[month]["pages_read"] += pages
+            monthly_books[month].append(_year_book_row(row))
 
         pages = int(row.number_of_pages) if row.number_of_pages else 0
         if pages > 0:
@@ -370,7 +375,8 @@ async def get_year_in_review(
         "year": year,
         "months_elapsed": months_elapsed,
         "monthly": [
-            {"month": month, **bucket} for month, bucket in sorted(monthly.items())
+            {"month": month, **bucket, "books": monthly_books.get(month, [])}
+            for month, bucket in sorted(monthly.items())
         ],
         "total_books_finished": len(finished_rows),
         "total_pages_read": total_pages_read,
