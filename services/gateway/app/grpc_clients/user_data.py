@@ -261,6 +261,12 @@ class UserDataClient(base.GrpcClientBase):
         request = app.proto.user_data_pb2.GetProfileOverviewRequest(username=username)
         return await self._call("GetProfileOverview", request)
 
+    async def get_year_in_review(
+        self, user_id: int, year: int = 0
+    ) -> app.proto.user_data_pb2.YearInReviewResponse:
+        request = app.proto.user_data_pb2.GetYearInReviewRequest(user_id=user_id, year=year)
+        return await self._call("GetYearInReview", request)
+
     async def delete_user_data(self, user_id: int) -> app.proto.user_data_pb2.EmptyResponse:
         request = app.proto.user_data_pb2.DeleteUserDataRequest(user_id=user_id)
         return await self._call("DeleteUserData", request)

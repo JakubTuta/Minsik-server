@@ -23,12 +23,43 @@ async def upsert_bookshelf(
     if status not in _VALID_STATUSES:
         raise ValueError(f"invalid_status")
 
+    insert_stmt = sqlalchemy.dialects.postgresql.insert(app.models.bookshelf.Bookshelf)
+
     stmt = (
-        sqlalchemy.dialects.postgresql.insert(app.models.bookshelf.Bookshelf)
-        .values(user_id=user_id, book_id=book_id, status=status)
+        insert_stmt.values(
+            user_id=user_id,
+            book_id=book_id,
+            status=status,
+            finished_at=sqlalchemy.func.now() if status == "read" else None,
+            started_at=sqlalchemy.func.now() if status == "reading" else None,
+        )
         .on_conflict_do_update(
             constraint="uq_bookshelves_user_book",
-            set_={"status": status, "updated_at": sqlalchemy.func.now()},
+            set_={
+                "status": status,
+                "updated_at": sqlalchemy.func.now(),
+                "finished_at": sqlalchemy.case(
+                    (
+                        sqlalchemy.and_(
+                            insert_stmt.excluded.status == "read",
+                            app.models.bookshelf.Bookshelf.status != "read",
+                        ),
+                        sqlalchemy.func.now(),
+                    ),
+                    (insert_stmt.excluded.status == "read", app.models.bookshelf.Bookshelf.finished_at),
+                    else_=None,
+                ),
+                "started_at": sqlalchemy.case(
+                    (
+                        sqlalchemy.and_(
+                            insert_stmt.excluded.status == "reading",
+                            app.models.bookshelf.Bookshelf.status != "reading",
+                        ),
+                        sqlalchemy.func.now(),
+                    ),
+                    else_=app.models.bookshelf.Bookshelf.started_at,
+                ),
+            },
         )
         .returning(app.models.bookshelf.Bookshelf)
     )

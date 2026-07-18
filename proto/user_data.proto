@@ -24,6 +24,7 @@ service UserDataService {
   rpc GetUserBookInfo(GetUserBookInfoRequest) returns (UserBookInfoResponse);
   rpc GetPublicProfileStats(GetPublicProfileStatsRequest) returns (ProfileStatsResponse);
   rpc GetProfileOverview(GetProfileOverviewRequest) returns (ProfileOverviewResponse);
+  rpc GetYearInReview(GetYearInReviewRequest) returns (YearInReviewResponse);
   rpc DeleteUserData(DeleteUserDataRequest) returns (EmptyResponse);
 }
 
@@ -294,6 +295,58 @@ message ProfileOverviewResponse {
   repeated OverviewBook   favourites_this_year  = 5;
   bool                    reading_now_present   = 6;
 }
+
+// Year in review
+message GetYearInReviewRequest { int64 user_id = 1; int32 year = 2; }
+message MonthlyBucket {
+  int32 month          = 1;
+  int32 books_finished = 2;
+  int32 pages_read     = 3;
+  int32 ratings_given  = 4;
+}
+message YearBook {
+  string book_slug          = 1;
+  string book_title         = 2;
+  string book_cover_url     = 3;
+  repeated string author_names = 4;
+  repeated string author_slugs = 5;
+  int32  number_of_pages    = 6;
+  string finished_at        = 7;
+  float  my_rating          = 8;
+  bool   has_my_rating      = 9;
+}
+message YearInReview {
+  int32 year                          = 1;
+  int32 months_elapsed                = 2;
+  repeated MonthlyBucket monthly      = 3;
+  int32 total_books_finished          = 4;
+  int32 total_pages_read              = 5;
+  int32 total_hours_read              = 6;
+  int32 ratings_given                 = 7;
+  int32 reviews_written               = 8;
+  int32 comments_written              = 9;
+  int32 favourites_added              = 10;
+  double average_rating_given         = 11;
+  string rating_distribution_json     = 12;
+  repeated TopGenre top_genres        = 13;
+  repeated FavouriteAuthor top_authors = 14;
+  YearBook longest_book               = 15;
+  bool has_longest_book               = 16;
+  YearBook shortest_book              = 17;
+  bool has_shortest_book              = 18;
+  YearBook first_finished             = 19;
+  bool has_first_finished             = 20;
+  YearBook highest_rated              = 21;
+  bool has_highest_rated              = 22;
+  double average_pages_per_book       = 23;
+  int32 busiest_month                 = 24;
+  int32 busiest_month_count           = 25;
+  double average_days_to_finish       = 26;
+  int32 currently_reading_count       = 27;
+  int32 added_to_shelf_count          = 28;
+  repeated string finished_cover_urls = 29;
+}
+message YearInReviewResponse { YearInReview review = 1; }
 
 // Account deletion
 message DeleteUserDataRequest { int64 user_id = 1; }

@@ -638,6 +638,116 @@ class ProfileOverviewResponse(_message.Message):
     reading_now_present: bool
     def __init__(self, user: _Optional[_Union[PublicUser, _Mapping]] = ..., reading_now: _Optional[_Union[OverviewBook, _Mapping]] = ..., top_genres: _Optional[_Iterable[_Union[TopGenre, _Mapping]]] = ..., favourite_authors: _Optional[_Iterable[_Union[FavouriteAuthor, _Mapping]]] = ..., favourites_this_year: _Optional[_Iterable[_Union[OverviewBook, _Mapping]]] = ..., reading_now_present: bool = ...) -> None: ...
 
+class GetYearInReviewRequest(_message.Message):
+    __slots__ = ("user_id", "year")
+    USER_ID_FIELD_NUMBER: _ClassVar[int]
+    YEAR_FIELD_NUMBER: _ClassVar[int]
+    user_id: int
+    year: int
+    def __init__(self, user_id: _Optional[int] = ..., year: _Optional[int] = ...) -> None: ...
+
+class MonthlyBucket(_message.Message):
+    __slots__ = ("month", "books_finished", "pages_read", "ratings_given")
+    MONTH_FIELD_NUMBER: _ClassVar[int]
+    BOOKS_FINISHED_FIELD_NUMBER: _ClassVar[int]
+    PAGES_READ_FIELD_NUMBER: _ClassVar[int]
+    RATINGS_GIVEN_FIELD_NUMBER: _ClassVar[int]
+    month: int
+    books_finished: int
+    pages_read: int
+    ratings_given: int
+    def __init__(self, month: _Optional[int] = ..., books_finished: _Optional[int] = ..., pages_read: _Optional[int] = ..., ratings_given: _Optional[int] = ...) -> None: ...
+
+class YearBook(_message.Message):
+    __slots__ = ("book_slug", "book_title", "book_cover_url", "author_names", "author_slugs", "number_of_pages", "finished_at", "my_rating", "has_my_rating")
+    BOOK_SLUG_FIELD_NUMBER: _ClassVar[int]
+    BOOK_TITLE_FIELD_NUMBER: _ClassVar[int]
+    BOOK_COVER_URL_FIELD_NUMBER: _ClassVar[int]
+    AUTHOR_NAMES_FIELD_NUMBER: _ClassVar[int]
+    AUTHOR_SLUGS_FIELD_NUMBER: _ClassVar[int]
+    NUMBER_OF_PAGES_FIELD_NUMBER: _ClassVar[int]
+    FINISHED_AT_FIELD_NUMBER: _ClassVar[int]
+    MY_RATING_FIELD_NUMBER: _ClassVar[int]
+    HAS_MY_RATING_FIELD_NUMBER: _ClassVar[int]
+    book_slug: str
+    book_title: str
+    book_cover_url: str
+    author_names: _containers.RepeatedScalarFieldContainer[str]
+    author_slugs: _containers.RepeatedScalarFieldContainer[str]
+    number_of_pages: int
+    finished_at: str
+    my_rating: float
+    has_my_rating: bool
+    def __init__(self, book_slug: _Optional[str] = ..., book_title: _Optional[str] = ..., book_cover_url: _Optional[str] = ..., author_names: _Optional[_Iterable[str]] = ..., author_slugs: _Optional[_Iterable[str]] = ..., number_of_pages: _Optional[int] = ..., finished_at: _Optional[str] = ..., my_rating: _Optional[float] = ..., has_my_rating: bool = ...) -> None: ...
+
+class YearInReview(_message.Message):
+    __slots__ = ("year", "months_elapsed", "monthly", "total_books_finished", "total_pages_read", "total_hours_read", "ratings_given", "reviews_written", "comments_written", "favourites_added", "average_rating_given", "rating_distribution_json", "top_genres", "top_authors", "longest_book", "has_longest_book", "shortest_book", "has_shortest_book", "first_finished", "has_first_finished", "highest_rated", "has_highest_rated", "average_pages_per_book", "busiest_month", "busiest_month_count", "average_days_to_finish", "currently_reading_count", "added_to_shelf_count", "finished_cover_urls")
+    YEAR_FIELD_NUMBER: _ClassVar[int]
+    MONTHS_ELAPSED_FIELD_NUMBER: _ClassVar[int]
+    MONTHLY_FIELD_NUMBER: _ClassVar[int]
+    TOTAL_BOOKS_FINISHED_FIELD_NUMBER: _ClassVar[int]
+    TOTAL_PAGES_READ_FIELD_NUMBER: _ClassVar[int]
+    TOTAL_HOURS_READ_FIELD_NUMBER: _ClassVar[int]
+    RATINGS_GIVEN_FIELD_NUMBER: _ClassVar[int]
+    REVIEWS_WRITTEN_FIELD_NUMBER: _ClassVar[int]
+    COMMENTS_WRITTEN_FIELD_NUMBER: _ClassVar[int]
+    FAVOURITES_ADDED_FIELD_NUMBER: _ClassVar[int]
+    AVERAGE_RATING_GIVEN_FIELD_NUMBER: _ClassVar[int]
+    RATING_DISTRIBUTION_JSON_FIELD_NUMBER: _ClassVar[int]
+    TOP_GENRES_FIELD_NUMBER: _ClassVar[int]
+    TOP_AUTHORS_FIELD_NUMBER: _ClassVar[int]
+    LONGEST_BOOK_FIELD_NUMBER: _ClassVar[int]
+    HAS_LONGEST_BOOK_FIELD_NUMBER: _ClassVar[int]
+    SHORTEST_BOOK_FIELD_NUMBER: _ClassVar[int]
+    HAS_SHORTEST_BOOK_FIELD_NUMBER: _ClassVar[int]
+    FIRST_FINISHED_FIELD_NUMBER: _ClassVar[int]
+    HAS_FIRST_FINISHED_FIELD_NUMBER: _ClassVar[int]
+    HIGHEST_RATED_FIELD_NUMBER: _ClassVar[int]
+    HAS_HIGHEST_RATED_FIELD_NUMBER: _ClassVar[int]
+    AVERAGE_PAGES_PER_BOOK_FIELD_NUMBER: _ClassVar[int]
+    BUSIEST_MONTH_FIELD_NUMBER: _ClassVar[int]
+    BUSIEST_MONTH_COUNT_FIELD_NUMBER: _ClassVar[int]
+    AVERAGE_DAYS_TO_FINISH_FIELD_NUMBER: _ClassVar[int]
+    CURRENTLY_READING_COUNT_FIELD_NUMBER: _ClassVar[int]
+    ADDED_TO_SHELF_COUNT_FIELD_NUMBER: _ClassVar[int]
+    FINISHED_COVER_URLS_FIELD_NUMBER: _ClassVar[int]
+    year: int
+    months_elapsed: int
+    monthly: _containers.RepeatedCompositeFieldContainer[MonthlyBucket]
+    total_books_finished: int
+    total_pages_read: int
+    total_hours_read: int
+    ratings_given: int
+    reviews_written: int
+    comments_written: int
+    favourites_added: int
+    average_rating_given: float
+    rating_distribution_json: str
+    top_genres: _containers.RepeatedCompositeFieldContainer[TopGenre]
+    top_authors: _containers.RepeatedCompositeFieldContainer[FavouriteAuthor]
+    longest_book: YearBook
+    has_longest_book: bool
+    shortest_book: YearBook
+    has_shortest_book: bool
+    first_finished: YearBook
+    has_first_finished: bool
+    highest_rated: YearBook
+    has_highest_rated: bool
+    average_pages_per_book: float
+    busiest_month: int
+    busiest_month_count: int
+    average_days_to_finish: float
+    currently_reading_count: int
+    added_to_shelf_count: int
+    finished_cover_urls: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, year: _Optional[int] = ..., months_elapsed: _Optional[int] = ..., monthly: _Optional[_Iterable[_Union[MonthlyBucket, _Mapping]]] = ..., total_books_finished: _Optional[int] = ..., total_pages_read: _Optional[int] = ..., total_hours_read: _Optional[int] = ..., ratings_given: _Optional[int] = ..., reviews_written: _Optional[int] = ..., comments_written: _Optional[int] = ..., favourites_added: _Optional[int] = ..., average_rating_given: _Optional[float] = ..., rating_distribution_json: _Optional[str] = ..., top_genres: _Optional[_Iterable[_Union[TopGenre, _Mapping]]] = ..., top_authors: _Optional[_Iterable[_Union[FavouriteAuthor, _Mapping]]] = ..., longest_book: _Optional[_Union[YearBook, _Mapping]] = ..., has_longest_book: bool = ..., shortest_book: _Optional[_Union[YearBook, _Mapping]] = ..., has_shortest_book: bool = ..., first_finished: _Optional[_Union[YearBook, _Mapping]] = ..., has_first_finished: bool = ..., highest_rated: _Optional[_Union[YearBook, _Mapping]] = ..., has_highest_rated: bool = ..., average_pages_per_book: _Optional[float] = ..., busiest_month: _Optional[int] = ..., busiest_month_count: _Optional[int] = ..., average_days_to_finish: _Optional[float] = ..., currently_reading_count: _Optional[int] = ..., added_to_shelf_count: _Optional[int] = ..., finished_cover_urls: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class YearInReviewResponse(_message.Message):
+    __slots__ = ("review",)
+    REVIEW_FIELD_NUMBER: _ClassVar[int]
+    review: YearInReview
+    def __init__(self, review: _Optional[_Union[YearInReview, _Mapping]] = ...) -> None: ...
+
 class DeleteUserDataRequest(_message.Message):
     __slots__ = ("user_id",)
     USER_ID_FIELD_NUMBER: _ClassVar[int]

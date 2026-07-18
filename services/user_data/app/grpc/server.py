@@ -336,6 +336,80 @@ def _profile_stats_to_proto(data: typing.Dict[str, typing.Any]) -> app.proto.use
     )
 
 
+def _year_in_review_to_proto(
+    data: typing.Dict[str, typing.Any],
+) -> app.proto.user_data_pb2.YearInReview:
+    def _make_year_book(d: typing.Optional[typing.Dict]) -> app.proto.user_data_pb2.YearBook:
+        if not d:
+            return app.proto.user_data_pb2.YearBook()
+        return app.proto.user_data_pb2.YearBook(
+            book_slug=d.get("book_slug", ""),
+            book_title=d.get("book_title", ""),
+            book_cover_url=d.get("book_cover_url", ""),
+            author_names=d.get("author_names", []),
+            author_slugs=d.get("author_slugs", []),
+            number_of_pages=d.get("number_of_pages", 0),
+            finished_at=d.get("finished_at", ""),
+            my_rating=d.get("my_rating") or 0.0,
+            has_my_rating=d.get("my_rating") is not None,
+        )
+
+    longest_book = data.get("longest_book")
+    shortest_book = data.get("shortest_book")
+    first_finished = data.get("first_finished")
+    highest_rated = data.get("highest_rated")
+
+    return app.proto.user_data_pb2.YearInReview(
+        year=data.get("year", 0),
+        months_elapsed=data.get("months_elapsed", 0),
+        monthly=[
+            app.proto.user_data_pb2.MonthlyBucket(
+                month=m.get("month", 0),
+                books_finished=m.get("books_finished", 0),
+                pages_read=m.get("pages_read", 0),
+                ratings_given=m.get("ratings_given", 0),
+            )
+            for m in data.get("monthly", [])
+        ],
+        total_books_finished=data.get("total_books_finished", 0),
+        total_pages_read=data.get("total_pages_read", 0),
+        total_hours_read=data.get("total_hours_read", 0),
+        ratings_given=data.get("ratings_given", 0),
+        reviews_written=data.get("reviews_written", 0),
+        comments_written=data.get("comments_written", 0),
+        favourites_added=data.get("favourites_added", 0),
+        average_rating_given=data.get("average_rating_given", 0.0),
+        rating_distribution_json=data.get("rating_distribution_json", "{}"),
+        top_genres=[
+            app.proto.user_data_pb2.TopGenre(
+                name=g["name"], slug=g["slug"], count=g["count"], percent=g["percent"]
+            )
+            for g in data.get("top_genres", [])
+        ],
+        top_authors=[
+            app.proto.user_data_pb2.FavouriteAuthor(
+                name=a["name"], slug=a["slug"], count=a["count"], photo_url=a.get("photo_url", "")
+            )
+            for a in data.get("top_authors", [])
+        ],
+        longest_book=_make_year_book(longest_book),
+        has_longest_book=longest_book is not None,
+        shortest_book=_make_year_book(shortest_book),
+        has_shortest_book=shortest_book is not None,
+        first_finished=_make_year_book(first_finished),
+        has_first_finished=first_finished is not None,
+        highest_rated=_make_year_book(highest_rated),
+        has_highest_rated=highest_rated is not None,
+        average_pages_per_book=data.get("average_pages_per_book", 0.0),
+        busiest_month=data.get("busiest_month", 0),
+        busiest_month_count=data.get("busiest_month_count", 0),
+        average_days_to_finish=data.get("average_days_to_finish", 0.0),
+        currently_reading_count=data.get("currently_reading_count", 0),
+        added_to_shelf_count=data.get("added_to_shelf_count", 0),
+        finished_cover_urls=data.get("finished_cover_urls", []),
+    )
+
+
 def _bookshelf_to_proto(
     bookshelf,
     book_slug: str = "",
@@ -584,6 +658,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 )
                 await app.cache.delete_profile_stats(request.user_id)
                 await app.cache.delete_profile_overview(request.user_id)
+                await app.cache.delete_year_in_review(request.user_id)
                 await app.cache.delete_bookshelf_list_cache(request.user_id)
                 return app.proto.user_data_pb2.BookshelfResponse(
                     bookshelf=_bookshelf_to_proto(
@@ -618,6 +693,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 )
                 await app.cache.delete_profile_stats(request.user_id)
                 await app.cache.delete_profile_overview(request.user_id)
+                await app.cache.delete_year_in_review(request.user_id)
                 await app.cache.delete_bookshelf_list_cache(request.user_id)
                 return app.proto.user_data_pb2.EmptyResponse()
         except ValueError as e:
@@ -855,6 +931,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 await app.cache.delete_book_cache(request.book_slug)
                 await app.cache.delete_profile_stats(request.user_id)
                 await app.cache.delete_profile_overview(request.user_id)
+                await app.cache.delete_year_in_review(request.user_id)
                 return app.proto.user_data_pb2.RatingResponse(
                     rating=_rating_to_proto(
                         rating,
@@ -889,6 +966,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 await app.cache.delete_book_cache(request.book_slug)
                 await app.cache.delete_profile_stats(request.user_id)
                 await app.cache.delete_profile_overview(request.user_id)
+                await app.cache.delete_year_in_review(request.user_id)
                 return app.proto.user_data_pb2.EmptyResponse()
         except ValueError as e:
             await _handle_error(e, context)
@@ -957,6 +1035,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 )
                 await app.cache.delete_profile_stats(request.user_id)
                 await app.cache.delete_profile_overview(request.user_id)
+                await app.cache.delete_year_in_review(request.user_id)
                 await app.cache.delete_bookshelf_list_cache(request.user_id)
                 return app.proto.user_data_pb2.FavouriteResponse(
                     is_favorite=bookshelf.is_favorite,
@@ -1038,6 +1117,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 await _book_comments_cache.invalidate_by_book(book_meta["book_id"])
                 await app.cache.delete_profile_stats(request.user_id)
                 await app.cache.delete_profile_overview(request.user_id)
+                await app.cache.delete_year_in_review(request.user_id)
                 await app.cache.delete_comment_list_cache(request.user_id)
                 username = await _resolve_username(session, request.user_id)
                 return app.proto.user_data_pb2.CommentResponse(
@@ -1080,6 +1160,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 await _book_comments_cache.invalidate_by_book(comment.book_id)
                 await app.cache.delete_profile_stats(request.user_id)
                 await app.cache.delete_profile_overview(request.user_id)
+                await app.cache.delete_year_in_review(request.user_id)
                 await app.cache.delete_comment_list_cache(request.user_id)
                 username = await _resolve_username(session, request.user_id)
                 return app.proto.user_data_pb2.CommentResponse(
@@ -1124,6 +1205,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                     await _book_comments_cache.invalidate_by_book(book_id_row.book_id)
                 await app.cache.delete_profile_stats(request.user_id)
                 await app.cache.delete_profile_overview(request.user_id)
+                await app.cache.delete_year_in_review(request.user_id)
                 await app.cache.delete_comment_list_cache(request.user_id)
                 return app.proto.user_data_pb2.EmptyResponse()
         except ValueError as e:
@@ -1499,6 +1581,39 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
             logger.error(f"Error in GetProfileOverview: {e}")
             await context.abort(grpc.StatusCode.INTERNAL, f"Internal error: {e}")
 
+    async def GetYearInReview(
+        self,
+        request: app.proto.user_data_pb2.GetYearInReviewRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> app.proto.user_data_pb2.YearInReviewResponse:
+        try:
+            import datetime
+
+            current_year = datetime.date.today().year
+            year = request.year if request.year else current_year
+            year = max(2000, min(year, current_year))
+
+            async with app.database.async_session_maker() as session:
+                cache_key = f"year_in_review:{request.user_id}:{year}"
+                cached = await app.cache.get_json(cache_key)
+                if cached is not None:
+                    return app.proto.user_data_pb2.YearInReviewResponse(
+                        review=_year_in_review_to_proto(cached)
+                    )
+
+                data = await app.services.stats_service.get_year_in_review(
+                    session, request.user_id, year
+                )
+                await app.cache.set_json(cache_key, data, ttl=300)
+                return app.proto.user_data_pb2.YearInReviewResponse(
+                    review=_year_in_review_to_proto(data)
+                )
+        except grpc.aio.AbortError:
+            raise
+        except Exception as e:
+            logger.error(f"Error in GetYearInReview: {e}")
+            await context.abort(grpc.StatusCode.INTERNAL, f"Internal error: {e}")
+
     async def DeleteUserData(
         self,
         request: app.proto.user_data_pb2.DeleteUserDataRequest,
@@ -1529,6 +1644,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 await _book_comments_cache.invalidate_by_book(book_id)
             await app.cache.delete_profile_stats(request.user_id)
             await app.cache.delete_profile_overview(request.user_id)
+            await app.cache.delete_year_in_review(request.user_id)
 
             return app.proto.user_data_pb2.EmptyResponse()
         except grpc.aio.AbortError:

@@ -5,7 +5,7 @@ import warnings
 
 from . import user_data_pb2 as user__data__pb2
 
-GRPC_GENERATED_VERSION = '1.76.0'
+GRPC_GENERATED_VERSION = '1.75.1'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -18,7 +18,7 @@ except ImportError:
 if _version_not_supported:
     raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + ' but the generated code in user_data_pb2_grpc.py depends on'
+        + f' but the generated code in user_data_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
@@ -128,6 +128,11 @@ class UserDataServiceStub(object):
                 '/user_data.v1.UserDataService/GetProfileOverview',
                 request_serializer=user__data__pb2.GetProfileOverviewRequest.SerializeToString,
                 response_deserializer=user__data__pb2.ProfileOverviewResponse.FromString,
+                _registered_method=True)
+        self.GetYearInReview = channel.unary_unary(
+                '/user_data.v1.UserDataService/GetYearInReview',
+                request_serializer=user__data__pb2.GetYearInReviewRequest.SerializeToString,
+                response_deserializer=user__data__pb2.YearInReviewResponse.FromString,
                 _registered_method=True)
         self.DeleteUserData = channel.unary_unary(
                 '/user_data.v1.UserDataService/DeleteUserData',
@@ -253,6 +258,12 @@ class UserDataServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetYearInReview(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def DeleteUserData(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -356,6 +367,11 @@ def add_UserDataServiceServicer_to_server(servicer, server):
                     servicer.GetProfileOverview,
                     request_deserializer=user__data__pb2.GetProfileOverviewRequest.FromString,
                     response_serializer=user__data__pb2.ProfileOverviewResponse.SerializeToString,
+            ),
+            'GetYearInReview': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetYearInReview,
+                    request_deserializer=user__data__pb2.GetYearInReviewRequest.FromString,
+                    response_serializer=user__data__pb2.YearInReviewResponse.SerializeToString,
             ),
             'DeleteUserData': grpc.unary_unary_rpc_method_handler(
                     servicer.DeleteUserData,
@@ -876,6 +892,33 @@ class UserDataService(object):
             '/user_data.v1.UserDataService/GetProfileOverview',
             user__data__pb2.GetProfileOverviewRequest.SerializeToString,
             user__data__pb2.ProfileOverviewResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetYearInReview(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/user_data.v1.UserDataService/GetYearInReview',
+            user__data__pb2.GetYearInReviewRequest.SerializeToString,
+            user__data__pb2.YearInReviewResponse.FromString,
             options,
             channel_credentials,
             insecure,

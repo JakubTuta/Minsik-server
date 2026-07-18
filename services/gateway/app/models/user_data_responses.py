@@ -223,6 +223,62 @@ class ProfileOverviewResponse(pydantic.BaseModel):
     error: typing.Optional[app.models.responses.ErrorDetail] = None
 
 
+class MonthlyBucketSchema(pydantic.BaseModel):
+    month: int
+    books_finished: int = 0
+    pages_read: int = 0
+    ratings_given: int = 0
+
+
+class YearBookSchema(pydantic.BaseModel):
+    book_slug: str = ""
+    book_title: str = ""
+    book_cover_url: str = ""
+    author_names: typing.List[str] = []
+    author_slugs: typing.List[str] = []
+    number_of_pages: int = 0
+    finished_at: str = ""
+    my_rating: typing.Optional[float] = None
+
+
+class YearInReviewSchema(pydantic.BaseModel):
+    year: int
+    months_elapsed: int
+    monthly: typing.List[MonthlyBucketSchema] = []
+    total_books_finished: int = 0
+    total_pages_read: int = 0
+    total_hours_read: int = 0
+    ratings_given: int = 0
+    reviews_written: int = 0
+    comments_written: int = 0
+    favourites_added: int = 0
+    average_rating_given: float = 0.0
+    rating_distribution: typing.Dict[str, int] = {}
+    top_genres: typing.List[TopGenreSchema] = []
+    top_authors: typing.List[FavouriteAuthorSchema] = []
+    longest_book: typing.Optional[YearBookSchema] = None
+    shortest_book: typing.Optional[YearBookSchema] = None
+    first_finished: typing.Optional[YearBookSchema] = None
+    highest_rated: typing.Optional[YearBookSchema] = None
+    average_pages_per_book: float = 0.0
+    busiest_month: int = 0
+    busiest_month_count: int = 0
+    average_days_to_finish: float = 0.0
+    currently_reading_count: int = 0
+    added_to_shelf_count: int = 0
+    finished_cover_urls: typing.List[str] = []
+
+
+class YearInReviewData(pydantic.BaseModel):
+    review: YearInReviewSchema
+
+
+class YearInReviewResponse(pydantic.BaseModel):
+    success: bool = True
+    data: YearInReviewData
+    error: typing.Optional[app.models.responses.ErrorDetail] = None
+
+
 class ProfileStatsData(pydantic.BaseModel):
     stats: ProfileStatsSchema
 

@@ -92,3 +92,13 @@ async def delete_comment_list_cache(user_id: int) -> None:
             await redis_client.delete(*keys)
     except Exception as e:
         logger.error(f"Redis DELETE error for comments_list:{user_id}:*: {str(e)}")
+
+
+async def delete_year_in_review(user_id: int) -> None:
+    try:
+        pattern = f"year_in_review:{user_id}:*"
+        keys = [key async for key in redis_client.scan_iter(match=pattern)]
+        if keys:
+            await redis_client.delete(*keys)
+    except Exception as e:
+        logger.error(f"Redis DELETE error for year_in_review:{user_id}:*: {str(e)}")

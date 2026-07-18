@@ -1,3 +1,5 @@
+import typing
+
 import sqlalchemy
 import sqlalchemy.orm
 import app.models.base
@@ -30,4 +32,10 @@ class Bookshelf(app.models.base.Base):
     )
     updated_at: sqlalchemy.orm.Mapped[sqlalchemy.DateTime] = sqlalchemy.orm.mapped_column(
         sqlalchemy.DateTime, nullable=False, server_default=sqlalchemy.func.now()
+    )
+    finished_at: sqlalchemy.orm.Mapped[typing.Optional[sqlalchemy.DateTime]] = sqlalchemy.orm.mapped_column(
+        sqlalchemy.DateTime, nullable=True
+    )
+    started_at: sqlalchemy.orm.Mapped[typing.Optional[sqlalchemy.DateTime]] = sqlalchemy.orm.mapped_column(
+        sqlalchemy.DateTime, nullable=True
     )

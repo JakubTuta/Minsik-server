@@ -554,6 +554,111 @@ async def get_profile_overview(
         )
 
 
+@router.get(
+    "/users/me/year-in-review",
+    response_model=app.models.user_data_responses.YearInReviewResponse,
+    summary="Get your year-in-review reading summary",
+    description="""
+    Returns the authenticated user's reading summary for a given year, up to
+    the current month if the year is still in progress: monthly progress,
+    year totals, top genres/authors, and fun facts.
+
+    Requires a valid access token in the `Authorization: Bearer <token>` header.
+    """,
+    responses={
+        200: {"description": "Year in review returned"},
+        401: {"description": "Not authenticated"},
+    },
+)
+@limiter.limit(app.middleware.rate_limit.get_default_limit())
+async def get_year_in_review(
+    request: fastapi.Request,
+    year: typing.Optional[int] = fastapi.Query(None, ge=2000, le=2100),
+    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
+        app.middleware.auth.require_user
+    ),
+):
+    try:
+        response = await app.grpc_clients.user_data_client.get_year_in_review(
+            user_id=current_user["user_id"], year=year or 0
+        )
+        r = response.review
+        try:
+            rating_distribution = (
+                json.loads(r.rating_distribution_json) if r.rating_distribution_json else {}
+            )
+        except (ValueError, TypeError):
+            rating_distribution = {}
+
+        def _year_book(b, present: bool) -> typing.Optional[typing.Dict[str, typing.Any]]:
+            if not present:
+                return None
+            return {
+                "book_slug": b.book_slug,
+                "book_title": b.book_title,
+                "book_cover_url": b.book_cover_url,
+                "author_names": list(b.author_names),
+                "author_slugs": list(b.author_slugs),
+                "number_of_pages": b.number_of_pages,
+                "finished_at": b.finished_at,
+                "my_rating": b.my_rating if b.has_my_rating else None,
+            }
+
+        return app.utils.responses.success_response(
+            {
+                "review": {
+                    "year": r.year,
+                    "months_elapsed": r.months_elapsed,
+                    "monthly": [
+                        {
+                            "month": m.month,
+                            "books_finished": m.books_finished,
+                            "pages_read": m.pages_read,
+                            "ratings_given": m.ratings_given,
+                        }
+                        for m in r.monthly
+                    ],
+                    "total_books_finished": r.total_books_finished,
+                    "total_pages_read": r.total_pages_read,
+                    "total_hours_read": r.total_hours_read,
+                    "ratings_given": r.ratings_given,
+                    "reviews_written": r.reviews_written,
+                    "comments_written": r.comments_written,
+                    "favourites_added": r.favourites_added,
+                    "average_rating_given": r.average_rating_given,
+                    "rating_distribution": rating_distribution,
+                    "top_genres": [
+                        {"name": g.name, "slug": g.slug, "count": g.count, "percent": g.percent}
+                        for g in r.top_genres
+                    ],
+                    "top_authors": [
+                        {"name": a.name, "slug": a.slug, "count": a.count, "photo_url": a.photo_url}
+                        for a in r.top_authors
+                    ],
+                    "longest_book": _year_book(r.longest_book, r.has_longest_book),
+                    "shortest_book": _year_book(r.shortest_book, r.has_shortest_book),
+                    "first_finished": _year_book(r.first_finished, r.has_first_finished),
+                    "highest_rated": _year_book(r.highest_rated, r.has_highest_rated),
+                    "average_pages_per_book": r.average_pages_per_book,
+                    "busiest_month": r.busiest_month,
+                    "busiest_month_count": r.busiest_month_count,
+                    "average_days_to_finish": r.average_days_to_finish,
+                    "currently_reading_count": r.currently_reading_count,
+                    "added_to_shelf_count": r.added_to_shelf_count,
+                    "finished_cover_urls": list(r.finished_cover_urls),
+                }
+            }
+        )
+    except grpc.RpcError as e:
+        app.utils.responses.log_grpc_error(logger, "in get_year_in_review", e)
+        return _grpc_error_response(e)
+    except Exception as e:
+        logger.error(f"Unexpected error in get_year_in_review: {e}")
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
+        )
+
+
 # ============================================================
 # Favourites
 # ============================================================
