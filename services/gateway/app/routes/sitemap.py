@@ -1,6 +1,7 @@
 import logging
 
 import app.grpc_clients
+import app.middleware.rate_limit
 import app.models.books_responses
 import app.utils.responses
 import fastapi
@@ -8,6 +9,7 @@ import grpc
 
 router = fastapi.APIRouter(prefix="/api/v1/sitemap", tags=["Sitemap"])
 logger = logging.getLogger(__name__)
+limiter = app.middleware.rate_limit.limiter
 
 
 @router.get(
@@ -30,7 +32,9 @@ logger = logging.getLogger(__name__)
     - `/api/v1/sitemap/slugs?entity=authors&limit=10000&offset=10000`
     """,
 )
+@limiter.limit(app.middleware.rate_limit.get_sitemap_limit())
 async def list_sitemap_slugs(
+    request: fastapi.Request,
     entity: str = fastapi.Query("books", regex="^(books|authors|series)$"),
     limit: int = fastapi.Query(1000, ge=1, le=10000),
     offset: int = fastapi.Query(0, ge=0),

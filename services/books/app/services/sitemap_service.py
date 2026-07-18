@@ -14,6 +14,7 @@ SITEMAP_ENTITIES = ("books", "authors", "series")
 DEFAULT_LIMIT = 1000
 MAX_LIMIT = 10000
 COUNT_CACHE_TTL_SECONDS = 3600
+SLUGS_CACHE_TTL_SECONDS = 3600
 
 
 def _entity_query_config(
@@ -53,6 +54,11 @@ async def list_sitemap_slugs(
     if entity not in SITEMAP_ENTITIES:
         raise ValueError(f"Invalid sitemap entity: {entity}")
 
+    cache_key = f"sitemap:slugs:{entity}:{limit}:{offset}"
+    cached = await app.cache.get_cached(cache_key)
+    if cached is not None:
+        return cached["items"], cached["total_count"]
+
     model, slug_column, updated_at_column, order_by = _entity_query_config(entity)
 
     stmt = (
@@ -75,6 +81,10 @@ async def list_sitemap_slugs(
     total_count = 0
     if offset == 0:
         total_count = await _get_entity_count(session, entity, model)
+
+    await app.cache.set_cached(
+        cache_key, {"items": items, "total_count": total_count}, SLUGS_CACHE_TTL_SECONDS
+    )
 
     return items, total_count
 

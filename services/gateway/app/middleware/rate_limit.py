@@ -27,3 +27,7 @@ def get_default_limit() -> str:
 
 def get_suggest_limit() -> str:
     return f"{app.config.settings.rate_limit_suggest_per_minute}/minute"
+
+
+def get_sitemap_limit() -> str:
+    return f"{app.config.settings.rate_limit_sitemap_per_minute}/minute"
