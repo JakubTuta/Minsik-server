@@ -158,6 +158,30 @@ class UserBookInfoResponse(pydantic.BaseModel):
     error: typing.Optional[app.models.responses.ErrorDetail] = None
 
 
+class BookStatusSchema(pydantic.BaseModel):
+    book_id: int
+    status: str
+    is_favorite: bool
+
+
+class BookStatusesData(pydantic.BaseModel):
+    statuses: typing.List[BookStatusSchema] = []
+
+
+class BookStatusesResponse(pydantic.BaseModel):
+    success: bool = True
+    data: BookStatusesData
+    error: typing.Optional[app.models.responses.ErrorDetail] = None
+
+
+class BookStatusesRequest(pydantic.BaseModel):
+    book_ids: typing.List[int] = pydantic.Field(min_length=1, max_length=200)
+
+    model_config = pydantic.ConfigDict(
+        json_schema_extra={"example": {"book_ids": [12, 34, 56]}}
+    )
+
+
 class ProfileStatsSchema(pydantic.BaseModel):
     want_to_read_count: int = 0
     reading_count: int = 0

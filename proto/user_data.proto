@@ -22,6 +22,7 @@ service UserDataService {
   rpc GetUserComments(GetUserCommentsRequest) returns (CommentsListResponse);
   rpc GetBookComments(GetBookCommentsRequest) returns (BookCommentsResponse);
   rpc GetUserBookInfo(GetUserBookInfoRequest) returns (UserBookInfoResponse);
+  rpc GetBookStatuses(GetBookStatusesRequest) returns (BookStatusesResponse);
   rpc GetPublicProfileStats(GetPublicProfileStatsRequest) returns (ProfileStatsResponse);
   rpc GetProfileOverview(GetProfileOverviewRequest) returns (ProfileOverviewResponse);
   rpc GetYearInReview(GetYearInReviewRequest) returns (YearInReviewResponse);
@@ -234,6 +235,11 @@ message UserBookInfoResponse {
   Rating    rating    = 2;
   Comment   comment   = 3;
 }
+
+// Batch bookshelf statuses (for marking "on shelf" across list pages)
+message GetBookStatusesRequest { int64 user_id = 1; repeated int64 book_ids = 2; }
+message BookStatus { int64 book_id = 1; string status = 2; bool is_favorite = 3; }
+message BookStatusesResponse { repeated BookStatus statuses = 1; }
 
 // Profile stats (public)
 message GetPublicProfileStatsRequest { string username = 1; }

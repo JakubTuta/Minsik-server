@@ -1,7 +1,6 @@
 import typing
 
 import app.models.rating
-import app.services.stats_service
 import sqlalchemy
 import sqlalchemy.dialects.postgresql
 import sqlalchemy.ext.asyncio
@@ -115,7 +114,6 @@ async def upsert_rating(
     result = await session.execute(stmt)
     row = result.scalar_one()
     await _update_book_stats(session, book_id)
-    await app.services.stats_service.recalculate_rating_stats(session, user_id)
     await session.commit()
     return row
 
@@ -137,7 +135,6 @@ async def delete_rating(
         raise ValueError("not_found")
 
     await _update_book_stats(session, book_id)
-    await app.services.stats_service.recalculate_rating_stats(session, user_id)
     await session.commit()
 
 

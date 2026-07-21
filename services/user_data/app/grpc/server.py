@@ -611,6 +611,166 @@ async def _handle_error(error: Exception, context: grpc.aio.ServicerContext) -> 
         )
 
 
+_USER_BOOK_INFO_SQL = """
+    SELECT
+        b.book_id            AS book_id,
+        b.title              AS book_title,
+        b.primary_cover_url  AS book_cover_url,
+        s.name               AS series_name,
+        s.slug               AS series_slug,
+        bs.bookshelf_id      AS bs_id,
+        bs.status            AS bs_status,
+        bs.is_favorite       AS bs_is_favorite,
+        bs.created_at        AS bs_created_at,
+        bs.updated_at        AS bs_updated_at,
+        r.rating_id          AS r_id,
+        r.overall_rating     AS r_overall,
+        r.review_text        AS r_review,
+        r.pacing             AS r_pacing,
+        r.emotional_impact   AS r_emotional_impact,
+        r.intellectual_depth AS r_intellectual_depth,
+        r.writing_quality    AS r_writing_quality,
+        r.rereadability      AS r_rereadability,
+        r.readability        AS r_readability,
+        r.plot_complexity    AS r_plot_complexity,
+        r.humor              AS r_humor,
+        r.created_at         AS r_created_at,
+        r.updated_at         AS r_updated_at,
+        c.comment_id         AS c_id,
+        c.body               AS c_body,
+        c.is_spoiler         AS c_is_spoiler,
+        c.created_at         AS c_created_at,
+        c.updated_at         AS c_updated_at,
+        u.username           AS username
+    FROM books.books b
+    LEFT JOIN books.series s          ON s.series_id = b.series_id
+    LEFT JOIN user_data.bookshelves bs ON bs.book_id = b.book_id AND bs.user_id = :uid
+    LEFT JOIN user_data.ratings r      ON r.book_id = b.book_id AND r.user_id = :uid
+    LEFT JOIN user_data.comments c     ON c.book_id = b.book_id AND c.user_id = :uid
+    LEFT JOIN auth.users u             ON u.user_id = :uid
+    WHERE b.slug = :slug
+    ORDER BY b.book_id ASC
+    LIMIT 1
+"""
+
+
+def _iso_or_empty(value: typing.Any) -> str:
+    return value.isoformat() if value is not None else ""
+
+
+def _sub_rating(value: typing.Any) -> typing.Tuple[float, bool]:
+    return (float(value), True) if value is not None else (0.0, False)
+
+
+def _row_to_user_book_info(
+    row: typing.Any, book_slug: str, user_id: int
+) -> app.proto.user_data_pb2.UserBookInfoResponse:
+    series_name = row.series_name or ""
+    series_slug = row.series_slug or ""
+    title = row.book_title or ""
+    cover = row.book_cover_url or ""
+
+    kwargs: typing.Dict[str, typing.Any] = {}
+
+    if row.bs_id is not None:
+        kwargs["bookshelf"] = app.proto.user_data_pb2.Bookshelf(
+            bookshelf_id=row.bs_id,
+            user_id=user_id,
+            book_id=row.book_id,
+            book_slug=book_slug,
+            book_title=title,
+            book_cover_url=cover,
+            status=row.bs_status,
+            is_favorite=row.bs_is_favorite,
+            created_at=_iso_or_empty(row.bs_created_at),
+            updated_at=_iso_or_empty(row.bs_updated_at),
+            book_series_name=series_name,
+            book_series_slug=series_slug,
+        )
+
+    if row.r_id is not None:
+        pacing, has_pacing = _sub_rating(row.r_pacing)
+        emotional_impact, has_emotional_impact = _sub_rating(row.r_emotional_impact)
+        intellectual_depth, has_intellectual_depth = _sub_rating(row.r_intellectual_depth)
+        writing_quality, has_writing_quality = _sub_rating(row.r_writing_quality)
+        rereadability, has_rereadability = _sub_rating(row.r_rereadability)
+        readability, has_readability = _sub_rating(row.r_readability)
+        plot_complexity, has_plot_complexity = _sub_rating(row.r_plot_complexity)
+        humor, has_humor = _sub_rating(row.r_humor)
+        kwargs["rating"] = app.proto.user_data_pb2.Rating(
+            rating_id=row.r_id,
+            user_id=user_id,
+            book_id=row.book_id,
+            book_slug=book_slug,
+            book_title=title,
+            book_cover_url=cover,
+            overall_rating=float(row.r_overall),
+            review_text=row.r_review or "",
+            pacing=pacing,
+            has_pacing=has_pacing,
+            emotional_impact=emotional_impact,
+            has_emotional_impact=has_emotional_impact,
+            intellectual_depth=intellectual_depth,
+            has_intellectual_depth=has_intellectual_depth,
+            writing_quality=writing_quality,
+            has_writing_quality=has_writing_quality,
+            rereadability=rereadability,
+            has_rereadability=has_rereadability,
+            readability=readability,
+            has_readability=has_readability,
+            plot_complexity=plot_complexity,
+            has_plot_complexity=has_plot_complexity,
+            humor=humor,
+            has_humor=has_humor,
+            created_at=_iso_or_empty(row.r_created_at),
+            updated_at=_iso_or_empty(row.r_updated_at),
+            book_series_name=series_name,
+            book_series_slug=series_slug,
+        )
+
+    if row.c_id is not None:
+        kwargs["comment"] = app.proto.user_data_pb2.Comment(
+            comment_id=row.c_id,
+            user_id=user_id,
+            book_id=row.book_id,
+            book_slug=book_slug,
+            book_title=title,
+            body=row.c_body,
+            is_spoiler=row.c_is_spoiler,
+            created_at=_iso_or_empty(row.c_created_at),
+            updated_at=_iso_or_empty(row.c_updated_at),
+            username=row.username or "",
+            book_series_name=series_name,
+            book_series_slug=series_slug,
+            book_cover_url=cover,
+        )
+
+    return app.proto.user_data_pb2.UserBookInfoResponse(**kwargs)
+
+
+async def _recompute_user_stats_bg(user_id: int, kind: str) -> None:
+    try:
+        async with app.database.async_session_maker() as session:
+            if kind == "bookshelf":
+                await app.services.stats_service.recalculate_bookshelf_stats(
+                    session, user_id
+                )
+            elif kind == "rating":
+                await app.services.stats_service.recalculate_rating_stats(
+                    session, user_id
+                )
+            elif kind == "comment":
+                await app.services.stats_service.recalculate_comment_stats(
+                    session, user_id
+                )
+            await session.commit()
+        await app.cache.delete_profile_stats(user_id)
+    except Exception as e:
+        logger.error(
+            "Background %s stats recompute failed for user %s: %s", kind, user_id, e
+        )
+
+
 class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
 
     async def GetBookshelf(
@@ -661,6 +821,9 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 await app.cache.delete_profile_overview(request.user_id)
                 await app.cache.delete_year_in_review(request.user_id)
                 await app.cache.delete_bookshelf_list_cache(request.user_id)
+                asyncio.create_task(
+                    _recompute_user_stats_bg(request.user_id, "bookshelf")
+                )
                 return app.proto.user_data_pb2.BookshelfResponse(
                     bookshelf=_bookshelf_to_proto(
                         bookshelf,
@@ -696,6 +859,9 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 await app.cache.delete_profile_overview(request.user_id)
                 await app.cache.delete_year_in_review(request.user_id)
                 await app.cache.delete_bookshelf_list_cache(request.user_id)
+                asyncio.create_task(
+                    _recompute_user_stats_bg(request.user_id, "bookshelf")
+                )
                 return app.proto.user_data_pb2.EmptyResponse()
         except ValueError as e:
             await _handle_error(e, context)
@@ -933,6 +1099,9 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 await app.cache.delete_profile_stats(request.user_id)
                 await app.cache.delete_profile_overview(request.user_id)
                 await app.cache.delete_year_in_review(request.user_id)
+                asyncio.create_task(
+                    _recompute_user_stats_bg(request.user_id, "rating")
+                )
                 return app.proto.user_data_pb2.RatingResponse(
                     rating=_rating_to_proto(
                         rating,
@@ -968,6 +1137,9 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 await app.cache.delete_profile_stats(request.user_id)
                 await app.cache.delete_profile_overview(request.user_id)
                 await app.cache.delete_year_in_review(request.user_id)
+                asyncio.create_task(
+                    _recompute_user_stats_bg(request.user_id, "rating")
+                )
                 return app.proto.user_data_pb2.EmptyResponse()
         except ValueError as e:
             await _handle_error(e, context)
@@ -1038,6 +1210,9 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 await app.cache.delete_profile_overview(request.user_id)
                 await app.cache.delete_year_in_review(request.user_id)
                 await app.cache.delete_bookshelf_list_cache(request.user_id)
+                asyncio.create_task(
+                    _recompute_user_stats_bg(request.user_id, "bookshelf")
+                )
                 return app.proto.user_data_pb2.FavouriteResponse(
                     is_favorite=bookshelf.is_favorite,
                     book_id=bookshelf.book_id,
@@ -1120,6 +1295,9 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 await app.cache.delete_profile_overview(request.user_id)
                 await app.cache.delete_year_in_review(request.user_id)
                 await app.cache.delete_comment_list_cache(request.user_id)
+                asyncio.create_task(
+                    _recompute_user_stats_bg(request.user_id, "comment")
+                )
                 username = await _resolve_username(session, request.user_id)
                 return app.proto.user_data_pb2.CommentResponse(
                     comment=_comment_to_proto(
@@ -1208,6 +1386,9 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 await app.cache.delete_profile_overview(request.user_id)
                 await app.cache.delete_year_in_review(request.user_id)
                 await app.cache.delete_comment_list_cache(request.user_id)
+                asyncio.create_task(
+                    _recompute_user_stats_bg(request.user_id, "comment")
+                )
                 return app.proto.user_data_pb2.EmptyResponse()
         except ValueError as e:
             await _handle_error(e, context)
@@ -1324,73 +1505,56 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
     ) -> app.proto.user_data_pb2.UserBookInfoResponse:
         try:
             async with app.database.async_session_maker() as session:
-                book_meta = await _resolve_book_meta(session, request.book_slug)
+                result = await session.execute(
+                    sqlalchemy.text(_USER_BOOK_INFO_SQL),
+                    {"slug": request.book_slug, "uid": request.user_id},
+                )
+                row = result.fetchone()
+                if row is None:
+                    raise ValueError("book_not_found")
 
-                try:
-                    bookshelf = await app.services.bookshelf_service.get_bookshelf(
-                        session, request.user_id, book_meta["book_id"]
-                    )
-                except ValueError:
-                    bookshelf = None
-
-                try:
-                    rating = await app.services.rating_service.get_rating(
-                        session, request.user_id, book_meta["book_id"]
-                    )
-                except ValueError:
-                    rating = None
-
-                try:
-                    comment = await app.services.comment_service.get_comment_for_book(
-                        session, request.user_id, book_meta["book_id"]
-                    )
-                except ValueError:
-                    comment = None
-
-                kwargs: typing.Dict[str, typing.Any] = {}
-                if bookshelf is not None:
-                    kwargs["bookshelf"] = _bookshelf_to_proto(
-                        bookshelf,
-                        request.book_slug,
-                        book_meta["title"],
-                        book_meta["cover_url"],
-                        book_meta["author_names"],
-                        book_meta["author_slugs"],
-                        book_meta["series_name"],
-                        book_meta["series_slug"],
-                    )
-                if rating is not None:
-                    kwargs["rating"] = _rating_to_proto(
-                        rating,
-                        request.book_slug,
-                        book_meta["title"],
-                        book_meta["cover_url"],
-                        book_meta["author_names"],
-                        book_meta["author_slugs"],
-                        book_meta["series_name"],
-                        book_meta["series_slug"],
-                    )
-                if comment is not None:
-                    username = await _resolve_username(session, request.user_id)
-                    kwargs["comment"] = _comment_to_proto(
-                        comment,
-                        request.book_slug,
-                        book_meta["title"],
-                        username,
-                        book_meta["author_names"],
-                        book_meta["author_slugs"],
-                        book_meta["series_name"],
-                        book_meta["series_slug"],
-                        book_meta["cover_url"],
-                    )
-
-                return app.proto.user_data_pb2.UserBookInfoResponse(**kwargs)
+                return _row_to_user_book_info(
+                    row, request.book_slug, request.user_id
+                )
         except ValueError as e:
             await _handle_error(e, context)
         except grpc.aio.AbortError:
             raise
         except Exception as e:
             logger.error(f"Error in GetUserBookInfo: {e}")
+            await context.abort(grpc.StatusCode.INTERNAL, f"Internal error: {e}")
+
+    async def GetBookStatuses(
+        self,
+        request: app.proto.user_data_pb2.GetBookStatusesRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> app.proto.user_data_pb2.BookStatusesResponse:
+        try:
+            book_ids = list(request.book_ids)
+            if not book_ids:
+                return app.proto.user_data_pb2.BookStatusesResponse()
+            async with app.database.async_session_maker() as session:
+                result = await session.execute(
+                    sqlalchemy.text(
+                        "SELECT book_id, status, is_favorite "
+                        "FROM user_data.bookshelves "
+                        "WHERE user_id = :uid AND book_id = ANY(:ids)"
+                    ),
+                    {"uid": request.user_id, "ids": book_ids},
+                )
+                statuses = [
+                    app.proto.user_data_pb2.BookStatus(
+                        book_id=r.book_id,
+                        status=r.status,
+                        is_favorite=r.is_favorite,
+                    )
+                    for r in result.fetchall()
+                ]
+                return app.proto.user_data_pb2.BookStatusesResponse(statuses=statuses)
+        except grpc.aio.AbortError:
+            raise
+        except Exception as e:
+            logger.error(f"Error in GetBookStatuses: {e}")
             await context.abort(grpc.StatusCode.INTERNAL, f"Internal error: {e}")
 
     async def GetBookComments(

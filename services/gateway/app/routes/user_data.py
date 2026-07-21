@@ -197,6 +197,57 @@ async def get_user_book_info(
         )
 
 
+@router.post(
+    "/users/me/books/statuses",
+    response_model=app.models.user_data_responses.BookStatusesResponse,
+    summary="Get your bookshelf statuses for a set of books",
+    description="""
+    Given a list of book IDs, return the authenticated user's bookshelf status
+    and favourite flag for those they have on a shelf. Books not on any shelf
+    are omitted from the response.
+
+    Used to mark "on your shelf" indicators across list pages (series, author).
+
+    Requires a valid access token in the `Authorization: Bearer <token>` header.
+    """,
+    responses={
+        200: {"description": "Statuses retrieved"},
+        401: {"description": "Not authenticated"},
+    },
+)
+@limiter.limit(app.middleware.rate_limit.get_default_limit())
+async def get_book_statuses(
+    request: fastapi.Request,
+    body: app.models.user_data_responses.BookStatusesRequest,
+    current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
+        app.middleware.auth.require_user
+    ),
+):
+    try:
+        response = await app.grpc_clients.user_data_client.get_book_statuses(
+            user_id=current_user["user_id"], book_ids=body.book_ids
+        )
+        data = {
+            "statuses": [
+                {
+                    "book_id": s.book_id,
+                    "status": s.status,
+                    "is_favorite": s.is_favorite,
+                }
+                for s in response.statuses
+            ]
+        }
+        return app.utils.responses.success_response(data)
+    except grpc.RpcError as e:
+        app.utils.responses.log_grpc_error(logger, "in get_book_statuses", e)
+        return _grpc_error_response(e)
+    except Exception as e:
+        logger.error(f"Unexpected error in get_book_statuses: {e}")
+        return app.utils.responses.error_response(
+            "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
+        )
+
+
 # ============================================================
 # Bookshelf
 # ============================================================

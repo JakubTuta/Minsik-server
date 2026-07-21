@@ -1,7 +1,6 @@
 import typing
 
 import app.models.bookshelf
-import app.services.stats_service
 import sqlalchemy
 import sqlalchemy.dialects.postgresql
 import sqlalchemy.ext.asyncio
@@ -65,7 +64,6 @@ async def upsert_bookshelf(
     )
 
     result = await session.execute(stmt)
-    await app.services.stats_service.recalculate_bookshelf_stats(session, user_id)
     await session.commit()
     return result.scalar_one()
 
@@ -85,7 +83,6 @@ async def delete_bookshelf(
     result = await session.execute(stmt)
     if result.scalar_one_or_none() is None:
         raise ValueError("not_found")
-    await app.services.stats_service.recalculate_bookshelf_stats(session, user_id)
     await session.commit()
 
 
@@ -166,7 +163,6 @@ async def toggle_favourite(
     )
 
     result = await session.execute(stmt)
-    await app.services.stats_service.recalculate_bookshelf_stats(session, user_id)
     await session.commit()
     return result.scalar_one()
 

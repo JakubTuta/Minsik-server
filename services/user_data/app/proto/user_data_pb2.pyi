@@ -512,6 +512,30 @@ class UserBookInfoResponse(_message.Message):
     comment: Comment
     def __init__(self, bookshelf: _Optional[_Union[Bookshelf, _Mapping]] = ..., rating: _Optional[_Union[Rating, _Mapping]] = ..., comment: _Optional[_Union[Comment, _Mapping]] = ...) -> None: ...
 
+class GetBookStatusesRequest(_message.Message):
+    __slots__ = ("user_id", "book_ids")
+    USER_ID_FIELD_NUMBER: _ClassVar[int]
+    BOOK_IDS_FIELD_NUMBER: _ClassVar[int]
+    user_id: int
+    book_ids: _containers.RepeatedScalarFieldContainer[int]
+    def __init__(self, user_id: _Optional[int] = ..., book_ids: _Optional[_Iterable[int]] = ...) -> None: ...
+
+class BookStatus(_message.Message):
+    __slots__ = ("book_id", "status", "is_favorite")
+    BOOK_ID_FIELD_NUMBER: _ClassVar[int]
+    STATUS_FIELD_NUMBER: _ClassVar[int]
+    IS_FAVORITE_FIELD_NUMBER: _ClassVar[int]
+    book_id: int
+    status: str
+    is_favorite: bool
+    def __init__(self, book_id: _Optional[int] = ..., status: _Optional[str] = ..., is_favorite: bool = ...) -> None: ...
+
+class BookStatusesResponse(_message.Message):
+    __slots__ = ("statuses",)
+    STATUSES_FIELD_NUMBER: _ClassVar[int]
+    statuses: _containers.RepeatedCompositeFieldContainer[BookStatus]
+    def __init__(self, statuses: _Optional[_Iterable[_Union[BookStatus, _Mapping]]] = ...) -> None: ...
+
 class GetPublicProfileStatsRequest(_message.Message):
     __slots__ = ("username",)
     USERNAME_FIELD_NUMBER: _ClassVar[int]

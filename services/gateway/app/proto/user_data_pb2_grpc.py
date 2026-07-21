@@ -5,7 +5,7 @@ import warnings
 
 from . import user_data_pb2 as user__data__pb2
 
-GRPC_GENERATED_VERSION = '1.75.1'
+GRPC_GENERATED_VERSION = '1.76.0'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -18,7 +18,7 @@ except ImportError:
 if _version_not_supported:
     raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + f' but the generated code in user_data_pb2_grpc.py depends on'
+        + ' but the generated code in user_data_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
@@ -118,6 +118,11 @@ class UserDataServiceStub(object):
                 '/user_data.v1.UserDataService/GetUserBookInfo',
                 request_serializer=user__data__pb2.GetUserBookInfoRequest.SerializeToString,
                 response_deserializer=user__data__pb2.UserBookInfoResponse.FromString,
+                _registered_method=True)
+        self.GetBookStatuses = channel.unary_unary(
+                '/user_data.v1.UserDataService/GetBookStatuses',
+                request_serializer=user__data__pb2.GetBookStatusesRequest.SerializeToString,
+                response_deserializer=user__data__pb2.BookStatusesResponse.FromString,
                 _registered_method=True)
         self.GetPublicProfileStats = channel.unary_unary(
                 '/user_data.v1.UserDataService/GetPublicProfileStats',
@@ -246,6 +251,12 @@ class UserDataServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def GetBookStatuses(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def GetPublicProfileStats(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -357,6 +368,11 @@ def add_UserDataServiceServicer_to_server(servicer, server):
                     servicer.GetUserBookInfo,
                     request_deserializer=user__data__pb2.GetUserBookInfoRequest.FromString,
                     response_serializer=user__data__pb2.UserBookInfoResponse.SerializeToString,
+            ),
+            'GetBookStatuses': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetBookStatuses,
+                    request_deserializer=user__data__pb2.GetBookStatusesRequest.FromString,
+                    response_serializer=user__data__pb2.BookStatusesResponse.SerializeToString,
             ),
             'GetPublicProfileStats': grpc.unary_unary_rpc_method_handler(
                     servicer.GetPublicProfileStats,
@@ -838,6 +854,33 @@ class UserDataService(object):
             '/user_data.v1.UserDataService/GetUserBookInfo',
             user__data__pb2.GetUserBookInfoRequest.SerializeToString,
             user__data__pb2.UserBookInfoResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetBookStatuses(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/user_data.v1.UserDataService/GetBookStatuses',
+            user__data__pb2.GetBookStatusesRequest.SerializeToString,
+            user__data__pb2.BookStatusesResponse.FromString,
             options,
             channel_credentials,
             insecure,

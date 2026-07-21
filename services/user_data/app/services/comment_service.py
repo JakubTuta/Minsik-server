@@ -3,7 +3,6 @@ import sqlalchemy
 import sqlalchemy.exc
 import sqlalchemy.ext.asyncio
 import app.models.comment
-import app.services.stats_service
 
 
 _COMMENT_SORT_COLUMNS: typing.Dict[str, typing.Any] = {
@@ -28,7 +27,6 @@ async def create_comment(
         )
         session.add(row)
         await session.flush()
-        await app.services.stats_service.recalculate_comment_stats(session, user_id)
         await session.commit()
         await session.refresh(row)
         return row
@@ -74,7 +72,6 @@ async def delete_comment(
     if result.scalar_one_or_none() is None:
         raise ValueError("not_found")
 
-    await app.services.stats_service.recalculate_comment_stats(session, user_id)
     await session.commit()
 
 

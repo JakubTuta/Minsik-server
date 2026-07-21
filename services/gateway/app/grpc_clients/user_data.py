@@ -35,6 +35,14 @@ class UserDataClient(base.GrpcClientBase):
         )
         return await self._call("GetUserBookInfo", request)
 
+    async def get_book_statuses(
+        self, user_id: int, book_ids: typing.List[int]
+    ) -> app.proto.user_data_pb2.BookStatusesResponse:
+        request = app.proto.user_data_pb2.GetBookStatusesRequest(
+            user_id=user_id, book_ids=book_ids
+        )
+        return await self._call("GetBookStatuses", request)
+
     async def upsert_bookshelf(
         self, user_id: int, book_slug: str, status: str
     ) -> app.proto.user_data_pb2.BookshelfResponse:
