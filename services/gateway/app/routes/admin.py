@@ -782,3 +782,170 @@ async def delete_series(request: fastapi.Request, series_id: int):
             message="An unexpected error occurred",
             status_code=500,
         )
+
+
+@router.get(
+    "/quality/books",
+    response_model=app.models.responses.APIResponse,
+    summary="Pull a random sample of low-quality books for manual review",
+    description="Returns a randomized sample of books that trip one or more quality heuristics (too many/few authors or genres, missing description/cover, implausible year, suspicious title).",
+    dependencies=[
+        fastapi.Depends(app.middleware.auth.require_admin),
+    ],
+    responses={
+        200: {"description": "Books retrieved"},
+        **_AUTH_RESPONSES,
+        500: {"description": "Internal server error"},
+    },
+)
+@limiter.limit(app.middleware.rate_limit.get_admin_limit())
+async def audit_books(
+    request: fastapi.Request,
+    limit: int = fastapi.Query(20, ge=1, le=100),
+    max_authors: int = fastapi.Query(5, ge=0),
+    max_genres: int = fastapi.Query(10, ge=0),
+    language: str = fastapi.Query(""),
+):
+    try:
+        response = await app.grpc_clients.books_client.audit_books(
+            limit=limit, max_authors=max_authors, max_genres=max_genres, language=language
+        )
+        items = [
+            {
+                "book_id": item.book_id,
+                "title": item.title,
+                "slug": item.slug,
+                "language": item.language,
+                "primary_cover_url": item.primary_cover_url or None,
+                "author_count": item.author_count,
+                "genre_count": item.genre_count,
+                "original_publication_year": item.original_publication_year or None,
+                "issues": list(item.issues),
+            }
+            for item in response.items
+        ]
+        return app.utils.responses.success_response({"items": items})
+    except grpc.RpcError as e:
+        app.utils.responses.log_grpc_error(logger, "auditing books", e)
+        return app.utils.responses.error_response(
+            code="INTERNAL_ERROR",
+            message="Failed to audit books",
+            details={"grpc_code": e.code().name},
+            status_code=500,
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error auditing books: {str(e)}")
+        return app.utils.responses.error_response(
+            code="INTERNAL_ERROR",
+            message="An unexpected error occurred",
+            status_code=500,
+        )
+
+
+@router.get(
+    "/quality/authors",
+    response_model=app.models.responses.APIResponse,
+    summary="Pull a random sample of low-quality authors for manual review",
+    description="Returns a randomized sample of authors that trip one or more quality heuristics (too many/few books, junk name, missing bio).",
+    dependencies=[
+        fastapi.Depends(app.middleware.auth.require_admin),
+    ],
+    responses={
+        200: {"description": "Authors retrieved"},
+        **_AUTH_RESPONSES,
+        500: {"description": "Internal server error"},
+    },
+)
+@limiter.limit(app.middleware.rate_limit.get_admin_limit())
+async def audit_authors(
+    request: fastapi.Request,
+    limit: int = fastapi.Query(20, ge=1, le=100),
+    min_books: int = fastapi.Query(1, ge=0),
+    max_books: int = fastapi.Query(50, ge=0),
+):
+    try:
+        response = await app.grpc_clients.books_client.audit_authors(
+            limit=limit, min_books=min_books, max_books=max_books
+        )
+        items = [
+            {
+                "author_id": item.author_id,
+                "name": item.name,
+                "slug": item.slug,
+                "book_count": item.book_count,
+                "issues": list(item.issues),
+            }
+            for item in response.items
+        ]
+        return app.utils.responses.success_response({"items": items})
+    except grpc.RpcError as e:
+        app.utils.responses.log_grpc_error(logger, "auditing authors", e)
+        return app.utils.responses.error_response(
+            code="INTERNAL_ERROR",
+            message="Failed to audit authors",
+            details={"grpc_code": e.code().name},
+            status_code=500,
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error auditing authors: {str(e)}")
+        return app.utils.responses.error_response(
+            code="INTERNAL_ERROR",
+            message="An unexpected error occurred",
+            status_code=500,
+        )
+
+
+@router.get(
+    "/quality/series",
+    response_model=app.models.responses.APIResponse,
+    summary="Pull a random sample of low-quality series for manual review",
+    description="Returns a randomized sample of series that trip one or more quality heuristics (too many/few books, denormalized book count drift, missing description).",
+    dependencies=[
+        fastapi.Depends(app.middleware.auth.require_admin),
+    ],
+    responses={
+        200: {"description": "Series retrieved"},
+        **_AUTH_RESPONSES,
+        500: {"description": "Internal server error"},
+    },
+)
+@limiter.limit(app.middleware.rate_limit.get_admin_limit())
+async def audit_series(
+    request: fastapi.Request,
+    limit: int = fastapi.Query(20, ge=1, le=100),
+    min_books: int = fastapi.Query(2, ge=0),
+    max_books: int = fastapi.Query(30, ge=0),
+    language: str = fastapi.Query(""),
+):
+    try:
+        response = await app.grpc_clients.books_client.audit_series(
+            limit=limit, min_books=min_books, max_books=max_books, language=language
+        )
+        items = [
+            {
+                "series_id": item.series_id,
+                "name": item.name,
+                "slug": item.slug,
+                "language": item.language,
+                "book_count": item.book_count,
+                "total_books": item.total_books,
+                "issues": list(item.issues),
+            }
+            for item in response.items
+        ]
+        return app.utils.responses.success_response({"items": items})
+    except grpc.RpcError as e:
+        app.utils.responses.log_grpc_error(logger, "auditing series", e)
+        return app.utils.responses.error_response(
+            code="INTERNAL_ERROR",
+            message="Failed to audit series",
+            details={"grpc_code": e.code().name},
+            status_code=500,
+        )
+    except Exception as e:
+        logger.error(f"Unexpected error auditing series: {str(e)}")
+        return app.utils.responses.error_response(
+            code="INTERNAL_ERROR",
+            message="An unexpected error occurred",
+            status_code=500,
+        )

@@ -825,3 +825,109 @@ class ReindexAllResponse(_message.Message):
     status: str
     message: str
     def __init__(self, status: _Optional[str] = ..., message: _Optional[str] = ...) -> None: ...
+
+class AuditBooksRequest(_message.Message):
+    __slots__ = ("limit", "max_authors", "max_genres", "language")
+    LIMIT_FIELD_NUMBER: _ClassVar[int]
+    MAX_AUTHORS_FIELD_NUMBER: _ClassVar[int]
+    MAX_GENRES_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
+    limit: int
+    max_authors: int
+    max_genres: int
+    language: str
+    def __init__(self, limit: _Optional[int] = ..., max_authors: _Optional[int] = ..., max_genres: _Optional[int] = ..., language: _Optional[str] = ...) -> None: ...
+
+class AuditBookItem(_message.Message):
+    __slots__ = ("book_id", "title", "slug", "language", "primary_cover_url", "author_count", "genre_count", "original_publication_year", "issues")
+    BOOK_ID_FIELD_NUMBER: _ClassVar[int]
+    TITLE_FIELD_NUMBER: _ClassVar[int]
+    SLUG_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
+    PRIMARY_COVER_URL_FIELD_NUMBER: _ClassVar[int]
+    AUTHOR_COUNT_FIELD_NUMBER: _ClassVar[int]
+    GENRE_COUNT_FIELD_NUMBER: _ClassVar[int]
+    ORIGINAL_PUBLICATION_YEAR_FIELD_NUMBER: _ClassVar[int]
+    ISSUES_FIELD_NUMBER: _ClassVar[int]
+    book_id: int
+    title: str
+    slug: str
+    language: str
+    primary_cover_url: str
+    author_count: int
+    genre_count: int
+    original_publication_year: int
+    issues: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, book_id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., language: _Optional[str] = ..., primary_cover_url: _Optional[str] = ..., author_count: _Optional[int] = ..., genre_count: _Optional[int] = ..., original_publication_year: _Optional[int] = ..., issues: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class AuditBooksResponse(_message.Message):
+    __slots__ = ("items",)
+    ITEMS_FIELD_NUMBER: _ClassVar[int]
+    items: _containers.RepeatedCompositeFieldContainer[AuditBookItem]
+    def __init__(self, items: _Optional[_Iterable[_Union[AuditBookItem, _Mapping]]] = ...) -> None: ...
+
+class AuditAuthorsRequest(_message.Message):
+    __slots__ = ("limit", "min_books", "max_books")
+    LIMIT_FIELD_NUMBER: _ClassVar[int]
+    MIN_BOOKS_FIELD_NUMBER: _ClassVar[int]
+    MAX_BOOKS_FIELD_NUMBER: _ClassVar[int]
+    limit: int
+    min_books: int
+    max_books: int
+    def __init__(self, limit: _Optional[int] = ..., min_books: _Optional[int] = ..., max_books: _Optional[int] = ...) -> None: ...
+
+class AuditAuthorItem(_message.Message):
+    __slots__ = ("author_id", "name", "slug", "book_count", "issues")
+    AUTHOR_ID_FIELD_NUMBER: _ClassVar[int]
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    SLUG_FIELD_NUMBER: _ClassVar[int]
+    BOOK_COUNT_FIELD_NUMBER: _ClassVar[int]
+    ISSUES_FIELD_NUMBER: _ClassVar[int]
+    author_id: int
+    name: str
+    slug: str
+    book_count: int
+    issues: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, author_id: _Optional[int] = ..., name: _Optional[str] = ..., slug: _Optional[str] = ..., book_count: _Optional[int] = ..., issues: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class AuditAuthorsResponse(_message.Message):
+    __slots__ = ("items",)
+    ITEMS_FIELD_NUMBER: _ClassVar[int]
+    items: _containers.RepeatedCompositeFieldContainer[AuditAuthorItem]
+    def __init__(self, items: _Optional[_Iterable[_Union[AuditAuthorItem, _Mapping]]] = ...) -> None: ...
+
+class AuditSeriesRequest(_message.Message):
+    __slots__ = ("limit", "min_books", "max_books", "language")
+    LIMIT_FIELD_NUMBER: _ClassVar[int]
+    MIN_BOOKS_FIELD_NUMBER: _ClassVar[int]
+    MAX_BOOKS_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
+    limit: int
+    min_books: int
+    max_books: int
+    language: str
+    def __init__(self, limit: _Optional[int] = ..., min_books: _Optional[int] = ..., max_books: _Optional[int] = ..., language: _Optional[str] = ...) -> None: ...
+
+class AuditSeriesItem(_message.Message):
+    __slots__ = ("series_id", "name", "slug", "language", "book_count", "total_books", "issues")
+    SERIES_ID_FIELD_NUMBER: _ClassVar[int]
+    NAME_FIELD_NUMBER: _ClassVar[int]
+    SLUG_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
+    BOOK_COUNT_FIELD_NUMBER: _ClassVar[int]
+    TOTAL_BOOKS_FIELD_NUMBER: _ClassVar[int]
+    ISSUES_FIELD_NUMBER: _ClassVar[int]
+    series_id: int
+    name: str
+    slug: str
+    language: str
+    book_count: int
+    total_books: int
+    issues: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, series_id: _Optional[int] = ..., name: _Optional[str] = ..., slug: _Optional[str] = ..., language: _Optional[str] = ..., book_count: _Optional[int] = ..., total_books: _Optional[int] = ..., issues: _Optional[_Iterable[str]] = ...) -> None: ...
+
+class AuditSeriesResponse(_message.Message):
+    __slots__ = ("items",)
+    ITEMS_FIELD_NUMBER: _ClassVar[int]
+    items: _containers.RepeatedCompositeFieldContainer[AuditSeriesItem]
+    def __init__(self, items: _Optional[_Iterable[_Union[AuditSeriesItem, _Mapping]]] = ...) -> None: ...

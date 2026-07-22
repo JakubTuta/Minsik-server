@@ -285,5 +285,48 @@ class BooksClient(base.GrpcClientBase):
         )
         return await self._call("ListSitemapSlugs", request)
 
+    async def audit_books(
+        self,
+        limit: int = 20,
+        max_authors: int = 0,
+        max_genres: int = 0,
+        language: str = "",
+    ) -> app.proto.books_pb2.AuditBooksResponse:
+        request = app.proto.books_pb2.AuditBooksRequest(
+            limit=limit,
+            max_authors=max_authors,
+            max_genres=max_genres,
+            language=language,
+        )
+        return await self._call("AuditBooks", request, timeout=app.config.settings.grpc_admin_timeout)
+
+    async def audit_authors(
+        self,
+        limit: int = 20,
+        min_books: int = 0,
+        max_books: int = 0,
+    ) -> app.proto.books_pb2.AuditAuthorsResponse:
+        request = app.proto.books_pb2.AuditAuthorsRequest(
+            limit=limit,
+            min_books=min_books,
+            max_books=max_books,
+        )
+        return await self._call("AuditAuthors", request, timeout=app.config.settings.grpc_admin_timeout)
+
+    async def audit_series(
+        self,
+        limit: int = 20,
+        min_books: int = 0,
+        max_books: int = 0,
+        language: str = "",
+    ) -> app.proto.books_pb2.AuditSeriesResponse:
+        request = app.proto.books_pb2.AuditSeriesRequest(
+            limit=limit,
+            min_books=min_books,
+            max_books=max_books,
+            language=language,
+        )
+        return await self._call("AuditSeries", request, timeout=app.config.settings.grpc_admin_timeout)
+
 
 books_client = BooksClient()

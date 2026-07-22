@@ -20,6 +20,7 @@ import app.services.sitemap_service
 import app.services.es_sync_service
 import app.services.slots_service
 import app.services.category_service
+import app.services.quality_audit_service
 import grpc
 
 logger = logging.getLogger(__name__)
@@ -1161,4 +1162,87 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
             logger.error(f"Error triggering reindex: {str(e)}")
             context.set_code(grpc.StatusCode.INTERNAL)
             context.set_details(str(e))
+
+    async def AuditBooks(self, request, context):
+        try:
+            async with app.db.async_session_maker() as session:
+                items = await app.services.quality_audit_service.audit_books(
+                    session,
+                    request.limit or 20,
+                    request.max_authors or app.services.quality_audit_service.DEFAULT_BOOK_MAX_AUTHORS,
+                    request.max_genres or app.services.quality_audit_service.DEFAULT_BOOK_MAX_GENRES,
+                    request.language or None,
+                )
+
+            item_protos = [
+                app.proto.books_pb2.AuditBookItem(
+                    book_id=item["book_id"],
+                    title=item["title"],
+                    slug=item["slug"],
+                    language=item["language"],
+                    primary_cover_url=item["primary_cover_url"],
+                    author_count=item["author_count"],
+                    genre_count=item["genre_count"],
+                    original_publication_year=item["original_publication_year"],
+                    issues=item["issues"],
+                )
+                for item in items
+            ]
+            return app.proto.books_pb2.AuditBooksResponse(items=item_protos)
+        except Exception as e:
+            logger.error(f"Error in AuditBooks: {str(e)}")
+            await context.abort(grpc.StatusCode.INTERNAL, f"Audit books failed: {str(e)}")
+
+    async def AuditAuthors(self, request, context):
+        try:
+            async with app.db.async_session_maker() as session:
+                items = await app.services.quality_audit_service.audit_authors(
+                    session,
+                    request.limit or 20,
+                    request.min_books or app.services.quality_audit_service.DEFAULT_AUTHOR_MIN_BOOKS,
+                    request.max_books or app.services.quality_audit_service.DEFAULT_AUTHOR_MAX_BOOKS,
+                )
+
+            item_protos = [
+                app.proto.books_pb2.AuditAuthorItem(
+                    author_id=item["author_id"],
+                    name=item["name"],
+                    slug=item["slug"],
+                    book_count=item["book_count"],
+                    issues=item["issues"],
+                )
+                for item in items
+            ]
+            return app.proto.books_pb2.AuditAuthorsResponse(items=item_protos)
+        except Exception as e:
+            logger.error(f"Error in AuditAuthors: {str(e)}")
+            await context.abort(grpc.StatusCode.INTERNAL, f"Audit authors failed: {str(e)}")
+
+    async def AuditSeries(self, request, context):
+        try:
+            async with app.db.async_session_maker() as session:
+                items = await app.services.quality_audit_service.audit_series(
+                    session,
+                    request.limit or 20,
+                    request.min_books or app.services.quality_audit_service.DEFAULT_SERIES_MIN_BOOKS,
+                    request.max_books or app.services.quality_audit_service.DEFAULT_SERIES_MAX_BOOKS,
+                    request.language or None,
+                )
+
+            item_protos = [
+                app.proto.books_pb2.AuditSeriesItem(
+                    series_id=item["series_id"],
+                    name=item["name"],
+                    slug=item["slug"],
+                    language=item["language"],
+                    book_count=item["book_count"],
+                    total_books=item["total_books"],
+                    issues=item["issues"],
+                )
+                for item in items
+            ]
+            return app.proto.books_pb2.AuditSeriesResponse(items=item_protos)
+        except Exception as e:
+            logger.error(f"Error in AuditSeries: {str(e)}")
+            await context.abort(grpc.StatusCode.INTERNAL, f"Audit series failed: {str(e)}")
             return app.proto.books_pb2.ReindexAllResponse()

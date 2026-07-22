@@ -28,6 +28,9 @@ service BooksService {
   rpc ReindexAll(ReindexAllRequest) returns (ReindexAllResponse);
   rpc GetGenreBubble(GetGenreBubbleRequest) returns (GetGenreBubbleResponse);
   rpc ListSitemapSlugs(ListSitemapSlugsRequest) returns (ListSitemapSlugsResponse);
+  rpc AuditBooks(AuditBooksRequest) returns (AuditBooksResponse);
+  rpc AuditAuthors(AuditAuthorsRequest) returns (AuditAuthorsResponse);
+  rpc AuditSeries(AuditSeriesRequest) returns (AuditSeriesResponse);
 }
 
 message ListSitemapSlugsRequest {
@@ -488,4 +491,66 @@ message ReindexAllRequest {}
 message ReindexAllResponse {
   string status = 1;
   string message = 2;
+}
+
+message AuditBooksRequest {
+  int32 limit = 1;
+  int32 max_authors = 2;
+  int32 max_genres = 3;
+  string language = 4;
+}
+
+message AuditBookItem {
+  int64 book_id = 1;
+  string title = 2;
+  string slug = 3;
+  string language = 4;
+  string primary_cover_url = 5;
+  int32 author_count = 6;
+  int32 genre_count = 7;
+  int32 original_publication_year = 8;
+  repeated string issues = 9;
+}
+
+message AuditBooksResponse {
+  repeated AuditBookItem items = 1;
+}
+
+message AuditAuthorsRequest {
+  int32 limit = 1;
+  int32 min_books = 2;
+  int32 max_books = 3;
+}
+
+message AuditAuthorItem {
+  int64 author_id = 1;
+  string name = 2;
+  string slug = 3;
+  int32 book_count = 4;
+  repeated string issues = 5;
+}
+
+message AuditAuthorsResponse {
+  repeated AuditAuthorItem items = 1;
+}
+
+message AuditSeriesRequest {
+  int32 limit = 1;
+  int32 min_books = 2;
+  int32 max_books = 3;
+  string language = 4;
+}
+
+message AuditSeriesItem {
+  int64 series_id = 1;
+  string name = 2;
+  string slug = 3;
+  string language = 4;
+  int32 book_count = 5;
+  int32 total_books = 6;
+  repeated string issues = 7;
+}
+
+message AuditSeriesResponse {
+  repeated AuditSeriesItem items = 1;
 }

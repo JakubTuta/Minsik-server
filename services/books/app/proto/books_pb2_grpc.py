@@ -5,7 +5,7 @@ import warnings
 
 from . import books_pb2 as books__pb2
 
-GRPC_GENERATED_VERSION = '1.75.1'
+GRPC_GENERATED_VERSION = '1.76.0'
 GRPC_VERSION = grpc.__version__
 _version_not_supported = False
 
@@ -18,7 +18,7 @@ except ImportError:
 if _version_not_supported:
     raise RuntimeError(
         f'The grpc package installed is at version {GRPC_VERSION},'
-        + f' but the generated code in books_pb2_grpc.py depends on'
+        + ' but the generated code in books_pb2_grpc.py depends on'
         + f' grpcio>={GRPC_GENERATED_VERSION}.'
         + f' Please upgrade your grpc module to grpcio>={GRPC_GENERATED_VERSION}'
         + f' or downgrade your generated code using grpcio-tools<={GRPC_VERSION}.'
@@ -158,6 +158,21 @@ class BooksServiceStub(object):
                 '/books.v1.BooksService/ListSitemapSlugs',
                 request_serializer=books__pb2.ListSitemapSlugsRequest.SerializeToString,
                 response_deserializer=books__pb2.ListSitemapSlugsResponse.FromString,
+                _registered_method=True)
+        self.AuditBooks = channel.unary_unary(
+                '/books.v1.BooksService/AuditBooks',
+                request_serializer=books__pb2.AuditBooksRequest.SerializeToString,
+                response_deserializer=books__pb2.AuditBooksResponse.FromString,
+                _registered_method=True)
+        self.AuditAuthors = channel.unary_unary(
+                '/books.v1.BooksService/AuditAuthors',
+                request_serializer=books__pb2.AuditAuthorsRequest.SerializeToString,
+                response_deserializer=books__pb2.AuditAuthorsResponse.FromString,
+                _registered_method=True)
+        self.AuditSeries = channel.unary_unary(
+                '/books.v1.BooksService/AuditSeries',
+                request_serializer=books__pb2.AuditSeriesRequest.SerializeToString,
+                response_deserializer=books__pb2.AuditSeriesResponse.FromString,
                 _registered_method=True)
 
 
@@ -314,6 +329,24 @@ class BooksServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def AuditBooks(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def AuditAuthors(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def AuditSeries(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
 
 def add_BooksServiceServicer_to_server(servicer, server):
     rpc_method_handlers = {
@@ -441,6 +474,21 @@ def add_BooksServiceServicer_to_server(servicer, server):
                     servicer.ListSitemapSlugs,
                     request_deserializer=books__pb2.ListSitemapSlugsRequest.FromString,
                     response_serializer=books__pb2.ListSitemapSlugsResponse.SerializeToString,
+            ),
+            'AuditBooks': grpc.unary_unary_rpc_method_handler(
+                    servicer.AuditBooks,
+                    request_deserializer=books__pb2.AuditBooksRequest.FromString,
+                    response_serializer=books__pb2.AuditBooksResponse.SerializeToString,
+            ),
+            'AuditAuthors': grpc.unary_unary_rpc_method_handler(
+                    servicer.AuditAuthors,
+                    request_deserializer=books__pb2.AuditAuthorsRequest.FromString,
+                    response_serializer=books__pb2.AuditAuthorsResponse.SerializeToString,
+            ),
+            'AuditSeries': grpc.unary_unary_rpc_method_handler(
+                    servicer.AuditSeries,
+                    request_deserializer=books__pb2.AuditSeriesRequest.FromString,
+                    response_serializer=books__pb2.AuditSeriesResponse.SerializeToString,
             ),
     }
     generic_handler = grpc.method_handlers_generic_handler(
@@ -1118,6 +1166,87 @@ class BooksService(object):
             '/books.v1.BooksService/ListSitemapSlugs',
             books__pb2.ListSitemapSlugsRequest.SerializeToString,
             books__pb2.ListSitemapSlugsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AuditBooks(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/books.v1.BooksService/AuditBooks',
+            books__pb2.AuditBooksRequest.SerializeToString,
+            books__pb2.AuditBooksResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AuditAuthors(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/books.v1.BooksService/AuditAuthors',
+            books__pb2.AuditAuthorsRequest.SerializeToString,
+            books__pb2.AuditAuthorsResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def AuditSeries(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/books.v1.BooksService/AuditSeries',
+            books__pb2.AuditSeriesRequest.SerializeToString,
+            books__pb2.AuditSeriesResponse.FromString,
             options,
             channel_credentials,
             insecure,
