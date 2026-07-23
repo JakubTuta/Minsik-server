@@ -20,7 +20,9 @@ _TITLE_BLANK_RE = re.compile(r"^[\s\W]*$")
 _TITLE_NUMERIC_PUNCT_RE = re.compile(r"^[0-9\s\W]+$")
 _TITLE_URL_RE = re.compile(r"(https?://|www\.)", re.IGNORECASE)
 _NAME_HAS_LETTER_RE = re.compile(r"[A-Za-z]")
-_JUNK_PUBLISHER_NAME_RE = re.compile(_JUNK_PUBLISHER_NAME_PATTERN, re.IGNORECASE)
+_JUNK_PUBLISHER_NAME_RE = re.compile(
+    r"\b(publishing|publishers|press|editions|verlag|editorial)\b\s*$", re.IGNORECASE
+)
 
 
 def _is_suspicious_title(title: str) -> bool:
