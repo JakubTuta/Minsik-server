@@ -827,16 +827,28 @@ class ReindexAllResponse(_message.Message):
     def __init__(self, status: _Optional[str] = ..., message: _Optional[str] = ...) -> None: ...
 
 class AuditBooksRequest(_message.Message):
-    __slots__ = ("limit", "max_authors", "max_genres", "language")
+    __slots__ = ("limit", "max_authors", "max_genres", "language", "check_missing_description", "min_authors", "min_genres", "check_missing_cover", "check_implausible_year", "check_suspicious_title")
     LIMIT_FIELD_NUMBER: _ClassVar[int]
     MAX_AUTHORS_FIELD_NUMBER: _ClassVar[int]
     MAX_GENRES_FIELD_NUMBER: _ClassVar[int]
     LANGUAGE_FIELD_NUMBER: _ClassVar[int]
+    CHECK_MISSING_DESCRIPTION_FIELD_NUMBER: _ClassVar[int]
+    MIN_AUTHORS_FIELD_NUMBER: _ClassVar[int]
+    MIN_GENRES_FIELD_NUMBER: _ClassVar[int]
+    CHECK_MISSING_COVER_FIELD_NUMBER: _ClassVar[int]
+    CHECK_IMPLAUSIBLE_YEAR_FIELD_NUMBER: _ClassVar[int]
+    CHECK_SUSPICIOUS_TITLE_FIELD_NUMBER: _ClassVar[int]
     limit: int
     max_authors: int
     max_genres: int
     language: str
-    def __init__(self, limit: _Optional[int] = ..., max_authors: _Optional[int] = ..., max_genres: _Optional[int] = ..., language: _Optional[str] = ...) -> None: ...
+    check_missing_description: bool
+    min_authors: int
+    min_genres: int
+    check_missing_cover: bool
+    check_implausible_year: bool
+    check_suspicious_title: bool
+    def __init__(self, limit: _Optional[int] = ..., max_authors: _Optional[int] = ..., max_genres: _Optional[int] = ..., language: _Optional[str] = ..., check_missing_description: bool = ..., min_authors: _Optional[int] = ..., min_genres: _Optional[int] = ..., check_missing_cover: bool = ..., check_implausible_year: bool = ..., check_suspicious_title: bool = ...) -> None: ...
 
 class AuditBookItem(_message.Message):
     __slots__ = ("book_id", "title", "slug", "language", "primary_cover_url", "author_count", "genre_count", "original_publication_year", "issues")
@@ -867,14 +879,18 @@ class AuditBooksResponse(_message.Message):
     def __init__(self, items: _Optional[_Iterable[_Union[AuditBookItem, _Mapping]]] = ...) -> None: ...
 
 class AuditAuthorsRequest(_message.Message):
-    __slots__ = ("limit", "min_books", "max_books")
+    __slots__ = ("limit", "min_books", "max_books", "check_missing_bio", "check_junk_name")
     LIMIT_FIELD_NUMBER: _ClassVar[int]
     MIN_BOOKS_FIELD_NUMBER: _ClassVar[int]
     MAX_BOOKS_FIELD_NUMBER: _ClassVar[int]
+    CHECK_MISSING_BIO_FIELD_NUMBER: _ClassVar[int]
+    CHECK_JUNK_NAME_FIELD_NUMBER: _ClassVar[int]
     limit: int
     min_books: int
     max_books: int
-    def __init__(self, limit: _Optional[int] = ..., min_books: _Optional[int] = ..., max_books: _Optional[int] = ...) -> None: ...
+    check_missing_bio: bool
+    check_junk_name: bool
+    def __init__(self, limit: _Optional[int] = ..., min_books: _Optional[int] = ..., max_books: _Optional[int] = ..., check_missing_bio: bool = ..., check_junk_name: bool = ...) -> None: ...
 
 class AuditAuthorItem(_message.Message):
     __slots__ = ("author_id", "name", "slug", "book_count", "issues")
@@ -897,16 +913,20 @@ class AuditAuthorsResponse(_message.Message):
     def __init__(self, items: _Optional[_Iterable[_Union[AuditAuthorItem, _Mapping]]] = ...) -> None: ...
 
 class AuditSeriesRequest(_message.Message):
-    __slots__ = ("limit", "min_books", "max_books", "language")
+    __slots__ = ("limit", "min_books", "max_books", "language", "check_missing_description", "check_count_drift")
     LIMIT_FIELD_NUMBER: _ClassVar[int]
     MIN_BOOKS_FIELD_NUMBER: _ClassVar[int]
     MAX_BOOKS_FIELD_NUMBER: _ClassVar[int]
     LANGUAGE_FIELD_NUMBER: _ClassVar[int]
+    CHECK_MISSING_DESCRIPTION_FIELD_NUMBER: _ClassVar[int]
+    CHECK_COUNT_DRIFT_FIELD_NUMBER: _ClassVar[int]
     limit: int
     min_books: int
     max_books: int
     language: str
-    def __init__(self, limit: _Optional[int] = ..., min_books: _Optional[int] = ..., max_books: _Optional[int] = ..., language: _Optional[str] = ...) -> None: ...
+    check_missing_description: bool
+    check_count_drift: bool
+    def __init__(self, limit: _Optional[int] = ..., min_books: _Optional[int] = ..., max_books: _Optional[int] = ..., language: _Optional[str] = ..., check_missing_description: bool = ..., check_count_drift: bool = ...) -> None: ...
 
 class AuditSeriesItem(_message.Message):
     __slots__ = ("series_id", "name", "slug", "language", "book_count", "total_books", "issues")

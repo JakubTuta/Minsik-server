@@ -802,13 +802,28 @@ async def delete_series(request: fastapi.Request, series_id: int):
 async def audit_books(
     request: fastapi.Request,
     limit: int = fastapi.Query(20, ge=1, le=100),
-    max_authors: int = fastapi.Query(5, ge=0),
-    max_genres: int = fastapi.Query(10, ge=0),
+    min_authors: int = fastapi.Query(0, ge=0),
+    max_authors: int = fastapi.Query(20, ge=0),
+    min_genres: int = fastapi.Query(0, ge=0),
+    max_genres: int = fastapi.Query(30, ge=0),
     language: str = fastapi.Query(""),
+    check_missing_description: bool = fastapi.Query(False),
+    check_missing_cover: bool = fastapi.Query(False),
+    check_implausible_year: bool = fastapi.Query(False),
+    check_suspicious_title: bool = fastapi.Query(False),
 ):
     try:
         response = await app.grpc_clients.books_client.audit_books(
-            limit=limit, max_authors=max_authors, max_genres=max_genres, language=language
+            limit=limit,
+            min_authors=min_authors,
+            max_authors=max_authors,
+            min_genres=min_genres,
+            max_genres=max_genres,
+            language=language,
+            check_missing_description=check_missing_description,
+            check_missing_cover=check_missing_cover,
+            check_implausible_year=check_implausible_year,
+            check_suspicious_title=check_suspicious_title,
         )
         items = [
             {
@@ -860,12 +875,18 @@ async def audit_books(
 async def audit_authors(
     request: fastapi.Request,
     limit: int = fastapi.Query(20, ge=1, le=100),
-    min_books: int = fastapi.Query(1, ge=0),
-    max_books: int = fastapi.Query(50, ge=0),
+    min_books: int = fastapi.Query(0, ge=0),
+    max_books: int = fastapi.Query(200, ge=0),
+    check_missing_bio: bool = fastapi.Query(False),
+    check_junk_name: bool = fastapi.Query(False),
 ):
     try:
         response = await app.grpc_clients.books_client.audit_authors(
-            limit=limit, min_books=min_books, max_books=max_books
+            limit=limit,
+            min_books=min_books,
+            max_books=max_books,
+            check_missing_bio=check_missing_bio,
+            check_junk_name=check_junk_name,
         )
         items = [
             {
@@ -913,13 +934,20 @@ async def audit_authors(
 async def audit_series(
     request: fastapi.Request,
     limit: int = fastapi.Query(20, ge=1, le=100),
-    min_books: int = fastapi.Query(2, ge=0),
-    max_books: int = fastapi.Query(30, ge=0),
+    min_books: int = fastapi.Query(0, ge=0),
+    max_books: int = fastapi.Query(100, ge=0),
     language: str = fastapi.Query(""),
+    check_missing_description: bool = fastapi.Query(False),
+    check_count_drift: bool = fastapi.Query(False),
 ):
     try:
         response = await app.grpc_clients.books_client.audit_series(
-            limit=limit, min_books=min_books, max_books=max_books, language=language
+            limit=limit,
+            min_books=min_books,
+            max_books=max_books,
+            language=language,
+            check_missing_description=check_missing_description,
+            check_count_drift=check_count_drift,
         )
         items = [
             {

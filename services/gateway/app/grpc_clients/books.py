@@ -288,15 +288,27 @@ class BooksClient(base.GrpcClientBase):
     async def audit_books(
         self,
         limit: int = 20,
+        min_authors: int = 0,
         max_authors: int = 0,
+        min_genres: int = 0,
         max_genres: int = 0,
         language: str = "",
+        check_missing_description: bool = False,
+        check_missing_cover: bool = False,
+        check_implausible_year: bool = False,
+        check_suspicious_title: bool = False,
     ) -> app.proto.books_pb2.AuditBooksResponse:
         request = app.proto.books_pb2.AuditBooksRequest(
             limit=limit,
+            min_authors=min_authors,
             max_authors=max_authors,
+            min_genres=min_genres,
             max_genres=max_genres,
             language=language,
+            check_missing_description=check_missing_description,
+            check_missing_cover=check_missing_cover,
+            check_implausible_year=check_implausible_year,
+            check_suspicious_title=check_suspicious_title,
         )
         return await self._call("AuditBooks", request, timeout=app.config.settings.grpc_admin_timeout)
 
@@ -305,11 +317,15 @@ class BooksClient(base.GrpcClientBase):
         limit: int = 20,
         min_books: int = 0,
         max_books: int = 0,
+        check_missing_bio: bool = False,
+        check_junk_name: bool = False,
     ) -> app.proto.books_pb2.AuditAuthorsResponse:
         request = app.proto.books_pb2.AuditAuthorsRequest(
             limit=limit,
             min_books=min_books,
             max_books=max_books,
+            check_missing_bio=check_missing_bio,
+            check_junk_name=check_junk_name,
         )
         return await self._call("AuditAuthors", request, timeout=app.config.settings.grpc_admin_timeout)
 
@@ -319,12 +335,16 @@ class BooksClient(base.GrpcClientBase):
         min_books: int = 0,
         max_books: int = 0,
         language: str = "",
+        check_missing_description: bool = False,
+        check_count_drift: bool = False,
     ) -> app.proto.books_pb2.AuditSeriesResponse:
         request = app.proto.books_pb2.AuditSeriesRequest(
             limit=limit,
             min_books=min_books,
             max_books=max_books,
             language=language,
+            check_missing_description=check_missing_description,
+            check_count_drift=check_count_drift,
         )
         return await self._call("AuditSeries", request, timeout=app.config.settings.grpc_admin_timeout)
 

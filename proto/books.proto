@@ -498,6 +498,12 @@ message AuditBooksRequest {
   int32 max_authors = 2;
   int32 max_genres = 3;
   string language = 4;
+  bool check_missing_description = 5;
+  int32 min_authors = 6;
+  int32 min_genres = 7;
+  bool check_missing_cover = 8;
+  bool check_implausible_year = 9;
+  bool check_suspicious_title = 10;
 }
 
 message AuditBookItem {
@@ -520,6 +526,8 @@ message AuditAuthorsRequest {
   int32 limit = 1;
   int32 min_books = 2;
   int32 max_books = 3;
+  bool check_missing_bio = 4;
+  bool check_junk_name = 5;
 }
 
 message AuditAuthorItem {
@@ -539,6 +547,8 @@ message AuditSeriesRequest {
   int32 min_books = 2;
   int32 max_books = 3;
   string language = 4;
+  bool check_missing_description = 5;
+  bool check_count_drift = 6;
 }
 
 message AuditSeriesItem {

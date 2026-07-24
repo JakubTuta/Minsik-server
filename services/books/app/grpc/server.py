@@ -1169,9 +1169,15 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                 items = await app.services.quality_audit_service.audit_books(
                     session,
                     request.limit or 20,
-                    request.max_authors or app.services.quality_audit_service.DEFAULT_BOOK_MAX_AUTHORS,
-                    request.max_genres or app.services.quality_audit_service.DEFAULT_BOOK_MAX_GENRES,
+                    request.min_authors,
+                    request.max_authors,
+                    request.min_genres,
+                    request.max_genres,
                     request.language or None,
+                    request.check_missing_description,
+                    request.check_missing_cover,
+                    request.check_implausible_year,
+                    request.check_suspicious_title,
                 )
 
             item_protos = [
@@ -1199,8 +1205,10 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                 items = await app.services.quality_audit_service.audit_authors(
                     session,
                     request.limit or 20,
-                    request.min_books or app.services.quality_audit_service.DEFAULT_AUTHOR_MIN_BOOKS,
-                    request.max_books or app.services.quality_audit_service.DEFAULT_AUTHOR_MAX_BOOKS,
+                    request.min_books,
+                    request.max_books,
+                    request.check_missing_bio,
+                    request.check_junk_name,
                 )
 
             item_protos = [
@@ -1224,9 +1232,11 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                 items = await app.services.quality_audit_service.audit_series(
                     session,
                     request.limit or 20,
-                    request.min_books or app.services.quality_audit_service.DEFAULT_SERIES_MIN_BOOKS,
-                    request.max_books or app.services.quality_audit_service.DEFAULT_SERIES_MAX_BOOKS,
+                    request.min_books,
+                    request.max_books,
                     request.language or None,
+                    request.check_missing_description,
+                    request.check_count_drift,
                 )
 
             item_protos = [
