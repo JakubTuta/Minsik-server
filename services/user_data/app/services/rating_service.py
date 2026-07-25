@@ -13,12 +13,12 @@ async def _update_book_stats(
         sqlalchemy.text(
             """
         WITH canonical AS (
-            SELECT slug FROM books.books WHERE book_id = :book_id
+            SELECT work_id FROM books.books WHERE book_id = :book_id
         ),
         sibling_books AS (
             SELECT b.book_id
             FROM books.books b, canonical
-            WHERE b.slug = canonical.slug
+            WHERE b.work_id = canonical.work_id
         ),
         stats AS (
             SELECT
@@ -74,7 +74,7 @@ async def _update_book_stats(
                 ) AS t(key, value)
             )
         FROM stats, dist, canonical
-        WHERE books.books.slug = canonical.slug
+        WHERE books.books.work_id = canonical.work_id
     """
         ),
         {"book_id": book_id},

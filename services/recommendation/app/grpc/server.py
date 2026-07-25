@@ -19,6 +19,7 @@ logger = logging.getLogger(__name__)
 def _dict_to_book_item(item: dict) -> app.proto.recommendation_pb2.RecommendationBookItem:
     return app.proto.recommendation_pb2.RecommendationBookItem(
         book_id=item["book_id"],
+        work_id=item.get("work_id", "") or "",
         title=item["title"],
         slug=item["slug"],
         language=item["language"],

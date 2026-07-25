@@ -30,6 +30,7 @@ CREATE TABLE books.books (
     title VARCHAR(500) NOT NULL,
     language VARCHAR(10) NOT NULL,           -- ISO 639-1 code (en, es, fr, de, etc.)
     slug VARCHAR(600) NOT NULL,              -- URL-friendly: "neuromancer", "1984-george-orwell"
+    work_id VARCHAR(600) NOT NULL,           -- Cross-language work identity: external_ids->>'work_ol_id', falls back to slug
 
     description TEXT,
     first_sentence TEXT,              -- Opening line of the book (from OL works/editions dump)
@@ -95,6 +96,8 @@ CREATE TABLE books.books (
 -- Indexes for books.books
 CREATE INDEX idx_books_language ON books.books(language);
 CREATE UNIQUE INDEX idx_books_language_slug ON books.books(language, slug);
+CREATE INDEX idx_books_work_id ON books.books(work_id);
+CREATE INDEX idx_books_work_lang ON books.books(work_id, language);
 CREATE INDEX idx_books_rating_count ON books.books(rating_count DESC);
 CREATE INDEX idx_books_view_count ON books.books(view_count DESC);
 CREATE INDEX idx_books_open_library_id ON books.books(open_library_id);
@@ -105,6 +108,7 @@ CREATE INDEX idx_books_ol_already_read_count ON books.books(ol_already_read_coun
 COMMENT ON TABLE books.books IS 'Main book catalog. One entry per language (English Neuromancer != Spanish Neuromancer)';
 COMMENT ON COLUMN books.books.language IS 'ISO 639-1 language code. Each translation is a separate book entry';
 COMMENT ON COLUMN books.books.slug IS 'URL-friendly identifier for routing (e.g., /book/neuromancer)';
+COMMENT ON COLUMN books.books.work_id IS 'Cross-language work identity shared by all translations of the same book. Used to dedup search/recommendation results and to pool ratings, comments, reader counts, and view counts across editions.';
 COMMENT ON COLUMN books.books.sub_rating_stats IS 'Aggregated per-dimension rating averages and counts, updated on every rating change';
 
 -- ----------------------------------------------------------------------------

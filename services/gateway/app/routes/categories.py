@@ -2,6 +2,7 @@ import logging
 
 import app.grpc_clients
 import app.models.books_responses
+import app.utils.language
 import app.utils.responses
 import fastapi
 import google.protobuf.json_format
@@ -119,9 +120,7 @@ async def get_category_books(
     offset: int = fastapi.Query(0, ge=0),
     sort_by: str = fastapi.Query("popularity", regex="^(popularity|rating)$"),
     order: str = fastapi.Query("desc", regex="^(asc|desc)$"),
-    language: str = fastapi.Query(
-        "en", description="ISO 639-1 language code (e.g., en, es, fr)"
-    ),
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
     try:
         response = await app.grpc_clients.books_client.get_category_books(

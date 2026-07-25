@@ -50,16 +50,18 @@ _TOTAL_READERS_EXPR = (
 _DISCOVERY_SELECT = f"""
     SELECT
         b.book_id,
+        b.work_id,
         b.slug,
         {_COMBINED_RATING_EXPR} AS combined_rating,
         {_TOTAL_READERS_EXPR} AS total_readers
     FROM books.books b
     LEFT JOIN (
-        SELECT book_id, COUNT(*) AS minsik_readers
-        FROM user_data.bookshelves
-        WHERE status != 'abandoned'
-        GROUP BY book_id
-    ) bs ON b.book_id = bs.book_id
+        SELECT wb.work_id, COUNT(*) AS minsik_readers
+        FROM user_data.bookshelves bsh
+        JOIN books.books wb ON wb.book_id = bsh.book_id
+        WHERE bsh.status != 'abandoned'
+        GROUP BY wb.work_id
+    ) bs ON b.work_id = bs.work_id
 """
 
 _DISCOVERY_GROUP_BY = """
@@ -100,14 +102,15 @@ _BOOK_SUMMARY_SELECT = """
     FROM books.books b
     LEFT JOIN (
         SELECT
-            book_id,
-            COUNT(*) FILTER (WHERE status = 'want_to_read') AS app_want_to_read_count,
-            COUNT(*) FILTER (WHERE status = 'reading') AS app_reading_count,
-            COUNT(*) FILTER (WHERE status = 'read') AS app_read_count
-        FROM user_data.bookshelves
-        WHERE status != 'abandoned'
-        GROUP BY book_id
-    ) bs ON b.book_id = bs.book_id
+            wb.work_id,
+            COUNT(*) FILTER (WHERE bsh.status = 'want_to_read') AS app_want_to_read_count,
+            COUNT(*) FILTER (WHERE bsh.status = 'reading') AS app_reading_count,
+            COUNT(*) FILTER (WHERE bsh.status = 'read') AS app_read_count
+        FROM user_data.bookshelves bsh
+        JOIN books.books wb ON wb.book_id = bsh.book_id
+        WHERE bsh.status != 'abandoned'
+        GROUP BY wb.work_id
+    ) bs ON b.work_id = bs.work_id
     WHERE b.book_id = :book_id
 """
 
@@ -262,7 +265,7 @@ async def _count_matching_books(
     if having_clauses:
         inner_query += " HAVING " + " AND ".join(having_clauses)
 
-    count_query = f"SELECT COUNT(*) FROM ({inner_query}) AS filtered"
+    count_query = f"SELECT COUNT(DISTINCT work_id) FROM ({inner_query}) AS filtered"
     result = await session.execute(sqlalchemy.text(count_query), params)
     return result.scalar() or 0
 

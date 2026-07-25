@@ -1,4 +1,5 @@
 import datetime
+import types
 from unittest.mock import AsyncMock, MagicMock
 
 import app.services.sitemap_service as sitemap_service
@@ -23,6 +24,10 @@ def make_count_result(count):
     return result
 
 
+def make_book_row(slug, language, updated_at):
+    return types.SimpleNamespace(slug=slug, language=language, updated_at=updated_at)
+
+
 class TestSitemapService:
     @pytest.mark.asyncio
     async def test_invalid_entity_raises(self, mock_session):
@@ -33,7 +38,10 @@ class TestSitemapService:
     async def test_returns_items_with_isoformat_updated_at(self, mock_session):
         updated = datetime.datetime(2026, 1, 1, 12, 0, 0)
         mock_session.execute.side_effect = [
-            make_rows_result([("the-hobbit", updated), ("dune", None)]),
+            make_rows_result([
+                make_book_row("the-hobbit", "en", updated),
+                make_book_row("dune", "en", None),
+            ]),
             make_count_result(2),
         ]
 
@@ -42,8 +50,10 @@ class TestSitemapService:
         )
 
         assert total == 2
-        assert items[0] == {"slug": "the-hobbit", "updated_at": "2026-01-01T12:00:00"}
-        assert items[1] == {"slug": "dune", "updated_at": ""}
+        assert items[0] == {
+            "slug": "the-hobbit", "language": "en", "updated_at": "2026-01-01T12:00:00",
+        }
+        assert items[1] == {"slug": "dune", "language": "en", "updated_at": ""}
 
     @pytest.mark.asyncio
     async def test_skips_count_for_nonzero_offset(self, mock_session):

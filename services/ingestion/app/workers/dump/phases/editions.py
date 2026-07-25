@@ -538,6 +538,7 @@ async def _insert_new_language_row(
         "title": title,
         "language": lang,
         "slug": slug,
+        "work_id": work_ol_id,
         "description": update["description"] or source.description,
         "first_sentence": update.get("first_sentence"),
         "original_publication_year": source.original_publication_year,

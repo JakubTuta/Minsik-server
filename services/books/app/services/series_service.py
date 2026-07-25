@@ -12,6 +12,31 @@ import sqlalchemy.ext.asyncio
 logger = logging.getLogger(__name__)
 
 
+async def _fallback_series_edition(
+    session: sqlalchemy.ext.asyncio.AsyncSession, slug: str, language: str
+) -> typing.Optional[app.models.series.Series]:
+    # No series row in the requested language for this slug (consolidate_series
+    # only creates a language row once it has enough qualifying books in that
+    # language) — fall back to another language's row for the same slug
+    # instead of a dead-end 404. Series slugs are shared across languages
+    # (copied from the source book's series_name, not translated).
+    stmt = sqlalchemy.select(app.models.series.Series).filter(
+        app.models.series.Series.slug == slug
+    )
+    result = await session.execute(stmt)
+    editions = result.scalars().all()
+    if not editions:
+        return None
+
+    for edition in editions:
+        if edition.language == language:
+            return edition
+    for edition in editions:
+        if edition.language == "en":
+            return edition
+    return max(editions, key=lambda s: s.total_books or 0)
+
+
 async def get_series_by_slug(
     session: sqlalchemy.ext.asyncio.AsyncSession, slug: str, language: str = "en"
 ) -> typing.Optional[typing.Dict[str, typing.Any]]:
@@ -28,6 +53,9 @@ async def get_series_by_slug(
 
     result = await session.execute(stmt)
     series = result.scalars().first()
+
+    if not series:
+        series = await _fallback_series_edition(session, slug, language)
 
     if not series:
         return None
@@ -68,19 +96,20 @@ async def get_series_by_slug(
         FROM books.books b
         LEFT JOIN (
             SELECT
-                book_id,
-                COUNT(*) FILTER (WHERE status = 'want_to_read') AS want_to_read_count,
-                COUNT(*) FILTER (WHERE status = 'reading') AS reading_count,
-                COUNT(*) FILTER (WHERE status = 'read') AS read_count
-            FROM user_data.bookshelves
-            WHERE status != 'abandoned'
-            GROUP BY book_id
-        ) bs_counts ON b.book_id = bs_counts.book_id
+                wb.work_id,
+                COUNT(*) FILTER (WHERE bsh.status = 'want_to_read') AS want_to_read_count,
+                COUNT(*) FILTER (WHERE bsh.status = 'reading') AS reading_count,
+                COUNT(*) FILTER (WHERE bsh.status = 'read') AS read_count
+            FROM user_data.bookshelves bsh
+            JOIN books.books wb ON wb.book_id = bsh.book_id
+            WHERE bsh.status != 'abandoned'
+            GROUP BY wb.work_id
+        ) bs_counts ON b.work_id = bs_counts.work_id
         WHERE b.series_id = :series_id AND b.language = :language
     """
     )
     stats_result = await session.execute(
-        stats_query, {"series_id": series.series_id, "language": language}
+        stats_query, {"series_id": series.series_id, "language": series.language}
     )
     stats = stats_result.first()
 
@@ -96,12 +125,15 @@ async def get_series_by_slug(
         """
     )
     primary_author_result = await session.execute(
-        primary_author_query, {"series_id": series.series_id, "language": language}
+        primary_author_query, {"series_id": series.series_id, "language": series.language}
     )
     primary_author = primary_author_result.first()
 
     series_data = _series_to_dict(series, stats, primary_author)
 
+    # Cache under the requested language too, so a fallback isn't
+    # recomputed on every request for a language this series has no
+    # dedicated row for.
     await app.cache.set_cached(
         cache_key, series_data, app.config.settings.cache_author_detail_ttl
     )
@@ -195,14 +227,15 @@ async def get_series_books(
         FROM books.books b
         LEFT JOIN (
             SELECT
-                book_id,
-                COUNT(*) FILTER (WHERE status = 'want_to_read') AS want_to_read_count,
-                COUNT(*) FILTER (WHERE status = 'reading') AS reading_count,
-                COUNT(*) FILTER (WHERE status = 'read') AS read_count
-            FROM user_data.bookshelves
-            WHERE status != 'abandoned'
-            GROUP BY book_id
-        ) bs ON b.book_id = bs.book_id
+                wb.work_id,
+                COUNT(*) FILTER (WHERE bsh.status = 'want_to_read') AS want_to_read_count,
+                COUNT(*) FILTER (WHERE bsh.status = 'reading') AS reading_count,
+                COUNT(*) FILTER (WHERE bsh.status = 'read') AS read_count
+            FROM user_data.bookshelves bsh
+            JOIN books.books wb ON wb.book_id = bsh.book_id
+            WHERE bsh.status != 'abandoned'
+            GROUP BY wb.work_id
+        ) bs ON b.work_id = bs.work_id
         WHERE b.series_id = :series_id AND b.language = :language
         ORDER BY {sort_col} {order_dir} NULLS LAST{secondary_sort}
         LIMIT :limit OFFSET :offset
@@ -387,14 +420,15 @@ async def update_series(
         FROM books.books b
         LEFT JOIN (
             SELECT
-                book_id,
-                COUNT(*) FILTER (WHERE status = 'want_to_read') AS want_to_read_count,
-                COUNT(*) FILTER (WHERE status = 'reading') AS reading_count,
-                COUNT(*) FILTER (WHERE status = 'read') AS read_count
-            FROM user_data.bookshelves
-            WHERE status != 'abandoned'
-            GROUP BY book_id
-        ) bs ON b.book_id = bs.book_id
+                wb.work_id,
+                COUNT(*) FILTER (WHERE bsh.status = 'want_to_read') AS want_to_read_count,
+                COUNT(*) FILTER (WHERE bsh.status = 'reading') AS reading_count,
+                COUNT(*) FILTER (WHERE bsh.status = 'read') AS read_count
+            FROM user_data.bookshelves bsh
+            JOIN books.books wb ON wb.book_id = bsh.book_id
+            WHERE bsh.status != 'abandoned'
+            GROUP BY wb.work_id
+        ) bs ON b.work_id = bs.work_id
         WHERE b.series_id = :series_id AND b.language = :language
         """
     )

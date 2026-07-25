@@ -47,6 +47,7 @@ BOOKS_INDEX_MAPPING: typing.Dict[str, typing.Any] = {
             },
             "language": {"type": "keyword"},
             "slug": {"type": "keyword"},
+            "work_id": {"type": "keyword"},
             "primary_cover_url": {"type": "keyword", "index": False},
             "authors_names": {
                 "type": "text",

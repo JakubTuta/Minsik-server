@@ -119,7 +119,7 @@ class TestGetList:
         with patch("app.cache.get_cached", new_callable=AsyncMock, return_value=None) as mock_get:
             await list_provider.get_list("most_read", 20, 0)
 
-        mock_get.assert_called_once_with("rec:most_read")
+        mock_get.assert_called_once_with("rec:most_read:en")
 
 
 class TestGetHomePage:

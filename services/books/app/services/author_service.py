@@ -34,12 +34,8 @@ async def get_author_by_slug(
     if not author:
         return None
 
-    book_categories = await _get_author_book_categories(
-        session, author.author_id, language
-    )
-    books_aggregates = await _get_author_books_aggregates(
-        session, author.author_id, language
-    )
+    book_categories = await _get_author_book_categories(session, author.author_id)
+    books_aggregates = await _get_author_books_aggregates(session, author.author_id)
 
     author_data = _author_to_dict(author, book_categories, books_aggregates)
 
@@ -189,8 +185,11 @@ async def _track_author_view(author_id: int) -> None:
 
 
 async def _get_author_book_categories(
-    session: sqlalchemy.ext.asyncio.AsyncSession, author_id: int, language: str
+    session: sqlalchemy.ext.asyncio.AsyncSession, author_id: int
 ) -> typing.List[str]:
+    # Language-agnostic: an author's genre categorization reflects their whole
+    # catalog. Counts distinct works (not book rows) so a translated book
+    # doesn't count once per edition toward the >= 3 threshold.
     stmt = (
         sqlalchemy.select(app.models.genre.Genre.name)
         .select_from(app.models.book_genre.BookGenre)
@@ -207,13 +206,10 @@ async def _get_author_book_categories(
             app.models.genre.Genre,
             app.models.book_genre.BookGenre.genre_id == app.models.genre.Genre.genre_id,
         )
-        .filter(
-            app.models.book_author.BookAuthor.author_id == author_id,
-            app.models.book.Book.language == language,
-        )
+        .filter(app.models.book_author.BookAuthor.author_id == author_id)
         .group_by(app.models.genre.Genre.name)
-        .having(sqlalchemy.func.count(sqlalchemy.func.distinct(app.models.book.Book.book_id)) >= 3)
-        .order_by(sqlalchemy.func.count(sqlalchemy.func.distinct(app.models.book.Book.book_id)).desc())
+        .having(sqlalchemy.func.count(sqlalchemy.func.distinct(app.models.book.Book.work_id)) >= 3)
+        .order_by(sqlalchemy.func.count(sqlalchemy.func.distinct(app.models.book.Book.work_id)).desc())
     )
 
     result = await session.execute(stmt)
@@ -222,39 +218,54 @@ async def _get_author_book_categories(
 
 
 async def _get_author_books_aggregates(
-    session: sqlalchemy.ext.asyncio.AsyncSession, author_id: int, language: str
+    session: sqlalchemy.ext.asyncio.AsyncSession, author_id: int
 ) -> typing.Dict[str, typing.Any]:
+    # Language-agnostic and deduped by work: an author's stats reflect their
+    # whole catalog, one row per work (picking the most-rated edition), so a
+    # translated book's already-pooled rating_count isn't summed once per
+    # edition. Reader/status counts are pooled across all editions per work.
     stmt = sqlalchemy.text(
         """
+        WITH author_works AS (
+            SELECT DISTINCT ON (b.work_id)
+                b.book_id, b.work_id, b.rating_count, b.avg_rating,
+                b.ol_rating_count, b.ol_avg_rating,
+                b.ol_want_to_read_count, b.ol_currently_reading_count, b.ol_already_read_count
+            FROM books.books b
+            JOIN books.book_authors ba ON b.book_id = ba.book_id
+            WHERE ba.author_id = :author_id
+            ORDER BY b.work_id, (COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0)) DESC
+        ),
+        work_bookshelf_counts AS (
+            SELECT
+                wb.work_id,
+                COUNT(*) FILTER (WHERE bsh.status = 'want_to_read') AS want_to_read_count,
+                COUNT(*) FILTER (WHERE bsh.status = 'reading') AS reading_count,
+                COUNT(*) FILTER (WHERE bsh.status = 'read') AS read_count
+            FROM user_data.bookshelves bsh
+            JOIN books.books wb ON wb.book_id = bsh.book_id
+            WHERE wb.work_id IN (SELECT work_id FROM author_works)
+              AND bsh.status != 'abandoned'
+            GROUP BY wb.work_id
+        )
         SELECT
             COUNT(*) AS books_count,
-            COALESCE(SUM(b.avg_rating::numeric * b.rating_count), 0) AS weighted_rating_sum,
-            COALESCE(SUM(b.rating_count), 0) AS total_ratings,
-            COALESCE(SUM(b.ol_rating_count), 0) AS ol_total_ratings,
-            COALESCE(SUM(b.ol_avg_rating::numeric * b.ol_rating_count), 0) AS ol_weighted_rating_sum,
-            COALESCE(SUM(b.ol_want_to_read_count), 0) AS ol_want_to_read_count,
-            COALESCE(SUM(b.ol_currently_reading_count), 0) AS ol_currently_reading_count,
-            COALESCE(SUM(b.ol_already_read_count), 0) AS ol_already_read_count,
-            COALESCE(SUM(bs_counts.want_to_read_count), 0) AS app_want_to_read_count,
-            COALESCE(SUM(bs_counts.reading_count), 0) AS app_reading_count,
-            COALESCE(SUM(bs_counts.read_count), 0) AS app_read_count
-        FROM books.books b
-        JOIN books.book_authors ba ON b.book_id = ba.book_id
-        LEFT JOIN (
-            SELECT
-                book_id,
-                COUNT(*) FILTER (WHERE status = 'want_to_read') AS want_to_read_count,
-                COUNT(*) FILTER (WHERE status = 'reading') AS reading_count,
-                COUNT(*) FILTER (WHERE status = 'read') AS read_count
-            FROM user_data.bookshelves
-            WHERE status != 'abandoned'
-            GROUP BY book_id
-        ) bs_counts ON b.book_id = bs_counts.book_id
-        WHERE ba.author_id = :author_id AND b.language = :language
+            COALESCE(SUM(aw.avg_rating::numeric * aw.rating_count), 0) AS weighted_rating_sum,
+            COALESCE(SUM(aw.rating_count), 0) AS total_ratings,
+            COALESCE(SUM(aw.ol_rating_count), 0) AS ol_total_ratings,
+            COALESCE(SUM(aw.ol_avg_rating::numeric * aw.ol_rating_count), 0) AS ol_weighted_rating_sum,
+            COALESCE(SUM(aw.ol_want_to_read_count), 0) AS ol_want_to_read_count,
+            COALESCE(SUM(aw.ol_currently_reading_count), 0) AS ol_currently_reading_count,
+            COALESCE(SUM(aw.ol_already_read_count), 0) AS ol_already_read_count,
+            COALESCE(SUM(wbc.want_to_read_count), 0) AS app_want_to_read_count,
+            COALESCE(SUM(wbc.reading_count), 0) AS app_reading_count,
+            COALESCE(SUM(wbc.read_count), 0) AS app_read_count
+        FROM author_works aw
+        LEFT JOIN work_bookshelf_counts wbc ON wbc.work_id = aw.work_id
         """
     )
 
-    result = await session.execute(stmt, {"author_id": author_id, "language": language})
+    result = await session.execute(stmt, {"author_id": author_id})
     row = result.first()
 
     total_ratings = int(row.total_ratings) if row.total_ratings else 0
@@ -397,12 +408,8 @@ async def update_author(
         new_cache_key = f"author_slug:{author.slug}:{language}"
         await app.cache.delete_cached(new_cache_key)
 
-    book_categories = await _get_author_book_categories(
-        session, author.author_id, language
-    )
-    books_aggregates = await _get_author_books_aggregates(
-        session, author.author_id, language
-    )
+    book_categories = await _get_author_book_categories(session, author.author_id)
+    books_aggregates = await _get_author_books_aggregates(session, author.author_id)
 
     return _author_to_dict(author, book_categories, books_aggregates)
 

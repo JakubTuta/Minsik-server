@@ -37,6 +37,8 @@ class SuggestionItemSchema(pydantic.BaseModel):
     app_rating_count: int = 0
     ol_avg_rating: float = 0.0
     ol_rating_count: int = 0
+    work_id: typing.Optional[str] = None
+    language: typing.Optional[str] = None
 
 
 class SuggestData(pydantic.BaseModel):
@@ -65,6 +67,8 @@ class SearchResultSchema(pydantic.BaseModel):
     ol_rating_count: int = 0
     book_count: int = 0
     readers: int = 0
+    work_id: typing.Optional[str] = None
+    language: typing.Optional[str] = None
 
 
 class SearchResultsData(pydantic.BaseModel):
@@ -89,6 +93,7 @@ class SubRatingStatSchema(pydantic.BaseModel):
 
 class BookDetailData(pydantic.BaseModel):
     book_id: int
+    work_id: str
     title: str
     slug: str
     description: typing.Optional[str] = None
@@ -190,6 +195,8 @@ class AuthorDetailResponse(pydantic.BaseModel):
 
 class BookSummarySchema(pydantic.BaseModel):
     book_id: int
+    work_id: typing.Optional[str] = None
+    language: typing.Optional[str] = None
     title: str
     slug: str
     description: typing.Optional[str] = None
@@ -558,11 +565,11 @@ class SpinSlotsResponse(pydantic.BaseModel):
 
 
 class DiscoverBookFilters(pydantic.BaseModel):
-    language: str = pydantic.Field(
-        default="en",
+    language: typing.Optional[str] = pydantic.Field(
+        default=None,
         min_length=2,
         max_length=10,
-        description="Language code (e.g. en, pl, de). Default: en",
+        description="Language code (e.g. en, pl, de). Defaults to the caller's resolved language preference.",
     )
     genre_slugs: typing.List[str] = pydantic.Field(
         default_factory=list,
@@ -716,6 +723,7 @@ class AdminSeriesUpdateResponse(pydantic.BaseModel):
 class SitemapSlugItemSchema(pydantic.BaseModel):
     slug: str
     updated_at: typing.Optional[str] = None
+    language: typing.Optional[str] = None
 
 
 class SitemapSlugsData(pydantic.BaseModel):

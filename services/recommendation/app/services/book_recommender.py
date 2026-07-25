@@ -19,6 +19,7 @@ async def _get_book_metadata(
             SELECT
                 b.book_id,
                 b.title,
+                b.language,
                 b.series_id,
                 s.name AS series_name,
                 ARRAY_AGG(DISTINCT a.name) FILTER (WHERE a.name IS NOT NULL) AS author_names
@@ -38,6 +39,7 @@ async def _get_book_metadata(
     return {
         "book_id": row.book_id,
         "title": row.title or "",
+        "language": row.language or "en",
         "series_id": row.series_id,
         "series_name": row.series_name or "",
         "author_names": list(row.author_names or []),
@@ -49,6 +51,7 @@ async def _build_more_by_author(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     book_id: int,
     limit: int,
+    language: str,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     result = await session.execute(
         sqlalchemy.text(
@@ -65,7 +68,7 @@ async def _build_more_by_author(
             LIMIT :limit
             """
         ),
-        {"book_id": book_id, "limit": limit},
+        {"book_id": book_id, "limit": limit, "language": language},
     )
     return [
         app.services.list_builder._row_to_book_item(row, float(row.score or 0))
@@ -78,6 +81,7 @@ async def _build_more_from_series(
     book_id: int,
     series_id: int,
     limit: int,
+    language: str,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     result = await session.execute(
         sqlalchemy.text(
@@ -92,7 +96,7 @@ async def _build_more_from_series(
             LIMIT :limit
             """
         ),
-        {"book_id": book_id, "series_id": series_id, "limit": limit},
+        {"book_id": book_id, "series_id": series_id, "limit": limit, "language": language},
     )
     return [
         app.services.list_builder._row_to_book_item(row, float(row.score or 0))
@@ -104,6 +108,7 @@ async def _build_similar_by_genre(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     book_id: int,
     limit: int,
+    language: str,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     result = await session.execute(
         sqlalchemy.text(
@@ -123,7 +128,7 @@ async def _build_similar_by_genre(
                 JOIN source_genres sg ON bg.genre_id = sg.genre_id
                 JOIN books.books bc ON bg.book_id = bc.book_id
                 WHERE bg.book_id != :book_id
-                  AND bc.language = 'en'
+                  AND bc.language = :language
                   AND (COALESCE(bc.rating_count, 0) + COALESCE(bc.ol_rating_count, 0)) >= 50
                 GROUP BY bg.book_id
                 HAVING COUNT(*) >= 2
@@ -151,7 +156,7 @@ async def _build_similar_by_genre(
             LIMIT :limit
             """
         ),
-        {"book_id": book_id, "limit": limit},
+        {"book_id": book_id, "limit": limit, "language": language},
     )
     return [
         app.services.list_builder._row_to_book_item(row, float(row.score or 0))
@@ -163,6 +168,7 @@ async def _build_readers_also_enjoyed(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     book_id: int,
     limit: int,
+    language: str,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     result = await session.execute(
         sqlalchemy.text(
@@ -195,7 +201,7 @@ async def _build_readers_also_enjoyed(
             LIMIT :limit
             """
         ),
-        {"book_id": book_id, "limit": limit},
+        {"book_id": book_id, "limit": limit, "language": language},
     )
     return [
         app.services.list_builder._row_to_book_item(row, float(row.score or 0))
@@ -233,6 +239,7 @@ async def build_book_recommendations(
         return None
 
     title = metadata["title"]
+    language = metadata["language"]
     series_id = metadata["series_id"]
     series_name = metadata["series_name"]
     author_names = metadata["author_names"]
@@ -240,12 +247,14 @@ async def build_book_recommendations(
     author_label = ", ".join(author_names) if author_names else "this author"
 
     tasks = [
-        run(_build_more_by_author, book_id, limit_per_section),
-        run(_build_similar_by_genre, book_id, limit_per_section),
-        run(_build_readers_also_enjoyed, book_id, limit_per_section),
+        run(_build_more_by_author, book_id, limit_per_section, language),
+        run(_build_similar_by_genre, book_id, limit_per_section, language),
+        run(_build_readers_also_enjoyed, book_id, limit_per_section, language),
     ]
     if series_id is not None:
-        tasks.append(run(_build_more_from_series, book_id, series_id, limit_per_section))
+        tasks.append(
+            run(_build_more_from_series, book_id, series_id, limit_per_section, language)
+        )
 
     all_results = await asyncio.gather(*tasks, return_exceptions=True)
 

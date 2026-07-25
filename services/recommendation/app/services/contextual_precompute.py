@@ -21,11 +21,19 @@ async def _fetch_popular_book_ids(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     min_ratings: int,
 ) -> typing.List[int]:
+    # One seed per popular EDITION, not per work: book_recommender filters
+    # candidates to the seed's own language, so a work's English and Polish
+    # editions get distinct, language-correct precomputed sections rather
+    # than only the English edition being fast-pathed and every other
+    # edition falling back to a live query on every request.
     result = await session.execute(
         sqlalchemy.text(
-            "SELECT book_id FROM books.books "
-            "WHERE (COALESCE(rating_count, 0) + COALESCE(ol_rating_count, 0)) >= :min "
-            "AND language = 'en' AND primary_cover_url IS NOT NULL"
+            """
+            SELECT book_id
+            FROM books.books
+            WHERE (COALESCE(rating_count, 0) + COALESCE(ol_rating_count, 0)) >= :min
+              AND primary_cover_url IS NOT NULL
+            """
         ),
         {"min": min_ratings},
     )

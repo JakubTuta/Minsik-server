@@ -92,7 +92,7 @@ class TestBuildMostRead:
         ]
         mock_session.execute.return_value = make_execute_result(rows)
 
-        result = await list_builder._build_most_read(mock_session, 50)
+        result = await list_builder._build_most_read(mock_session, 50, "en")
 
         assert len(result) == 2
         assert result[0]["book_id"] == 1
@@ -102,7 +102,7 @@ class TestBuildMostRead:
     @pytest.mark.asyncio
     async def test_returns_empty_when_no_rows(self, mock_session):
         mock_session.execute.return_value = make_execute_result([])
-        result = await list_builder._build_most_read(mock_session, 50)
+        result = await list_builder._build_most_read(mock_session, 50, "en")
         assert result == []
 
 
@@ -112,7 +112,7 @@ class TestBuildHighestRated:
         row = make_book_row(book_id=1, avg_rating="4.80", rating_count=10, score=4.80)
         mock_session.execute.return_value = make_execute_result([row])
 
-        result = await list_builder._build_highest_rated(mock_session, 50)
+        result = await list_builder._build_highest_rated(mock_session, 50, "en")
 
         assert len(result) == 1
         assert result[0]["avg_rating"] == "4.80"
@@ -219,7 +219,7 @@ class TestRefreshAll:
                 mock_settings.cache_recommendation_ttl = 86400
                 await list_builder.refresh_all(make_session_maker(mock_session))
 
-        most_read = payloads.get("rec:most_read")
+        most_read = payloads.get("rec:most_read:en")
         assert most_read is not None
         assert most_read["item_type"] == "book"
         assert "book_items" in most_read

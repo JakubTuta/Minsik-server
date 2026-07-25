@@ -26,6 +26,7 @@ def mock_user():
     user.locked_until = None
     user.created_at = datetime.datetime(2026, 1, 1, 12, 0, 0)
     user.updated_at = datetime.datetime(2026, 1, 1, 12, 0, 0)
+    user.preferred_language = "en"
     return user
 
 

@@ -6,6 +6,7 @@ import app.grpc_clients
 import app.middleware.auth
 import app.middleware.rate_limit
 import app.models.recommendation_responses
+import app.utils.language
 import app.utils.responses
 import fastapi
 import grpc
@@ -29,6 +30,7 @@ def _to_section_dict(key: str, item) -> dict:
         result["book_items"] = [
             {
                 "book_id": i.book_id,
+                "work_id": i.work_id or None,
                 "title": i.title,
                 "slug": i.slug,
                 "language": i.language,
@@ -95,11 +97,12 @@ async def get_personal_home_page(
     current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
         app.middleware.auth.require_user
     ),
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
     user_id = current_user["user_id"]
     try:
         response = await app.grpc_clients.recommendation_client.get_home_page(
-            items_per_category=items_per_category, user_id=user_id
+            items_per_category=items_per_category, user_id=user_id, language=language
         )
         sections = [_to_section_dict(cat.category, cat) for cat in response.categories]
         return app.utils.responses.success_response({"sections": sections})

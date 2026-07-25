@@ -15,8 +15,9 @@ async def get_personal_home_sections(
     limit_per_section: int,
     cache_only: bool = False,
     force_refresh: bool = False,
+    language: str = "en",
 ) -> typing.Optional[typing.List[typing.Dict[str, typing.Any]]]:
-    cache_key = f"rec:personal:{user_id}"
+    cache_key = f"rec:personal:{user_id}:{language}"
     if not force_refresh:
         cached = await app.cache.get_cached(cache_key)
         if cached is not None:
@@ -39,7 +40,7 @@ async def get_personal_home_sections(
         return []
 
     sections = await app.services.personal_builder.build_personal_home_sections(
-        app.db.async_session_maker, profile, limit_per_section
+        app.db.async_session_maker, profile, limit_per_section, language
     )
 
     await app.cache.set_cached(
@@ -52,8 +53,9 @@ async def get_personal_book_sections(
     user_id: int,
     book_id: int,
     limit_per_section: int,
+    language: str = "en",
 ) -> typing.List[typing.Dict[str, typing.Any]]:
-    cache_key = f"rec:personal:book:{user_id}:{book_id}"
+    cache_key = f"rec:personal:book:{user_id}:{book_id}:{language}"
     cached = await app.cache.get_cached(cache_key)
     if cached is not None:
         return cached
@@ -64,7 +66,7 @@ async def get_personal_book_sections(
 
     async with app.db.async_session_maker() as session:
         sections = await app.services.personal_builder.build_personal_book_sections(
-            session, book_id, profile, limit_per_section
+            session, book_id, profile, limit_per_section, language
         )
 
     await app.cache.set_cached(
@@ -77,8 +79,9 @@ async def get_personal_author_sections(
     user_id: int,
     author_id: int,
     limit_per_section: int,
+    language: str = "en",
 ) -> typing.List[typing.Dict[str, typing.Any]]:
-    cache_key = f"rec:personal:author:{user_id}:{author_id}"
+    cache_key = f"rec:personal:author:{user_id}:{author_id}:{language}"
     cached = await app.cache.get_cached(cache_key)
     if cached is not None:
         return cached
@@ -89,7 +92,7 @@ async def get_personal_author_sections(
 
     async with app.db.async_session_maker() as session:
         sections = await app.services.personal_builder.build_personal_author_sections(
-            session, author_id, profile, limit_per_section
+            session, author_id, profile, limit_per_section, language
         )
 
     await app.cache.set_cached(

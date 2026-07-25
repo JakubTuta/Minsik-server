@@ -40,21 +40,31 @@ async def rebuild_genre_co_occurrences(
             result = await session.execute(
                 sqlalchemy.text(
                     """
-                    WITH pair_counts AS (
+                    WITH work_genres AS (
+                        -- Genres are copied to every language edition of a work
+                        -- (see ingestion editions.py), so without collapsing to
+                        -- one row per (work, genre) a heavily-translated work
+                        -- would inflate both the pair count and the genre size
+                        -- once per edition, skewing the Jaccard strength.
+                        SELECT DISTINCT b.work_id, bg.genre_id
+                        FROM books.book_genres bg
+                        JOIN books.books b ON b.book_id = bg.book_id
+                    ),
+                    pair_counts AS (
                         SELECT
-                            LEAST(bg1.genre_id, bg2.genre_id)    AS genre_id_a,
-                            GREATEST(bg1.genre_id, bg2.genre_id) AS genre_id_b,
+                            LEAST(wg1.genre_id, wg2.genre_id)    AS genre_id_a,
+                            GREATEST(wg1.genre_id, wg2.genre_id) AS genre_id_b,
                             COUNT(*)                             AS co_count
-                        FROM books.book_genres bg1
-                        JOIN books.book_genres bg2
-                            ON  bg1.book_id  = bg2.book_id
-                            AND bg1.genre_id != bg2.genre_id
+                        FROM work_genres wg1
+                        JOIN work_genres wg2
+                            ON  wg1.work_id  = wg2.work_id
+                            AND wg1.genre_id != wg2.genre_id
                         GROUP BY 1, 2
                         HAVING COUNT(*) >= :min_pair_count
                     ),
                     genre_sizes AS (
                         SELECT genre_id, COUNT(*) AS n
-                        FROM books.book_genres
+                        FROM work_genres
                         GROUP BY genre_id
                     )
                     INSERT INTO books.genre_co_occurrences

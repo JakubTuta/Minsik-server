@@ -48,6 +48,7 @@ message RecommendationBookItem {
   int32 rating_count = 9;
   double score = 10;
   int32 readers = 11;
+  string work_id = 12;
 }
 
 message RecommendationAuthorItem {

@@ -63,6 +63,7 @@ def _build_book_detail_proto(
     }
     return app.proto.books_pb2.BookDetail(
         book_id=book["book_id"],
+        work_id=book.get("work_id", "") or "",
         title=book["title"],
         slug=book["slug"],
         description=book["description"],
@@ -114,6 +115,7 @@ def _build_book_summary_proto(
     ]
     return app.proto.books_pb2.BookSummary(
         book_id=item["book_id"],
+        work_id=item.get("work_id", "") or "",
         title=item["title"],
         slug=item["slug"],
         description=item.get("description", ""),
@@ -132,6 +134,7 @@ def _build_book_summary_proto(
         app_read_count=item.get("app_read_count", 0),
         series_position=item.get("series_position", "") or "",
         rarity=item.get("rarity", "") or "",
+        language=item.get("language", "") or "",
     )
 
 
@@ -181,6 +184,8 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                             ol_rating_count=int(result.get("ol_rating_count") or 0),
                             book_count=int(result.get("book_count") or 0),
                             readers=int(result.get("readers") or 0),
+                            work_id=result.get("work_id") or "",
+                            language=result.get("language") or "",
                         )
                     )
 
@@ -225,6 +230,8 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                         else ""
                     ),
                     ol_rating_count=int(result.get("ol_rating_count") or 0),
+                    work_id=result.get("work_id") or "",
+                    language=result.get("language") or "",
                 )
                 for result in results
             ]
@@ -574,6 +581,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
 
         book_detail = app.proto.books_pb2.BookDetail(
             book_id=book["book_id"],
+            work_id=book.get("work_id", "") or "",
             title=book["title"],
             slug=book["slug"],
             description=book.get("description", ""),
@@ -1090,7 +1098,9 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
 
             item_protos = [
                 app.proto.books_pb2.SitemapSlugItem(
-                    slug=item["slug"], updated_at=item["updated_at"]
+                    slug=item["slug"],
+                    updated_at=item["updated_at"],
+                    language=item.get("language") or "",
                 )
                 for item in items
             ]

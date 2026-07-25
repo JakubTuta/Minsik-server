@@ -20,14 +20,6 @@ SLUGS_CACHE_TTL_SECONDS = 3600
 def _entity_query_config(
     entity: str,
 ) -> typing.Tuple[typing.Any, typing.Any, typing.Any, typing.Tuple[typing.Any, ...]]:
-    if entity == "books":
-        model = app.models.book.Book
-        return (
-            model,
-            model.slug,
-            model.updated_at,
-            (model.ol_already_read_count.desc(), model.book_id.asc()),
-        )
     if entity == "authors":
         model = app.models.author.Author
         return (
@@ -45,6 +37,33 @@ def _entity_query_config(
     )
 
 
+# One row per work, not per translation: a bare `/books/{slug}` sitemap URL
+# with no `?lang=` resolves through the server's default-language fallback,
+# so listing every edition's slug risks a search engine indexing e.g. the
+# French slug while the server serves it the English edition's content
+# (crawlers send no Accept-Language/cookie). Picks the English edition when
+# available, else the edition with the most readers, and records that
+# edition's language so the caller can attach `?lang=` for non-English picks.
+_BOOKS_SITEMAP_QUERY = """
+    WITH ranked AS (
+        SELECT
+            book_id, slug, language, updated_at, ol_already_read_count,
+            ROW_NUMBER() OVER (
+                PARTITION BY work_id
+                ORDER BY (language = 'en') DESC, ol_already_read_count DESC, book_id ASC
+            ) AS rn
+        FROM books.books
+    )
+    SELECT slug, language, updated_at
+    FROM ranked
+    WHERE rn = 1
+    ORDER BY ol_already_read_count DESC NULLS LAST, book_id ASC
+    LIMIT :limit OFFSET :offset
+"""
+
+_BOOKS_SITEMAP_COUNT_QUERY = "SELECT COUNT(DISTINCT work_id) FROM books.books"
+
+
 async def list_sitemap_slugs(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     entity: str,
@@ -59,28 +78,55 @@ async def list_sitemap_slugs(
     if cached is not None:
         return cached["items"], cached["total_count"]
 
-    model, slug_column, updated_at_column, order_by = _entity_query_config(entity)
+    if entity == "books":
+        result = await session.execute(
+            sqlalchemy.text(_BOOKS_SITEMAP_QUERY), {"limit": limit, "offset": offset}
+        )
+        rows = result.all()
+        items = [
+            {
+                "slug": row.slug,
+                "language": row.language or "en",
+                "updated_at": row.updated_at.isoformat() if row.updated_at else "",
+            }
+            for row in rows
+        ]
+        total_count = 0
+        if offset == 0:
+            count_cache_key = "sitemap:count:books"
+            cached_count = await app.cache.get_cached(count_cache_key)
+            if cached_count is not None:
+                total_count = int(cached_count)
+            else:
+                count_result = await session.execute(sqlalchemy.text(_BOOKS_SITEMAP_COUNT_QUERY))
+                total_count = count_result.scalar_one()
+                await app.cache.set_cached(
+                    count_cache_key, total_count, COUNT_CACHE_TTL_SECONDS
+                )
+    else:
+        model, slug_column, updated_at_column, order_by = _entity_query_config(entity)
 
-    stmt = (
-        sqlalchemy.select(slug_column, updated_at_column)
-        .order_by(*order_by)
-        .limit(limit)
-        .offset(offset)
-    )
-    result = await session.execute(stmt)
-    rows = result.all()
+        stmt = (
+            sqlalchemy.select(slug_column, updated_at_column)
+            .order_by(*order_by)
+            .limit(limit)
+            .offset(offset)
+        )
+        result = await session.execute(stmt)
+        rows = result.all()
 
-    items = [
-        {
-            "slug": slug,
-            "updated_at": updated_at.isoformat() if updated_at else "",
-        }
-        for slug, updated_at in rows
-    ]
+        items = [
+            {
+                "slug": slug,
+                "language": "",
+                "updated_at": updated_at.isoformat() if updated_at else "",
+            }
+            for slug, updated_at in rows
+        ]
 
-    total_count = 0
-    if offset == 0:
-        total_count = await _get_entity_count(session, entity, model)
+        total_count = 0
+        if offset == 0:
+            total_count = await _get_entity_count(session, entity, model)
 
     await app.cache.set_cached(
         cache_key, {"items": items, "total_count": total_count}, SLUGS_CACHE_TTL_SECONDS

@@ -6,6 +6,7 @@ import app.grpc_clients
 import app.middleware.auth
 import app.middleware.rate_limit
 import app.models.books_responses
+import app.utils.language
 import app.utils.responses
 import fastapi
 import grpc
@@ -37,9 +38,7 @@ async def suggest_search(
     request: fastapi.Request,
     q: str = fastapi.Query(..., min_length=1, description="Search query (partial input)"),
     limit: int = fastapi.Query(8, ge=1, le=20, description="Max suggestions to return"),
-    language: str = fastapi.Query(
-        "en", min_length=2, max_length=10, description="Language preference"
-    ),
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
     try:
         response = await app.grpc_clients.books_client.suggest_search(
@@ -64,6 +63,8 @@ async def suggest_search(
                     float(item.ol_avg_rating) if item.ol_avg_rating else 0.0
                 ),
                 "ol_rating_count": item.ol_rating_count,
+                "work_id": item.work_id or None,
+                "language": item.language or None,
             }
             for item in response.items
         ]
@@ -125,9 +126,7 @@ async def search_books_and_authors(
     ),
     limit: int = fastapi.Query(10, ge=1, le=100, description="Number of results per page"),
     offset: int = fastapi.Query(0, ge=0, description="Pagination offset"),
-    language: str = fastapi.Query(
-        "en", min_length=2, max_length=10, description="Language code (e.g. en, pl, de)"
-    ),
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
     try:
         response = await app.grpc_clients.books_client.search_books_and_authors(
@@ -157,6 +156,8 @@ async def search_books_and_authors(
                     "ol_rating_count": result.ol_rating_count,
                     "book_count": result.book_count,
                     "readers": result.readers,
+                    "work_id": result.work_id or None,
+                    "language": result.language or None,
                 }
             )
 
@@ -221,9 +222,7 @@ async def search_books_and_authors(
 async def get_book(
     request: fastapi.Request,
     slug: str = fastapi.Path(..., description="Book slug"),
-    language: str = fastapi.Query(
-        "en", min_length=2, max_length=10, description="Language code (e.g. en, pl, de)"
-    ),
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
     try:
         response = await app.grpc_clients.books_client.get_book(slug, language=language)
@@ -318,9 +317,7 @@ async def get_book_language_variants(
 async def get_author(
     request: fastapi.Request,
     slug: str = fastapi.Path(..., description="Author slug"),
-    language: str = fastapi.Query(
-        "en", min_length=2, max_length=10, description="Language code (e.g. en, pl, de)"
-    ),
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
     try:
         response = await app.grpc_clients.books_client.get_author(
@@ -420,9 +417,7 @@ async def get_author_books(
         description="Sort field",
     ),
     order: str = fastapi.Query("desc", regex="^(asc|desc)$", description="Sort order"),
-    language: str = fastapi.Query(
-        "en", min_length=2, max_length=10, description="Language code (e.g. en, pl, de)"
-    ),
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
     try:
         response = await app.grpc_clients.books_client.get_author_books(
@@ -474,9 +469,7 @@ async def get_author_books(
 async def get_author_quote(
     request: fastapi.Request,
     slug: str = fastapi.Path(..., description="Author slug"),
-    language: str = fastapi.Query(
-        "en", min_length=2, max_length=10, description="Language code (e.g. en, pl, de)"
-    ),
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
     try:
         books_response = await app.grpc_clients.books_client.get_author_books(
@@ -538,9 +531,7 @@ async def get_author_quote(
 async def get_author_top_books(
     request: fastapi.Request,
     slug: str = fastapi.Path(..., description="Author slug"),
-    language: str = fastapi.Query(
-        "en", min_length=2, max_length=10, description="Language code (e.g. en, pl, de)"
-    ),
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
     try:
         response = await app.grpc_clients.books_client.get_author_books(
@@ -590,9 +581,7 @@ async def get_author_top_books(
 async def get_series(
     request: fastapi.Request,
     slug: str = fastapi.Path(..., description="Series slug"),
-    language: str = fastapi.Query(
-        "en", min_length=2, max_length=10, description="Language code (e.g. en, pl, de)"
-    ),
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
     try:
         response = await app.grpc_clients.books_client.get_series(
@@ -812,9 +801,7 @@ async def get_series_books(
     slug: str = fastapi.Path(..., description="Series slug"),
     limit: int = fastapi.Query(10, ge=1, le=100, description="Number of books per page"),
     offset: int = fastapi.Query(0, ge=0, description="Pagination offset"),
-    language: str = fastapi.Query(
-        "en", min_length=2, max_length=10, description="Language code (e.g. en, pl, de)"
-    ),
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
     sort_by: str = fastapi.Query(
         "series_position",
         regex="^(series_position|publication_year|combined_rating|readers_count)$",
@@ -857,6 +844,7 @@ async def get_series_books(
 def _book_detail_proto_to_dict(book) -> typing.Dict[str, typing.Any]:
     return {
         "book_id": book.book_id,
+        "work_id": book.work_id,
         "title": book.title,
         "slug": book.slug,
         "description": book.description,
@@ -925,6 +913,8 @@ def _book_detail_proto_to_dict(book) -> typing.Dict[str, typing.Any]:
 def _book_summary_proto_to_dict(item) -> typing.Dict[str, typing.Any]:
     return {
         "book_id": item.book_id,
+        "work_id": item.work_id,
+        "language": item.language or None,
         "title": item.title,
         "slug": item.slug,
         "description": item.description or None,
@@ -989,9 +979,7 @@ def _book_summary_proto_to_dict(item) -> typing.Dict[str, typing.Any]:
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
 async def open_case(
     request: fastapi.Request,
-    language: str = fastapi.Query(
-        "en", min_length=2, max_length=10, description="Language code (e.g. en, pl, de)"
-    ),
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
     try:
         response = await app.grpc_clients.books_client.open_case(language=language)
@@ -1044,9 +1032,7 @@ async def open_case(
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
 async def open_pack(
     request: fastapi.Request,
-    language: str = fastapi.Query(
-        "en", min_length=2, max_length=10, description="Language code (e.g. en, pl, de)"
-    ),
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
     length: int = fastapi.Query(8, ge=1, le=25, description="Number of cards in the pack"),
 ):
     try:
@@ -1102,9 +1088,7 @@ async def open_pack(
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
 async def spin_slots(
     request: fastapi.Request,
-    language: str = fastapi.Query(
-        "en", min_length=2, max_length=10, description="Language code (e.g. en, pl, de)"
-    ),
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
     try:
         response = await app.grpc_clients.books_client.spin_slots(language=language)
@@ -1171,10 +1155,11 @@ async def spin_slots(
 async def discover_book(
     request: fastapi.Request,
     filters: app.models.books_responses.DiscoverBookFilters,
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
     try:
         response = await app.grpc_clients.books_client.discover_book(
-            language=filters.language,
+            language=filters.language or language,
             genre_slugs=filters.genre_slugs,
             book_length=filters.book_length or "",
             quality=filters.quality or "",

@@ -2,6 +2,7 @@ import asyncio
 import logging
 import typing
 
+import app.services.list_builder
 import sqlalchemy
 import sqlalchemy.ext.asyncio
 
@@ -45,7 +46,7 @@ async def _build_similar_authors_by_genre(
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     result = await session.execute(
         sqlalchemy.text(
-            """
+            f"""
             WITH author_genres AS (
                 SELECT DISTINCT bg.genre_id
                 FROM books.book_genres bg
@@ -62,9 +63,7 @@ async def _build_similar_authors_by_genre(
                 FROM books.book_authors ba
                 JOIN books.book_genres bg ON ba.book_id = bg.book_id
                 JOIN author_genres ag ON bg.genre_id = ag.genre_id
-                JOIN books.books b_filt ON ba.book_id = b_filt.book_id
                 WHERE ba.author_id != :author_id
-                  AND b_filt.language = 'en'
                 GROUP BY ba.author_id
                 HAVING COUNT(DISTINCT bg.genre_id) >= 2
                 ORDER BY shared DESC
@@ -84,35 +83,35 @@ async def _build_similar_authors_by_genre(
                 JOIN candidate_authors ca ON ca.author_id = ba_r.author_id
                 WHERE bs_a.status IN ('want_to_read', 'reading', 'read')
                 GROUP BY ba_r.author_id
-            )
+            ),
+            {app.services.list_builder._AUTHOR_WORKS_CTE}
             SELECT
                 a.author_id,
                 a.name,
                 a.slug,
                 COALESCE(a.photo_url, '') AS photo_url,
-                COUNT(DISTINCT b.book_id) FILTER (WHERE b.language = 'en') AS book_count,
+                COUNT(DISTINCT aw.book_id) AS book_count,
                 COALESCE(
                     SUM(
-                        COALESCE(b.avg_rating::numeric, 0) * b.rating_count
-                        + COALESCE(b.ol_avg_rating::numeric, 0) * b.ol_rating_count
-                    ) FILTER (WHERE b.language = 'en')
-                    / NULLIF(SUM(b.rating_count + b.ol_rating_count) FILTER (WHERE b.language = 'en'), 0),
+                        COALESCE(aw.avg_rating::numeric, 0) * aw.rating_count
+                        + COALESCE(aw.ol_avg_rating::numeric, 0) * aw.ol_rating_count
+                    )
+                    / NULLIF(SUM(aw.rating_count + aw.ol_rating_count), 0),
                     0
                 ) AS avg_rating,
                 COALESCE(SUM(
-                    COALESCE(b.ol_want_to_read_count, 0) +
-                    COALESCE(b.ol_currently_reading_count, 0) +
-                    COALESCE(b.ol_already_read_count, 0)
-                ) FILTER (WHERE b.language = 'en'), 0) + COALESCE(aar.app_readers, 0) AS readers,
-                COALESCE(SUM(b.rating_count + b.ol_rating_count) FILTER (WHERE b.language = 'en'), 0) AS rating_count,
+                    COALESCE(aw.ol_want_to_read_count, 0) +
+                    COALESCE(aw.ol_currently_reading_count, 0) +
+                    COALESCE(aw.ol_already_read_count, 0)
+                ), 0) + COALESCE(aar.app_readers, 0) AS readers,
+                COALESCE(SUM(aw.rating_count + aw.ol_rating_count), 0) AS rating_count,
                 ca.shared::float / NULLIF(
                     (SELECT cnt FROM author_genre_count) + cgt.candidate_cnt - ca.shared, 0
                 ) AS score
             FROM candidate_authors ca
             JOIN candidate_genre_totals cgt ON cgt.author_id = ca.author_id
             JOIN books.authors a ON ca.author_id = a.author_id
-            LEFT JOIN books.book_authors ba ON a.author_id = ba.author_id
-            LEFT JOIN books.books b ON ba.book_id = b.book_id
+            LEFT JOIN author_works aw ON aw.author_id = a.author_id
             LEFT JOIN author_app_readers aar ON aar.author_id = a.author_id
             WHERE ca.shared > 0
             GROUP BY a.author_id, a.name, a.slug, a.photo_url, ca.shared, ca.author_id, cgt.candidate_cnt, aar.app_readers
@@ -132,7 +131,7 @@ async def _build_fans_also_read(
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     result = await session.execute(
         sqlalchemy.text(
-            """
+            f"""
             WITH author_readers AS (
                 SELECT DISTINCT bs.user_id
                 FROM user_data.bookshelves bs
@@ -161,32 +160,32 @@ async def _build_fans_also_read(
                 JOIN co_authors ca ON ca.author_id = ba_r.author_id
                 WHERE bs_a.status IN ('want_to_read', 'reading', 'read')
                 GROUP BY ba_r.author_id
-            )
+            ),
+            {app.services.list_builder._AUTHOR_WORKS_CTE}
             SELECT
                 a.author_id,
                 a.name,
                 a.slug,
                 COALESCE(a.photo_url, '') AS photo_url,
-                COUNT(DISTINCT b.book_id) FILTER (WHERE b.language = 'en') AS book_count,
+                COUNT(DISTINCT aw.book_id) AS book_count,
                 COALESCE(
                     SUM(
-                        COALESCE(b.avg_rating::numeric, 0) * b.rating_count
-                        + COALESCE(b.ol_avg_rating::numeric, 0) * b.ol_rating_count
-                    ) FILTER (WHERE b.language = 'en')
-                    / NULLIF(SUM(b.rating_count + b.ol_rating_count) FILTER (WHERE b.language = 'en'), 0),
+                        COALESCE(aw.avg_rating::numeric, 0) * aw.rating_count
+                        + COALESCE(aw.ol_avg_rating::numeric, 0) * aw.ol_rating_count
+                    )
+                    / NULLIF(SUM(aw.rating_count + aw.ol_rating_count), 0),
                     0
                 ) AS avg_rating,
                 COALESCE(SUM(
-                    COALESCE(b.ol_want_to_read_count, 0) +
-                    COALESCE(b.ol_currently_reading_count, 0) +
-                    COALESCE(b.ol_already_read_count, 0)
-                ) FILTER (WHERE b.language = 'en'), 0) + COALESCE(aar.app_readers, 0) AS readers,
-                COALESCE(SUM(b.rating_count + b.ol_rating_count) FILTER (WHERE b.language = 'en'), 0) AS rating_count,
+                    COALESCE(aw.ol_want_to_read_count, 0) +
+                    COALESCE(aw.ol_currently_reading_count, 0) +
+                    COALESCE(aw.ol_already_read_count, 0)
+                ), 0) + COALESCE(aar.app_readers, 0) AS readers,
+                COALESCE(SUM(aw.rating_count + aw.ol_rating_count), 0) AS rating_count,
                 ca.co_count AS score
             FROM co_authors ca
             JOIN books.authors a ON ca.author_id = a.author_id
-            LEFT JOIN books.book_authors ba ON a.author_id = ba.author_id
-            LEFT JOIN books.books b ON ba.book_id = b.book_id
+            LEFT JOIN author_works aw ON aw.author_id = a.author_id
             LEFT JOIN author_app_readers aar ON aar.author_id = a.author_id
             GROUP BY a.author_id, a.name, a.slug, a.photo_url, ca.co_count, aar.app_readers
             ORDER BY ca.co_count DESC, book_count DESC

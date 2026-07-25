@@ -77,14 +77,15 @@ _BOOK_SELECT = """
     LEFT JOIN books.authors a ON ba.author_id = a.author_id
     LEFT JOIN (
         SELECT
-            book_id,
-            COUNT(*) FILTER (WHERE status = 'want_to_read') AS app_want_to_read_count,
-            COUNT(*) FILTER (WHERE status = 'reading') AS app_reading_count,
-            COUNT(*) FILTER (WHERE status = 'read') AS app_read_count
-        FROM user_data.bookshelves
-        WHERE status != 'abandoned'
-        GROUP BY book_id
-    ) bs ON b.book_id = bs.book_id
+            wb.work_id,
+            COUNT(*) FILTER (WHERE bsh.status = 'want_to_read') AS app_want_to_read_count,
+            COUNT(*) FILTER (WHERE bsh.status = 'reading') AS app_reading_count,
+            COUNT(*) FILTER (WHERE bsh.status = 'read') AS app_read_count
+        FROM user_data.bookshelves bsh
+        JOIN books.books wb ON wb.book_id = bsh.book_id
+        WHERE bsh.status != 'abandoned'
+        GROUP BY wb.work_id
+    ) bs ON b.work_id = bs.work_id
 """
 
 _BOOK_GROUP_BY = """
@@ -139,11 +140,7 @@ async def _try_open_from_cache(
     if not winner_pool:
         return None
 
-    weights = [
-        app.services._language_boost.lang_boost_weight(b.get("language", ""), language)
-        for b in winner_pool
-    ]
-    winner = random.choices(winner_pool, weights=weights, k=1)[0]
+    winner = pick_weighted_from_pool(winner_pool, language)
     if "rarity" not in winner:
         winner["rarity"] = winning_tier[0]
 
@@ -189,6 +186,16 @@ async def load_cached_tier_pools() -> typing.Optional[
             return None
         tier_pools[tier_name] = pool
     return tier_pools
+
+
+def pick_weighted_from_pool(
+    pool: typing.List[typing.Dict[str, typing.Any]], language: str
+) -> typing.Dict[str, typing.Any]:
+    weights = [
+        app.services._language_boost.lang_boost_weight(b.get("language", ""), language)
+        for b in pool
+    ]
+    return random.choices(pool, weights=weights, k=1)[0]
 
 
 def eligible_pool_books(
@@ -348,14 +355,15 @@ async def _fetch_all_display_books(
             LEFT JOIN books.authors a ON ba.author_id = a.author_id
             LEFT JOIN (
                 SELECT
-                    book_id,
-                    COUNT(*) FILTER (WHERE status = 'want_to_read') AS app_want_to_read_count,
-                    COUNT(*) FILTER (WHERE status = 'reading')      AS app_reading_count,
-                    COUNT(*) FILTER (WHERE status = 'read')         AS app_read_count
-                FROM user_data.bookshelves
-                WHERE status != 'abandoned'
-                GROUP BY book_id
-            ) bs ON b.book_id = bs.book_id
+                    wb.work_id,
+                    COUNT(*) FILTER (WHERE bsh.status = 'want_to_read') AS app_want_to_read_count,
+                    COUNT(*) FILTER (WHERE bsh.status = 'reading')      AS app_reading_count,
+                    COUNT(*) FILTER (WHERE bsh.status = 'read')         AS app_read_count
+                FROM user_data.bookshelves bsh
+                JOIN books.books wb ON wb.book_id = bsh.book_id
+                WHERE bsh.status != 'abandoned'
+                GROUP BY wb.work_id
+            ) bs ON b.work_id = bs.work_id
             WHERE b.book_id != :exclude_book_id
               AND (b.rating_count + b.ol_rating_count) >= 1
             GROUP BY b.book_id, b.title, b.slug, b.description, b.primary_cover_url,

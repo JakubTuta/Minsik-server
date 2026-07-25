@@ -37,7 +37,7 @@ class RecommendationListResponse(_message.Message):
     def __init__(self, category: _Optional[str] = ..., display_name: _Optional[str] = ..., item_type: _Optional[str] = ..., book_items: _Optional[_Iterable[_Union[RecommendationBookItem, _Mapping]]] = ..., author_items: _Optional[_Iterable[_Union[RecommendationAuthorItem, _Mapping]]] = ..., total: _Optional[int] = ...) -> None: ...
 
 class RecommendationBookItem(_message.Message):
-    __slots__ = ("book_id", "title", "slug", "language", "primary_cover_url", "author_names", "author_slugs", "avg_rating", "rating_count", "score", "readers")
+    __slots__ = ("book_id", "title", "slug", "language", "primary_cover_url", "author_names", "author_slugs", "avg_rating", "rating_count", "score", "readers", "work_id")
     BOOK_ID_FIELD_NUMBER: _ClassVar[int]
     TITLE_FIELD_NUMBER: _ClassVar[int]
     SLUG_FIELD_NUMBER: _ClassVar[int]
@@ -49,6 +49,7 @@ class RecommendationBookItem(_message.Message):
     RATING_COUNT_FIELD_NUMBER: _ClassVar[int]
     SCORE_FIELD_NUMBER: _ClassVar[int]
     READERS_FIELD_NUMBER: _ClassVar[int]
+    WORK_ID_FIELD_NUMBER: _ClassVar[int]
     book_id: int
     title: str
     slug: str
@@ -60,7 +61,8 @@ class RecommendationBookItem(_message.Message):
     rating_count: int
     score: float
     readers: int
-    def __init__(self, book_id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., language: _Optional[str] = ..., primary_cover_url: _Optional[str] = ..., author_names: _Optional[_Iterable[str]] = ..., author_slugs: _Optional[_Iterable[str]] = ..., avg_rating: _Optional[str] = ..., rating_count: _Optional[int] = ..., score: _Optional[float] = ..., readers: _Optional[int] = ...) -> None: ...
+    work_id: str
+    def __init__(self, book_id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., language: _Optional[str] = ..., primary_cover_url: _Optional[str] = ..., author_names: _Optional[_Iterable[str]] = ..., author_slugs: _Optional[_Iterable[str]] = ..., avg_rating: _Optional[str] = ..., rating_count: _Optional[int] = ..., score: _Optional[float] = ..., readers: _Optional[int] = ..., work_id: _Optional[str] = ...) -> None: ...
 
 class RecommendationAuthorItem(_message.Message):
     __slots__ = ("author_id", "name", "slug", "photo_url", "book_count", "score", "avg_rating", "readers", "rating_count")

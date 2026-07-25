@@ -14,10 +14,7 @@ async def spin_slots(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     language: str = "en",
 ) -> typing.Tuple[typing.List[str], typing.Dict[str, typing.Any]]:
-    winner_item = None
-
-    if language == "en":
-        winner_item = await _pick_winner_from_cache()
+    winner_item = await _pick_winner_from_cache(language)
 
     if not winner_item:
         winner_item = await _pick_winner_from_db(session, language)
@@ -28,7 +25,9 @@ async def spin_slots(
     return reels, winner_item
 
 
-async def _pick_winner_from_cache() -> typing.Optional[typing.Dict[str, typing.Any]]:
+async def _pick_winner_from_cache(
+    language: str,
+) -> typing.Optional[typing.Dict[str, typing.Any]]:
     tier_pools = await app.services.case_service.load_cached_tier_pools()
     if tier_pools is None:
         return None
@@ -40,7 +39,7 @@ async def _pick_winner_from_cache() -> typing.Optional[typing.Dict[str, typing.A
     if not winner_pool:
         return None
 
-    winner_item = random.choice(winner_pool)
+    winner_item = app.services.case_service.pick_weighted_from_pool(winner_pool, language)
     if "rarity" not in winner_item:
         winner_item["rarity"] = tier[0]
     return winner_item

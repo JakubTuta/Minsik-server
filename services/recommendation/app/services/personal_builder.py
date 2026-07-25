@@ -2,7 +2,7 @@ import asyncio
 import logging
 import typing
 
-import app.services._book_filter
+import app.services._language_boost
 import app.services.list_builder
 import sqlalchemy
 import sqlalchemy.ext.asyncio
@@ -44,6 +44,7 @@ async def _build_for_you(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     profile: typing.Dict[str, typing.Any],
     limit: int,
+    language: str,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     genre_scores = profile.get("genre_scores", {})
     if not genre_scores:
@@ -122,7 +123,7 @@ async def _build_for_you(
             "exclude_ids": exclude_ids,
             "read_book_ids": read_book_ids,
             "user_id": user_id,
-            "limit": limit,
+            "limit": limit, "language": language,
         },
     )
     return [
@@ -135,6 +136,7 @@ async def _build_because_you_liked(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     profile: typing.Dict[str, typing.Any],
     limit: int,
+    language: str,
 ) -> typing.Tuple[typing.List[typing.Dict[str, typing.Any]], str]:
     anchor_book = profile.get("anchor_book")
     if not anchor_book:
@@ -211,7 +213,7 @@ async def _build_because_you_liked(
             LIMIT :limit
             """
         ),
-        {"anchor_id": anchor_book_id, "exclude_ids": exclude_ids, "limit": limit},
+        {"anchor_id": anchor_book_id, "exclude_ids": exclude_ids, "limit": limit, "language": language},
     )
     items = [
         app.services.list_builder._row_to_book_item(row, float(row.score or 0))
@@ -224,6 +226,7 @@ async def _build_continue_series(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     profile: typing.Dict[str, typing.Any],
     limit: int,
+    language: str,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     series_in_progress = profile.get("series_in_progress", [])
     if not series_in_progress:
@@ -245,7 +248,7 @@ async def _build_continue_series(
             LIMIT :limit
             """
         ),
-        {"series_ids": series_ids, "exclude_ids": exclude_ids, "limit": limit},
+        {"series_ids": series_ids, "exclude_ids": exclude_ids, "limit": limit, "language": language},
     )
     return [
         app.services.list_builder._row_to_book_item(row, float(row.score or 0))
@@ -257,6 +260,7 @@ async def _build_from_favorite_authors(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     profile: typing.Dict[str, typing.Any],
     limit: int,
+    language: str,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     author_ids = profile.get("author_ids_read", [])
     if not author_ids:
@@ -281,7 +285,7 @@ async def _build_from_favorite_authors(
             LIMIT :limit
             """
         ),
-        {"author_ids": author_ids, "exclude_ids": exclude_ids, "limit": limit},
+        {"author_ids": author_ids, "exclude_ids": exclude_ids, "limit": limit, "language": language},
     )
     return [
         app.services.list_builder._row_to_book_item(row, float(row.score or 0))
@@ -293,6 +297,7 @@ async def _build_top_in_genre(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     profile: typing.Dict[str, typing.Any],
     limit: int,
+    language: str,
 ) -> typing.Tuple[typing.List[typing.Dict[str, typing.Any]], str]:
     top_genre_slugs = profile.get("top_genre_slugs", [])
     if not top_genre_slugs:
@@ -319,7 +324,7 @@ async def _build_top_in_genre(
             LIMIT :limit
             """
         ),
-        {"genre_slug": genre_slug, "exclude_ids": exclude_ids, "limit": limit},
+        {"genre_slug": genre_slug, "exclude_ids": exclude_ids, "limit": limit, "language": language},
     )
     items = [
         app.services.list_builder._row_to_book_item(row, float(row.score or 0))
@@ -332,6 +337,7 @@ async def _build_want_to_read_picks(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     profile: typing.Dict[str, typing.Any],
     limit: int,
+    language: str,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     want_to_read_ids = profile.get("want_to_read_book_ids", [])
     if not want_to_read_ids:
@@ -349,7 +355,7 @@ async def _build_want_to_read_picks(
             LIMIT :limit
             """
         ),
-        {"want_to_read_ids": want_to_read_ids, "limit": limit},
+        {"want_to_read_ids": want_to_read_ids, "limit": limit, "language": language},
     )
     return [
         app.services.list_builder._row_to_book_item(row, float(row.score or 0))
@@ -361,6 +367,7 @@ async def _build_readers_like_you(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     profile: typing.Dict[str, typing.Any],
     limit: int,
+    language: str,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     read_book_ids = profile.get("read_book_ids", [])
     if not read_book_ids:
@@ -406,7 +413,7 @@ async def _build_readers_like_you(
             "read_book_ids": read_book_ids,
             "exclude_ids": exclude_ids,
             "user_id": user_id,
-            "limit": limit,
+            "limit": limit, "language": language,
         },
     )
     return [
@@ -419,6 +426,7 @@ async def _build_hidden_gems(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     profile: typing.Dict[str, typing.Any],
     limit: int,
+    language: str,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     top_genre_slugs = profile.get("top_genre_slugs", [])
     if not top_genre_slugs:
@@ -446,7 +454,7 @@ async def _build_hidden_gems(
             LIMIT :limit
             """
         ),
-        {"genre_slugs": top_genre_slugs, "exclude_ids": exclude_ids, "limit": limit},
+        {"genre_slugs": top_genre_slugs, "exclude_ids": exclude_ids, "limit": limit, "language": language},
     )
     return [
         app.services.list_builder._row_to_book_item(row, float(row.score or 0))
@@ -459,6 +467,7 @@ async def _build_you_might_like(
     book_id: int,
     profile: typing.Dict[str, typing.Any],
     limit: int,
+    language: str,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     genre_scores = profile.get("genre_scores", {})
     if not genre_scores:
@@ -513,7 +522,7 @@ async def _build_you_might_like(
             "genre_slugs": genre_slugs,
             "genre_weights": genre_weights,
             "exclude_ids": exclude_ids,
-            "limit": limit,
+            "limit": limit, "language": language,
         },
     )
     return [
@@ -527,6 +536,7 @@ async def _build_unread_by_author(
     author_id: int,
     profile: typing.Dict[str, typing.Any],
     limit: int,
+    language: str,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     exclude_ids = profile.get("excluded_book_ids", [])
     shelved_ids = list(
@@ -552,7 +562,7 @@ async def _build_unread_by_author(
             LIMIT :limit
             """
         ),
-        {"author_id": author_id, "shelved_ids": shelved_ids, "limit": limit},
+        {"author_id": author_id, "shelved_ids": shelved_ids, "limit": limit, "language": language},
     )
     return [
         app.services.list_builder._row_to_book_item(row, float(row.score or 0))
@@ -564,6 +574,7 @@ async def _build_explore_adjacent_genres(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     profile: typing.Dict[str, typing.Any],
     limit: int,
+    language: str,
 ) -> typing.Tuple[typing.List[typing.Dict[str, typing.Any]], str]:
     genre_scores = profile.get("genre_scores", {})
     if not genre_scores:
@@ -618,7 +629,7 @@ async def _build_explore_adjacent_genres(
         {
             "top_slugs": top_genre_slugs,
             "exclude_ids": exclude_ids,
-            "limit": limit,
+            "limit": limit, "language": language,
         },
     )
 
@@ -639,21 +650,22 @@ async def build_personal_home_sections(
     session_maker: typing.Any,
     profile: typing.Dict[str, typing.Any],
     limit_per_section: int,
+    language: str = "en",
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     async def run(builder_fn: typing.Any, *args: typing.Any) -> typing.Any:
         async with session_maker() as session:
             return await builder_fn(session, *args)
 
     results = await asyncio.gather(
-        run(_build_for_you, profile, limit_per_section),
-        run(_build_because_you_liked, profile, limit_per_section),
-        run(_build_continue_series, profile, limit_per_section),
-        run(_build_from_favorite_authors, profile, limit_per_section),
-        run(_build_top_in_genre, profile, limit_per_section),
-        run(_build_want_to_read_picks, profile, limit_per_section),
-        run(_build_readers_like_you, profile, limit_per_section),
-        run(_build_hidden_gems, profile, limit_per_section),
-        run(_build_explore_adjacent_genres, profile, limit_per_section),
+        run(_build_for_you, profile, limit_per_section, language),
+        run(_build_because_you_liked, profile, limit_per_section, language),
+        run(_build_continue_series, profile, limit_per_section, language),
+        run(_build_from_favorite_authors, profile, limit_per_section, language),
+        run(_build_top_in_genre, profile, limit_per_section, language),
+        run(_build_want_to_read_picks, profile, limit_per_section, language),
+        run(_build_readers_like_you, profile, limit_per_section, language),
+        run(_build_hidden_gems, profile, limit_per_section, language),
+        run(_build_explore_adjacent_genres, profile, limit_per_section, language),
         return_exceptions=True,
     )
 
@@ -684,7 +696,7 @@ async def build_personal_home_sections(
     adjacent_items, adjacent_genre = adjacent_result if adjacent_result else ([], "")
 
     def _deduped(items: typing.List[typing.Dict[str, typing.Any]]) -> typing.List[typing.Dict[str, typing.Any]]:
-        return app.services._book_filter.dedupe_books_by_slug(items)
+        return app.services._language_boost.dedupe_by_work(items, language)
 
     sections: typing.List[typing.Dict[str, typing.Any]] = []
 
@@ -765,9 +777,10 @@ async def build_personal_book_sections(
     book_id: int,
     profile: typing.Dict[str, typing.Any],
     limit_per_section: int,
+    language: str = "en",
 ) -> typing.List[typing.Dict[str, typing.Any]]:
-    items = await _build_you_might_like(session, book_id, profile, limit_per_section)
-    items = app.services._book_filter.dedupe_books_by_slug(items)
+    items = await _build_you_might_like(session, book_id, profile, limit_per_section, language)
+    items = app.services._language_boost.dedupe_by_work(items, language)
     if not items:
         return []
     return [_make_book_page_section("you_might_like", "You Might Also Like", items)]
@@ -778,11 +791,12 @@ async def build_personal_author_sections(
     author_id: int,
     profile: typing.Dict[str, typing.Any],
     limit_per_section: int,
+    language: str = "en",
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     items = await _build_unread_by_author(
-        session, author_id, profile, limit_per_section
+        session, author_id, profile, limit_per_section, language
     )
-    items = app.services._book_filter.dedupe_books_by_slug(items)
+    items = app.services._language_boost.dedupe_by_work(items, language)
     if not items:
         return []
     return [

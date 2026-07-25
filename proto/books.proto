@@ -42,6 +42,7 @@ message ListSitemapSlugsRequest {
 message SitemapSlugItem {
   string slug = 1;
   string updated_at = 2;
+  string language = 3;
 }
 
 message ListSitemapSlugsResponse {
@@ -99,6 +100,8 @@ message SuggestionItem {
   int32 app_rating_count = 10;
   string ol_avg_rating = 11;
   int32 ol_rating_count = 12;
+  string work_id = 13;
+  string language = 14;
 }
 
 message SuggestSearchResponse {
@@ -133,6 +136,8 @@ message SearchResult {
   string ol_avg_rating = 16;
   int32 ol_rating_count = 17;
   int32 readers = 18;
+  string work_id = 19;
+  string language = 20;
 }
 
 message SearchResponse {
@@ -205,6 +210,7 @@ message BookDetail {
   int32 app_reading_count = 34;
   int32 app_read_count = 35;
   map<string, int32> rating_distribution = 36;
+  string work_id = 37;
 }
 
 message AuthorInfo {
@@ -318,6 +324,8 @@ message BookSummary {
   int32 app_read_count = 16;
   string series_position = 17;
   string rarity = 18;
+  string language = 20;
+  string work_id = 21;
 }
 
 message BooksListResponse {

@@ -95,7 +95,8 @@ async def _resolve_book(session, book_slug: str) -> typing.Tuple[int, str, str]:
 async def _resolve_book_meta(session, book_slug: str) -> typing.Dict[str, typing.Any]:
     result = await session.execute(
         sqlalchemy.text(
-            "SELECT b.book_id, b.title, b.primary_cover_url, s.name AS series_name, s.slug AS series_slug "
+            "SELECT b.book_id, b.work_id, b.title, b.primary_cover_url, "
+            "s.name AS series_name, s.slug AS series_slug "
             "FROM books.books b "
             "LEFT JOIN books.series s ON s.series_id = b.series_id "
             "WHERE b.slug = :slug ORDER BY b.book_id ASC LIMIT 1"
@@ -119,6 +120,7 @@ async def _resolve_book_meta(session, book_slug: str) -> typing.Dict[str, typing
 
     return {
         "book_id": row.book_id,
+        "work_id": row.work_id,
         "title": row.title or "",
         "cover_url": row.primary_cover_url or "",
         "series_name": row.series_name or "",
@@ -126,6 +128,15 @@ async def _resolve_book_meta(session, book_slug: str) -> typing.Dict[str, typing
         "author_names": [a.name for a in authors],
         "author_slugs": [a.slug for a in authors],
     }
+
+
+async def _resolve_work_id(session, book_id: int) -> typing.Optional[str]:
+    result = await session.execute(
+        sqlalchemy.text("SELECT work_id FROM books.books WHERE book_id = :book_id"),
+        {"book_id": book_id},
+    )
+    row = result.fetchone()
+    return row.work_id if row else None
 
 
 async def _resolve_username(session, user_id: int) -> str:
@@ -1290,7 +1301,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                     request.body,
                     request.is_spoiler,
                 )
-                await _book_comments_cache.invalidate_by_book(book_meta["book_id"])
+                await _book_comments_cache.invalidate_by_book(book_meta["work_id"])
                 await app.cache.delete_profile_stats(request.user_id)
                 await app.cache.delete_profile_overview(request.user_id)
                 await app.cache.delete_year_in_review(request.user_id)
@@ -1336,7 +1347,9 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 )
                 meta_map = await _build_book_meta_map(session, [comment.book_id])
                 authors_map = await _build_book_authors_map(session, [comment.book_id])
-                await _book_comments_cache.invalidate_by_book(comment.book_id)
+                work_id = await _resolve_work_id(session, comment.book_id)
+                if work_id:
+                    await _book_comments_cache.invalidate_by_book(work_id)
                 await app.cache.delete_profile_stats(request.user_id)
                 await app.cache.delete_profile_overview(request.user_id)
                 await app.cache.delete_year_in_review(request.user_id)
@@ -1381,7 +1394,9 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                     session, request.comment_id, request.user_id
                 )
                 if book_id_row:
-                    await _book_comments_cache.invalidate_by_book(book_id_row.book_id)
+                    work_id = await _resolve_work_id(session, book_id_row.book_id)
+                    if work_id:
+                        await _book_comments_cache.invalidate_by_book(work_id)
                 await app.cache.delete_profile_stats(request.user_id)
                 await app.cache.delete_profile_overview(request.user_id)
                 await app.cache.delete_year_in_review(request.user_id)
@@ -1574,7 +1589,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
             async with app.database.async_session_maker() as session:
                 book_result = await session.execute(
                     sqlalchemy.text(
-                        "SELECT book_id FROM books.books WHERE slug = :slug ORDER BY book_id ASC LIMIT 1"
+                        "SELECT work_id FROM books.books WHERE slug = :slug ORDER BY book_id ASC LIMIT 1"
                     ),
                     {"slug": request.book_slug},
                 )
@@ -1585,16 +1600,19 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                         f"Book not found: {request.book_slug}",
                     )
                     return
-                book_id = book_row.book_id
+                work_id = book_row.work_id
 
-                cache_key = f"{book_id}:{sort_by}:{order_dir}:{include_spoilers}:{sorted(rating_filters)}:{limit}:{offset}"
+                cache_key = f"{work_id}:{sort_by}:{order_dir}:{include_spoilers}:{sorted(rating_filters)}:{limit}:{offset}"
                 cached = await _book_comments_cache.get(cache_key)
 
                 if cached is None:
                     rating_join = "LEFT JOIN"
-                    where = "c.book_id = :book_id AND c.is_deleted = FALSE"
+                    where = (
+                        "c.book_id IN (SELECT book_id FROM books.books WHERE work_id = :work_id) "
+                        "AND c.is_deleted = FALSE"
+                    )
                     params: typing.Dict[str, typing.Any] = {
-                        "book_id": book_id,
+                        "work_id": work_id,
                         "limit": limit,
                         "offset": offset,
                     }
@@ -1665,11 +1683,14 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                             LEFT JOIN user_data.ratings r
                                    ON r.user_id = c.user_id AND r.book_id = c.book_id
                             LEFT JOIN auth.users a ON a.user_id = c.user_id
-                            WHERE c.user_id = :user_id AND c.book_id = :book_id
+                            WHERE c.user_id = :user_id
+                              AND c.book_id IN (
+                                  SELECT book_id FROM books.books WHERE work_id = :work_id
+                              )
                               AND c.is_deleted = FALSE
                         """
                         ),
-                        {"user_id": request.requesting_user_id, "book_id": book_id},
+                        {"user_id": request.requesting_user_id, "work_id": work_id},
                     )
                     my_row = my_row_result.fetchone()
                     if my_row:
@@ -1803,10 +1824,21 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                     ),
                     {"user_id": request.user_id},
                 )
+
+                work_ids: typing.Set[str] = set()
+                if comment_book_ids:
+                    work_id_result = await session.execute(
+                        sqlalchemy.text(
+                            "SELECT DISTINCT work_id FROM books.books WHERE book_id = ANY(:ids)"
+                        ),
+                        {"ids": comment_book_ids},
+                    )
+                    work_ids = {row.work_id for row in work_id_result}
+
                 await session.commit()
 
-            for book_id in comment_book_ids:
-                await _book_comments_cache.invalidate_by_book(book_id)
+            for work_id in work_ids:
+                await _book_comments_cache.invalidate_by_book(work_id)
             await app.cache.delete_profile_stats(request.user_id)
             await app.cache.delete_profile_overview(request.user_id)
             await app.cache.delete_year_in_review(request.user_id)

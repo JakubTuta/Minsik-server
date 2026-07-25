@@ -10,6 +10,7 @@ async def test_create_book(db_session):
         title="Neuromancer",
         language="en",
         slug="neuromancer",
+        work_id="OL123W",
         description="A science fiction novel",
         original_publication_year=1984,
         formats=["hardcover", "ebook"],
@@ -63,6 +64,7 @@ async def test_book_author_relationship(db_session):
         title="Neuromancer",
         language="en",
         slug="neuromancer",
+        work_id="OL123W",
     )
 
     author = Author(name="William Gibson", slug="william-gibson")
@@ -91,6 +93,7 @@ async def test_book_genre_relationship(db_session):
         title="Neuromancer",
         language="en",
         slug="neuromancer",
+        work_id="OL123W",
     )
 
     genre = Genre(name="Science Fiction", slug="science-fiction")
@@ -119,6 +122,7 @@ async def test_book_unique_language_slug(db_session):
         title="Neuromancer",
         language="en",
         slug="neuromancer",
+        work_id="OL123W",
     )
 
     db_session.add(book1)
@@ -128,6 +132,7 @@ async def test_book_unique_language_slug(db_session):
         title="Neuromancer",
         language="en",
         slug="neuromancer",
+        work_id="OL123W",
     )
 
     db_session.add(book2)
@@ -143,12 +148,14 @@ async def test_book_different_languages(db_session):
         title="Neuromancer",
         language="en",
         slug="neuromancer",
+        work_id="OL123W",
     )
 
     book_fr = Book(
         title="Neuromancien",
         language="fr",
         slug="neuromancien",
+        work_id="OL123W",
     )
 
     db_session.add(book_en)
@@ -169,6 +176,7 @@ async def test_book_new_columns(db_session):
         title="Neuromancer",
         language="en",
         slug="neuromancer-new-cols",
+        work_id="OL123W-new-cols",
         isbn=["9780441569595", "0441569595"],
         publisher="Ace Books",
         number_of_pages=271,

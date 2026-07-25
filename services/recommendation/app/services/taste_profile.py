@@ -44,6 +44,22 @@ async def _query_bookshelves(
         if row.status in ("read", "reading") or row.is_favorite:
             excluded_book_ids.add(row.book_id)
 
+    # Expand to every sibling edition of an already-shelved/favorited work, so
+    # a user who read the English edition isn't recommended the same work's
+    # Polish edition as if it were something new.
+    if excluded_book_ids:
+        sibling_result = await session.execute(
+            sqlalchemy.text("""
+                SELECT book_id
+                FROM books.books
+                WHERE work_id IN (
+                    SELECT work_id FROM books.books WHERE book_id = ANY(:book_ids)
+                )
+            """),
+            {"book_ids": list(excluded_book_ids)},
+        )
+        excluded_book_ids.update(row.book_id for row in sibling_result)
+
     return {
         "read_book_ids": list(read_book_ids),
         "want_to_read_book_ids": list(want_to_read_book_ids),

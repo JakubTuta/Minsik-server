@@ -44,7 +44,11 @@ async def list_sitemap_slugs(
             entity=entity, limit=limit, offset=offset
         )
         items = [
-            {"slug": item.slug, "updated_at": item.updated_at or None}
+            {
+                "slug": item.slug,
+                "updated_at": item.updated_at or None,
+                "language": item.language or None,
+            }
             for item in response.items
         ]
         return app.utils.responses.success_response(

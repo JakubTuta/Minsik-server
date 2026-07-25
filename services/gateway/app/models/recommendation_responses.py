@@ -6,6 +6,7 @@ import pydantic
 
 class RecommendationBookItemSchema(pydantic.BaseModel):
     book_id: int
+    work_id: typing.Optional[str] = None
     title: str
     slug: str
     language: str

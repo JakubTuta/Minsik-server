@@ -31,7 +31,7 @@ class TestUpsertRating:
     async def test_upsert_calls_update_book_stats(self, mock_session, mock_rating):
         mock_session.execute.return_value = make_scalar_result(mock_rating)
         await rating_service.upsert_rating(mock_session, 10, 100, 4.5, {}, None)
-        assert mock_session.execute.call_count == 3
+        assert mock_session.execute.call_count == 2
 
 
 class TestDeleteRating:

@@ -1,5 +1,4 @@
 import logging
-import random
 import typing
 
 import app.services.case_service
@@ -27,10 +26,9 @@ async def open_pack(
     language: str,
     length: int = DEFAULT_PACK_LENGTH,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
-    if language == "en":
-        cached = await _try_pack_from_cache(length)
-        if cached is not None:
-            return cached
+    cached = await _try_pack_from_cache(length, language)
+    if cached is not None:
+        return cached
 
     return await _build_pack_from_db(session, language, length)
 
@@ -48,21 +46,23 @@ def _has_guaranteed_rarity(items: typing.List[typing.Dict[str, typing.Any]]) -> 
 
 async def _try_pack_from_cache(
     length: int,
+    language: str,
 ) -> typing.Optional[typing.List[typing.Dict[str, typing.Any]]]:
     tier_pools = await app.services.case_service.load_cached_tier_pools()
     if tier_pools is None:
         return None
 
-    items = _pick_from_pools(tier_pools, length)
+    items = _pick_from_pools(tier_pools, length, language)
     if items is None:
         return None
 
-    return _ensure_guaranteed_rarity(items, tier_pools)
+    return _ensure_guaranteed_rarity(items, tier_pools, language)
 
 
 def _pick_from_pools(
     tier_pools: typing.Dict[str, typing.List[typing.Dict[str, typing.Any]]],
     length: int,
+    language: str,
 ) -> typing.Optional[typing.List[typing.Dict[str, typing.Any]]]:
     items: typing.List[typing.Dict[str, typing.Any]] = []
     used_ids: typing.Set[int] = set()
@@ -75,7 +75,7 @@ def _pick_from_pools(
         if not eligible:
             return None
 
-        book = random.choice(eligible)
+        book = app.services.case_service.pick_weighted_from_pool(eligible, language)
         used_ids.add(book["book_id"])
         items.append(book)
 
@@ -85,6 +85,7 @@ def _pick_from_pools(
 def _ensure_guaranteed_rarity(
     items: typing.List[typing.Dict[str, typing.Any]],
     tier_pools: typing.Dict[str, typing.List[typing.Dict[str, typing.Any]]],
+    language: str,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     if _has_guaranteed_rarity(items):
         return items
@@ -96,7 +97,9 @@ def _ensure_guaranteed_rarity(
         pool = tier_pools.get(tier_name, [])
         eligible = [b for b in pool if b["book_id"] not in used_ids]
         if eligible:
-            items[lowest_idx] = random.choice(eligible)
+            items[lowest_idx] = app.services.case_service.pick_weighted_from_pool(
+                eligible, language
+            )
             return items
 
     return items

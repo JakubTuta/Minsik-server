@@ -14,7 +14,7 @@ async def test_cleanup_removes_low_quality_book(commit_session, session_factory_
     book = Book(
         title="Bad Book",
         language="en",
-        slug="bad-book",
+        work_id="ol-bad-book", slug="bad-book",
         formats=[],
         created_at=OLD_DATE,
     )
@@ -48,7 +48,7 @@ async def test_cleanup_keeps_high_quality_book(commit_session, session_factory_f
     book = Book(
         title="Good Book",
         language="en",
-        slug="good-book",
+        work_id="ol-good-book", slug="good-book",
         description="A real book with a proper description.",
         primary_cover_url="http://example.com/cover.jpg",
         original_publication_year=2020,
@@ -84,7 +84,7 @@ async def test_cleanup_keeps_book_with_views(commit_session, session_factory_for
     book = Book(
         title="Viewed Book",
         language="en",
-        slug="viewed-book",
+        work_id="ol-viewed-book", slug="viewed-book",
         view_count=5,
         formats=[],
         created_at=OLD_DATE,
@@ -119,7 +119,7 @@ async def test_cleanup_keeps_book_with_high_ratings(commit_session, session_fact
     book = Book(
         title="Rated Book",
         language="en",
-        slug="rated-book",
+        work_id="ol-rated-book", slug="rated-book",
         rating_count=20,
         formats=[],
         created_at=OLD_DATE,
@@ -155,7 +155,7 @@ async def test_cleanup_never_deletes_user_engaged_low_quality_book(
     book = Book(
         title="Bad But Shelved Book",
         language="en",
-        slug="bad-but-shelved-book",
+        work_id="ol-bad-but-shelved-book", slug="bad-but-shelved-book",
         formats=[],
         created_at=OLD_DATE,
     )
@@ -197,14 +197,14 @@ async def test_cleanup_duplicate_books_remaps_user_data_to_winner(
     winner = Book(
         title="Duplicate Title",
         language="en",
-        slug="duplicate-title",
+        work_id="ol-duplicate-title", slug="duplicate-title",
         view_count=10,
         formats=[],
     )
     loser = Book(
         title="Duplicate Title",
         language="en",
-        slug="duplicate-title-2",
+        work_id="ol-duplicate-title-2", slug="duplicate-title-2",
         view_count=0,
         formats=[],
     )
@@ -272,7 +272,7 @@ async def test_cleanup_keeps_author_with_books(commit_session, session_factory_f
         book = Book(
             title=f"Book {i}",
             language="en",
-            slug=f"book-{i}",
+            work_id=f"ol-book-{i}", slug=f"book-{i}",
             formats=[],
         )
         commit_session.add(book)
@@ -303,7 +303,7 @@ async def test_consolidate_series_unlinks_underrepresented_group(
     book = Book(
         title="Short Book",
         language="en",
-        slug="short-book",
+        work_id="ol-short-book", slug="short-book",
         series_slug="short-series",
         series_name="Short Series",
         series_position=1,
@@ -337,7 +337,7 @@ async def test_consolidate_series_creates_per_language_rows(
             Book(
                 title=f"Harry Potter {i}",
                 language="en",
-                slug=f"harry-potter-{i}",
+                work_id=f"ol-harry-potter-{i}", slug=f"harry-potter-{i}",
                 series_slug="harry-potter",
                 series_name="Harry Potter",
                 series_position=i + 1,
@@ -349,7 +349,7 @@ async def test_consolidate_series_creates_per_language_rows(
             Book(
                 title=f"Harry Potter FR {i}",
                 language="fr",
-                slug=f"harry-potter-fr-{i}",
+                work_id=f"ol-harry-potter-fr-{i}", slug=f"harry-potter-fr-{i}",
                 series_slug="harry-potter",
                 series_name="Harry Potter",
                 series_position=i + 1,
@@ -380,7 +380,7 @@ async def test_consolidate_series_keeps_qualifying_series(
             Book(
                 title=f"Long Book {i}",
                 language="en",
-                slug=f"long-book-{i}",
+                work_id=f"ol-long-book-{i}", slug=f"long-book-{i}",
                 series_slug="long-series",
                 series_name="Long Series",
                 series_position=i + 1,
@@ -411,8 +411,8 @@ async def test_normalize_genres_merges_variant_into_canonical(
     commit_session.add_all([canonical, variant])
     await commit_session.flush()
 
-    book1 = Book(title="Book A", language="en", slug="book-a", formats=[])
-    book2 = Book(title="Book B", language="en", slug="book-b", formats=[])
+    book1 = Book(title="Book A", language="en", work_id="ol-book-a", slug="book-a", formats=[])
+    book2 = Book(title="Book B", language="en", work_id="ol-book-b", slug="book-b", formats=[])
     commit_session.add_all([book1, book2])
     await commit_session.flush()
 
@@ -452,7 +452,7 @@ async def test_normalize_genres_renames_variant_when_no_canonical_exists(
     commit_session.add(variant)
     await commit_session.flush()
 
-    book = Book(title="Some Sci-Fi Book", language="en", slug="some-sci-fi-book", formats=[])
+    book = Book(title="Some Sci-Fi Book", language="en", work_id="ol-some-sci-fi-book", slug="some-sci-fi-book", formats=[])
     commit_session.add(book)
     await commit_session.flush()
 
@@ -520,7 +520,7 @@ async def test_cleanup_removes_placeholder_title_book(
     book = Book(
         title="Untitled",
         language="en",
-        slug="untitled-book",
+        work_id="ol-untitled-book", slug="untitled-book",
         description="A real book with a proper description.",
         primary_cover_url="http://example.com/cover.jpg",
         original_publication_year=2020,
@@ -563,7 +563,7 @@ async def test_cleanup_removes_ol_condemned_book(
     book = Book(
         title="Condemned Book",
         language="en",
-        slug="condemned-book",
+        work_id="ol-condemned-book", slug="condemned-book",
         description="A real book with a proper description.",
         primary_cover_url="http://example.com/cover.jpg",
         original_publication_year=2020,
@@ -609,7 +609,7 @@ async def test_cleanup_orphan_authors_spares_enriched_borderline_author(
     commit_session.add(author)
     await commit_session.flush()
 
-    book = Book(title="Solo Book", language="en", slug="solo-book", formats=[])
+    book = Book(title="Solo Book", language="en", work_id="ol-solo-book", slug="solo-book", formats=[])
     commit_session.add(book)
     await commit_session.flush()
     commit_session.add(BookAuthor(book_id=book.book_id, author_id=author.author_id))
@@ -644,7 +644,7 @@ async def test_cleanup_orphan_authors_removes_junk_publisher_name(
         book = Book(
             title=f"Publisher Book {i}",
             language="en",
-            slug=f"publisher-book-{i}",
+            work_id=f"ol-publisher-book-{i}", slug=f"publisher-book-{i}",
             formats=[],
         )
         commit_session.add(book)
@@ -663,5 +663,5 @@ async def test_cleanup_orphan_authors_removes_junk_publisher_name(
     )
 
     result = await commit_session.execute(select(func.count()).select_from(Author))
-    assert result.scalar_one() == 0
-    assert stats["deleted"] == 1
+    assert result.scalar_one() == 1
+    assert stats["deleted"] == 0

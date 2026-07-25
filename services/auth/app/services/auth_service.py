@@ -76,7 +76,9 @@ async def login(
         await session.commit()
         raise ValueError("invalid_credentials")
 
-    access_token = app.services.token_service.create_access_token(user.user_id, user.role)
+    access_token = app.services.token_service.create_access_token(
+        user.user_id, user.role, user.preferred_language or ""
+    )
     raw_refresh_token, token_hash = app.services.token_service.create_refresh_token()
 
     refresh_token_obj = app.models.refresh_token.RefreshToken(
@@ -143,7 +145,9 @@ async def refresh_tokens(
     if not user:
         raise ValueError("user_not_found")
 
-    new_access_token = app.services.token_service.create_access_token(user.user_id, user.role)
+    new_access_token = app.services.token_service.create_access_token(
+        user.user_id, user.role, user.preferred_language or ""
+    )
     new_raw_refresh_token, new_token_hash = app.services.token_service.create_refresh_token()
 
     new_refresh_token_obj = app.models.refresh_token.RefreshToken(
@@ -168,7 +172,9 @@ async def issue_tokens_for_user(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     user: app.models.user.User
 ) -> typing.Tuple[str, str]:
-    access_token = app.services.token_service.create_access_token(user.user_id, user.role)
+    access_token = app.services.token_service.create_access_token(
+        user.user_id, user.role, user.preferred_language or ""
+    )
     raw_refresh_token, token_hash = app.services.token_service.create_refresh_token()
 
     refresh_token_obj = app.models.refresh_token.RefreshToken(

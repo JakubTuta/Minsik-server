@@ -101,12 +101,8 @@ async def delete_by_pattern(pattern: str, scan_count: int = 500) -> int:
 
 
 async def invalidate_user_personal_recommendations(user_id: int) -> int:
-    direct_keys = [
-        f"rec:profile:{user_id}",
-        f"rec:personal:{user_id}",
-    ]
-
-    deleted = await delete_keys(*direct_keys)
+    deleted = await delete_keys(f"rec:profile:{user_id}")
+    deleted += await delete_by_pattern(f"rec:personal:{user_id}:*")
     deleted += await delete_by_pattern(f"rec:personal:book:{user_id}:*")
     deleted += await delete_by_pattern(f"rec:personal:author:{user_id}:*")
 

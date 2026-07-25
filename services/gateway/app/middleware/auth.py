@@ -45,7 +45,7 @@ async def get_current_user_optional(
     if not user_id or not role:
         return None
 
-    return {"user_id": int(user_id), "role": role}
+    return {"user_id": int(user_id), "role": role, "preferred_language": payload.get("lang") or ""}
 
 
 async def require_user(

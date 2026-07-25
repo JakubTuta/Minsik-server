@@ -6,6 +6,7 @@ import app.cache
 import app.config
 import app.db
 import app.es_client
+import app.services._language_boost
 import app.services.es_reconcile_service
 import elasticsearch.helpers
 import sqlalchemy
@@ -102,17 +103,15 @@ async def reindex_all_to_es(full: bool = False) -> None:
     now_ts = datetime.datetime.now(datetime.UTC).replace(tzinfo=None).isoformat()
 
     books_query = sqlalchemy.text(
-        """
+        f"""
         SELECT
-            b.book_id, b.title, b.language, b.slug,
+            b.book_id, b.title, b.language, b.slug, b.work_id,
             b.primary_cover_url,
             b.rating_count AS app_rating_count, b.avg_rating AS app_avg_rating,
             b.ol_rating_count, b.ol_avg_rating,
             b.ol_want_to_read_count + b.ol_currently_reading_count
                 + b.ol_already_read_count
-                + (SELECT COUNT(*) FROM user_data.bookshelves bs
-                   WHERE bs.book_id = b.book_id
-                     AND bs.status != 'abandoned') AS readers,
+                + {app.services._language_boost.work_reader_count_sql()} AS readers,
             ARRAY_AGG(DISTINCT a.name) FILTER (WHERE a.name IS NOT NULL) as authors_names,
             ARRAY_AGG(DISTINCT a.slug) FILTER (WHERE a.slug IS NOT NULL) as author_slugs,
             s.name as series_name, s.slug as series_slug
@@ -159,6 +158,7 @@ async def reindex_all_to_es(full: bool = False) -> None:
                             "title": row.title or "",
                             "language": row.language or "",
                             "slug": row.slug or "",
+                            "work_id": row.work_id or "",
                             "primary_cover_url": row.primary_cover_url or "",
                             "authors_names": list(row.authors_names or []),
                             "author_slugs": list(row.author_slugs or []),

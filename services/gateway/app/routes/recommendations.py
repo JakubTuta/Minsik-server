@@ -6,6 +6,7 @@ import app.grpc_clients
 import app.middleware.auth
 import app.middleware.rate_limit
 import app.models.recommendation_responses
+import app.utils.language
 import app.utils.responses
 import fastapi
 import grpc
@@ -16,23 +17,6 @@ router = fastapi.APIRouter(prefix="/api/v1", tags=["Recommendations"])
 admin_router = fastapi.APIRouter(prefix="/api/v1/admin", tags=["Admin"])
 
 limiter = app.middleware.rate_limit.limiter
-
-
-def _resolve_language(
-    request: fastapi.Request,
-    language: typing.Optional[str] = None,
-) -> str:
-    if language:
-        return language
-    cookie_lang = request.cookies.get("pref_lang")
-    if cookie_lang:
-        return cookie_lang
-    accept_lang = request.headers.get("Accept-Language", "")
-    if accept_lang:
-        lang = accept_lang.split(",")[0].split(";")[0].strip()[:8]
-        if lang:
-            return lang
-    return "en"
 
 
 def _to_section_dict(key: str, item) -> dict:
@@ -47,6 +31,7 @@ def _to_section_dict(key: str, item) -> dict:
         result["book_items"] = [
             {
                 "book_id": i.book_id,
+                "work_id": i.work_id or None,
                 "title": i.title,
                 "slug": i.slug,
                 "language": i.language,
@@ -109,10 +94,9 @@ async def get_home_page(
     items_per_category: int = fastapi.Query(
         20, ge=1, le=100, description="Number of items to return per section"
     ),
-    language: typing.Optional[str] = fastapi.Query(None, description="Preferred language code"),
+    lang: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
     try:
-        lang = _resolve_language(request, language)
         response = await app.grpc_clients.recommendation_client.get_home_page(
             items_per_category=items_per_category, language=lang
         )
@@ -204,10 +188,9 @@ async def get_available_categories(request: fastapi.Request):
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
 async def get_book_of_the_week(
     request: fastapi.Request,
-    language: typing.Optional[str] = fastapi.Query(None, description="Preferred language code"),
+    lang: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
     try:
-        lang = _resolve_language(request, language)
         response = await app.grpc_clients.recommendation_client.get_book_of_the_week(language=lang)
         data = {
             "book_id": response.book_id,
@@ -281,13 +264,12 @@ async def get_recommendation_list(
     ),
     limit: int = fastapi.Query(20, ge=1, le=100, description="Number of items to return"),
     offset: int = fastapi.Query(0, ge=0, description="Pagination offset"),
-    language: typing.Optional[str] = fastapi.Query(None, description="Preferred language code"),
+    lang: str = fastapi.Depends(app.utils.language.resolve_language),
     current_user: typing.Optional[typing.Dict[str, typing.Any]] = fastapi.Depends(
         app.middleware.auth.get_current_user_optional
     ),
 ):
     try:
-        lang = _resolve_language(request, language)
         user_id = current_user["user_id"] if current_user else 0
         response = await app.grpc_clients.recommendation_client.get_recommendation_list(
             category=category, limit=limit, offset=offset, language=lang, user_id=user_id

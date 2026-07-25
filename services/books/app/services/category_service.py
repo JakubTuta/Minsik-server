@@ -14,7 +14,7 @@ import sqlalchemy.ext.asyncio
 
 logger = logging.getLogger(__name__)
 
-CATEGORY_TOP_BOOKS_CACHE_KEY = "category:top60:{category_slug}:{sort_by}:desc"
+CATEGORY_TOP_BOOKS_CACHE_KEY = "category:top60:{category_slug}:{sort_by}:{language}:desc"
 CATEGORY_TOP_BOOKS_POOL_SIZE = 60
 CATEGORY_TOP_BOOKS_SORT_OPTIONS = ["popularity", "rating"]
 POPULAR_CATEGORIES_CACHE_KEY = "categories:popular:v2"
@@ -76,29 +76,31 @@ class CategoryService:
 
         for category_slug in app.categories_config.CATEGORIES:
             for sort_by in CATEGORY_TOP_BOOKS_SORT_OPTIONS:
-                try:
-                    books, total_count = await self._fetch_category_books_from_db(
-                        category_slug=category_slug,
-                        limit=CATEGORY_TOP_BOOKS_POOL_SIZE,
-                        offset=0,
-                        language="",
-                        sort_by=sort_by,
-                        order="desc",
-                    )
-                    cache_key = CATEGORY_TOP_BOOKS_CACHE_KEY.format(
-                        category_slug=category_slug,
-                        sort_by=sort_by,
-                    )
-                    await app.cache.set_cached(
-                        cache_key,
-                        {"books": books, "total_count": total_count},
-                        app.config.settings.cache_category_top_books_ttl,
-                    )
-                except Exception as e:
-                    logger.error(
-                        f"Error caching top books for category {category_slug} "
-                        f"sort={sort_by}: {str(e)}"
-                    )
+                for language in app.services._language_boost.available_languages():
+                    try:
+                        books, total_count = await self._fetch_category_books_from_db(
+                            category_slug=category_slug,
+                            limit=CATEGORY_TOP_BOOKS_POOL_SIZE,
+                            offset=0,
+                            language=language,
+                            sort_by=sort_by,
+                            order="desc",
+                        )
+                        cache_key = CATEGORY_TOP_BOOKS_CACHE_KEY.format(
+                            category_slug=category_slug,
+                            sort_by=sort_by,
+                            language=language,
+                        )
+                        await app.cache.set_cached(
+                            cache_key,
+                            {"books": books, "total_count": total_count},
+                            app.config.settings.cache_category_top_books_ttl,
+                        )
+                    except Exception as e:
+                        logger.error(
+                            f"Error caching top books for category {category_slug} "
+                            f"sort={sort_by} lang={language}: {str(e)}"
+                        )
 
         logger.info("Category top books cache populated.")
 
@@ -121,15 +123,11 @@ class CategoryService:
             cache_key = CATEGORY_TOP_BOOKS_CACHE_KEY.format(
                 category_slug=category_slug,
                 sort_by=sort_by,
+                language=language,
             )
             cached = await app.cache.get_cached(cache_key)
             if cached is not None:
-                books = cached["books"]
-                books = sorted(
-                    books,
-                    key=lambda b: (0 if b.get("language") == language else 1),
-                )
-                return books[:limit], cached["total_count"]
+                return cached["books"][:limit], cached["total_count"]
 
         return await self._fetch_category_books_from_db(
             category_slug=category_slug,
@@ -180,8 +178,6 @@ class CategoryService:
 
         order_dir = "DESC" if order.lower() == "desc" else "ASC"
 
-        lang_boost = app.services._language_boost.lang_boost_sql()
-
         query = sqlalchemy.text(
             f"""
             WITH genre_books AS (
@@ -218,8 +214,8 @@ class CategoryService:
                 COUNT(*) OVER() AS total_count
             FROM books.books b
             JOIN genre_books gb ON b.book_id = gb.book_id
-            WHERE b.primary_cover_url IS NOT NULL
-            ORDER BY {lang_boost} DESC, {sort_col} {order_dir} NULLS LAST, b.book_id DESC
+            WHERE b.primary_cover_url IS NOT NULL AND b.language = :language
+            ORDER BY {sort_col} {order_dir} NULLS LAST, b.book_id DESC
             LIMIT :limit OFFSET :offset
             """
         )
@@ -300,7 +296,7 @@ class CategoryService:
                 SELECT t.slug, t.genre_id
                 FROM UNNEST(CAST(:slugs AS text[]), CAST(:gids AS int[])) AS t(slug, genre_id)
             )
-            SELECT cm.slug, COUNT(DISTINCT b.book_id) AS book_count
+            SELECT cm.slug, COUNT(DISTINCT b.work_id) AS book_count
             FROM cat_map cm
             JOIN books.book_genres bg ON bg.genre_id = cm.genre_id
             JOIN books.books b ON b.book_id = bg.book_id

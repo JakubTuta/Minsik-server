@@ -14,6 +14,58 @@ import sqlalchemy.orm
 logger = logging.getLogger(__name__)
 
 
+def _book_query_options() -> typing.List[typing.Any]:
+    return [
+        sqlalchemy.orm.selectinload(app.models.book.Book.authors),
+        sqlalchemy.orm.selectinload(app.models.book.Book.genres),
+        sqlalchemy.orm.selectinload(app.models.book.Book.series),
+    ]
+
+
+async def _fallback_edition(
+    session: sqlalchemy.ext.asyncio.AsyncSession, slug: str, language: str
+) -> typing.Optional[app.models.book.Book]:
+    # No edition in the requested language for this slug's work — fall back to
+    # the best available edition (preferred language -> English -> most
+    # ratings) instead of a dead-end 404. _book_to_dict()'s "language" field
+    # then reflects the edition actually served.
+    #
+    # slug alone isn't unique (only (language, slug) is) — two unrelated works
+    # in different languages can coincidentally slugify to the same string.
+    # Order by english-first, then book_id, so the pick is deterministic
+    # instead of whatever row the planner happens to return first.
+    work_id_subquery = (
+        sqlalchemy.select(app.models.book.Book.work_id)
+        .filter(app.models.book.Book.slug == slug)
+        .order_by(
+            (app.models.book.Book.language == "en").desc(),
+            app.models.book.Book.book_id.asc(),
+        )
+        .limit(1)
+        .scalar_subquery()
+    )
+    stmt = (
+        sqlalchemy.select(app.models.book.Book)
+        .options(*_book_query_options())
+        .filter(app.models.book.Book.work_id == work_id_subquery)
+    )
+    result = await session.execute(stmt)
+    editions = result.scalars().all()
+    if not editions:
+        return None
+
+    for edition in editions:
+        if edition.language == language:
+            return edition
+    for edition in editions:
+        if edition.language == "en":
+            return edition
+    return max(
+        editions,
+        key=lambda b: (b.rating_count or 0) + (b.ol_rating_count or 0),
+    )
+
+
 async def get_book_by_slug(
     session: sqlalchemy.ext.asyncio.AsyncSession, slug: str, language: str = "en"
 ) -> typing.Optional[typing.Dict[str, typing.Any]]:
@@ -25,11 +77,7 @@ async def get_book_by_slug(
 
     stmt = (
         sqlalchemy.select(app.models.book.Book)
-        .options(
-            sqlalchemy.orm.selectinload(app.models.book.Book.authors),
-            sqlalchemy.orm.selectinload(app.models.book.Book.genres),
-            sqlalchemy.orm.selectinload(app.models.book.Book.series),
-        )
+        .options(*_book_query_options())
         .filter(
             app.models.book.Book.slug == slug,
             app.models.book.Book.language == language,
@@ -38,6 +86,9 @@ async def get_book_by_slug(
 
     result = await session.execute(stmt)
     book = result.scalars().first()
+
+    if not book:
+        book = await _fallback_edition(session, slug, language)
 
     if not book:
         return None
@@ -52,11 +103,11 @@ async def get_book_by_slug(
                 COUNT(*) FILTER (WHERE status = 'reading') AS app_reading_count,
                 COUNT(*) FILTER (WHERE status = 'read') AS app_read_count
             FROM user_data.bookshelves
-            WHERE book_id IN (SELECT book_id FROM books.books WHERE slug = :slug)
+            WHERE book_id IN (SELECT book_id FROM books.books WHERE work_id = :work_id)
               AND status != 'abandoned'
             """
         ),
-        {"slug": book.slug},
+        {"work_id": book.work_id},
     )
     bookshelves_row = bookshelves_result.first()
     book_data["app_want_to_read_count"] = (
@@ -96,7 +147,13 @@ async def get_language_variants(
 
     stmt = sqlalchemy.text(
         "SELECT book_id, slug, language, title, primary_cover_url "
-        "FROM books.books WHERE slug = :slug AND language != :exclude_language"
+        "FROM books.books "
+        "WHERE work_id = ("
+        "  SELECT work_id FROM books.books WHERE slug = :slug "
+        "  ORDER BY (language = :exclude_language) DESC, (language = 'en') DESC, book_id ASC "
+        "  LIMIT 1"
+        ") "
+        "AND language != :exclude_language"
     )
     result = await session.execute(stmt, {"slug": slug, "exclude_language": exclude_language})
     rows = result.fetchall()
@@ -135,6 +192,7 @@ def _book_to_dict(book: app.models.book.Book) -> typing.Dict[str, typing.Any]:
 
     return {
         "book_id": book.book_id,
+        "work_id": book.work_id,
         "title": book.title,
         "slug": book.slug,
         "description": book.description or "",
@@ -259,11 +317,11 @@ async def update_book(
                 COUNT(*) FILTER (WHERE status = 'reading') AS app_reading_count,
                 COUNT(*) FILTER (WHERE status = 'read') AS app_read_count
             FROM user_data.bookshelves
-            WHERE book_id IN (SELECT book_id FROM books.books WHERE slug = :slug)
+            WHERE book_id IN (SELECT book_id FROM books.books WHERE work_id = :work_id)
               AND status != 'abandoned'
             """
         ),
-        {"slug": book.slug},
+        {"work_id": book.work_id},
     )
     bookshelves_row = bookshelves_result.first()
     book_data["app_want_to_read_count"] = (
@@ -334,11 +392,11 @@ async def remove_book_author(
                 COUNT(*) FILTER (WHERE status = 'reading') AS app_reading_count,
                 COUNT(*) FILTER (WHERE status = 'read') AS app_read_count
             FROM user_data.bookshelves
-            WHERE book_id IN (SELECT book_id FROM books.books WHERE slug = :slug)
+            WHERE book_id IN (SELECT book_id FROM books.books WHERE work_id = :work_id)
               AND status != 'abandoned'
             """
         ),
-        {"slug": book.slug},
+        {"work_id": book.work_id},
     )
     bookshelves_row = bookshelves_result.first()
     book_data["app_want_to_read_count"] = (

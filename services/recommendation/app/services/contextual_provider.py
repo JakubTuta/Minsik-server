@@ -5,7 +5,7 @@ import typing
 import app.cache
 import app.config
 import app.db
-import app.services._book_filter
+import app.services._language_boost
 import app.services.author_recommender
 import app.services.book_recommender
 import app.services.list_builder
@@ -46,37 +46,32 @@ async def _bulk_fetch_authors(
     async with session_maker() as session:
         result = await session.execute(
             sqlalchemy.text(
-                """
+                f"""
+                WITH {app.services.list_builder._AUTHOR_WORKS_CTE}
                 SELECT
                     a.author_id,
                     a.name,
                     a.slug,
                     COALESCE(a.photo_url, '') AS photo_url,
-                    COUNT(DISTINCT b.book_id) FILTER (WHERE b.language = 'en') AS book_count,
+                    COUNT(DISTINCT aw.book_id) AS book_count,
                     COALESCE(
                         SUM(
-                            COALESCE(b.avg_rating::numeric, 0) * COALESCE(b.rating_count, 0)
-                            + COALESCE(b.ol_avg_rating::numeric, 0) * COALESCE(b.ol_rating_count, 0)
-                        ) FILTER (WHERE b.language = 'en')
-                        / NULLIF(
-                            SUM(COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0))
-                            FILTER (WHERE b.language = 'en'), 0
-                        ), 0
+                            COALESCE(aw.avg_rating::numeric, 0) * aw.rating_count
+                            + COALESCE(aw.ol_avg_rating::numeric, 0) * aw.ol_rating_count
+                        )
+                        / NULLIF(SUM(aw.rating_count + aw.ol_rating_count), 0),
+                        0
                     ) AS avg_rating,
-                    COALESCE(
-                        SUM(COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0))
-                        FILTER (WHERE b.language = 'en'), 0
-                    ) AS rating_count,
+                    COALESCE(SUM(aw.rating_count + aw.ol_rating_count), 0) AS rating_count,
                     COALESCE(
                         SUM(
-                            COALESCE(b.ol_want_to_read_count, 0) +
-                            COALESCE(b.ol_currently_reading_count, 0) +
-                            COALESCE(b.ol_already_read_count, 0)
-                        ) FILTER (WHERE b.language = 'en'), 0
+                            COALESCE(aw.ol_want_to_read_count, 0) +
+                            COALESCE(aw.ol_currently_reading_count, 0) +
+                            COALESCE(aw.ol_already_read_count, 0)
+                        ), 0
                     ) AS readers
                 FROM books.authors a
-                LEFT JOIN books.book_authors ba ON a.author_id = ba.author_id
-                LEFT JOIN books.books b ON ba.book_id = b.book_id
+                LEFT JOIN author_works aw ON aw.author_id = a.author_id
                 WHERE a.author_id = ANY(:ids)
                 GROUP BY a.author_id, a.name, a.slug, a.photo_url
                 """
@@ -152,7 +147,7 @@ async def _read_precomputed(
                 }
             )
         else:
-            deduped = app.services._book_filter.dedupe_books_by_slug(items)
+            deduped = app.services._language_boost.dedupe_by_work(items, "")
             sections.append(
                 {
                     "section_key": row.section_key,
@@ -181,7 +176,10 @@ async def _build_minimal_book_fallback(
     if metadata is None:
         return []
 
-    tasks = [run(app.services.book_recommender._build_more_by_author, book_id, limit)]
+    language = metadata["language"]
+    tasks = [
+        run(app.services.book_recommender._build_more_by_author, book_id, limit, language)
+    ]
     if metadata["series_id"] is not None:
         tasks.append(
             run(
@@ -189,6 +187,7 @@ async def _build_minimal_book_fallback(
                 book_id,
                 metadata["series_id"],
                 limit,
+                language,
             )
         )
 
@@ -200,7 +199,7 @@ async def _build_minimal_book_fallback(
     )
 
     if results[0] and not isinstance(results[0], Exception):
-        deduped_author = app.services._book_filter.dedupe_books_by_slug(results[0])
+        deduped_author = app.services._language_boost.dedupe_by_work(results[0], language)
         sections.append(
             {
                 "section_key": "more_by_author",
@@ -212,7 +211,7 @@ async def _build_minimal_book_fallback(
         )
 
     if len(results) > 1 and results[1] and not isinstance(results[1], Exception):
-        deduped_series = app.services._book_filter.dedupe_books_by_slug(results[1])
+        deduped_series = app.services._language_boost.dedupe_by_work(results[1], language)
         sections.append(
             {
                 "section_key": "more_from_series",
@@ -275,6 +274,7 @@ async def _build_minimal_series_fallback(
                     series_id,
                     metadata["author_ids"],
                     limit,
+                    metadata["language"],
                 ),
                 timeout=_COLD_TIMEOUT,
             )

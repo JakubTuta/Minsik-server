@@ -26,43 +26,6 @@ _POPULARITY_SCRIPT: str = (
 )
 
 
-def _dedup_by_slug(
-    results: typing.List[typing.Dict[str, typing.Any]], language: str
-) -> typing.List[typing.Dict[str, typing.Any]]:
-    groups: typing.Dict[typing.Tuple[str, str], typing.List[typing.Dict[str, typing.Any]]] = {}
-    order: typing.List[typing.Tuple[str, str]] = []
-    for r in results:
-        slug = r.get("slug") or ""
-        if not slug:
-            continue
-        key = (r["type"], slug)
-        if key not in groups:
-            groups[key] = []
-            order.append(key)
-        groups[key].append(r)
-
-    out: typing.List[typing.Dict[str, typing.Any]] = []
-    for key in order:
-        group = groups[key]
-        if len(group) == 1:
-            out.append(group[0])
-            continue
-
-        matched = [g for g in group if g.get("language") == language]
-        if matched:
-            winner = max(matched, key=lambda g: g.get("relevance_score", 0))
-            out.append(winner)
-            continue
-
-        combined_readers = sum(g.get("readers") or 0 for g in group)
-        winner = max(group, key=lambda g: g.get("readers") or 0)
-        winner = dict(winner)
-        winner["readers"] = combined_readers
-        out.append(winner)
-
-    return out
-
-
 def _normalize_scores(
     results: typing.List[typing.Dict[str, typing.Any]], type_weight: float
 ) -> typing.List[typing.Dict[str, typing.Any]]:
@@ -310,7 +273,7 @@ async def search_books_and_authors(
         total_count += category_total
 
     results.sort(key=lambda x: x.get("relevance_score", 0), reverse=True)
-    deduplicated_results = _dedup_by_slug(results, language)
+    deduplicated_results = app.services._language_boost.dedupe_by_work(results, language)
     deduplicated_results.sort(key=lambda x: x.get("relevance_score", 0), reverse=True)
     final_results = deduplicated_results[:limit]
 
@@ -370,6 +333,7 @@ async def _run_suggest_queries(
                 "book_id",
                 "title",
                 "slug",
+                "work_id",
                 "primary_cover_url",
                 "authors_names",
                 "author_slugs",
@@ -409,6 +373,7 @@ async def _run_suggest_queries(
                 "id": src["book_id"],
                 "title": src.get("title", ""),
                 "slug": src.get("slug", ""),
+                "work_id": src.get("work_id") or "",
                 "cover_url": src.get("primary_cover_url") or "",
                 "authors": authors_names,
                 "relevance_score": float(hit["_score"] or 0),
@@ -467,7 +432,7 @@ async def _run_suggest_queries(
 
     merged = books_results + authors_results + series_results
     merged.sort(key=lambda x: x["relevance_score"], reverse=True)
-    merged = _dedup_by_slug(merged, language)
+    merged = app.services._language_boost.dedupe_by_work(merged, language)
     merged.sort(key=lambda x: x["relevance_score"], reverse=True)
     return merged[:limit]
 
@@ -488,6 +453,7 @@ async def _search_books_es(
                 "book_id",
                 "title",
                 "slug",
+                "work_id",
                 "primary_cover_url",
                 "authors_names",
                 "author_slugs",
@@ -519,6 +485,7 @@ async def _search_books_es(
                 "id": src["book_id"],
                 "title": src.get("title", ""),
                 "slug": src.get("slug", ""),
+                "work_id": src.get("work_id") or "",
                 "cover_url": src.get("primary_cover_url") or "",
                 "authors": authors_names,
                 "relevance_score": float(hit["_score"] or 0),
@@ -669,11 +636,12 @@ async def _search_books_by_category(
     total = count_result.scalar() or 0
 
     books_query = sqlalchemy.text(
-        """
+        f"""
         SELECT
             b.book_id,
             b.title,
             b.slug,
+            b.work_id,
             b.primary_cover_url,
             COALESCE(b.rating_count, 0) as app_rating_count,
             b.avg_rating as app_avg_rating,
@@ -681,9 +649,7 @@ async def _search_books_by_category(
             b.ol_avg_rating,
             b.ol_want_to_read_count + b.ol_currently_reading_count
                 + b.ol_already_read_count
-                + (SELECT COUNT(*) FROM user_data.bookshelves bsh
-                   WHERE bsh.book_id = b.book_id
-                     AND bsh.status != 'abandoned') AS readers,
+                + {app.services._language_boost.work_reader_count_sql()} AS readers,
             ARRAY_AGG(DISTINCT a.name) FILTER (WHERE a.name IS NOT NULL) as authors_names,
             ARRAY_AGG(DISTINCT a.slug) FILTER (WHERE a.slug IS NOT NULL) as author_slugs,
             s.slug as series_slug
@@ -695,7 +661,7 @@ async def _search_books_by_category(
         LEFT JOIN books.series s ON b.series_id = s.series_id
         WHERE b.language = :language
           AND (g.slug ILIKE :query_pattern OR g.name ILIKE :query_pattern)
-        GROUP BY b.book_id, b.title, b.slug, b.primary_cover_url,
+        GROUP BY b.book_id, b.title, b.slug, b.work_id, b.primary_cover_url,
                  b.rating_count, b.avg_rating, b.ol_rating_count, b.ol_avg_rating,
                  b.created_at, s.slug
         ORDER BY
@@ -724,6 +690,7 @@ async def _search_books_by_category(
                 "id": row.book_id,
                 "title": row.title,
                 "slug": row.slug,
+                "work_id": row.work_id or "",
                 "cover_url": row.primary_cover_url or "",
                 "authors": row.authors_names or [],
                 "relevance_score": 1.0,
@@ -753,11 +720,12 @@ async def _get_author_top_books(
     language: str,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     query = sqlalchemy.text(
-        """
+        f"""
         SELECT
             b.book_id,
             b.title,
             b.slug,
+            b.work_id,
             b.primary_cover_url,
             COALESCE(b.rating_count, 0) as app_rating_count,
             b.avg_rating as app_avg_rating,
@@ -765,9 +733,7 @@ async def _get_author_top_books(
             b.ol_avg_rating,
             b.ol_want_to_read_count + b.ol_currently_reading_count
                 + b.ol_already_read_count
-                + (SELECT COUNT(*) FROM user_data.bookshelves bsh
-                   WHERE bsh.book_id = b.book_id
-                     AND bsh.status != 'abandoned') AS readers,
+                + {app.services._language_boost.work_reader_count_sql()} AS readers,
             ARRAY_AGG(a.name) FILTER (WHERE a.name IS NOT NULL) as authors_names,
             ARRAY_AGG(a.slug) FILTER (WHERE a.slug IS NOT NULL) as author_slugs,
             s.slug as series_slug
@@ -776,7 +742,7 @@ async def _get_author_top_books(
         LEFT JOIN books.authors a ON ba.author_id = a.author_id
         LEFT JOIN books.series s ON b.series_id = s.series_id
         WHERE ba.author_id = :author_id AND b.language = :language
-        GROUP BY b.book_id, b.title, b.slug, b.primary_cover_url, b.rating_count, b.avg_rating, b.ol_rating_count, b.ol_avg_rating, b.created_at, s.slug
+        GROUP BY b.book_id, b.title, b.slug, b.work_id, b.primary_cover_url, b.rating_count, b.avg_rating, b.ol_rating_count, b.ol_avg_rating, b.created_at, s.slug
         ORDER BY
             COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0) DESC,
             COALESCE(b.avg_rating, 0) DESC,
@@ -797,6 +763,7 @@ async def _get_author_top_books(
                 "id": row.book_id,
                 "title": row.title,
                 "slug": row.slug,
+                "work_id": row.work_id or "",
                 "cover_url": row.primary_cover_url or "",
                 "authors": row.authors_names or [],
                 "relevance_score": 0.4,
@@ -826,11 +793,12 @@ async def _get_series_top_books(
     language: str,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     query = sqlalchemy.text(
-        """
+        f"""
         SELECT
             b.book_id,
             b.title,
             b.slug,
+            b.work_id,
             b.primary_cover_url,
             b.series_position,
             COALESCE(b.rating_count, 0) as app_rating_count,
@@ -839,9 +807,7 @@ async def _get_series_top_books(
             b.ol_avg_rating,
             b.ol_want_to_read_count + b.ol_currently_reading_count
                 + b.ol_already_read_count
-                + (SELECT COUNT(*) FROM user_data.bookshelves bsh
-                   WHERE bsh.book_id = b.book_id
-                     AND bsh.status != 'abandoned') AS readers,
+                + {app.services._language_boost.work_reader_count_sql()} AS readers,
             ARRAY_AGG(a.name) FILTER (WHERE a.name IS NOT NULL) as authors_names,
             ARRAY_AGG(a.slug) FILTER (WHERE a.slug IS NOT NULL) as author_slugs,
             s.slug as series_slug
@@ -850,7 +816,7 @@ async def _get_series_top_books(
         LEFT JOIN books.authors a ON ba.author_id = a.author_id
         LEFT JOIN books.series s ON b.series_id = s.series_id
         WHERE b.series_id = :series_id AND b.language = :language
-        GROUP BY b.book_id, b.title, b.slug, b.primary_cover_url, b.series_position, b.rating_count, b.avg_rating, b.ol_rating_count, b.ol_avg_rating, b.created_at, s.slug
+        GROUP BY b.book_id, b.title, b.slug, b.work_id, b.primary_cover_url, b.series_position, b.rating_count, b.avg_rating, b.ol_rating_count, b.ol_avg_rating, b.created_at, s.slug
         ORDER BY
             b.series_position ASC NULLS LAST,
             b.created_at ASC
@@ -870,6 +836,7 @@ async def _get_series_top_books(
                 "id": row.book_id,
                 "title": row.title,
                 "slug": row.slug,
+                "work_id": row.work_id or "",
                 "cover_url": row.primary_cover_url or "",
                 "authors": row.authors_names or [],
                 "relevance_score": 0.4,

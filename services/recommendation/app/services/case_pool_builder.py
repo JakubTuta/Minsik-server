@@ -45,6 +45,7 @@ _POOL_QUERY = sqlalchemy.text(
             b.book_id,
             b.title,
             b.slug,
+            b.work_id,
             b.description,
             b.primary_cover_url,
             b.language,
@@ -81,11 +82,22 @@ _POOL_QUERY = sqlalchemy.text(
             GROUP BY book_id
         ) bs ON b.book_id = bs.book_id
         WHERE (b.rating_count + b.ol_rating_count) >= 1
-        GROUP BY b.book_id, b.title, b.slug, b.description, b.primary_cover_url,
+        GROUP BY b.book_id, b.title, b.slug, b.work_id, b.description, b.primary_cover_url,
                  b.language, b.rating_count, b.avg_rating, b.ol_rating_count, b.ol_avg_rating,
                  b.ol_want_to_read_count, b.ol_currently_reading_count,
                  b.ol_already_read_count, bs.app_want_to_read_count,
                  bs.app_reading_count, bs.app_read_count
+    ),
+    -- ol_* stats and pooled ratings are identical across a work's translations,
+    -- so without this a heavily-translated work would occupy many pool slots
+    -- for the same rarity tier, crowding out other distinct works. Tie-break
+    -- is total_ratings only (no language bias) so the pool's language mix
+    -- reflects real edition popularity, letting pick_weighted_from_pool's
+    -- language boost actually surface non-English editions.
+    work_deduped AS (
+        SELECT DISTINCT ON (work_id) *
+        FROM book_stats
+        ORDER BY work_id, total_ratings DESC
     ),
     bucketed AS (
         SELECT *,
@@ -98,7 +110,7 @@ _POOL_QUERY = sqlalchemy.text(
                 WHEN total_ratings >=  1 AND combined_rating <= 2.25                              THEN 'common'
                 ELSE NULL
             END AS rarity_name
-        FROM book_stats
+        FROM work_deduped
     ),
     sampled AS (
         SELECT *,
@@ -136,6 +148,7 @@ def _row_to_pool_item(row: typing.Any) -> typing.Dict[str, typing.Any]:
 
     return {
         "book_id": row.book_id,
+        "work_id": row.work_id,
         "title": row.title,
         "slug": row.slug,
         "description": row.description or "",

@@ -17,36 +17,30 @@ async def get_list(
     language: str = "en",
     user_id: int = 0,
 ) -> typing.Optional[typing.Dict[str, typing.Any]]:
-    cached = await app.cache.get_cached(f"rec:{category}")
+    item_type = app.services.list_builder.get_category_item_type(category)
+    if item_type is None:
+        return None
+
+    cache_key = app.services.list_builder.recommendation_list_cache_key(
+        category, item_type, language
+    )
+    cached = await app.cache.get_cached(cache_key)
     if not cached:
         return None
 
-    item_type = cached.get("item_type", "book")
     items_key = "book_items" if item_type == "book" else "author_items"
     all_items = cached.get(items_key, [])
 
     if item_type == "book":
-        all_items = sorted(
-            all_items,
-            key=lambda b: b.get("score", 0)
-            * app.services._language_boost.lang_boost_weight(
-                b.get("language", ""), language
-            ),
-            reverse=True,
-        )
-        all_items = app.services._book_filter.dedupe_books_by_slug(all_items)
+        # Defensive: the cached pool is already single-language and pre-sorted by
+        # score, so this only catches data anomalies (e.g. a work re-slugged
+        # under two work_ids) rather than cross-language duplicates.
+        all_items = app.services._language_boost.dedupe_by_work(all_items, language)
         if user_id > 0:
             profile = await app.services.taste_profile.get_taste_profile(user_id)
             if profile:
                 excluded_ids = profile.get("excluded_book_ids", [])
-                excluded_slugs = {
-                    b["slug"]
-                    for b in all_items
-                    if b.get("book_id") in set(excluded_ids) and b.get("slug")
-                }
-                all_items = app.services._book_filter.exclude_books(
-                    all_items, excluded_ids, excluded_slugs
-                )
+                all_items = app.services._book_filter.exclude_books(all_items, excluded_ids)
 
     paginated = all_items[offset : offset + limit]
 
@@ -70,6 +64,7 @@ async def get_home_page(
             items_per_category,
             cache_only=personal_cache_only,
             force_refresh=force_personal_refresh,
+            language=language,
         )
 
     settings = app.config.settings
@@ -92,12 +87,14 @@ async def _get_personal_home_page(
     items_per_section: int,
     cache_only: bool,
     force_refresh: bool,
+    language: str,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     sections = await app.services.personal_provider.get_personal_home_sections(
         user_id,
         items_per_section,
         cache_only=cache_only,
         force_refresh=force_refresh,
+        language=language,
     )
     return sections or []
 

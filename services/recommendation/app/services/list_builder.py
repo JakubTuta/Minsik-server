@@ -5,6 +5,7 @@ import typing
 import app.cache
 import app.config
 import app.services.author_recommender
+import app.services.book_of_week_builder
 import app.services.book_recommender
 import app.services.series_recommender
 import sqlalchemy
@@ -16,6 +17,7 @@ _BOOK_FIELDS = """
     b.book_id,
     b.title,
     b.slug,
+    b.work_id,
     b.language,
     b.primary_cover_url,
     CASE
@@ -40,14 +42,36 @@ _BOOK_JOINS = """
     LEFT JOIN LATERAL (
         SELECT COUNT(*) AS app_readers
         FROM user_data.bookshelves bs_r
-        WHERE bs_r.book_id = b.book_id
+        JOIN books.books wb ON wb.book_id = bs_r.book_id
+        WHERE wb.work_id = b.work_id
           AND bs_r.status IN ('want_to_read', 'reading', 'read')
     ) bs_agg ON TRUE
 """
 
-_BOOK_BASE_WHERE = "b.primary_cover_url IS NOT NULL"
+_BOOK_BASE_WHERE = "b.primary_cover_url IS NOT NULL AND b.language = :language"
 
 _BOOK_GROUP_BY = "GROUP BY b.book_id"
+
+# One row per (author, work): picks the edition with the most ratings so an
+# author's translated catalog isn't summed/counted once per language.
+_AUTHOR_WORKS_CTE = """
+        author_works AS (
+            SELECT DISTINCT ON (ba.author_id, b.work_id)
+                ba.author_id,
+                b.book_id,
+                b.rating_count,
+                b.ol_rating_count,
+                b.avg_rating,
+                b.ol_avg_rating,
+                b.ol_want_to_read_count,
+                b.ol_currently_reading_count,
+                b.ol_already_read_count
+            FROM books.book_authors ba
+            JOIN books.books b ON ba.book_id = b.book_id
+            ORDER BY ba.author_id, b.work_id,
+                     (COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0)) DESC
+        )
+"""
 
 
 def _row_to_book_item(row: typing.Any, score: float) -> typing.Dict[str, typing.Any]:
@@ -55,6 +79,7 @@ def _row_to_book_item(row: typing.Any, score: float) -> typing.Dict[str, typing.
         "book_id": row.book_id,
         "title": row.title or "",
         "slug": row.slug or "",
+        "work_id": row.work_id or "",
         "language": row.language or "",
         "primary_cover_url": row.primary_cover_url or "",
         "avg_rating": row.avg_rating or "",
@@ -67,7 +92,7 @@ def _row_to_book_item(row: typing.Any, score: float) -> typing.Dict[str, typing.
 
 
 async def _build_most_read(
-    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
     result = await session.execute(
         sqlalchemy.text(
@@ -80,13 +105,13 @@ async def _build_most_read(
         LIMIT :limit
     """
         ),
-        {"limit": limit},
+        {"limit": limit, "language": language},
     )
     return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
 async def _build_most_wanted(
-    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
     result = await session.execute(
         sqlalchemy.text(
@@ -99,13 +124,13 @@ async def _build_most_wanted(
         LIMIT :limit
     """
         ),
-        {"limit": limit},
+        {"limit": limit, "language": language},
     )
     return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
 async def _build_trending_reads(
-    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
     result = await session.execute(
         sqlalchemy.text(
@@ -118,13 +143,13 @@ async def _build_trending_reads(
         LIMIT :limit
     """
         ),
-        {"limit": limit},
+        {"limit": limit, "language": language},
     )
     return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
 async def _build_most_viewed(
-    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
     result = await session.execute(
         sqlalchemy.text(
@@ -137,13 +162,13 @@ async def _build_most_viewed(
         LIMIT :limit
     """
         ),
-        {"limit": limit},
+        {"limit": limit, "language": language},
     )
     return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
 async def _build_highest_rated(
-    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
     result = await session.execute(
         sqlalchemy.text(
@@ -164,13 +189,13 @@ async def _build_highest_rated(
         LIMIT :limit
     """
         ),
-        {"limit": limit},
+        {"limit": limit, "language": language},
     )
     return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
 async def _build_community_top_rated(
-    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
     result = await session.execute(
         sqlalchemy.text(
@@ -183,13 +208,13 @@ async def _build_community_top_rated(
         LIMIT :limit
     """
         ),
-        {"limit": limit},
+        {"limit": limit, "language": language},
     )
     return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
 async def _build_most_rated(
-    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
     result = await session.execute(
         sqlalchemy.text(
@@ -203,13 +228,13 @@ async def _build_most_rated(
         LIMIT :limit
     """
         ),
-        {"limit": limit},
+        {"limit": limit, "language": language},
     )
     return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
 async def _build_recently_added(
-    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
     result = await session.execute(
         sqlalchemy.text(
@@ -222,13 +247,13 @@ async def _build_recently_added(
         LIMIT :limit
     """
         ),
-        {"limit": limit},
+        {"limit": limit, "language": language},
     )
     return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
 async def _build_classics(
-    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
     result = await session.execute(
         sqlalchemy.text(
@@ -243,20 +268,21 @@ async def _build_classics(
         LIMIT :limit
     """
         ),
-        {"limit": limit},
+        {"limit": limit, "language": language},
     )
     return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
 async def _build_user_favorites(
-    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
     result = await session.execute(
         sqlalchemy.text(
             f"""
         SELECT {_BOOK_FIELDS}, COUNT(*) AS score
-        FROM user_data.bookshelves bs
-        JOIN books.books b ON bs.book_id = b.book_id
+        FROM books.books b
+        JOIN books.books wb ON wb.work_id = b.work_id
+        JOIN user_data.bookshelves bs ON bs.book_id = wb.book_id
         {_BOOK_JOINS}
         WHERE bs.is_favorite = true AND {_BOOK_BASE_WHERE}
         {_BOOK_GROUP_BY}
@@ -264,20 +290,21 @@ async def _build_user_favorites(
         LIMIT :limit
     """
         ),
-        {"limit": limit},
+        {"limit": limit, "language": language},
     )
     return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
 async def _build_recently_finished(
-    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
     result = await session.execute(
         sqlalchemy.text(
             f"""
         SELECT {_BOOK_FIELDS}, EXTRACT(EPOCH FROM MAX(bs.updated_at)) AS score
-        FROM user_data.bookshelves bs
-        JOIN books.books b ON bs.book_id = b.book_id
+        FROM books.books b
+        JOIN books.books wb ON wb.work_id = b.work_id
+        JOIN user_data.bookshelves bs ON bs.book_id = wb.book_id
         {_BOOK_JOINS}
         WHERE bs.status = 'read' AND {_BOOK_BASE_WHERE}
         {_BOOK_GROUP_BY}
@@ -285,20 +312,21 @@ async def _build_recently_finished(
         LIMIT :limit
     """
         ),
-        {"limit": limit},
+        {"limit": limit, "language": language},
     )
     return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
 async def _build_currently_reading(
-    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
     result = await session.execute(
         sqlalchemy.text(
             f"""
         SELECT {_BOOK_FIELDS}, COUNT(*) AS score
-        FROM user_data.bookshelves bs
-        JOIN books.books b ON bs.book_id = b.book_id
+        FROM books.books b
+        JOIN books.books wb ON wb.work_id = b.work_id
+        JOIN user_data.bookshelves bs ON bs.book_id = wb.book_id
         {_BOOK_JOINS}
         WHERE bs.status = 'reading' AND {_BOOK_BASE_WHERE}
         {_BOOK_GROUP_BY}
@@ -306,7 +334,7 @@ async def _build_currently_reading(
         LIMIT :limit
     """
         ),
-        {"limit": limit},
+        {"limit": limit, "language": language},
     )
     return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
@@ -326,46 +354,46 @@ def _build_sub_rating_query(dimension: str) -> str:
 
 
 async def _build_best_writing(
-    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
     result = await session.execute(
-        sqlalchemy.text(_build_sub_rating_query("writing_quality")), {"limit": limit}
+        sqlalchemy.text(_build_sub_rating_query("writing_quality")), {"limit": limit, "language": language}
     )
     return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
 async def _build_most_emotional(
-    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
     result = await session.execute(
-        sqlalchemy.text(_build_sub_rating_query("emotional_impact")), {"limit": limit}
+        sqlalchemy.text(_build_sub_rating_query("emotional_impact")), {"limit": limit, "language": language}
     )
     return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
 async def _build_funniest(
-    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
     result = await session.execute(
-        sqlalchemy.text(_build_sub_rating_query("humor")), {"limit": limit}
+        sqlalchemy.text(_build_sub_rating_query("humor")), {"limit": limit, "language": language}
     )
     return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
 async def _build_most_thought_provoking(
-    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
     result = await session.execute(
-        sqlalchemy.text(_build_sub_rating_query("intellectual_depth")), {"limit": limit}
+        sqlalchemy.text(_build_sub_rating_query("intellectual_depth")), {"limit": limit, "language": language}
     )
     return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
 async def _build_most_rereadable(
-    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
+    session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
     result = await session.execute(
-        sqlalchemy.text(_build_sub_rating_query("rereadability")), {"limit": limit}
+        sqlalchemy.text(_build_sub_rating_query("rereadability")), {"limit": limit, "language": language}
     )
     return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
@@ -375,38 +403,38 @@ async def _build_top_authors(
 ) -> typing.List[typing.Dict]:
     result = await session.execute(
         sqlalchemy.text(
-            """
+            f"""
         WITH author_app_readers AS (
             SELECT ba_r.author_id, COUNT(*) AS app_readers
             FROM user_data.bookshelves bs_a
             JOIN books.book_authors ba_r ON bs_a.book_id = ba_r.book_id
             WHERE bs_a.status IN ('want_to_read', 'reading', 'read')
             GROUP BY ba_r.author_id
-        )
+        ),
+        {_AUTHOR_WORKS_CTE}
         SELECT
             a.author_id,
             a.name,
             a.slug,
             COALESCE(a.photo_url, '') AS photo_url,
-            COUNT(DISTINCT b.book_id) AS book_count,
+            COUNT(DISTINCT aw.book_id) AS book_count,
             COALESCE(
                 SUM(
-                    COALESCE(b.avg_rating::numeric, 0) * b.rating_count
-                    + COALESCE(b.ol_avg_rating::numeric, 0) * b.ol_rating_count
+                    COALESCE(aw.avg_rating::numeric, 0) * aw.rating_count
+                    + COALESCE(aw.ol_avg_rating::numeric, 0) * aw.ol_rating_count
                 )
-                / NULLIF(SUM(b.rating_count + b.ol_rating_count), 0),
+                / NULLIF(SUM(aw.rating_count + aw.ol_rating_count), 0),
                 0
             ) AS avg_rating,
             COALESCE(SUM(
-                COALESCE(b.ol_want_to_read_count, 0) +
-                COALESCE(b.ol_currently_reading_count, 0) +
-                COALESCE(b.ol_already_read_count, 0)
+                COALESCE(aw.ol_want_to_read_count, 0) +
+                COALESCE(aw.ol_currently_reading_count, 0) +
+                COALESCE(aw.ol_already_read_count, 0)
             ), 0) + COALESCE(aar.app_readers, 0) AS readers,
-            COALESCE(SUM(b.rating_count + b.ol_rating_count), 0) AS rating_count,
-            COALESCE(SUM(b.ol_already_read_count), 0) AS score
+            COALESCE(SUM(aw.rating_count + aw.ol_rating_count), 0) AS rating_count,
+            COALESCE(SUM(aw.ol_already_read_count), 0) AS score
         FROM books.authors a
-        JOIN books.book_authors ba ON a.author_id = ba.author_id
-        JOIN books.books b ON ba.book_id = b.book_id
+        JOIN author_works aw ON aw.author_id = a.author_id
         LEFT JOIN author_app_readers aar ON aar.author_id = a.author_id
         GROUP BY a.author_id, aar.app_readers
         ORDER BY score DESC
@@ -436,38 +464,38 @@ async def _build_popular_authors(
 ) -> typing.List[typing.Dict]:
     result = await session.execute(
         sqlalchemy.text(
-            """
+            f"""
         WITH author_app_readers AS (
             SELECT ba_r.author_id, COUNT(*) AS app_readers
             FROM user_data.bookshelves bs_a
             JOIN books.book_authors ba_r ON bs_a.book_id = ba_r.book_id
             WHERE bs_a.status IN ('want_to_read', 'reading', 'read')
             GROUP BY ba_r.author_id
-        )
+        ),
+        {_AUTHOR_WORKS_CTE}
         SELECT
             a.author_id,
             a.name,
             a.slug,
             COALESCE(a.photo_url, '') AS photo_url,
-            COUNT(DISTINCT b.book_id) AS book_count,
+            COUNT(DISTINCT aw.book_id) AS book_count,
             COALESCE(
                 SUM(
-                    COALESCE(b.avg_rating::numeric, 0) * b.rating_count
-                    + COALESCE(b.ol_avg_rating::numeric, 0) * b.ol_rating_count
+                    COALESCE(aw.avg_rating::numeric, 0) * aw.rating_count
+                    + COALESCE(aw.ol_avg_rating::numeric, 0) * aw.ol_rating_count
                 )
-                / NULLIF(SUM(b.rating_count + b.ol_rating_count), 0),
+                / NULLIF(SUM(aw.rating_count + aw.ol_rating_count), 0),
                 0
             ) AS avg_rating,
             COALESCE(SUM(
-                COALESCE(b.ol_want_to_read_count, 0) +
-                COALESCE(b.ol_currently_reading_count, 0) +
-                COALESCE(b.ol_already_read_count, 0)
+                COALESCE(aw.ol_want_to_read_count, 0) +
+                COALESCE(aw.ol_currently_reading_count, 0) +
+                COALESCE(aw.ol_already_read_count, 0)
             ), 0) + COALESCE(aar.app_readers, 0) AS readers,
-            COALESCE(SUM(b.rating_count + b.ol_rating_count), 0) AS rating_count,
+            COALESCE(SUM(aw.rating_count + aw.ol_rating_count), 0) AS rating_count,
             COALESCE(a.view_count, 0) AS score
         FROM books.authors a
-        LEFT JOIN books.book_authors ba ON a.author_id = ba.author_id
-        LEFT JOIN books.books b ON ba.book_id = b.book_id
+        LEFT JOIN author_works aw ON aw.author_id = a.author_id
         LEFT JOIN author_app_readers aar ON aar.author_id = a.author_id
         GROUP BY a.author_id, aar.app_readers
         ORDER BY a.view_count DESC NULLS LAST
@@ -610,6 +638,11 @@ CATEGORIES: typing.List[typing.Dict[str, typing.Any]] = [
 ]
 
 CATEGORY_KEYS: typing.Set[str] = {c["key"] for c in CATEGORIES}
+CATEGORY_ITEM_TYPES: typing.Dict[str, str] = {c["key"]: c["item_type"] for c in CATEGORIES}
+
+
+def get_category_item_type(category: str) -> typing.Optional[str]:
+    return CATEGORY_ITEM_TYPES.get(category)
 
 
 async def _collect_series_ids(
@@ -658,43 +691,61 @@ async def _precache_contextual(
     )
 
 
+def recommendation_list_cache_key(category: str, item_type: str, language: str) -> str:
+    if item_type == "author":
+        return f"rec:{category}"
+    return f"rec:{category}:{language}"
+
+
 async def refresh_all(session_maker: sqlalchemy.orm.sessionmaker) -> None:
     settings = app.config.settings
     logger.info("[rec] Starting recommendation list refresh")
 
+    languages = app.services.book_of_week_builder.available_languages()
     book_ids: typing.Set[int] = set()
     author_ids: typing.Set[int] = set()
 
     for category in CATEGORIES:
         key = category["key"]
         item_type = category["item_type"]
-        try:
-            async with session_maker() as session:
-                items = await category["build_fn"](session, settings.list_default_size * 2)
-            items_key = "book_items" if item_type == "book" else "author_items"
-            payload = {
-                "category": key,
-                "display_name": category["display_name"],
-                "item_type": item_type,
-                items_key: items,
-                "total": len(items),
-            }
-            await app.cache.set_cached(
-                f"rec:{key}", payload, settings.cache_recommendation_ttl
-            )
-            logger.info(f"[rec] Cached {len(items)} items for category '{key}'")
-            if item_type == "book":
-                for item in items:
-                    bid = item.get("book_id")
-                    if bid:
-                        book_ids.add(bid)
-            elif item_type == "author":
-                for item in items:
-                    aid = item.get("author_id")
-                    if aid:
-                        author_ids.add(aid)
-        except Exception as e:
-            logger.error(f"[rec] Failed to build category '{key}': {str(e)}")
+        build_languages = languages if item_type == "book" else [languages[0]]
+
+        for language in build_languages:
+            try:
+                async with session_maker() as session:
+                    if item_type == "book":
+                        items = await category["build_fn"](
+                            session, settings.list_default_size * 2, language
+                        )
+                    else:
+                        items = await category["build_fn"](
+                            session, settings.list_default_size * 2
+                        )
+                items_key = "book_items" if item_type == "book" else "author_items"
+                payload = {
+                    "category": key,
+                    "display_name": category["display_name"],
+                    "item_type": item_type,
+                    items_key: items,
+                    "total": len(items),
+                }
+                cache_key = recommendation_list_cache_key(key, item_type, language)
+                await app.cache.set_cached(
+                    cache_key, payload, settings.cache_recommendation_ttl
+                )
+                logger.info(f"[rec] Cached {len(items)} items for '{cache_key}'")
+                if item_type == "book":
+                    for item in items:
+                        bid = item.get("book_id")
+                        if bid:
+                            book_ids.add(bid)
+                elif item_type == "author":
+                    for item in items:
+                        aid = item.get("author_id")
+                        if aid:
+                            author_ids.add(aid)
+            except Exception as e:
+                logger.error(f"[rec] Failed to build category '{key}' ({language}): {str(e)}")
 
     logger.info("[rec] Recommendation list refresh complete")
 

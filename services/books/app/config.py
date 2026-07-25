@@ -31,6 +31,8 @@ class Settings(pydantic_settings.BaseSettings):
     cache_category_top_books_ttl: int = pydantic.Field(default=93600)
     cache_genre_bubble_ttl: int = pydantic.Field(default=21600)
 
+    available_languages: str = pydantic.Field(default="en")
+
     category_cache_refresh_enabled: bool = pydantic.Field(default=True)
     category_cache_refresh_cron: str = pydantic.Field(default="0 7 * * *")
 

@@ -145,10 +145,15 @@ def _validate_and_clean_book(book_data: typing.Dict[str, typing.Any]) -> typing.
     if not isinstance(external_ids, dict):
         external_ids = {}
 
+    work_id = app.utils.resolve_work_id(
+        external_ids, book_data.get("open_library_id"), slug
+    )
+
     return {
         "title": title,
         "language": language,
         "slug": slug,
+        "work_id": work_id,
         "description": description,
         "first_sentence": book_data.get("first_sentence"),
         "original_publication_year": book_data.get("original_publication_year"),
@@ -342,6 +347,7 @@ async def _bulk_insert_books(
             "title": book["title"],
             "language": book["language"],
             "slug": book["slug"],
+            "work_id": book["work_id"],
             "description": book["description"],
             "first_sentence": book.get("first_sentence"),
             "original_publication_year": book["original_publication_year"],

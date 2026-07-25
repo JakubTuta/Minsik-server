@@ -10,6 +10,15 @@ import dateutil.parser
 import text_unidecode
 
 
+def resolve_work_id(
+    external_ids: typing.Optional[typing.Dict[str, typing.Any]],
+    open_library_id: typing.Optional[str],
+    slug: str,
+) -> str:
+    work_ol_id = (external_ids or {}).get("work_ol_id")
+    return work_ol_id or open_library_id or slug
+
+
 def slugify(text: str, max_length: int = 200) -> str:
     if not text:
         return ""

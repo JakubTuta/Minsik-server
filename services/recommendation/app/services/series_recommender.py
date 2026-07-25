@@ -19,6 +19,7 @@ async def _get_series_metadata(
             SELECT
                 s.series_id,
                 s.name,
+                s.language,
                 ARRAY_AGG(DISTINCT ba.author_id) FILTER (WHERE ba.author_id IS NOT NULL) AS author_ids,
                 ARRAY_AGG(DISTINCT a.name) FILTER (WHERE a.name IS NOT NULL) AS author_names
             FROM books.series s
@@ -26,7 +27,7 @@ async def _get_series_metadata(
             LEFT JOIN books.book_authors ba ON b.book_id = ba.book_id
             LEFT JOIN books.authors a ON ba.author_id = a.author_id
             WHERE s.series_id = :series_id
-            GROUP BY s.series_id, s.name
+            GROUP BY s.series_id, s.name, s.language
         """
         ),
         {"series_id": series_id},
@@ -37,6 +38,7 @@ async def _get_series_metadata(
     return {
         "series_id": row.series_id,
         "name": row.name or "",
+        "language": row.language or "en",
         "author_ids": list(row.author_ids or []),
         "author_names": list(row.author_names or []),
     }
@@ -47,6 +49,7 @@ async def _build_more_by_author(
     series_id: int,
     author_ids: typing.List[int],
     limit: int,
+    language: str,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     if not author_ids:
         return []
@@ -67,7 +70,7 @@ async def _build_more_by_author(
             LIMIT :limit
             """
         ),
-        {"series_id": series_id, "author_ids": author_ids, "limit": limit},
+        {"series_id": series_id, "author_ids": author_ids, "limit": limit, "language": language},
     )
     return [
         app.services.list_builder._row_to_book_item(row, float(row.score or 0))
@@ -79,6 +82,7 @@ async def _build_similar_by_genre(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     series_id: int,
     limit: int,
+    language: str,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     result = await session.execute(
         sqlalchemy.text(
@@ -101,7 +105,7 @@ async def _build_similar_by_genre(
                 JOIN series_genres sg ON bg.genre_id = sg.genre_id
                 JOIN books.books bc ON bg.book_id = bc.book_id
                 WHERE bc.series_id IS DISTINCT FROM :series_id
-                  AND bc.language = 'en'
+                  AND bc.language = :language
                   AND (COALESCE(bc.rating_count, 0) + COALESCE(bc.ol_rating_count, 0)) >= 50
                 GROUP BY bg.book_id
                 HAVING COUNT(*) >= 2
@@ -129,7 +133,7 @@ async def _build_similar_by_genre(
             LIMIT :limit
             """
         ),
-        {"series_id": series_id, "limit": limit},
+        {"series_id": series_id, "limit": limit, "language": language},
     )
     return [
         app.services.list_builder._row_to_book_item(row, float(row.score or 0))
@@ -141,6 +145,7 @@ async def _build_readers_also_enjoyed(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     series_id: int,
     limit: int,
+    language: str,
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     result = await session.execute(
         sqlalchemy.text(
@@ -176,7 +181,7 @@ async def _build_readers_also_enjoyed(
             LIMIT :limit
             """
         ),
-        {"series_id": series_id, "limit": limit},
+        {"series_id": series_id, "limit": limit, "language": language},
     )
     return [
         app.services.list_builder._row_to_book_item(row, float(row.score or 0))
@@ -213,15 +218,16 @@ async def build_series_recommendations(
         return None
 
     series_name = metadata["name"]
+    language = metadata["language"]
     author_ids = metadata["author_ids"]
     author_names = metadata["author_names"]
     author_label = ", ".join(author_names) if author_names else "this author"
 
     more_by_author_result, similar_genre_result, readers_enjoyed_result = (
         await asyncio.gather(
-            run(_build_more_by_author, series_id, author_ids, limit_per_section),
-            run(_build_similar_by_genre, series_id, limit_per_section),
-            run(_build_readers_also_enjoyed, series_id, limit_per_section),
+            run(_build_more_by_author, series_id, author_ids, limit_per_section, language),
+            run(_build_similar_by_genre, series_id, limit_per_section, language),
+            run(_build_readers_also_enjoyed, series_id, limit_per_section, language),
             return_exceptions=True,
         )
     )

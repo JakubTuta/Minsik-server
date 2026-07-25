@@ -11,6 +11,8 @@ class Book(app.db_base.Base):
     __table_args__ = (
         sqlalchemy.Index("idx_books_language", "language"),
         sqlalchemy.Index("idx_books_language_slug", "language", "slug", unique=True),
+        sqlalchemy.Index("idx_books_work_id", "work_id"),
+        sqlalchemy.Index("idx_books_work_lang", "work_id", "language"),
         sqlalchemy.Index(
             "idx_books_rating_count",
             "rating_count",
@@ -38,6 +40,7 @@ class Book(app.db_base.Base):
     title = sqlalchemy.Column(sqlalchemy.String(500), nullable=False)
     language = sqlalchemy.Column(sqlalchemy.String(10), nullable=False)
     slug = sqlalchemy.Column(sqlalchemy.String(600), nullable=False)
+    work_id = sqlalchemy.Column(sqlalchemy.String(600), nullable=False)
     description = sqlalchemy.Column(sqlalchemy.Text)
     first_sentence = sqlalchemy.Column(sqlalchemy.Text)
     original_publication_year = sqlalchemy.Column(sqlalchemy.Integer)
