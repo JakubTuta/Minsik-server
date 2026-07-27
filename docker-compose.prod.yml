@@ -34,11 +34,28 @@ services:
   # ElasticSearch - Production Configuration
   # ============================================================================
   elasticsearch:
-    build:
-      context: .
-      dockerfile: services/elasticsearch/Dockerfile
-    image: minsik-elasticsearch:8.17.4
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.4
     container_name: minsik-elasticsearch
+    # Analysis plugins install on start, since Elasticsearch has no way to load
+    # them at runtime and the stock image ships without them:
+    #   analysis-icu     - `icu_folding`, which folds the letters `asciifolding`
+    #                      leaves alone (Polish 'l', Turkish dotless i)
+    #   analysis-stempel - Polish stemming ("ksiazki" -> "ksiaz")
+    # Needs outbound access to elastic.co on start. A failed download is not
+    # fatal: app/es_client.py detects what the cluster actually has and builds a
+    # weaker analysis chain instead of refusing to index, and the next start
+    # that does get the plugins rebuilds the indexes and swaps the aliases by
+    # itself. Watch for "WARN: could not install" in the container logs.
+    command:
+      - bash
+      - -c
+      - |
+        for plugin in analysis-icu analysis-stempel; do
+          elasticsearch-plugin list | grep -qx "$$plugin" \
+            || elasticsearch-plugin install --batch "$$plugin" \
+            || echo "WARN: could not install $$plugin, continuing without it"
+        done
+        exec /usr/local/bin/docker-entrypoint.sh eswrapper
     environment:
       - discovery.type=single-node
       - xpack.security.enabled=false

@@ -13,8 +13,8 @@ logger = logging.getLogger(__name__)
 _es_client: typing.Optional[elasticsearch.AsyncElasticsearch] = None
 
 # Analysis plugins detected on the connected cluster. Everything language-related
-# degrades rather than fails when one is missing, so the same image runs against
-# a stock Elasticsearch and against the plugin-enabled one in docker-compose.
+# degrades rather than fails when one is missing, so search keeps working on a
+# node whose start-up plugin install (see docker-compose.yml) did not go through.
 _installed_plugins: typing.Set[str] = set()
 
 ICU_PLUGIN = "analysis-icu"
