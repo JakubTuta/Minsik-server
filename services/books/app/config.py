@@ -41,6 +41,17 @@ class Settings(pydantic_settings.BaseSettings):
 
     search_author_books_expansion: int = pydantic.Field(default=3)
 
+    # Ranking signals are additive on top of the text score. The pivots are the
+    # value at which a signal contributes half its boost, so `popularity_pivot`
+    # is roughly "an averagely-read book" and `quality_pivot` an average rating.
+    search_popularity_pivot: float = pydantic.Field(default=50.0)
+    search_popularity_boost: float = pydantic.Field(default=1.5)
+    search_quality_pivot: float = pydantic.Field(default=3.5)
+    search_quality_boost: float = pydantic.Field(default=0.5)
+    # Tie-break only: the query text already carries the language the reader
+    # wants, so this just favours what they can actually read among equals.
+    search_language_boost: float = pydantic.Field(default=0.3)
+
     es_host: str = pydantic.Field(default="elasticsearch")
     es_port: int = pydantic.Field(default=9200)
     es_index_books: str = pydantic.Field(default="books")

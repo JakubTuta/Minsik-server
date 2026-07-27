@@ -23,7 +23,7 @@ class TestSearchBooksAndAuthors:
     @pytest.mark.asyncio
     async def test_search_all_types(self, mock_session, mock_cache):
         with patch(
-            "app.services.search_service._search_books_es", return_value=([], 0)
+            "app.services.search_service._search_works_es", return_value=([], 0)
         ), patch(
             "app.services.search_service._search_authors_es", return_value=([], 0)
         ), patch(
@@ -53,7 +53,7 @@ class TestSearchBooksAndAuthors:
         ]
 
         with patch(
-            "app.services.search_service._search_books_es", return_value=(mock_books, 1)
+            "app.services.search_service._search_works_es", return_value=(mock_books, 1)
         ), patch(
             "app.services.search_service._search_authors_es", return_value=([], 0)
         ), patch(
@@ -97,7 +97,7 @@ class TestSearchBooksAndAuthors:
         ]
 
         with patch(
-            "app.services.search_service._search_books_es", return_value=([], 0)
+            "app.services.search_service._search_works_es", return_value=([], 0)
         ), patch(
             "app.services.search_service._search_authors_es",
             return_value=(mock_authors, 1),
@@ -145,7 +145,7 @@ class TestSearchBooksAndAuthors:
         ]
 
         with patch(
-            "app.services.search_service._search_books_es", return_value=([], 0)
+            "app.services.search_service._search_works_es", return_value=([], 0)
         ), patch(
             "app.services.search_service._search_authors_es", return_value=([], 0)
         ), patch(
@@ -200,7 +200,7 @@ class TestSearchBooksAndAuthors:
         ]
 
         with patch(
-            "app.services.search_service._search_books_es",
+            "app.services.search_service._search_works_es",
             return_value=(mock_results, 3),
         ), patch(
             "app.services.search_service._search_authors_es", return_value=([], 0)
@@ -233,7 +233,7 @@ class TestSearchBooksAndAuthors:
         ]
 
         with patch(
-            "app.services.search_service._search_books_es",
+            "app.services.search_service._search_works_es",
             return_value=(mock_results, 20),
         ), patch(
             "app.services.search_service._search_authors_es", return_value=([], 0)
@@ -247,3 +247,70 @@ class TestSearchBooksAndAuthors:
 
             assert len(results) == 5
             assert total == 20
+
+    @pytest.mark.asyncio
+    async def test_later_pages_continue_the_merged_ranking(self, mock_session, mock_cache):
+        mock_results = [
+            {
+                "type": "book",
+                "id": i,
+                "title": f"Book {i}",
+                "slug": f"book-{i}",
+                "work_id": f"work-{i}",
+                "cover_url": "",
+                "authors": [],
+                "relevance_score": 1.0 - i / 100,
+            }
+            for i in range(20)
+        ]
+
+        with patch(
+            "app.services.search_service._search_works_es",
+            return_value=(mock_results, 20),
+        ), patch(
+            "app.services.search_service._search_authors_es", return_value=([], 0)
+        ), patch(
+            "app.services.search_service._search_series_es", return_value=([], 0)
+        ):
+
+            results, _total = await search_service.search_books_and_authors(
+                mock_session, query="test", limit=5, offset=5, type_filter="books"
+            )
+
+            assert [r["slug"] for r in results] == [f"book-{i}" for i in range(5, 10)]
+
+
+class TestEditionSelection:
+    EDITIONS = [
+        {"book_id": 1, "language": "en", "slug": "the-witcher", "ratings": 40},
+        {"book_id": 2, "language": "pl", "slug": "wiedzmin", "ratings": 10},
+        {"book_id": 3, "language": "de", "slug": "der-hexer", "ratings": 90},
+    ]
+
+    def test_readers_language_wins(self):
+        assert search_service.select_edition(self.EDITIONS, "pl")["book_id"] == 2
+
+    def test_english_is_the_first_fallback(self):
+        assert search_service.select_edition(self.EDITIONS, "fr")["book_id"] == 1
+
+    def test_most_rated_edition_when_neither_exists(self):
+        editions = [e for e in self.EDITIONS if e["language"] != "en"]
+
+        assert search_service.select_edition(editions, "fr")["book_id"] == 3
+
+
+class TestQueryShape:
+    def test_signals_cannot_match_on_their_own(self):
+        query = search_service._build_query("hobbit", search_service._WORK_FIELDS, "pl")
+
+        assert query["bool"]["must"][0]["bool"]["minimum_should_match"] == 1
+        assert "minimum_should_match" not in query["bool"]
+
+    def test_language_is_a_tie_break_not_a_filter(self):
+        query = search_service._build_query("hobbit", search_service._WORK_FIELDS, "pl")
+        language_clauses = [
+            clause for clause in query["bool"]["should"] if "terms" in clause
+        ]
+
+        assert language_clauses[0]["terms"]["languages"] == ["pl"]
+        assert language_clauses[0]["terms"]["boost"] < 1.0

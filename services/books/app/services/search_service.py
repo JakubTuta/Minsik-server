@@ -1,4 +1,3 @@
-import datetime
 import logging
 import typing
 import unicodedata
@@ -12,18 +11,15 @@ import sqlalchemy.ext.asyncio
 
 logger = logging.getLogger(__name__)
 
+# Merged pages are cut from a single ordered stream, so each type has to be
+# fetched deep enough to cover the requested window. Capped because a deep
+# window costs the same on every shard.
+MAX_FETCH_SIZE = 200
+
 
 def _normalize_query(query: str) -> str:
     normalized = unicodedata.normalize("NFKD", query)
     return "".join(c for c in normalized if not unicodedata.combining(c)).lower()
-
-
-_POPULARITY_SCRIPT: str = (
-    "double readers = doc['readers'].size() > 0 ? doc['readers'].value : 0;"
-    " double volume = Math.log10(10 + readers);"
-    " double bayes = doc['bayesian_score'].size() > 0 ? doc['bayesian_score'].value : 0;"
-    " return volume * (1.0 + 0.15 * (bayes / 5.0));"
-)
 
 
 def _normalize_scores(
@@ -37,195 +33,415 @@ def _normalize_scores(
     return results
 
 
-_BOOKS_EXACT_FIELDS = [("title.exact", 10.0), ("authors_names.exact", 7.0), ("series_name.exact", 5.0)]
-_BOOKS_PHRASE_FIELD_BOOSTS = [("title", 5.0), ("authors_names", 3.0), ("series_name", 2.0)]
-_BOOKS_MULTI_FIELD_BOOSTS = [("title", 3.0), ("authors_names", 2.0), ("series_name", 1.0)]
-_BOOKS_PREFIX_FIELDS = [("title.exact", 4.0), ("authors_names.exact", 2.5)]
+class TextFields:
+    """Which fields a query runs against, for one index.
+
+    `base` carries every language's text under the language-agnostic analyzer;
+    `localized` is the per-language stemmed copy of the same values. Cross-field
+    matching groups fields by analyzer, so only same-analyzer fields (`base`
+    plus the other generic ones) may share a `cross_fields` clause.
+    """
+
+    def __init__(
+        self,
+        base: str,
+        companions: typing.Optional[typing.Sequence[typing.Tuple[str, float]]] = None,
+    ) -> None:
+        self.base = base
+        self.companions = list(companions or [])
+
+    def localized(self) -> typing.List[str]:
+        return [
+            app.es_client.language_field(self.base, language)
+            for language in app.es_client.stemmed_languages()
+        ]
+
+    def best_fields(self) -> typing.List[str]:
+        return (
+            [f"{self.base}^4"]
+            + [f"{field}^5" for field in self.localized()]
+            + [f"{field}^{boost}" for field, boost in self.companions]
+        )
+
+    def generic_fields(self) -> typing.List[str]:
+        return [f"{self.base}^3"] + [
+            f"{field}^{boost}" for field, boost in self.companions
+        ]
+
+    def phrase_fields(self) -> typing.List[typing.Tuple[str, float]]:
+        return (
+            [(self.base, 6.0)]
+            + [(field, 7.0) for field in self.localized()]
+            + [(field, boost) for field, boost in self.companions]
+        )
+
+    def suggest_fields(self) -> typing.List[str]:
+        fields = [
+            f"{self.base}.suggest^3",
+            f"{self.base}.suggest._2gram",
+            f"{self.base}.suggest._3gram",
+        ]
+        for field, boost in self.companions:
+            if field == "series_name":
+                continue
+            fields.extend(
+                [
+                    f"{field}.suggest^{boost}",
+                    f"{field}.suggest._2gram",
+                    f"{field}.suggest._3gram",
+                ]
+            )
+
+        return fields
 
 
-def _with_language_subfields(
-    field_boosts: typing.List[typing.Tuple[str, float]], language: str
-) -> typing.List[typing.Tuple[str, float]]:
-    fields = list(field_boosts)
-    if app.es_client.has_language_subfield(language):
-        fields += [(f"{field}.lang_{language}", boost) for field, boost in field_boosts]
-    return fields
+_WORK_FIELDS = TextFields("titles", [("authors_names", 3.0), ("series_name", 2.0)])
+_AUTHOR_FIELDS = TextFields("name")
+_SERIES_FIELDS = TextFields("names")
 
 
-def _books_phrase_fields(language: str) -> typing.List[typing.Tuple[str, float]]:
-    return _with_language_subfields(_BOOKS_PHRASE_FIELD_BOOSTS, language)
-
-
-def _books_multi_fields(language: str) -> typing.List[str]:
-    return [
-        f"{field}^{boost}" for field, boost in _with_language_subfields(_BOOKS_MULTI_FIELD_BOOSTS, language)
-    ]
-
-
-_BOOKS_SUGGEST_FIELDS = [
-    "title.suggest^3",
-    "title.suggest._2gram",
-    "title.suggest._3gram",
-    "authors_names.suggest^2",
-    "authors_names.suggest._2gram",
-    "authors_names.suggest._3gram",
-]
-
-_NAME_EXACT_FIELDS = [("name.exact", 10.0)]
-_NAME_PHRASE_FIELD_BOOSTS = [("name", 5.0)]
-_NAME_MULTI_FIELD_BOOSTS = [("name", 3.0)]
-_NAME_PREFIX_FIELDS = [("name.exact", 4.0)]
-
-
-def _name_phrase_fields(language: str) -> typing.List[typing.Tuple[str, float]]:
-    return _with_language_subfields(_NAME_PHRASE_FIELD_BOOSTS, language)
-
-
-def _name_multi_fields(language: str) -> typing.List[str]:
-    return [
-        f"{field}^{boost}" for field, boost in _with_language_subfields(_NAME_MULTI_FIELD_BOOSTS, language)
-    ]
-_NAME_SUGGEST_FIELDS = [
-    "name.suggest^3",
-    "name.suggest._2gram",
-    "name.suggest._3gram",
-]
-
-
-def _with_popularity_and_language(
-    query_part: typing.Dict[str, typing.Any], language: str
-) -> typing.Dict[str, typing.Any]:
-    return {
-        "function_score": {
-            "query": query_part,
-            "functions": [
-                {"script_score": {"script": {"source": _POPULARITY_SCRIPT}}},
-                {
-                    "filter": {"term": {"language": language}},
-                    "weight": app.services._language_boost.LANGUAGE_BOOST_WEIGHT,
-                },
-            ],
-            "score_mode": "multiply",
-            "boost_mode": "multiply",
-        }
-    }
-
-
-def _build_full_search_query(
-    query: str,
-    language: str,
-    exact_fields: typing.List[typing.Tuple[str, float]],
-    phrase_fields: typing.List[typing.Tuple[str, float]],
-    multi_fields: typing.List[str],
-) -> typing.Dict[str, typing.Any]:
-    q_lower = _normalize_query(query)
-    should: typing.List[typing.Dict[str, typing.Any]] = [
-        {"term": {field: {"value": q_lower, "boost": boost}}}
-        for field, boost in exact_fields
-    ]
-    should.extend(
-        {"match_phrase": {field: {"query": query, "slop": 1, "boost": boost}}}
-        for field, boost in phrase_fields
-    )
-    should.append(
+def _text_clauses(
+    query: str, fields: TextFields, fuzzy: bool
+) -> typing.List[typing.Dict[str, typing.Any]]:
+    clauses: typing.List[typing.Dict[str, typing.Any]] = [
+        # Whole-value match on the folded copy: case- and diacritic-insensitive
+        # without asking the reader to reproduce "Władca" exactly.
+        {"match": {f"{fields.base}.folded": {"query": query, "boost": 12.0}}},
         {
             "multi_match": {
                 "query": query,
-                "fields": multi_fields,
-                "type": "cross_fields",
-                "operator": "and",
+                "fields": fields.best_fields(),
+                "type": "best_fields",
                 "tie_breaker": 0.3,
             }
-        }
-    )
-    should.append(
+        },
         {
             "multi_match": {
                 "query": query,
-                "fields": multi_fields,
-                "type": "best_fields",
-                "operator": "or",
-                "fuzziness": "AUTO",
-                "boost": 0.5,
+                "fields": fields.generic_fields(),
+                "type": "cross_fields",
+                "operator": "and",
             }
+        },
+    ]
+    clauses.extend(
+        {"match_phrase": {field: {"query": query, "slop": 1, "boost": boost}}}
+        for field, boost in fields.phrase_fields()
+    )
+
+    if fuzzy:
+        clauses.append(
+            {
+                "multi_match": {
+                    "query": query,
+                    "fields": fields.best_fields(),
+                    "type": "best_fields",
+                    "fuzziness": "AUTO",
+                    "prefix_length": 1,
+                    "boost": 0.5,
+                }
+            }
+        )
+
+    return clauses
+
+
+def _signal_clauses(language: str) -> typing.List[typing.Dict[str, typing.Any]]:
+    """Popularity, quality and a light nudge toward languages the reader reads.
+
+    Deliberately additive and small. The query text already says which language
+    the reader wants — someone typing an English title wants that book, not the
+    translation that happens to match their interface language — so language is
+    a tie-break between otherwise equal matches, not a ranking force.
+    """
+    settings = app.config.settings
+
+    return [
+        {
+            "rank_feature": {
+                "field": "popularity",
+                "saturation": {"pivot": settings.search_popularity_pivot},
+                "boost": settings.search_popularity_boost,
+            }
+        },
+        {
+            "rank_feature": {
+                "field": "quality",
+                "saturation": {"pivot": settings.search_quality_pivot},
+                "boost": settings.search_quality_boost,
+            }
+        },
+        {
+            "terms": {
+                "languages": [language],
+                "boost": settings.search_language_boost,
+            }
+        },
+    ]
+
+
+def _build_query(
+    query: str, fields: TextFields, language: str, fuzzy: bool = True
+) -> typing.Dict[str, typing.Any]:
+    # Text match is the gate (`must`); signals only reorder what already
+    # matched. A signal in a top-level `should` with `minimum_should_match: 1`
+    # would let popular documents in on no textual match at all.
+    return {
+        "bool": {
+            "must": [
+                {
+                    "bool": {
+                        "should": _text_clauses(query, fields, fuzzy),
+                        "minimum_should_match": 1,
+                    }
+                }
+            ],
+            "should": _signal_clauses(language),
         }
-    )
-    return _with_popularity_and_language(
-        {"bool": {"should": should, "minimum_should_match": 1}}, language
-    )
+    }
 
 
 def _build_suggest_query(
     query: str,
+    fields: TextFields,
     language: str,
-    prefix_fields: typing.List[typing.Tuple[str, float]],
-    suggest_fields: typing.List[str],
     fuzziness: typing.Optional[str] = None,
 ) -> typing.Dict[str, typing.Any]:
-    q_lower = _normalize_query(query)
     suggest_clause: typing.Dict[str, typing.Any] = {
         "query": query,
         "type": "bool_prefix",
-        "fields": suggest_fields,
+        "fields": fields.suggest_fields(),
     }
     if fuzziness:
         suggest_clause["fuzziness"] = fuzziness
 
-    should: typing.List[typing.Dict[str, typing.Any]] = [
-        {"prefix": {field: {"value": q_lower, "boost": boost}}}
-        for field, boost in prefix_fields
+    text_clauses: typing.List[typing.Dict[str, typing.Any]] = [
+        {"prefix": {f"{fields.base}.folded": {"value": _normalize_query(query), "boost": 4.0}}},
+        {"multi_match": suggest_clause},
     ]
-    should.append({"multi_match": suggest_clause})
-    return _with_popularity_and_language(
-        {"bool": {"should": should, "minimum_should_match": 1}}, language
+
+    return {
+        "bool": {
+            "must": [{"bool": {"should": text_clauses, "minimum_should_match": 1}}],
+            "should": _signal_clauses(language),
+        }
+    }
+
+
+def select_edition(
+    editions: typing.List[typing.Dict[str, typing.Any]], language: str
+) -> typing.Dict[str, typing.Any]:
+    """The edition a reader in `language` should be shown: theirs, English, best.
+
+    Same order the book page falls back in, so a search result and the page it
+    links to agree on which edition the reader is looking at.
+    """
+    for candidate_language in (language, "en"):
+        for edition in editions:
+            if edition.get("language") == candidate_language:
+                return edition
+
+    return max(editions, key=lambda edition: edition.get("ratings") or 0)
+
+
+def _select_series_row(
+    rows: typing.List[typing.Dict[str, typing.Any]], language: str
+) -> typing.Dict[str, typing.Any]:
+    for candidate_language in (language, "en"):
+        for row in rows:
+            if row.get("language") == candidate_language:
+                return row
+
+    return max(rows, key=lambda row: row.get("book_count") or 0)
+
+
+def _work_hit_to_result(
+    hit: typing.Dict[str, typing.Any], language: str
+) -> typing.Optional[typing.Dict[str, typing.Any]]:
+    source = hit["_source"]
+    editions = source.get("editions") or []
+    if not editions:
+        return None
+
+    edition = select_edition(editions, language)
+
+    return {
+        "type": "book",
+        "id": edition["book_id"],
+        "title": edition.get("title") or "",
+        "slug": edition.get("slug") or "",
+        "work_id": source.get("work_id") or "",
+        "cover_url": edition.get("cover_url") or "",
+        "authors": list(source.get("authors_names") or []),
+        "relevance_score": float(hit["_score"] or 0),
+        "author_slugs": list(source.get("author_slugs") or []),
+        "series_slug": edition.get("series_slug") or "",
+        "app_avg_rating": source.get("app_avg_rating"),
+        "app_rating_count": source.get("app_rating_count") or 0,
+        "ol_avg_rating": source.get("ol_avg_rating"),
+        "ol_rating_count": source.get("ol_rating_count") or 0,
+        "readers": source.get("readers") or 0,
+        "book_count": 0,
+        "language": edition.get("language") or "",
+    }
+
+
+def _author_hit_to_result(
+    hit: typing.Dict[str, typing.Any], _language: str
+) -> typing.Dict[str, typing.Any]:
+    source = hit["_source"]
+
+    return {
+        "type": "author",
+        "id": source["author_id"],
+        "title": source.get("name") or "",
+        "slug": source.get("slug") or "",
+        "work_id": "",
+        "cover_url": source.get("photo_url") or "",
+        "authors": [],
+        "relevance_score": float(hit["_score"] or 0),
+        "author_slugs": [],
+        "series_slug": "",
+        "app_avg_rating": source.get("app_avg_rating"),
+        "app_rating_count": source.get("app_rating_count") or 0,
+        "ol_avg_rating": source.get("ol_avg_rating"),
+        "ol_rating_count": source.get("ol_rating_count") or 0,
+        "readers": source.get("readers") or 0,
+        "book_count": source.get("book_count") or 0,
+        "language": "",
+    }
+
+
+def _series_hit_to_result(
+    hit: typing.Dict[str, typing.Any], language: str
+) -> typing.Optional[typing.Dict[str, typing.Any]]:
+    source = hit["_source"]
+    rows = source.get("rows") or []
+    if not rows:
+        return None
+
+    row = _select_series_row(rows, language)
+
+    return {
+        "type": "series",
+        "id": row["series_id"],
+        "title": row.get("name") or "",
+        "slug": source.get("slug") or "",
+        "work_id": "",
+        "cover_url": "",
+        "authors": [],
+        "relevance_score": float(hit["_score"] or 0),
+        "author_slugs": [],
+        "series_slug": "",
+        "app_avg_rating": source.get("app_avg_rating"),
+        "app_rating_count": source.get("app_rating_count") or 0,
+        "ol_avg_rating": source.get("ol_avg_rating"),
+        "ol_rating_count": source.get("ol_rating_count") or 0,
+        "readers": source.get("readers") or 0,
+        "book_count": row.get("book_count") or 0,
+        "language": row.get("language") or "",
+    }
+
+
+_WORK_SOURCE_FIELDS = [
+    "work_id",
+    "authors_names",
+    "author_slugs",
+    "editions",
+    "app_avg_rating",
+    "app_rating_count",
+    "ol_avg_rating",
+    "ol_rating_count",
+    "readers",
+]
+_AUTHOR_SOURCE_FIELDS = [
+    "author_id",
+    "name",
+    "slug",
+    "photo_url",
+    "book_count",
+    "app_avg_rating",
+    "app_rating_count",
+    "ol_avg_rating",
+    "ol_rating_count",
+    "readers",
+]
+_SERIES_SOURCE_FIELDS = [
+    "slug",
+    "rows",
+    "app_avg_rating",
+    "app_rating_count",
+    "ol_avg_rating",
+    "ol_rating_count",
+    "readers",
+]
+
+
+async def _run_search(
+    index: str,
+    query_body: typing.Dict[str, typing.Any],
+    size: int,
+    source_fields: typing.List[str],
+    to_result: typing.Callable[
+        [typing.Dict[str, typing.Any], str], typing.Optional[typing.Dict[str, typing.Any]]
+    ],
+    language: str,
+) -> typing.Tuple[typing.List[typing.Dict[str, typing.Any]], int]:
+    es = app.es_client.get_es()
+    response = await es.search(
+        index=index,
+        query=query_body,
+        from_=0,
+        size=size,
+        source=source_fields,
+        track_total_hits=True,
+    )
+
+    results = []
+    for hit in response["hits"]["hits"]:
+        result = to_result(hit, language)
+        if result is not None:
+            results.append(result)
+
+    return results, response["hits"]["total"]["value"]
+
+
+async def _search_works_es(
+    query: str, size: int, language: str
+) -> typing.Tuple[typing.List[typing.Dict[str, typing.Any]], int]:
+    return await _run_search(
+        app.config.settings.es_index_books,
+        _build_query(query, _WORK_FIELDS, language),
+        size,
+        _WORK_SOURCE_FIELDS,
+        _work_hit_to_result,
+        language,
     )
 
 
-def _build_full_search_books_query(
-    query: str, language: str
-) -> typing.Dict[str, typing.Any]:
-    return _build_full_search_query(
-        query, language, _BOOKS_EXACT_FIELDS, _books_phrase_fields(language), _books_multi_fields(language)
+async def _search_authors_es(
+    query: str, size: int, language: str
+) -> typing.Tuple[typing.List[typing.Dict[str, typing.Any]], int]:
+    return await _run_search(
+        app.config.settings.es_index_authors,
+        _build_query(query, _AUTHOR_FIELDS, language),
+        size,
+        _AUTHOR_SOURCE_FIELDS,
+        _author_hit_to_result,
+        language,
     )
 
 
-def _build_full_search_authors_query(
-    query: str, language: str
-) -> typing.Dict[str, typing.Any]:
-    return _build_full_search_query(
-        query, language, _NAME_EXACT_FIELDS, _name_phrase_fields(language), _name_multi_fields(language)
-    )
-
-
-def _build_full_search_series_query(
-    query: str, language: str
-) -> typing.Dict[str, typing.Any]:
-    return _build_full_search_query(
-        query, language, _NAME_EXACT_FIELDS, _name_phrase_fields(language), _name_multi_fields(language)
-    )
-
-
-def _build_suggest_books_query(
-    query: str, language: str, fuzziness: typing.Optional[str] = None
-) -> typing.Dict[str, typing.Any]:
-    return _build_suggest_query(
-        query, language, _BOOKS_PREFIX_FIELDS, _BOOKS_SUGGEST_FIELDS, fuzziness
-    )
-
-
-def _build_suggest_authors_query(
-    query: str, language: str, fuzziness: typing.Optional[str] = None
-) -> typing.Dict[str, typing.Any]:
-    return _build_suggest_query(
-        query, language, _NAME_PREFIX_FIELDS, _NAME_SUGGEST_FIELDS, fuzziness
-    )
-
-
-def _build_suggest_series_query(
-    query: str, language: str, fuzziness: typing.Optional[str] = None
-) -> typing.Dict[str, typing.Any]:
-    return _build_suggest_query(
-        query, language, _NAME_PREFIX_FIELDS, _NAME_SUGGEST_FIELDS, fuzziness
+async def _search_series_es(
+    query: str, size: int, language: str
+) -> typing.Tuple[typing.List[typing.Dict[str, typing.Any]], int]:
+    return await _run_search(
+        app.config.settings.es_index_series,
+        _build_query(query, _SERIES_FIELDS, language),
+        size,
+        _SERIES_SOURCE_FIELDS,
+        _series_hit_to_result,
+        language,
     )
 
 
@@ -242,22 +458,37 @@ async def search_books_and_authors(
     if cached:
         return cached["results"], cached["total"]
 
+    # Category search is a genre lookup in Postgres, already windowed there.
+    if type_filter == "categories":
+        category_results, category_total = await _search_books_by_category(
+            session, query, limit, offset, language
+        )
+        await app.cache.set_cached(
+            cache_key,
+            {"results": category_results, "total": category_total},
+            app.config.settings.cache_search_ttl,
+        )
+
+        return category_results, category_total
+
+    # Each type is fetched to the end of the requested window rather than one
+    # page deep: the types are merged into a single ranking, so a result that
+    # loses the race on page 1 still has to be available to land on page 2.
+    fetch_size = min(offset + limit, MAX_FETCH_SIZE)
+
     results: typing.List[typing.Dict[str, typing.Any]] = []
     total_count = 0
     author_results: typing.List[typing.Dict[str, typing.Any]] = []
     series_results: typing.List[typing.Dict[str, typing.Any]] = []
 
     if type_filter in ["all", "books"]:
-        book_results, book_total = await _search_books_es(
-            query, limit, offset, language
-        )
-        book_results = _normalize_scores(book_results, 1.0)
-        results.extend(book_results)
+        book_results, book_total = await _search_works_es(query, fetch_size, language)
+        results.extend(_normalize_scores(book_results, 1.0))
         total_count += book_total
 
     if type_filter in ["all", "authors"]:
         author_results, author_total = await _search_authors_es(
-            query, limit, offset, language
+            query, fetch_size, language
         )
         author_results = _normalize_scores(author_results, 0.9)
         results.extend(author_results)
@@ -279,7 +510,7 @@ async def search_books_and_authors(
 
     if type_filter in ["all", "series"]:
         series_results, series_total = await _search_series_es(
-            query, limit, offset, language
+            query, fetch_size, language
         )
         series_results = _normalize_scores(series_results, 0.85)
         results.extend(series_results)
@@ -296,17 +527,12 @@ async def search_books_and_authors(
                     book["relevance_score"] = expansion_score
                 results.extend(series_books)
 
-    if type_filter == "categories":
-        category_results, category_total = await _search_books_by_category(
-            session, query, limit, offset, language
-        )
-        results.extend(category_results)
-        total_count += category_total
-
+    # Expansions can repeat a work the main query already returned, and the
+    # index itself holds one document per work, so this only collapses overlap
+    # between the two sources.
+    results = app.services._language_boost.dedupe_by_work(results, language)
     results.sort(key=lambda x: x.get("relevance_score", 0), reverse=True)
-    deduplicated_results = app.services._language_boost.dedupe_by_work(results, language)
-    deduplicated_results.sort(key=lambda x: x.get("relevance_score", 0), reverse=True)
-    final_results = deduplicated_results[:limit]
+    final_results = results[offset : offset + limit]
 
     await app.cache.set_cached(
         cache_key,
@@ -342,304 +568,41 @@ async def _run_suggest_queries(
     language: str,
     fuzziness: typing.Optional[str],
 ) -> typing.List[typing.Dict[str, typing.Any]]:
-    es = app.es_client.get_es()
-    books_index = app.config.settings.es_index_books
-    authors_index = app.config.settings.es_index_authors
-    series_index = app.config.settings.es_index_series
+    settings = app.config.settings
 
-    rating_fields = [
-        "app_avg_rating",
-        "app_rating_count",
-        "ol_avg_rating",
-        "ol_rating_count",
-        "readers",
-    ]
+    books_results, _ = await _run_search(
+        settings.es_index_books,
+        _build_suggest_query(query, _WORK_FIELDS, language, fuzziness),
+        limit,
+        _WORK_SOURCE_FIELDS,
+        _work_hit_to_result,
+        language,
+    )
+    authors_results, _ = await _run_search(
+        settings.es_index_authors,
+        _build_suggest_query(query, _AUTHOR_FIELDS, language, fuzziness),
+        limit,
+        _AUTHOR_SOURCE_FIELDS,
+        _author_hit_to_result,
+        language,
+    )
+    series_results, _ = await _run_search(
+        settings.es_index_series,
+        _build_suggest_query(query, _SERIES_FIELDS, language, fuzziness),
+        limit,
+        _SERIES_SOURCE_FIELDS,
+        _series_hit_to_result,
+        language,
+    )
 
-    msearch_body = [
-        {"index": books_index},
-        {
-            "query": _build_suggest_books_query(query, language, fuzziness),
-            "size": limit,
-            "_source": [
-                "book_id",
-                "title",
-                "slug",
-                "work_id",
-                "primary_cover_url",
-                "authors_names",
-                "author_slugs",
-                "language",
-            ]
-            + rating_fields,
-        },
-        {"index": authors_index},
-        {
-            "query": _build_suggest_authors_query(query, language, fuzziness),
-            "size": limit,
-            "_source": ["author_id", "name", "slug", "photo_url"] + rating_fields,
-        },
-        {"index": series_index},
-        {
-            "query": _build_suggest_series_query(query, language, fuzziness),
-            "size": limit,
-            "_source": ["series_id", "name", "slug"] + rating_fields,
-        },
-    ]
-
-    response = await es.msearch(body=msearch_body)
-
-    books_hits = response["responses"][0].get("hits", {}).get("hits", [])
-    authors_hits = response["responses"][1].get("hits", {}).get("hits", [])
-    series_hits = response["responses"][2].get("hits", {}).get("hits", [])
-
-    books_results = []
-    for hit in books_hits:
-        src = hit["_source"]
-        authors_names = src.get("authors_names") or []
-        if isinstance(authors_names, str):
-            authors_names = [authors_names]
-        books_results.append(
-            {
-                "type": "book",
-                "id": src["book_id"],
-                "title": src.get("title", ""),
-                "slug": src.get("slug", ""),
-                "work_id": src.get("work_id") or "",
-                "cover_url": src.get("primary_cover_url") or "",
-                "authors": authors_names,
-                "relevance_score": float(hit["_score"] or 0),
-                "app_avg_rating": src.get("app_avg_rating"),
-                "app_rating_count": src.get("app_rating_count") or 0,
-                "ol_avg_rating": src.get("ol_avg_rating"),
-                "ol_rating_count": src.get("ol_rating_count") or 0,
-                "readers": src.get("readers") or 0,
-                "language": src.get("language") or "",
-            }
-        )
-
-    authors_results = []
-    for hit in authors_hits:
-        src = hit["_source"]
-        authors_results.append(
-            {
-                "type": "author",
-                "id": src["author_id"],
-                "title": src.get("name", ""),
-                "slug": src.get("slug", ""),
-                "cover_url": src.get("photo_url") or "",
-                "authors": [],
-                "relevance_score": float(hit["_score"] or 0),
-                "app_avg_rating": src.get("app_avg_rating"),
-                "app_rating_count": src.get("app_rating_count") or 0,
-                "ol_avg_rating": src.get("ol_avg_rating"),
-                "ol_rating_count": src.get("ol_rating_count") or 0,
-                "readers": src.get("readers") or 0,
-            }
-        )
-
-    series_results = []
-    for hit in series_hits:
-        src = hit["_source"]
-        series_results.append(
-            {
-                "type": "series",
-                "id": src["series_id"],
-                "title": src.get("name", ""),
-                "slug": src.get("slug", ""),
-                "cover_url": "",
-                "authors": [],
-                "relevance_score": float(hit["_score"] or 0),
-                "app_avg_rating": src.get("app_avg_rating"),
-                "app_rating_count": src.get("app_rating_count") or 0,
-                "ol_avg_rating": src.get("ol_avg_rating"),
-                "ol_rating_count": src.get("ol_rating_count") or 0,
-                "readers": src.get("readers") or 0,
-            }
-        )
-
-    books_results = _normalize_scores(books_results, 1.0)
-    authors_results = _normalize_scores(authors_results, 0.95)
-    series_results = _normalize_scores(series_results, 0.9)
-
-    merged = books_results + authors_results + series_results
+    merged = (
+        _normalize_scores(books_results, 1.0)
+        + _normalize_scores(authors_results, 0.95)
+        + _normalize_scores(series_results, 0.9)
+    )
     merged.sort(key=lambda x: x["relevance_score"], reverse=True)
-    merged = app.services._language_boost.dedupe_by_work(merged, language)
-    merged.sort(key=lambda x: x["relevance_score"], reverse=True)
+
     return merged[:limit]
-
-
-async def _search_books_es(
-    query: str, limit: int, offset: int, language: str
-) -> typing.Tuple[typing.List[typing.Dict[str, typing.Any]], int]:
-    es = app.es_client.get_es()
-    index = app.config.settings.es_index_books
-
-    response = await es.search(
-        index=index,
-        body={
-            "query": _build_full_search_books_query(query, language),
-            "from": offset,
-            "size": limit,
-            "_source": [
-                "book_id",
-                "title",
-                "slug",
-                "work_id",
-                "primary_cover_url",
-                "authors_names",
-                "author_slugs",
-                "series_slug",
-                "app_avg_rating",
-                "app_rating_count",
-                "ol_avg_rating",
-                "ol_rating_count",
-                "readers",
-                "language",
-            ],
-        },
-    )
-
-    total = response["hits"]["total"]["value"]
-    books = []
-    for hit in response["hits"]["hits"]:
-        src = hit["_source"]
-        authors_names = src.get("authors_names") or []
-        if isinstance(authors_names, str):
-            authors_names = [authors_names]
-        author_slugs = src.get("author_slugs") or []
-        if isinstance(author_slugs, str):
-            author_slugs = [author_slugs]
-
-        books.append(
-            {
-                "type": "book",
-                "id": src["book_id"],
-                "title": src.get("title", ""),
-                "slug": src.get("slug", ""),
-                "work_id": src.get("work_id") or "",
-                "cover_url": src.get("primary_cover_url") or "",
-                "authors": authors_names,
-                "relevance_score": float(hit["_score"] or 0),
-                "author_slugs": author_slugs,
-                "series_slug": src.get("series_slug") or "",
-                "app_avg_rating": src.get("app_avg_rating"),
-                "app_rating_count": src.get("app_rating_count") or 0,
-                "ol_avg_rating": src.get("ol_avg_rating"),
-                "ol_rating_count": src.get("ol_rating_count") or 0,
-                "readers": src.get("readers") or 0,
-                "book_count": 0,
-                "language": src.get("language") or "",
-            }
-        )
-
-    return books, total
-
-
-async def _search_authors_es(
-    query: str, limit: int, offset: int, language: str
-) -> typing.Tuple[typing.List[typing.Dict[str, typing.Any]], int]:
-    es = app.es_client.get_es()
-    index = app.config.settings.es_index_authors
-
-    response = await es.search(
-        index=index,
-        body={
-            "query": _build_full_search_authors_query(query, language),
-            "from": offset,
-            "size": limit,
-            "_source": [
-                "author_id",
-                "name",
-                "slug",
-                "photo_url",
-                "book_count",
-                "app_avg_rating",
-                "app_rating_count",
-                "ol_avg_rating",
-                "ol_rating_count",
-                "readers",
-            ],
-        },
-    )
-
-    total = response["hits"]["total"]["value"]
-    authors = []
-    for hit in response["hits"]["hits"]:
-        src = hit["_source"]
-        authors.append(
-            {
-                "type": "author",
-                "id": src["author_id"],
-                "title": src.get("name", ""),
-                "slug": src.get("slug", ""),
-                "cover_url": src.get("photo_url") or "",
-                "authors": [],
-                "relevance_score": float(hit["_score"] or 0),
-                "author_slugs": [],
-                "series_slug": "",
-                "app_avg_rating": src.get("app_avg_rating"),
-                "app_rating_count": src.get("app_rating_count") or 0,
-                "ol_avg_rating": src.get("ol_avg_rating"),
-                "ol_rating_count": src.get("ol_rating_count") or 0,
-                "readers": src.get("readers") or 0,
-                "book_count": src.get("book_count") or 0,
-            }
-        )
-
-    return authors, total
-
-
-async def _search_series_es(
-    query: str, limit: int, offset: int, language: str
-) -> typing.Tuple[typing.List[typing.Dict[str, typing.Any]], int]:
-    es = app.es_client.get_es()
-    index = app.config.settings.es_index_series
-
-    response = await es.search(
-        index=index,
-        body={
-            "query": _build_full_search_series_query(query, language),
-            "from": offset,
-            "size": limit,
-            "_source": [
-                "series_id",
-                "name",
-                "slug",
-                "book_count",
-                "app_avg_rating",
-                "app_rating_count",
-                "ol_avg_rating",
-                "ol_rating_count",
-                "readers",
-            ],
-        },
-    )
-
-    total = response["hits"]["total"]["value"]
-    series_list = []
-    for hit in response["hits"]["hits"]:
-        src = hit["_source"]
-        series_list.append(
-            {
-                "type": "series",
-                "id": src["series_id"],
-                "title": src.get("name", ""),
-                "slug": src.get("slug", ""),
-                "cover_url": "",
-                "authors": [],
-                "relevance_score": float(hit["_score"] or 0),
-                "author_slugs": [],
-                "series_slug": "",
-                "app_avg_rating": src.get("app_avg_rating"),
-                "app_rating_count": src.get("app_rating_count") or 0,
-                "ol_avg_rating": src.get("ol_avg_rating"),
-                "ol_rating_count": src.get("ol_rating_count") or 0,
-                "readers": src.get("readers") or 0,
-                "book_count": src.get("book_count") or 0,
-            }
-        )
-
-    return series_list, total
 
 
 async def _search_books_by_category(
@@ -672,6 +635,7 @@ async def _search_books_by_category(
             b.title,
             b.slug,
             b.work_id,
+            b.language,
             b.primary_cover_url,
             COALESCE(b.rating_count, 0) as app_rating_count,
             b.avg_rating as app_avg_rating,
@@ -689,7 +653,7 @@ async def _search_books_by_category(
         LEFT JOIN books.series s ON b.series_id = s.series_id
         WHERE {app.services._language_boost.preferred_edition_sql(require_cover=False)}
           AND (g.slug ILIKE :query_pattern OR g.name ILIKE :query_pattern)
-        GROUP BY b.book_id, b.title, b.slug, b.work_id, b.primary_cover_url,
+        GROUP BY b.book_id, b.title, b.slug, b.work_id, b.language, b.primary_cover_url,
                  b.rating_count, b.avg_rating, b.ol_rating_count, b.ol_avg_rating,
                  b.created_at, s.slug
         ORDER BY
@@ -734,7 +698,7 @@ async def _search_books_by_category(
                 "ol_rating_count": row.ol_rating_count,
                 "readers": row.readers or 0,
                 "book_count": 0,
-                "language": language,
+                "language": row.language or language,
             }
         )
 
@@ -754,6 +718,7 @@ async def _get_author_top_books(
             b.title,
             b.slug,
             b.work_id,
+            b.language,
             b.primary_cover_url,
             COALESCE(b.rating_count, 0) as app_rating_count,
             b.avg_rating as app_avg_rating,
@@ -768,7 +733,7 @@ async def _get_author_top_books(
         LEFT JOIN books.authors a ON ba.author_id = a.author_id
         LEFT JOIN books.series s ON b.series_id = s.series_id
         WHERE ba.author_id = :author_id AND {app.services._language_boost.preferred_edition_sql(require_cover=False)}
-        GROUP BY b.book_id, b.title, b.slug, b.work_id, b.primary_cover_url, b.rating_count, b.avg_rating, b.ol_rating_count, b.ol_avg_rating, b.created_at, s.slug
+        GROUP BY b.book_id, b.title, b.slug, b.work_id, b.language, b.primary_cover_url, b.rating_count, b.avg_rating, b.ol_rating_count, b.ol_avg_rating, b.created_at, s.slug
         ORDER BY
             COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0) DESC,
             COALESCE(b.avg_rating, 0) DESC,
@@ -781,35 +746,7 @@ async def _get_author_top_books(
         query, {"author_id": author_id, "limit": limit, "language": language}
     )
 
-    books = []
-    for row in result:
-        books.append(
-            {
-                "type": "book",
-                "id": row.book_id,
-                "title": row.title,
-                "slug": row.slug,
-                "work_id": row.work_id or "",
-                "cover_url": row.primary_cover_url or "",
-                "authors": row.authors_names or [],
-                "relevance_score": 0.4,
-                "author_slugs": row.author_slugs or [],
-                "series_slug": row.series_slug or "",
-                "app_avg_rating": (
-                    float(row.app_avg_rating) if row.app_avg_rating else None
-                ),
-                "app_rating_count": row.app_rating_count,
-                "ol_avg_rating": (
-                    float(row.ol_avg_rating) if row.ol_avg_rating else None
-                ),
-                "ol_rating_count": row.ol_rating_count,
-                "readers": row.readers or 0,
-                "book_count": 0,
-                "language": language,
-            }
-        )
-
-    return books
+    return [_expansion_row_to_result(row, language) for row in result]
 
 
 async def _get_series_top_books(
@@ -825,6 +762,7 @@ async def _get_series_top_books(
             b.title,
             b.slug,
             b.work_id,
+            b.language,
             b.primary_cover_url,
             b.series_position,
             COALESCE(b.rating_count, 0) as app_rating_count,
@@ -840,7 +778,7 @@ async def _get_series_top_books(
         LEFT JOIN books.authors a ON ba.author_id = a.author_id
         LEFT JOIN books.series s ON b.series_id = s.series_id
         WHERE b.series_id = :series_id AND {app.services._language_boost.preferred_edition_sql(require_cover=False)}
-        GROUP BY b.book_id, b.title, b.slug, b.work_id, b.primary_cover_url, b.series_position, b.rating_count, b.avg_rating, b.ol_rating_count, b.ol_avg_rating, b.created_at, s.slug
+        GROUP BY b.book_id, b.title, b.slug, b.work_id, b.language, b.primary_cover_url, b.series_position, b.rating_count, b.avg_rating, b.ol_rating_count, b.ol_avg_rating, b.created_at, s.slug
         ORDER BY
             b.series_position ASC NULLS LAST,
             b.created_at ASC
@@ -852,32 +790,28 @@ async def _get_series_top_books(
         query, {"series_id": series_id, "limit": limit, "language": language}
     )
 
-    books = []
-    for row in result:
-        books.append(
-            {
-                "type": "book",
-                "id": row.book_id,
-                "title": row.title,
-                "slug": row.slug,
-                "work_id": row.work_id or "",
-                "cover_url": row.primary_cover_url or "",
-                "authors": row.authors_names or [],
-                "relevance_score": 0.4,
-                "author_slugs": row.author_slugs or [],
-                "series_slug": row.series_slug or "",
-                "app_avg_rating": (
-                    float(row.app_avg_rating) if row.app_avg_rating else None
-                ),
-                "app_rating_count": row.app_rating_count,
-                "ol_avg_rating": (
-                    float(row.ol_avg_rating) if row.ol_avg_rating else None
-                ),
-                "ol_rating_count": row.ol_rating_count,
-                "readers": row.readers or 0,
-                "book_count": 0,
-                "language": language,
-            }
-        )
+    return [_expansion_row_to_result(row, language) for row in result]
 
-    return books
+
+def _expansion_row_to_result(
+    row: typing.Any, language: str
+) -> typing.Dict[str, typing.Any]:
+    return {
+        "type": "book",
+        "id": row.book_id,
+        "title": row.title,
+        "slug": row.slug,
+        "work_id": row.work_id or "",
+        "cover_url": row.primary_cover_url or "",
+        "authors": row.authors_names or [],
+        "relevance_score": 0.4,
+        "author_slugs": row.author_slugs or [],
+        "series_slug": row.series_slug or "",
+        "app_avg_rating": float(row.app_avg_rating) if row.app_avg_rating else None,
+        "app_rating_count": row.app_rating_count,
+        "ol_avg_rating": float(row.ol_avg_rating) if row.ol_avg_rating else None,
+        "ol_rating_count": row.ol_rating_count,
+        "readers": row.readers or 0,
+        "book_count": 0,
+        "language": row.language or language,
+    }

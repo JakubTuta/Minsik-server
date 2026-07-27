@@ -99,11 +99,12 @@ async def suggest_search(
     - `series`: Search only series
     - `categories`: Search by genre/category name or slug, returns books belonging to matched genres
 
-    **Language Filter (`language`):**
-    Filters book results to the specified language edition (default: `en`).
-    Author and series results are always returned regardless of language.
-    Book expansions shown under author/series results also respect this filter.
-    Category results are also filtered by language.
+    **Language (`language`):**
+    Never a filter. Matching is done on the query text itself, which already
+    says which language the reader is after, and every language is searched at
+    once. The parameter decides which edition of a matched work is returned
+    (reader's language, else English, else the most-rated edition) and breaks
+    ties between otherwise equally relevant results (default: `en`).
 
     **Examples:**
     - `/api/v1/search?q=lord of the rings`
@@ -195,8 +196,10 @@ async def search_books_and_authors(
 
     **Language (`language`):**
     The same slug may exist in multiple language editions (e.g. `en`, `pl`, `de`).
-    Use this parameter to select the desired edition (default: `en`).
-    Returns 404 if no edition exists for the requested language.
+    Selects which edition to return (default: `en`). When the work has no
+    edition in that language it falls back to English, then to the most-rated
+    edition, and `language` in the response says which one was served — a
+    missing translation is never a 404.
 
     **`sub_rating_stats`** - All 8 keys are always present (default `avg: "0"`, `count: 0`).
     Each value: `{"avg": "3.50", "count": 12}`.
@@ -303,10 +306,10 @@ async def get_book_language_variants(
       `books_total_views`, `book_categories`
 
     **Language (`language`):**
-    Filters all book-derived aggregate stats to the specified language edition (default: `en`).
-    Only books in that language are counted towards `books_count`, `books_avg_rating`,
-    `books_total_ratings`, `books_total_views`, and `book_categories`.
-    The author record itself (name, bio, etc.) is always returned regardless of language.
+    Decides which edition of each of the author's works the stats are read from
+    (reader's language, else English, else the most-rated edition), counting
+    every work once regardless of how many translations it has (default: `en`).
+    The author record itself (name, bio, etc.) is language-agnostic.
 
     **Examples:**
     - `/api/v1/authors/j-r-r-tolkien`
@@ -395,8 +398,9 @@ async def get_author(
     - `desc` - Descending order (default)
 
     **Language (`language`):**
-    Filters the book list to the specified language edition (default: `en`).
-    Only books in that language are returned. `total_count` reflects the filtered count.
+    An author's catalog is their works, not their translations: every work is
+    listed once, rendered in the reader's language where such an edition
+    exists, else English, else the most-rated edition (default: `en`).
 
     **Examples:**
     - `/api/v1/authors/j-r-r-tolkien/books?sort_by=publication_year&order=asc`
@@ -567,10 +571,10 @@ async def get_author_top_books(
       `rating_count`, `ol_avg_rating`, `ol_rating_count`, `total_views`
 
     **Language (`language`):**
-    Filters all book-derived aggregate stats to the specified language edition (default: `en`).
-    Only books in that language are counted towards `total_books`, `avg_rating`, `rating_count`,
-    `ol_avg_rating`, `ol_rating_count`, and `total_views`.
-    The series record itself (name, description, etc.) is always returned regardless of language.
+    Selects which language's series record to serve, falling back to English and
+    then to the largest one when the series has no record in that language
+    (default: `en`). Stats are computed over the books belonging to the record
+    actually served.
 
     **Examples:**
     - `/api/v1/series/harry-potter`
@@ -727,6 +731,7 @@ async def get_book_comments(
     user: typing.Optional[typing.Dict[str, typing.Any]] = fastapi.Depends(
         app.middleware.auth.get_current_user_optional
     ),
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
     requesting_user_id = user["user_id"] if user else 0
     try:
@@ -739,6 +744,7 @@ async def get_book_comments(
             sort_by=sort_by,
             requesting_user_id=requesting_user_id,
             rating_filters=rating_filter or [],
+            language=language,
         )
         my_entry = (
             _comment_with_rating_to_dict(response.my_entry)
@@ -786,8 +792,8 @@ async def get_book_comments(
     - `desc` - Descending order
 
     **Language (`language`):**
-    Filters the book list to the specified language edition (default: `en`).
-    Only books in that language are returned. `total_count` reflects the filtered count.
+    Selects which language's series record the books are listed from, falling
+    back to English and then to the largest one (default: `en`).
 
     **Examples:**
     - `/api/v1/series/harry-potter/books?limit=10&offset=0`

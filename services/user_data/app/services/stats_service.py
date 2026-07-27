@@ -3,6 +3,7 @@ import typing
 import sqlalchemy
 import sqlalchemy.ext.asyncio
 import app.models.user_stats
+import app.services.edition_resolver
 import datetime
 
 
@@ -189,11 +190,14 @@ async def get_year_in_review(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     user_id: int,
     year: int,
+    language: str = "en",
 ) -> typing.Dict[str, typing.Any]:
     start, end, months_elapsed = _year_window(year)
 
+    # Books are rendered in the reader's language, not in whichever edition they
+    # happened to shelve — the year they read is the same year either way.
     finished_result = await session.execute(
-        sqlalchemy.text("""
+        sqlalchemy.text(f"""
             SELECT
                 bs.book_id,
                 b.slug AS book_slug,
@@ -206,7 +210,8 @@ async def get_year_in_review(
                 ARRAY_AGG(a.name ORDER BY a.name) AS author_names,
                 ARRAY_AGG(a.slug ORDER BY a.name) AS author_slugs
             FROM user_data.bookshelves bs
-            JOIN books.books b ON b.book_id = bs.book_id
+            JOIN books.books sb ON sb.book_id = bs.book_id
+            JOIN LATERAL ({app.services.edition_resolver.PREFERRED_EDITION_LATERAL}) b ON TRUE
             LEFT JOIN books.book_authors ba ON ba.book_id = b.book_id
             LEFT JOIN books.authors a ON a.author_id = ba.author_id
             LEFT JOIN user_data.ratings r ON r.user_id = bs.user_id AND r.book_id = bs.book_id
@@ -218,7 +223,7 @@ async def get_year_in_review(
                      bs.finished_at, bs.started_at, r.overall_rating
             ORDER BY bs.finished_at ASC
         """),
-        {"uid": user_id, "start": start, "end": end},
+        {"uid": user_id, "start": start, "end": end, "language": language},
     )
     finished_rows = finished_result.fetchall()
 

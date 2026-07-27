@@ -69,10 +69,11 @@ def dedupe_by_work(
     """Collapse translations of the same work into one entry.
 
     Grouped by work_id (falling back to slug when absent, e.g. author/series
-    items which carry no work_id). Within a group, the entry matching the
-    requested language wins by score; otherwise the entry with the most
-    readers wins. Reader counts are already pooled per work upstream, so
-    the winner's count needs no adjustment.
+    items which carry no work_id). Within a group the reader's language wins,
+    then English, then the most-read edition — the same order every other
+    edition-picking path in the app uses, so a book looks the same whether it
+    was reached through a recommendation row or its own page. Reader counts are
+    already pooled per work upstream, so the winner's count needs no adjustment.
     """
     groups: typing.Dict[str, typing.List[typing.Dict[str, typing.Any]]] = {}
     order: typing.List[str] = []
@@ -95,12 +96,13 @@ def dedupe_by_work(
             out.append(group[0])
             continue
 
-        matched = [g for g in group if g.get("language") == language]
-        if matched:
-            winner = max(matched, key=lambda g: g.get("score", 0))
-            out.append(winner)
-            continue
+        winner = None
+        for candidate_language in (language, "en"):
+            matched = [g for g in group if g.get("language") == candidate_language]
+            if matched:
+                winner = max(matched, key=lambda g: g.get("score", 0))
+                break
 
-        out.append(max(group, key=lambda g: g.get("readers") or 0))
+        out.append(winner or max(group, key=lambda g: g.get("readers") or 0))
 
     return out

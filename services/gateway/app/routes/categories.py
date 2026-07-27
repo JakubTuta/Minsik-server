@@ -17,7 +17,8 @@ logger = logging.getLogger(__name__)
     response_model=app.models.books_responses.PopularCategoriesResponse,
     summary="Get popular categories",
     description="""
-    Returns top categories ranked by book count (English books with cover image).
+    Returns top categories ranked by how many distinct works with a cover
+    image they hold, counting a translated work once.
 
     Results are cached for 24 hours.
     """,
@@ -106,8 +107,11 @@ async def get_category(
     - `popularity` - Sorts by total number of readers/ratings (default)
     - `rating` - Sorts by average rating
 
-    **Language Filter (`language`):**
-    Filters book results to the specified language edition (default: `en`).
+    **Language (`language`):**
+    Every work in the category is listed once, rendered in the reader's language
+    where such an edition exists, else English, else the most-rated edition
+    (default: `en`). The candidate pool itself is language-agnostic, so a
+    reader with a thin catalog still sees the category's best books.
 
     **Examples:**
     - `/api/v1/categories/fantasy/books?limit=20`

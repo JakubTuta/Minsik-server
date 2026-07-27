@@ -20,18 +20,18 @@ class UserDataClient(base.GrpcClientBase):
 
 
     async def get_bookshelf(
-        self, user_id: int, book_slug: str
+        self, user_id: int, book_slug: str, language: str = "en"
     ) -> app.proto.user_data_pb2.BookshelfResponse:
         request = app.proto.user_data_pb2.GetBookshelfRequest(
-            user_id=user_id, book_slug=book_slug
+            user_id=user_id, book_slug=book_slug, language=language
         )
         return await self._call("GetBookshelf", request)
 
     async def get_user_book_info(
-        self, user_id: int, book_slug: str
+        self, user_id: int, book_slug: str, language: str = "en"
     ) -> app.proto.user_data_pb2.UserBookInfoResponse:
         request = app.proto.user_data_pb2.GetUserBookInfoRequest(
-            user_id=user_id, book_slug=book_slug
+            user_id=user_id, book_slug=book_slug, language=language
         )
         return await self._call("GetUserBookInfo", request)
 
@@ -44,18 +44,18 @@ class UserDataClient(base.GrpcClientBase):
         return await self._call("GetBookStatuses", request)
 
     async def upsert_bookshelf(
-        self, user_id: int, book_slug: str, status: str
+        self, user_id: int, book_slug: str, status: str, language: str = "en"
     ) -> app.proto.user_data_pb2.BookshelfResponse:
         request = app.proto.user_data_pb2.UpsertBookshelfRequest(
-            user_id=user_id, book_slug=book_slug, status=status
+            user_id=user_id, book_slug=book_slug, status=status, language=language
         )
         return await self._call("UpsertBookshelf", request)
 
     async def delete_bookshelf(
-        self, user_id: int, book_slug: str
+        self, user_id: int, book_slug: str, language: str = "en"
     ) -> app.proto.user_data_pb2.EmptyResponse:
         request = app.proto.user_data_pb2.DeleteBookshelfRequest(
-            user_id=user_id, book_slug=book_slug
+            user_id=user_id, book_slug=book_slug, language=language
         )
         return await self._call("DeleteBookshelf", request)
 
@@ -68,6 +68,7 @@ class UserDataClient(base.GrpcClientBase):
         favourites_only: bool = False,
         sort_by: str = "created_at",
         order: str = "desc",
+        language: str = "en",
     ) -> app.proto.user_data_pb2.BookshelvesListResponse:
         request = app.proto.user_data_pb2.GetUserBookshelvesRequest(
             user_id=user_id,
@@ -77,6 +78,7 @@ class UserDataClient(base.GrpcClientBase):
             favourites_only=favourites_only,
             sort_by=sort_by,
             order=order,
+            language=language,
         )
         return await self._call("GetUserBookshelves", request)
 
@@ -89,6 +91,7 @@ class UserDataClient(base.GrpcClientBase):
         favourites_only: bool = False,
         sort_by: str = "created_at",
         order: str = "desc",
+        language: str = "en",
     ) -> app.proto.user_data_pb2.BookshelvesListResponse:
         request = app.proto.user_data_pb2.GetPublicBookshelvesRequest(
             username=username,
@@ -98,13 +101,16 @@ class UserDataClient(base.GrpcClientBase):
             favourites_only=favourites_only,
             sort_by=sort_by,
             order=order,
+            language=language,
         )
         return await self._call("GetPublicBookshelves", request)
 
     async def get_rating(
-        self, user_id: int, book_slug: str
+        self, user_id: int, book_slug: str, language: str = "en"
     ) -> app.proto.user_data_pb2.RatingResponse:
-        request = app.proto.user_data_pb2.GetRatingRequest(user_id=user_id, book_slug=book_slug)
+        request = app.proto.user_data_pb2.GetRatingRequest(
+            user_id=user_id, book_slug=book_slug, language=language
+        )
         return await self._call("GetRating", request)
 
     async def upsert_rating(
@@ -121,6 +127,7 @@ class UserDataClient(base.GrpcClientBase):
         readability: typing.Optional[float] = None,
         plot_complexity: typing.Optional[float] = None,
         humor: typing.Optional[float] = None,
+        language: str = "en",
     ) -> app.proto.user_data_pb2.RatingResponse:
         request = app.proto.user_data_pb2.UpsertRatingRequest(
             user_id=user_id,
@@ -143,14 +150,15 @@ class UserDataClient(base.GrpcClientBase):
             has_plot_complexity=plot_complexity is not None,
             humor=humor or 0.0,
             has_humor=humor is not None,
+            language=language,
         )
         return await self._call("UpsertRating", request)
 
     async def delete_rating(
-        self, user_id: int, book_slug: str
+        self, user_id: int, book_slug: str, language: str = "en"
     ) -> app.proto.user_data_pb2.EmptyResponse:
         request = app.proto.user_data_pb2.DeleteRatingRequest(
-            user_id=user_id, book_slug=book_slug
+            user_id=user_id, book_slug=book_slug, language=language
         )
         return await self._call("DeleteRating", request)
 
@@ -163,6 +171,7 @@ class UserDataClient(base.GrpcClientBase):
         order: str = "desc",
         min_rating: float = 0.0,
         max_rating: float = 0.0,
+        language: str = "en",
     ) -> app.proto.user_data_pb2.RatingsListResponse:
         request = app.proto.user_data_pb2.GetUserRatingsRequest(
             user_id=user_id,
@@ -172,30 +181,43 @@ class UserDataClient(base.GrpcClientBase):
             order=order,
             min_rating=min_rating,
             max_rating=max_rating,
+            language=language,
         )
         return await self._call("GetUserRatings", request)
 
     async def toggle_favourite(
-        self, user_id: int, book_slug: str, is_favorite: bool
+        self, user_id: int, book_slug: str, is_favorite: bool, language: str = "en"
     ) -> app.proto.user_data_pb2.FavouriteResponse:
         request = app.proto.user_data_pb2.ToggleFavouriteRequest(
-            user_id=user_id, book_slug=book_slug, is_favorite=is_favorite
+            user_id=user_id,
+            book_slug=book_slug,
+            is_favorite=is_favorite,
+            language=language,
         )
         return await self._call("ToggleFavourite", request)
 
     async def get_user_favourites(
-        self, user_id: int, limit: int = 10, offset: int = 0
+        self, user_id: int, limit: int = 10, offset: int = 0, language: str = "en"
     ) -> app.proto.user_data_pb2.BookshelvesListResponse:
         request = app.proto.user_data_pb2.GetUserFavouritesRequest(
-            user_id=user_id, limit=limit, offset=offset
+            user_id=user_id, limit=limit, offset=offset, language=language
         )
         return await self._call("GetUserFavourites", request)
 
     async def create_comment(
-        self, user_id: int, book_slug: str, body: str, is_spoiler: bool
+        self,
+        user_id: int,
+        book_slug: str,
+        body: str,
+        is_spoiler: bool,
+        language: str = "en",
     ) -> app.proto.user_data_pb2.CommentResponse:
         request = app.proto.user_data_pb2.CreateCommentRequest(
-            user_id=user_id, book_slug=book_slug, body=body, is_spoiler=is_spoiler
+            user_id=user_id,
+            book_slug=book_slug,
+            body=body,
+            is_spoiler=is_spoiler,
+            language=language,
         )
         return await self._call("CreateComment", request)
 
@@ -223,6 +245,7 @@ class UserDataClient(base.GrpcClientBase):
         sort_by: str = "created_at",
         order: str = "desc",
         book_slug: str = "",
+        language: str = "en",
     ) -> app.proto.user_data_pb2.CommentsListResponse:
         request = app.proto.user_data_pb2.GetUserCommentsRequest(
             user_id=user_id,
@@ -231,6 +254,7 @@ class UserDataClient(base.GrpcClientBase):
             sort_by=sort_by,
             order=order,
             book_slug=book_slug,
+            language=language,
         )
         return await self._call("GetUserComments", request)
 
@@ -244,6 +268,7 @@ class UserDataClient(base.GrpcClientBase):
         sort_by: str = "created_at",
         requesting_user_id: int = 0,
         rating_filters: typing.List[float] = [],
+        language: str = "en",
     ) -> app.proto.user_data_pb2.BookCommentsResponse:
         request = app.proto.user_data_pb2.GetBookCommentsRequest(
             book_slug=book_slug,
@@ -254,6 +279,7 @@ class UserDataClient(base.GrpcClientBase):
             sort_by=sort_by,
             requesting_user_id=requesting_user_id,
             rating_filters=rating_filters,
+            language=language,
         )
         return await self._call("GetBookComments", request)
 
@@ -264,15 +290,19 @@ class UserDataClient(base.GrpcClientBase):
         return await self._call("GetPublicProfileStats", request)
 
     async def get_profile_overview(
-        self, username: str
+        self, username: str, language: str = "en"
     ) -> app.proto.user_data_pb2.ProfileOverviewResponse:
-        request = app.proto.user_data_pb2.GetProfileOverviewRequest(username=username)
+        request = app.proto.user_data_pb2.GetProfileOverviewRequest(
+            username=username, language=language
+        )
         return await self._call("GetProfileOverview", request)
 
     async def get_year_in_review(
-        self, user_id: int, year: int = 0
+        self, user_id: int, year: int = 0, language: str = "en"
     ) -> app.proto.user_data_pb2.YearInReviewResponse:
-        request = app.proto.user_data_pb2.GetYearInReviewRequest(user_id=user_id, year=year)
+        request = app.proto.user_data_pb2.GetYearInReviewRequest(
+            user_id=user_id, year=year, language=language
+        )
         return await self._call("GetYearInReview", request)
 
     async def delete_user_data(self, user_id: int) -> app.proto.user_data_pb2.EmptyResponse:

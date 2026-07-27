@@ -724,6 +724,7 @@ class SitemapSlugItemSchema(pydantic.BaseModel):
     slug: str
     updated_at: typing.Optional[str] = None
     language: typing.Optional[str] = None
+    work_id: typing.Optional[str] = None
 
 
 class SitemapSlugsData(pydantic.BaseModel):

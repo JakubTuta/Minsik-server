@@ -37,28 +37,30 @@ def _entity_query_config(
     )
 
 
-# One row per work, not per translation: a bare `/books/{slug}` sitemap URL
-# with no `?lang=` resolves through the server's default-language fallback,
-# so listing every edition's slug risks a search engine indexing e.g. the
-# French slug while the server serves it the English edition's content
-# (crawlers send no Accept-Language/cookie). Picks the English edition when
-# available, else the edition with the most readers, and records that
-# edition's language so the caller can attach `?lang=` for non-English picks.
+# Every edition of a work, each with the language it is written in. A
+# translation only becomes indexable if it has a URL of its own in the sitemap,
+# and the caller turns the language into that URL's locale prefix — an edition
+# in a language the app ships no locale for has no such URL and is dropped
+# there rather than here.
+#
+# Paging is over works, not editions, so a heavily translated book cannot push
+# other works past the caller's cap; a page therefore returns more rows than
+# its `limit`, and the caller advances by the page size it asked for.
 _BOOKS_SITEMAP_QUERY = """
     WITH ranked AS (
         SELECT
-            book_id, slug, language, updated_at, ol_already_read_count,
-            ROW_NUMBER() OVER (
-                PARTITION BY work_id
-                ORDER BY (language = 'en') DESC, ol_already_read_count DESC, book_id ASC
-            ) AS rn
+            work_id,
+            MAX(COALESCE(ol_already_read_count, 0)) AS popularity,
+            MIN(book_id) AS anchor_id
         FROM books.books
+        GROUP BY work_id
+        ORDER BY popularity DESC, anchor_id ASC
+        LIMIT :limit OFFSET :offset
     )
-    SELECT slug, language, updated_at
-    FROM ranked
-    WHERE rn = 1
-    ORDER BY ol_already_read_count DESC NULLS LAST, book_id ASC
-    LIMIT :limit OFFSET :offset
+    SELECT b.slug, b.language, b.work_id, b.updated_at
+    FROM books.books b
+    JOIN ranked r ON r.work_id = b.work_id
+    ORDER BY r.popularity DESC, r.anchor_id ASC, (b.language = 'en') DESC, b.book_id ASC
 """
 
 _BOOKS_SITEMAP_COUNT_QUERY = "SELECT COUNT(DISTINCT work_id) FROM books.books"
@@ -87,6 +89,7 @@ async def list_sitemap_slugs(
             {
                 "slug": row.slug,
                 "language": row.language or "en",
+                "work_id": row.work_id or "",
                 "updated_at": row.updated_at.isoformat() if row.updated_at else "",
             }
             for row in rows
@@ -119,6 +122,7 @@ async def list_sitemap_slugs(
             {
                 "slug": slug,
                 "language": "",
+                "work_id": "",
                 "updated_at": updated_at.isoformat() if updated_at else "",
             }
             for slug, updated_at in rows

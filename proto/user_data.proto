@@ -30,9 +30,9 @@ service UserDataService {
 }
 
 // Bookshelf
-message GetBookshelfRequest    { int64 user_id = 1; string book_slug = 2; }
-message UpsertBookshelfRequest { int64 user_id = 1; string book_slug = 2; string status = 3; }
-message DeleteBookshelfRequest { int64 user_id = 1; string book_slug = 2; }
+message GetBookshelfRequest    { int64 user_id = 1; string book_slug = 2; string language = 3; }
+message UpsertBookshelfRequest { int64 user_id = 1; string book_slug = 2; string status = 3; string language = 4; }
+message DeleteBookshelfRequest { int64 user_id = 1; string book_slug = 2; string language = 3; }
 message GetUserBookshelvesRequest {
   int64 user_id = 1;
   int32 limit = 2;
@@ -41,6 +41,7 @@ message GetUserBookshelvesRequest {
   bool favourites_only = 5;
   string sort_by = 6;
   string order = 7;
+  string language = 8;
 }
 message GetPublicBookshelvesRequest {
   string username        = 1;
@@ -50,6 +51,7 @@ message GetPublicBookshelvesRequest {
   bool   favourites_only = 5;
   string sort_by         = 6;
   string order           = 7;
+  string language        = 8;
 }
 message Bookshelf {
   int64 bookshelf_id = 1;
@@ -71,7 +73,7 @@ message BookshelfResponse       { Bookshelf bookshelf = 1; }
 message BookshelvesListResponse { repeated Bookshelf bookshelves = 1; int32 total_count = 2; }
 
 // Ratings
-message GetRatingRequest    { int64 user_id = 1; string book_slug = 2; }
+message GetRatingRequest    { int64 user_id = 1; string book_slug = 2; string language = 3; }
 message UpsertRatingRequest {
   int64 user_id = 1;
   string book_slug = 2;
@@ -93,8 +95,9 @@ message UpsertRatingRequest {
   bool has_plot_complexity = 18;
   float humor = 19;
   bool has_humor = 20;
+  string language = 21;
 }
-message DeleteRatingRequest  { int64 user_id = 1; string book_slug = 2; }
+message DeleteRatingRequest  { int64 user_id = 1; string book_slug = 2; string language = 3; }
 message GetUserRatingsRequest {
   int64 user_id = 1;
   int32 limit = 2;
@@ -103,6 +106,7 @@ message GetUserRatingsRequest {
   string order = 5;
   float min_rating = 6;
   float max_rating = 7;
+  string language = 8;
 }
 message Rating {
   int64 rating_id = 1;
@@ -142,13 +146,13 @@ message RatingResponse      { Rating rating = 1; }
 message RatingsListResponse { repeated Rating ratings = 1; int32 total_count = 2; }
 
 // Favourites
-message ToggleFavouriteRequest   { int64 user_id = 1; string book_slug = 2; bool is_favorite = 3; }
+message ToggleFavouriteRequest   { int64 user_id = 1; string book_slug = 2; bool is_favorite = 3; string language = 4; }
 message FavouriteResponse        { bool is_favorite = 1; int64 book_id = 2; string book_slug = 3; }
-message GetUserFavouritesRequest { int64 user_id = 1; int32 limit = 2; int32 offset = 3; }
+message GetUserFavouritesRequest { int64 user_id = 1; int32 limit = 2; int32 offset = 3; string language = 4; }
 
 // Comments
-message CreateCommentRequest { int64 user_id = 1; string book_slug = 2; string body = 3; bool is_spoiler = 4; }
-message UpdateCommentRequest { int64 comment_id = 1; int64 user_id = 2; string body = 3; bool is_spoiler = 4; }
+message CreateCommentRequest { int64 user_id = 1; string book_slug = 2; string body = 3; bool is_spoiler = 4; string language = 5; }
+message UpdateCommentRequest { int64 comment_id = 1; int64 user_id = 2; string body = 3; bool is_spoiler = 4; string language = 5; }
 message DeleteCommentRequest { int64 comment_id = 1; int64 user_id = 2; }
 message GetUserCommentsRequest {
   int64 user_id = 1;
@@ -157,6 +161,7 @@ message GetUserCommentsRequest {
   string sort_by = 4;
   string order = 5;
   string book_slug = 6;
+  string language = 7;
 }
 message Comment {
   int64 comment_id = 1;
@@ -189,6 +194,7 @@ message GetBookCommentsRequest {
   string sort_by            = 6;
   int64  requesting_user_id = 7;
   repeated float rating_filters = 8;
+  string language               = 9;
 }
 
 message BookCommentWithRating {
@@ -229,7 +235,7 @@ message BookCommentsResponse {
 }
 
 // User Book Info (consolidated)
-message GetUserBookInfoRequest { int64 user_id = 1; string book_slug = 2; }
+message GetUserBookInfoRequest { int64 user_id = 1; string book_slug = 2; string language = 3; }
 message UserBookInfoResponse {
   Bookshelf bookshelf = 1;
   Rating    rating    = 2;
@@ -266,7 +272,7 @@ message ProfileStats {
 message ProfileStatsResponse { ProfileStats stats = 1; }
 
 // Profile overview (combined public profile widget data)
-message GetProfileOverviewRequest { string username = 1; }
+message GetProfileOverviewRequest { string username = 1; string language = 2; }
 message PublicUser {
   int64 user_id       = 1;
   string username     = 2;
@@ -303,7 +309,7 @@ message ProfileOverviewResponse {
 }
 
 // Year in review
-message GetYearInReviewRequest { int64 user_id = 1; int32 year = 2; }
+message GetYearInReviewRequest { int64 user_id = 1; int32 year = 2; string language = 3; }
 message MonthlyBucket {
   int32 month             = 1;
   int32 books_finished    = 2;

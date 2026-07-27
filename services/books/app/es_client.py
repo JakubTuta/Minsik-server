@@ -1,8 +1,10 @@
 import asyncio
+import hashlib
+import json
 import logging
 import typing
 
-import app.services._language_boost
+import app.config
 import elasticsearch
 import elasticsearch.helpers
 
@@ -10,12 +12,14 @@ logger = logging.getLogger(__name__)
 
 _es_client: typing.Optional[elasticsearch.AsyncElasticsearch] = None
 
-# Elasticsearch's built-in `language` stemmer/stopwords cover these out of the
-# box. A configured language outside this set (e.g. Polish, which needs the
-# analysis-stempel plugin) falls back to 'generic_analyzer' — lowercasing and
-# accent-folding with no stemming, which is still far better than running the
-# wrong language's stemmer over it (matching "biegać"/"biega" as different
-# words is correct; matching them as the same word via English rules is not).
+# Analysis plugins detected on the connected cluster. Everything language-related
+# degrades rather than fails when one is missing, so the same image runs against
+# a stock Elasticsearch and against the plugin-enabled one in docker-compose.
+_installed_plugins: typing.Set[str] = set()
+
+ICU_PLUGIN = "analysis-icu"
+
+# Elasticsearch's built-in `language` stemmer covers these out of the box.
 _ES_BUILTIN_STEMMER_LANGUAGES: typing.Dict[str, str] = {
     "ar": "arabic", "hy": "armenian", "eu": "basque", "bn": "bengali",
     "pt-br": "brazilian", "bg": "bulgarian", "ca": "catalan", "cs": "czech",
@@ -28,149 +32,362 @@ _ES_BUILTIN_STEMMER_LANGUAGES: typing.Dict[str, str] = {
     "tr": "turkish", "th": "thai",
 }
 
+# Languages whose stemmer arrives with a plugin instead of the core distribution.
+# Without the plugin the language still gets folding and lowercasing through the
+# generic analyzer — only stemming is lost.
+_PLUGIN_STEMMERS: typing.Dict[str, typing.Tuple[str, typing.Dict[str, str]]] = {
+    "pl": ("analysis-stempel", {"type": "polish_stem"}),
+}
+
 # Elasticsearch rejects analyzer names beginning with an underscore.
 _GENERIC_ANALYZER = "generic_analyzer"
+_FOLDED_ANALYZER = "folded_analyzer"
 
 
-def _configured_languages() -> typing.List[str]:
-    return app.services._language_boost.available_languages()
+def _available_languages() -> typing.List[str]:
+    raw = app.config.settings.available_languages or "en"
+    return [lang.strip() for lang in raw.split(",") if lang.strip()] or ["en"]
+
+
+def _folding_filter() -> str:
+    """Diacritic folding, ICU when the plugin is there.
+
+    `asciifolding` silently passes through the letters that matter most outside
+    western europe — Polish 'ł' stays 'ł', so "wladca" never matches "Władca".
+    `icu_folding` folds it, which is the difference between a query typed
+    without diacritics finding a book and finding nothing.
+    """
+    return "icu_folding" if ICU_PLUGIN in _installed_plugins else "asciifolding"
+
+
+def _stemmer_filter(language: str) -> typing.Optional[typing.Dict[str, typing.Any]]:
+    plugin_stemmer = _PLUGIN_STEMMERS.get(language)
+    if plugin_stemmer is not None:
+        plugin, definition = plugin_stemmer
+        return dict(definition) if plugin in _installed_plugins else None
+
+    builtin = _ES_BUILTIN_STEMMER_LANGUAGES.get(language)
+    return {"type": "stemmer", "language": builtin} if builtin else None
+
+
+def stemmed_languages() -> typing.List[str]:
+    """Configured languages that get a dedicated analyzed field of their own.
+
+    A language with no stemmer available would produce a field identical to the
+    generic one — same tokens, same scores, twice the index size — so it is left
+    out and served by the generic analyzer alone.
+    """
+    return [
+        language
+        for language in _available_languages()
+        if _stemmer_filter(language) is not None
+    ]
+
+
+def language_field(base: str, language: str) -> str:
+    """Name of the per-language analyzed field for `base` (e.g. `titles_pl`).
+
+    A real field, not a multi-field: multi-fields re-analyze whatever the parent
+    field holds, which would run every language's stemmer over every language's
+    text. Separate fields let the indexer put a title only into the analyzer
+    that belongs to its own language.
+    """
+    return f"{base}_{language}"
 
 
 def _analyzer_name(language: str) -> str:
-    return f"book_analyzer_{language}" if language in _ES_BUILTIN_STEMMER_LANGUAGES else _GENERIC_ANALYZER
-
-
-def has_language_subfield(language: str) -> bool:
-    """Whether `{field}.lang_{language}` exists in the index mapping — see _searchable_text_field."""
-    return language in _ES_BUILTIN_STEMMER_LANGUAGES
+    return f"text_analyzer_{language}"
 
 
 def _analysis_settings() -> typing.Dict[str, typing.Any]:
+    folding = _folding_filter()
+
     analyzers: typing.Dict[str, typing.Any] = {
         _GENERIC_ANALYZER: {
             "type": "custom",
             "tokenizer": "standard",
-            "filter": ["lowercase", "asciifolding"],
-        }
+            "filter": ["lowercase", folding],
+        },
+        # Whole value as a single token: an "exact title" clause that still
+        # ignores case and diacritics, without the filter restrictions a
+        # keyword normalizer imposes.
+        _FOLDED_ANALYZER: {
+            "type": "custom",
+            "tokenizer": "keyword",
+            "filter": ["lowercase", folding],
+        },
     }
     filters: typing.Dict[str, typing.Any] = {}
 
-    for language in _configured_languages():
-        stemmer_language = _ES_BUILTIN_STEMMER_LANGUAGES.get(language)
-        if stemmer_language is None:
-            continue
+    for language in stemmed_languages():
+        stemmer = _stemmer_filter(language)
         filter_name = f"{language}_stemmer"
-        filters[filter_name] = {"type": "stemmer", "language": stemmer_language}
+        filters[filter_name] = stemmer
         analyzers[_analyzer_name(language)] = {
             "type": "custom",
             "tokenizer": "standard",
-            "filter": ["lowercase", "asciifolding", filter_name],
+            "filter": ["lowercase", folding, filter_name],
         }
 
     return {
         "number_of_replicas": 0,
-        "analysis": {
-            "analyzer": analyzers,
-            "filter": filters,
-            "normalizer": {
-                "lowercase_normalizer": {
-                    "type": "custom",
-                    "filter": ["lowercase", "asciifolding"],
-                }
-            },
-        },
+        "analysis": {"analyzer": analyzers, "filter": filters},
     }
 
 
-def _searchable_text_field() -> typing.Dict[str, typing.Any]:
-    """A text field indexed once per configured language, plus a language-agnostic base copy.
-
-    Elasticsearch multi-fields re-analyze the same input independently per
-    subfield, so no indexing-side change is needed when a language is added —
-    only this mapping and the query-side field list (search_service.py) need it.
-    """
-    per_language_fields = {
-        f"lang_{language}": {"type": "text", "analyzer": _analyzer_name(language)}
-        for language in _configured_languages()
+def _text_field(suggest: bool = False) -> typing.Dict[str, typing.Any]:
+    fields: typing.Dict[str, typing.Any] = {
+        "folded": {"type": "text", "analyzer": _FOLDED_ANALYZER},
     }
+    if suggest:
+        fields["suggest"] = {"type": "search_as_you_type", "analyzer": _GENERIC_ANALYZER}
+
+    return {"type": "text", "analyzer": _GENERIC_ANALYZER, "fields": fields}
+
+
+def _language_text_fields(base: str) -> typing.Dict[str, typing.Any]:
     return {
-        "type": "text",
-        "analyzer": _GENERIC_ANALYZER,
-        "fields": {
-            "exact": {"type": "keyword", "normalizer": "lowercase_normalizer"},
-            "suggest": {"type": "search_as_you_type"},
-            **per_language_fields,
-        },
+        language_field(base, language): {
+            "type": "text",
+            "analyzer": _analyzer_name(language),
+        }
+        for language in stemmed_languages()
     }
 
 
-def books_index_mapping() -> typing.Dict[str, typing.Any]:
+# Popularity and quality ride as rank features rather than a script in a
+# function_score: `saturation` is additive and bounded, so a perfect title match
+# on an obscure book still outranks a weak match on a famous one, and the
+# scoring stays prunable by Lucene instead of running a script per candidate.
+_RANK_FEATURES = {
+    "popularity": {"type": "rank_feature"},
+    "quality": {"type": "rank_feature"},
+}
+
+_DISPLAY_RATING_FIELDS = {
+    "app_avg_rating": {"type": "float", "index": False},
+    "app_rating_count": {"type": "integer", "index": False},
+    "ol_avg_rating": {"type": "float", "index": False},
+    "ol_rating_count": {"type": "integer", "index": False},
+    "readers": {"type": "integer", "index": False},
+}
+
+
+def works_index_mapping() -> typing.Dict[str, typing.Any]:
+    """One document per work, holding every edition's title in every language.
+
+    The alternative — a document per edition — makes translations of one book
+    compete with each other for the same query, forces a de-duplication pass
+    after the result window has already been cut (so pages shrink and totals
+    over-report), and counts one work's popularity once per translation.
+    """
     return {
         "settings": _analysis_settings(),
         "mappings": {
             "properties": {
-                "book_id": {"type": "long", "index": False},
-                "title": _searchable_text_field(),
-                "language": {"type": "keyword"},
-                "slug": {"type": "keyword"},
-                "work_id": {"type": "keyword"},
-                "primary_cover_url": {"type": "keyword", "index": False},
-                "authors_names": _searchable_text_field(),
+                "work_id": {"type": "keyword", "index": False},
+                "titles": _text_field(suggest=True),
+                **_language_text_fields("titles"),
+                "authors_names": _text_field(suggest=True),
                 "author_slugs": {"type": "keyword", "index": False},
-                "series_name": _searchable_text_field(),
+                "series_name": _text_field(),
                 "series_slug": {"type": "keyword", "index": False},
-                "app_avg_rating": {"type": "float", "index": False},
-                "app_rating_count": {"type": "integer", "index": False},
-                "ol_avg_rating": {"type": "float", "index": False},
-                "ol_rating_count": {"type": "integer", "index": False},
-                "readers": {"type": "integer", "index": False},
-                "bayesian_score": {"type": "float"},
+                "languages": {"type": "keyword"},
+                **_RANK_FEATURES,
+                **_DISPLAY_RATING_FIELDS,
+                # Rendering payload: which edition to show is decided per
+                # request from the reader's language, not at index time.
+                "editions": {"type": "object", "enabled": False},
             }
         },
     }
 
 
 def authors_index_mapping() -> typing.Dict[str, typing.Any]:
+    """One document per author — authors are language-agnostic in the catalog.
+
+    Names are not translated, so they get no per-language analyzed fields:
+    running a stemmer over a surname invents tokens rather than finding them.
+    """
     return {
         "settings": _analysis_settings(),
         "mappings": {
             "properties": {
                 "author_id": {"type": "long", "index": False},
-                "language": {"type": "keyword"},
-                "name": _searchable_text_field(),
-                "slug": {"type": "keyword"},
+                "name": _text_field(suggest=True),
+                "slug": {"type": "keyword", "index": False},
                 "photo_url": {"type": "keyword", "index": False},
                 "book_count": {"type": "integer", "index": False},
-                "app_avg_rating": {"type": "float", "index": False},
-                "app_rating_count": {"type": "integer", "index": False},
-                "ol_avg_rating": {"type": "float", "index": False},
-                "ol_rating_count": {"type": "integer", "index": False},
-                "readers": {"type": "integer", "index": False},
-                "bayesian_score": {"type": "float"},
+                "languages": {"type": "keyword"},
+                **_RANK_FEATURES,
+                **_DISPLAY_RATING_FIELDS,
             }
         },
     }
 
 
 def series_index_mapping() -> typing.Dict[str, typing.Any]:
+    """One document per series slug, which is the identity the routes use.
+
+    `books.series` holds a row per language, but the slug comes from the source
+    book's series name — untranslated series share one slug across languages and
+    belong in one document, while a translated series name slugifies differently
+    and separates itself.
+    """
     return {
         "settings": _analysis_settings(),
         "mappings": {
             "properties": {
-                "series_id": {"type": "long", "index": False},
-                "language": {"type": "keyword"},
-                "name": _searchable_text_field(),
-                "slug": {"type": "keyword"},
+                "slug": {"type": "keyword", "index": False},
+                "names": _text_field(suggest=True),
+                **_language_text_fields("names"),
                 "book_count": {"type": "integer", "index": False},
-                "app_avg_rating": {"type": "float", "index": False},
-                "app_rating_count": {"type": "integer", "index": False},
-                "ol_avg_rating": {"type": "float", "index": False},
-                "ol_rating_count": {"type": "integer", "index": False},
-                "readers": {"type": "integer", "index": False},
-                "bayesian_score": {"type": "float"},
+                "languages": {"type": "keyword"},
+                **_RANK_FEATURES,
+                **_DISPLAY_RATING_FIELDS,
+                "rows": {"type": "object", "enabled": False},
             }
         },
     }
+
+
+def index_specs() -> typing.Dict[str, typing.Dict[str, typing.Any]]:
+    settings = app.config.settings
+    return {
+        settings.es_index_books: works_index_mapping(),
+        settings.es_index_authors: authors_index_mapping(),
+        settings.es_index_series: series_index_mapping(),
+    }
+
+
+def _fingerprint(mapping: typing.Dict[str, typing.Any]) -> str:
+    encoded = json.dumps(mapping, sort_keys=True).encode()
+    return hashlib.sha1(encoded).hexdigest()[:10]
+
+
+def versioned_index_name(alias: str, mapping: typing.Dict[str, typing.Any]) -> str:
+    return f"{alias}-{_fingerprint(mapping)}"
+
+
+class IndexPlan:
+    """Where this sync run must write, and whether it has to write everything.
+
+    Analyzers cannot be redefined on a live index and a new analyzed field stays
+    empty on documents indexed before it existed, so a mapping change means a
+    fresh index rather than an in-place edit. Each mapping fingerprints to its
+    own index name behind a stable alias; a rebuild fills the new index while
+    the old one keeps serving, and `promote` swaps the alias atomically.
+    """
+
+    def __init__(
+        self, targets: typing.Dict[str, str], rebuild: bool
+    ) -> None:
+        self.targets = targets
+        self.rebuild = rebuild
+
+    def write_index(self, alias: str) -> str:
+        return self.targets[alias] if self.rebuild else alias
+
+
+async def _aliased_indices(alias: str) -> typing.List[str]:
+    try:
+        response = await _es_client.indices.get_alias(name=alias)
+    except elasticsearch.NotFoundError:
+        return []
+    return list(response.keys())
+
+
+async def plan_indexes() -> IndexPlan:
+    """Create any missing versioned index and report whether a full sync is due.
+
+    A rebuild of one index upgrades the whole run to a full sync: adding a
+    language changes every mapping anyway, and one bookkeeping path is easier to
+    reason about than three that can disagree.
+    """
+    targets: typing.Dict[str, str] = {}
+    rebuild = False
+
+    for alias, mapping in index_specs().items():
+        target = versioned_index_name(alias, mapping)
+        targets[alias] = target
+
+        live = await _aliased_indices(alias)
+        if target in live:
+            continue
+
+        # Reachable when a previous rebuild died before promoting. The index is
+        # rebuilt from Postgres either way, so start from an empty one rather
+        # than inheriting a half-written index nobody has verified.
+        if await _es_client.indices.exists(index=target):
+            await _es_client.indices.delete(index=target)
+
+        await _es_client.indices.create(
+            index=target,
+            settings=mapping["settings"],
+            mappings=mapping["mappings"],
+        )
+        logger.info(f"[ES] Created index {target} for alias '{alias}'")
+        rebuild = True
+
+    return IndexPlan(targets, rebuild)
+
+
+async def promote(plan: IndexPlan) -> None:
+    """Point each alias at its freshly built index and drop the superseded ones."""
+    if not plan.rebuild:
+        return
+
+    for alias, target in plan.targets.items():
+        # An install that predates aliasing has a concrete index sitting on the
+        # name the alias needs. Elasticsearch refuses an alias that collides
+        # with an index name, so the old index goes first; the new one is
+        # already populated, so the gap is a single request wide.
+        if not await _es_client.indices.exists_alias(name=alias):
+            if await _es_client.indices.exists(index=alias):
+                await _es_client.indices.delete(index=alias)
+                logger.info(f"[ES] Removed pre-alias index '{alias}'")
+
+        actions: typing.List[typing.Dict[str, typing.Any]] = [
+            {"remove": {"index": index, "alias": alias}}
+            for index in await _aliased_indices(alias)
+            if index != target
+        ]
+        actions.append({"add": {"index": target, "alias": alias}})
+        await _es_client.indices.update_aliases(actions=actions)
+
+        for action in actions:
+            retired = action.get("remove", {}).get("index")
+            if retired:
+                await _es_client.indices.delete(index=retired, ignore_unavailable=True)
+
+        logger.info(f"[ES] Alias '{alias}' now serves {target}")
+
+
+async def _detect_plugins() -> None:
+    global _installed_plugins
+    try:
+        response = await _es_client.nodes.info(metric="plugins")
+        names = {
+            plugin.get("name")
+            for node in response.get("nodes", {}).values()
+            for plugin in node.get("plugins", [])
+        }
+        _installed_plugins = {name for name in names if name}
+    except Exception as e:
+        _installed_plugins = set()
+        logger.warning(f"[ES] Plugin detection failed, assuming none: {e}")
+
+    missing_stemmers = [
+        language
+        for language in _available_languages()
+        if _stemmer_filter(language) is None
+    ]
+    logger.info(
+        f"[ES] Plugins: {sorted(_installed_plugins) or 'none'}; "
+        f"folding: {_folding_filter()}; "
+        f"stemmed languages: {stemmed_languages()}"
+        + (f"; no stemmer for: {missing_stemmers}" if missing_stemmers else "")
+    )
 
 
 async def init_es(host: str, port: int, max_retries: int = 10) -> None:
@@ -189,6 +406,7 @@ async def init_es(host: str, port: int, max_retries: int = 10) -> None:
             logger.info(
                 f"Elasticsearch connected: {host}:{port}, cluster status: {health.get('status')}"
             )
+            await _detect_plugins()
             return
         except Exception as e:
             if attempt < max_retries - 1:
@@ -202,99 +420,6 @@ async def init_es(host: str, port: int, max_retries: int = 10) -> None:
                     f"Elasticsearch connection failed after {max_retries} attempts: {e}"
                 )
                 raise
-
-
-async def _fields_missing_subfields(
-    index: str, mapping: typing.Dict[str, typing.Any]
-) -> typing.Dict[str, typing.Any]:
-    """Text fields in a live index whose multi-fields lag the configured mapping.
-
-    Adding a language adds a `lang_{code}` subfield to every searchable text
-    field. An index created before that language existed keeps the old
-    multi-fields forever, so search silently falls back to the generic
-    analyzer for it.
-    """
-    live = await _es_client.indices.get_mapping(index=index)
-    live_properties = live[index]["mappings"].get("properties", {})
-    desired_properties = mapping["mappings"]["properties"]
-
-    outdated = {}
-    for name, definition in desired_properties.items():
-        if definition.get("type") != "text":
-            continue
-        desired_subfields = set(definition.get("fields", {}))
-        live_subfields = set(live_properties.get(name, {}).get("fields", {}))
-        if desired_subfields - live_subfields:
-            outdated[name] = definition
-
-    return outdated
-
-
-async def _add_language_subfields(
-    index: str,
-    mapping: typing.Dict[str, typing.Any],
-    properties: typing.Dict[str, typing.Any],
-) -> None:
-    # A new analyzer can only be defined on a closed index, so the analysis
-    # settings go in behind a close/open before the mapping that references
-    # them. Reopening in `finally` matters: a rejected settings update (which
-    # is what changing an *existing* analyzer's definition produces) must not
-    # leave the index closed and the whole search surface down.
-    await _es_client.indices.close(index=index)
-    try:
-        await _es_client.indices.put_settings(
-            index=index, settings={"analysis": mapping["settings"]["analysis"]}
-        )
-    finally:
-        await _es_client.indices.open(index=index)
-
-    # Only the lagging fields are resent — replaying the full property set
-    # would fail on any unrelated field whose mapping has since diverged.
-    await _es_client.indices.put_mapping(index=index, properties=properties)
-    logger.info(
-        f"[ES] Added language subfields to {index}: {sorted(properties.keys())}"
-    )
-
-
-async def create_indexes(
-    index_books: str, index_authors: str, index_series: str
-) -> bool:
-    """Create or update the search indexes. True when documents must be re-pushed.
-
-    A brand-new index is empty, and a newly added multi-field stays empty on
-    documents indexed before it existed — both cases need every document
-    rewritten, not just the ones changed since the last sync.
-    """
-    needs_full_sync = False
-    try:
-        for index, mapping in [
-            (index_books, books_index_mapping()),
-            (index_authors, authors_index_mapping()),
-            (index_series, series_index_mapping()),
-        ]:
-            try:
-                exists = await _es_client.indices.exists(index=index)
-                if not exists:
-                    await _es_client.indices.create(index=index, body=mapping)
-                    logger.info(f"[ES] Created index: {index}")
-                    needs_full_sync = True
-                    continue
-
-                outdated = await _fields_missing_subfields(index, mapping)
-                if not outdated:
-                    logger.info(f"[ES] Index mapping up to date: {index}")
-                    continue
-
-                await _add_language_subfields(index, mapping, outdated)
-                needs_full_sync = True
-            except Exception as e:
-                logger.error(f"[ES] Error preparing index {index}: {e}")
-                raise
-    except Exception as e:
-        logger.error(f"[ES] Failed to prepare indexes: {e}")
-        raise
-
-    return needs_full_sync
 
 
 async def set_index_refresh(index: str, interval: str) -> None:

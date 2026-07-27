@@ -43,6 +43,9 @@ message SitemapSlugItem {
   string slug = 1;
   string updated_at = 2;
   string language = 3;
+  // Groups the editions of one work so the caller can emit them as each
+  // other's hreflang alternates.
+  string work_id = 4;
 }
 
 message ListSitemapSlugsResponse {

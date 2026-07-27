@@ -7,33 +7,39 @@ from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
 DESCRIPTOR: _descriptor.FileDescriptor
 
 class GetBookshelfRequest(_message.Message):
-    __slots__ = ("user_id", "book_slug")
+    __slots__ = ("user_id", "book_slug", "language")
     USER_ID_FIELD_NUMBER: _ClassVar[int]
     BOOK_SLUG_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
     user_id: int
     book_slug: str
-    def __init__(self, user_id: _Optional[int] = ..., book_slug: _Optional[str] = ...) -> None: ...
+    language: str
+    def __init__(self, user_id: _Optional[int] = ..., book_slug: _Optional[str] = ..., language: _Optional[str] = ...) -> None: ...
 
 class UpsertBookshelfRequest(_message.Message):
-    __slots__ = ("user_id", "book_slug", "status")
+    __slots__ = ("user_id", "book_slug", "status", "language")
     USER_ID_FIELD_NUMBER: _ClassVar[int]
     BOOK_SLUG_FIELD_NUMBER: _ClassVar[int]
     STATUS_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
     user_id: int
     book_slug: str
     status: str
-    def __init__(self, user_id: _Optional[int] = ..., book_slug: _Optional[str] = ..., status: _Optional[str] = ...) -> None: ...
+    language: str
+    def __init__(self, user_id: _Optional[int] = ..., book_slug: _Optional[str] = ..., status: _Optional[str] = ..., language: _Optional[str] = ...) -> None: ...
 
 class DeleteBookshelfRequest(_message.Message):
-    __slots__ = ("user_id", "book_slug")
+    __slots__ = ("user_id", "book_slug", "language")
     USER_ID_FIELD_NUMBER: _ClassVar[int]
     BOOK_SLUG_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
     user_id: int
     book_slug: str
-    def __init__(self, user_id: _Optional[int] = ..., book_slug: _Optional[str] = ...) -> None: ...
+    language: str
+    def __init__(self, user_id: _Optional[int] = ..., book_slug: _Optional[str] = ..., language: _Optional[str] = ...) -> None: ...
 
 class GetUserBookshelvesRequest(_message.Message):
-    __slots__ = ("user_id", "limit", "offset", "status_filter", "favourites_only", "sort_by", "order")
+    __slots__ = ("user_id", "limit", "offset", "status_filter", "favourites_only", "sort_by", "order", "language")
     USER_ID_FIELD_NUMBER: _ClassVar[int]
     LIMIT_FIELD_NUMBER: _ClassVar[int]
     OFFSET_FIELD_NUMBER: _ClassVar[int]
@@ -41,6 +47,7 @@ class GetUserBookshelvesRequest(_message.Message):
     FAVOURITES_ONLY_FIELD_NUMBER: _ClassVar[int]
     SORT_BY_FIELD_NUMBER: _ClassVar[int]
     ORDER_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
     user_id: int
     limit: int
     offset: int
@@ -48,10 +55,11 @@ class GetUserBookshelvesRequest(_message.Message):
     favourites_only: bool
     sort_by: str
     order: str
-    def __init__(self, user_id: _Optional[int] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., status_filter: _Optional[str] = ..., favourites_only: bool = ..., sort_by: _Optional[str] = ..., order: _Optional[str] = ...) -> None: ...
+    language: str
+    def __init__(self, user_id: _Optional[int] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., status_filter: _Optional[str] = ..., favourites_only: bool = ..., sort_by: _Optional[str] = ..., order: _Optional[str] = ..., language: _Optional[str] = ...) -> None: ...
 
 class GetPublicBookshelvesRequest(_message.Message):
-    __slots__ = ("username", "limit", "offset", "status_filter", "favourites_only", "sort_by", "order")
+    __slots__ = ("username", "limit", "offset", "status_filter", "favourites_only", "sort_by", "order", "language")
     USERNAME_FIELD_NUMBER: _ClassVar[int]
     LIMIT_FIELD_NUMBER: _ClassVar[int]
     OFFSET_FIELD_NUMBER: _ClassVar[int]
@@ -59,6 +67,7 @@ class GetPublicBookshelvesRequest(_message.Message):
     FAVOURITES_ONLY_FIELD_NUMBER: _ClassVar[int]
     SORT_BY_FIELD_NUMBER: _ClassVar[int]
     ORDER_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
     username: str
     limit: int
     offset: int
@@ -66,7 +75,8 @@ class GetPublicBookshelvesRequest(_message.Message):
     favourites_only: bool
     sort_by: str
     order: str
-    def __init__(self, username: _Optional[str] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., status_filter: _Optional[str] = ..., favourites_only: bool = ..., sort_by: _Optional[str] = ..., order: _Optional[str] = ...) -> None: ...
+    language: str
+    def __init__(self, username: _Optional[str] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., status_filter: _Optional[str] = ..., favourites_only: bool = ..., sort_by: _Optional[str] = ..., order: _Optional[str] = ..., language: _Optional[str] = ...) -> None: ...
 
 class Bookshelf(_message.Message):
     __slots__ = ("bookshelf_id", "user_id", "book_id", "book_slug", "book_title", "book_cover_url", "status", "is_favorite", "created_at", "updated_at", "book_author_names", "book_author_slugs", "book_series_name", "book_series_slug")
@@ -115,15 +125,17 @@ class BookshelvesListResponse(_message.Message):
     def __init__(self, bookshelves: _Optional[_Iterable[_Union[Bookshelf, _Mapping]]] = ..., total_count: _Optional[int] = ...) -> None: ...
 
 class GetRatingRequest(_message.Message):
-    __slots__ = ("user_id", "book_slug")
+    __slots__ = ("user_id", "book_slug", "language")
     USER_ID_FIELD_NUMBER: _ClassVar[int]
     BOOK_SLUG_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
     user_id: int
     book_slug: str
-    def __init__(self, user_id: _Optional[int] = ..., book_slug: _Optional[str] = ...) -> None: ...
+    language: str
+    def __init__(self, user_id: _Optional[int] = ..., book_slug: _Optional[str] = ..., language: _Optional[str] = ...) -> None: ...
 
 class UpsertRatingRequest(_message.Message):
-    __slots__ = ("user_id", "book_slug", "overall_rating", "review_text", "pacing", "has_pacing", "emotional_impact", "has_emotional_impact", "intellectual_depth", "has_intellectual_depth", "writing_quality", "has_writing_quality", "rereadability", "has_rereadability", "readability", "has_readability", "plot_complexity", "has_plot_complexity", "humor", "has_humor")
+    __slots__ = ("user_id", "book_slug", "overall_rating", "review_text", "pacing", "has_pacing", "emotional_impact", "has_emotional_impact", "intellectual_depth", "has_intellectual_depth", "writing_quality", "has_writing_quality", "rereadability", "has_rereadability", "readability", "has_readability", "plot_complexity", "has_plot_complexity", "humor", "has_humor", "language")
     USER_ID_FIELD_NUMBER: _ClassVar[int]
     BOOK_SLUG_FIELD_NUMBER: _ClassVar[int]
     OVERALL_RATING_FIELD_NUMBER: _ClassVar[int]
@@ -144,6 +156,7 @@ class UpsertRatingRequest(_message.Message):
     HAS_PLOT_COMPLEXITY_FIELD_NUMBER: _ClassVar[int]
     HUMOR_FIELD_NUMBER: _ClassVar[int]
     HAS_HUMOR_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
     user_id: int
     book_slug: str
     overall_rating: float
@@ -164,18 +177,21 @@ class UpsertRatingRequest(_message.Message):
     has_plot_complexity: bool
     humor: float
     has_humor: bool
-    def __init__(self, user_id: _Optional[int] = ..., book_slug: _Optional[str] = ..., overall_rating: _Optional[float] = ..., review_text: _Optional[str] = ..., pacing: _Optional[float] = ..., has_pacing: bool = ..., emotional_impact: _Optional[float] = ..., has_emotional_impact: bool = ..., intellectual_depth: _Optional[float] = ..., has_intellectual_depth: bool = ..., writing_quality: _Optional[float] = ..., has_writing_quality: bool = ..., rereadability: _Optional[float] = ..., has_rereadability: bool = ..., readability: _Optional[float] = ..., has_readability: bool = ..., plot_complexity: _Optional[float] = ..., has_plot_complexity: bool = ..., humor: _Optional[float] = ..., has_humor: bool = ...) -> None: ...
+    language: str
+    def __init__(self, user_id: _Optional[int] = ..., book_slug: _Optional[str] = ..., overall_rating: _Optional[float] = ..., review_text: _Optional[str] = ..., pacing: _Optional[float] = ..., has_pacing: bool = ..., emotional_impact: _Optional[float] = ..., has_emotional_impact: bool = ..., intellectual_depth: _Optional[float] = ..., has_intellectual_depth: bool = ..., writing_quality: _Optional[float] = ..., has_writing_quality: bool = ..., rereadability: _Optional[float] = ..., has_rereadability: bool = ..., readability: _Optional[float] = ..., has_readability: bool = ..., plot_complexity: _Optional[float] = ..., has_plot_complexity: bool = ..., humor: _Optional[float] = ..., has_humor: bool = ..., language: _Optional[str] = ...) -> None: ...
 
 class DeleteRatingRequest(_message.Message):
-    __slots__ = ("user_id", "book_slug")
+    __slots__ = ("user_id", "book_slug", "language")
     USER_ID_FIELD_NUMBER: _ClassVar[int]
     BOOK_SLUG_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
     user_id: int
     book_slug: str
-    def __init__(self, user_id: _Optional[int] = ..., book_slug: _Optional[str] = ...) -> None: ...
+    language: str
+    def __init__(self, user_id: _Optional[int] = ..., book_slug: _Optional[str] = ..., language: _Optional[str] = ...) -> None: ...
 
 class GetUserRatingsRequest(_message.Message):
-    __slots__ = ("user_id", "limit", "offset", "sort_by", "order", "min_rating", "max_rating")
+    __slots__ = ("user_id", "limit", "offset", "sort_by", "order", "min_rating", "max_rating", "language")
     USER_ID_FIELD_NUMBER: _ClassVar[int]
     LIMIT_FIELD_NUMBER: _ClassVar[int]
     OFFSET_FIELD_NUMBER: _ClassVar[int]
@@ -183,6 +199,7 @@ class GetUserRatingsRequest(_message.Message):
     ORDER_FIELD_NUMBER: _ClassVar[int]
     MIN_RATING_FIELD_NUMBER: _ClassVar[int]
     MAX_RATING_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
     user_id: int
     limit: int
     offset: int
@@ -190,7 +207,8 @@ class GetUserRatingsRequest(_message.Message):
     order: str
     min_rating: float
     max_rating: float
-    def __init__(self, user_id: _Optional[int] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., sort_by: _Optional[str] = ..., order: _Optional[str] = ..., min_rating: _Optional[float] = ..., max_rating: _Optional[float] = ...) -> None: ...
+    language: str
+    def __init__(self, user_id: _Optional[int] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., sort_by: _Optional[str] = ..., order: _Optional[str] = ..., min_rating: _Optional[float] = ..., max_rating: _Optional[float] = ..., language: _Optional[str] = ...) -> None: ...
 
 class Rating(_message.Message):
     __slots__ = ("rating_id", "user_id", "book_id", "book_slug", "book_title", "book_cover_url", "overall_rating", "review_text", "pacing", "has_pacing", "emotional_impact", "has_emotional_impact", "intellectual_depth", "has_intellectual_depth", "writing_quality", "has_writing_quality", "rereadability", "has_rereadability", "readability", "has_readability", "plot_complexity", "has_plot_complexity", "humor", "has_humor", "created_at", "updated_at", "book_author_names", "book_author_slugs", "book_series_name", "book_series_slug", "book_avg_rating", "book_rating_count")
@@ -275,14 +293,16 @@ class RatingsListResponse(_message.Message):
     def __init__(self, ratings: _Optional[_Iterable[_Union[Rating, _Mapping]]] = ..., total_count: _Optional[int] = ...) -> None: ...
 
 class ToggleFavouriteRequest(_message.Message):
-    __slots__ = ("user_id", "book_slug", "is_favorite")
+    __slots__ = ("user_id", "book_slug", "is_favorite", "language")
     USER_ID_FIELD_NUMBER: _ClassVar[int]
     BOOK_SLUG_FIELD_NUMBER: _ClassVar[int]
     IS_FAVORITE_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
     user_id: int
     book_slug: str
     is_favorite: bool
-    def __init__(self, user_id: _Optional[int] = ..., book_slug: _Optional[str] = ..., is_favorite: bool = ...) -> None: ...
+    language: str
+    def __init__(self, user_id: _Optional[int] = ..., book_slug: _Optional[str] = ..., is_favorite: bool = ..., language: _Optional[str] = ...) -> None: ...
 
 class FavouriteResponse(_message.Message):
     __slots__ = ("is_favorite", "book_id", "book_slug")
@@ -295,38 +315,44 @@ class FavouriteResponse(_message.Message):
     def __init__(self, is_favorite: bool = ..., book_id: _Optional[int] = ..., book_slug: _Optional[str] = ...) -> None: ...
 
 class GetUserFavouritesRequest(_message.Message):
-    __slots__ = ("user_id", "limit", "offset")
+    __slots__ = ("user_id", "limit", "offset", "language")
     USER_ID_FIELD_NUMBER: _ClassVar[int]
     LIMIT_FIELD_NUMBER: _ClassVar[int]
     OFFSET_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
     user_id: int
     limit: int
     offset: int
-    def __init__(self, user_id: _Optional[int] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ...) -> None: ...
+    language: str
+    def __init__(self, user_id: _Optional[int] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., language: _Optional[str] = ...) -> None: ...
 
 class CreateCommentRequest(_message.Message):
-    __slots__ = ("user_id", "book_slug", "body", "is_spoiler")
+    __slots__ = ("user_id", "book_slug", "body", "is_spoiler", "language")
     USER_ID_FIELD_NUMBER: _ClassVar[int]
     BOOK_SLUG_FIELD_NUMBER: _ClassVar[int]
     BODY_FIELD_NUMBER: _ClassVar[int]
     IS_SPOILER_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
     user_id: int
     book_slug: str
     body: str
     is_spoiler: bool
-    def __init__(self, user_id: _Optional[int] = ..., book_slug: _Optional[str] = ..., body: _Optional[str] = ..., is_spoiler: bool = ...) -> None: ...
+    language: str
+    def __init__(self, user_id: _Optional[int] = ..., book_slug: _Optional[str] = ..., body: _Optional[str] = ..., is_spoiler: bool = ..., language: _Optional[str] = ...) -> None: ...
 
 class UpdateCommentRequest(_message.Message):
-    __slots__ = ("comment_id", "user_id", "body", "is_spoiler")
+    __slots__ = ("comment_id", "user_id", "body", "is_spoiler", "language")
     COMMENT_ID_FIELD_NUMBER: _ClassVar[int]
     USER_ID_FIELD_NUMBER: _ClassVar[int]
     BODY_FIELD_NUMBER: _ClassVar[int]
     IS_SPOILER_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
     comment_id: int
     user_id: int
     body: str
     is_spoiler: bool
-    def __init__(self, comment_id: _Optional[int] = ..., user_id: _Optional[int] = ..., body: _Optional[str] = ..., is_spoiler: bool = ...) -> None: ...
+    language: str
+    def __init__(self, comment_id: _Optional[int] = ..., user_id: _Optional[int] = ..., body: _Optional[str] = ..., is_spoiler: bool = ..., language: _Optional[str] = ...) -> None: ...
 
 class DeleteCommentRequest(_message.Message):
     __slots__ = ("comment_id", "user_id")
@@ -337,20 +363,22 @@ class DeleteCommentRequest(_message.Message):
     def __init__(self, comment_id: _Optional[int] = ..., user_id: _Optional[int] = ...) -> None: ...
 
 class GetUserCommentsRequest(_message.Message):
-    __slots__ = ("user_id", "limit", "offset", "sort_by", "order", "book_slug")
+    __slots__ = ("user_id", "limit", "offset", "sort_by", "order", "book_slug", "language")
     USER_ID_FIELD_NUMBER: _ClassVar[int]
     LIMIT_FIELD_NUMBER: _ClassVar[int]
     OFFSET_FIELD_NUMBER: _ClassVar[int]
     SORT_BY_FIELD_NUMBER: _ClassVar[int]
     ORDER_FIELD_NUMBER: _ClassVar[int]
     BOOK_SLUG_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
     user_id: int
     limit: int
     offset: int
     sort_by: str
     order: str
     book_slug: str
-    def __init__(self, user_id: _Optional[int] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., sort_by: _Optional[str] = ..., order: _Optional[str] = ..., book_slug: _Optional[str] = ...) -> None: ...
+    language: str
+    def __init__(self, user_id: _Optional[int] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., sort_by: _Optional[str] = ..., order: _Optional[str] = ..., book_slug: _Optional[str] = ..., language: _Optional[str] = ...) -> None: ...
 
 class Comment(_message.Message):
     __slots__ = ("comment_id", "user_id", "book_id", "book_slug", "body", "is_spoiler", "created_at", "updated_at", "username", "book_author_names", "book_author_slugs", "book_series_name", "book_series_slug", "book_cover_url", "book_title")
@@ -405,7 +433,7 @@ class EmptyResponse(_message.Message):
     def __init__(self) -> None: ...
 
 class GetBookCommentsRequest(_message.Message):
-    __slots__ = ("book_slug", "limit", "offset", "order", "include_spoilers", "sort_by", "requesting_user_id", "rating_filters")
+    __slots__ = ("book_slug", "limit", "offset", "order", "include_spoilers", "sort_by", "requesting_user_id", "rating_filters", "language")
     BOOK_SLUG_FIELD_NUMBER: _ClassVar[int]
     LIMIT_FIELD_NUMBER: _ClassVar[int]
     OFFSET_FIELD_NUMBER: _ClassVar[int]
@@ -414,6 +442,7 @@ class GetBookCommentsRequest(_message.Message):
     SORT_BY_FIELD_NUMBER: _ClassVar[int]
     REQUESTING_USER_ID_FIELD_NUMBER: _ClassVar[int]
     RATING_FILTERS_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
     book_slug: str
     limit: int
     offset: int
@@ -422,7 +451,8 @@ class GetBookCommentsRequest(_message.Message):
     sort_by: str
     requesting_user_id: int
     rating_filters: _containers.RepeatedScalarFieldContainer[float]
-    def __init__(self, book_slug: _Optional[str] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., order: _Optional[str] = ..., include_spoilers: bool = ..., sort_by: _Optional[str] = ..., requesting_user_id: _Optional[int] = ..., rating_filters: _Optional[_Iterable[float]] = ...) -> None: ...
+    language: str
+    def __init__(self, book_slug: _Optional[str] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., order: _Optional[str] = ..., include_spoilers: bool = ..., sort_by: _Optional[str] = ..., requesting_user_id: _Optional[int] = ..., rating_filters: _Optional[_Iterable[float]] = ..., language: _Optional[str] = ...) -> None: ...
 
 class BookCommentWithRating(_message.Message):
     __slots__ = ("comment_id", "user_id", "book_id", "book_slug", "body", "is_spoiler", "comment_created_at", "comment_updated_at", "has_rating", "overall_rating", "review_text", "pacing", "has_pacing", "emotional_impact", "has_emotional_impact", "intellectual_depth", "has_intellectual_depth", "writing_quality", "has_writing_quality", "rereadability", "has_rereadability", "readability", "has_readability", "plot_complexity", "has_plot_complexity", "humor", "has_humor", "username")
@@ -495,12 +525,14 @@ class BookCommentsResponse(_message.Message):
     def __init__(self, comments: _Optional[_Iterable[_Union[BookCommentWithRating, _Mapping]]] = ..., total_count: _Optional[int] = ..., my_entry: _Optional[_Union[BookCommentWithRating, _Mapping]] = ...) -> None: ...
 
 class GetUserBookInfoRequest(_message.Message):
-    __slots__ = ("user_id", "book_slug")
+    __slots__ = ("user_id", "book_slug", "language")
     USER_ID_FIELD_NUMBER: _ClassVar[int]
     BOOK_SLUG_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
     user_id: int
     book_slug: str
-    def __init__(self, user_id: _Optional[int] = ..., book_slug: _Optional[str] = ...) -> None: ...
+    language: str
+    def __init__(self, user_id: _Optional[int] = ..., book_slug: _Optional[str] = ..., language: _Optional[str] = ...) -> None: ...
 
 class UserBookInfoResponse(_message.Message):
     __slots__ = ("bookshelf", "rating", "comment")
@@ -589,10 +621,12 @@ class ProfileStatsResponse(_message.Message):
     def __init__(self, stats: _Optional[_Union[ProfileStats, _Mapping]] = ...) -> None: ...
 
 class GetProfileOverviewRequest(_message.Message):
-    __slots__ = ("username",)
+    __slots__ = ("username", "language")
     USERNAME_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
     username: str
-    def __init__(self, username: _Optional[str] = ...) -> None: ...
+    language: str
+    def __init__(self, username: _Optional[str] = ..., language: _Optional[str] = ...) -> None: ...
 
 class PublicUser(_message.Message):
     __slots__ = ("user_id", "username", "display_name", "avatar_url", "bio")
@@ -663,12 +697,14 @@ class ProfileOverviewResponse(_message.Message):
     def __init__(self, user: _Optional[_Union[PublicUser, _Mapping]] = ..., reading_now: _Optional[_Union[OverviewBook, _Mapping]] = ..., top_genres: _Optional[_Iterable[_Union[TopGenre, _Mapping]]] = ..., favourite_authors: _Optional[_Iterable[_Union[FavouriteAuthor, _Mapping]]] = ..., favourites_this_year: _Optional[_Iterable[_Union[OverviewBook, _Mapping]]] = ..., reading_now_present: bool = ...) -> None: ...
 
 class GetYearInReviewRequest(_message.Message):
-    __slots__ = ("user_id", "year")
+    __slots__ = ("user_id", "year", "language")
     USER_ID_FIELD_NUMBER: _ClassVar[int]
     YEAR_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
     user_id: int
     year: int
-    def __init__(self, user_id: _Optional[int] = ..., year: _Optional[int] = ...) -> None: ...
+    language: str
+    def __init__(self, user_id: _Optional[int] = ..., year: _Optional[int] = ..., language: _Optional[str] = ...) -> None: ...
 
 class MonthlyBucket(_message.Message):
     __slots__ = ("month", "books_finished", "pages_read", "ratings_given", "books")

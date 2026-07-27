@@ -14,7 +14,13 @@ class MockRpcError(grpc.RpcError):
         return self._details
 
 
-def make_slug_item(mocker, slug="the-hobbit", updated_at="2026-01-01T00:00:00", language="en"):
+def make_slug_item(
+    mocker,
+    slug="the-hobbit",
+    updated_at="2026-01-01T00:00:00",
+    language="en",
+    work_id="OL1W",
+):
     item = mocker.MagicMock()
     item.slug = slug
     item.updated_at = updated_at
@@ -22,6 +28,7 @@ def make_slug_item(mocker, slug="the-hobbit", updated_at="2026-01-01T00:00:00", 
     # a MagicMock returns another MagicMock, which is truthy and then fails to
     # serialize, surfacing as an opaque 500 rather than a missing-field error.
     item.language = language
+    item.work_id = work_id
     return item
 
 

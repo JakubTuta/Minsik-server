@@ -8,6 +8,7 @@ import app.grpc_clients
 import app.middleware.auth
 import app.middleware.rate_limit
 import app.models.user_data_responses
+import app.utils.language
 import app.utils.responses
 import fastapi
 import grpc
@@ -164,10 +165,13 @@ async def get_user_book_info(
     current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
         app.middleware.auth.require_user
     ),
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
     try:
         response = await app.grpc_clients.user_data_client.get_user_book_info(
-            user_id=current_user["user_id"], book_slug=book_slug
+            user_id=current_user["user_id"],
+            book_slug=book_slug,
+            language=language,
         )
         data: typing.Dict[str, typing.Any] = {
             "bookshelf": (
@@ -280,10 +284,14 @@ async def upsert_bookshelf(
     current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
         app.middleware.auth.require_user
     ),
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
     try:
         response = await app.grpc_clients.user_data_client.upsert_bookshelf(
-            user_id=current_user["user_id"], book_slug=book_slug, status=body.status
+            user_id=current_user["user_id"],
+            book_slug=book_slug,
+            status=body.status,
+            language=language,
         )
         asyncio.create_task(
             _refresh_personal_recommendations_after_user_write(current_user["user_id"])
@@ -324,10 +332,13 @@ async def delete_bookshelf(
     current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
         app.middleware.auth.require_user
     ),
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
     try:
         await app.grpc_clients.user_data_client.delete_bookshelf(
-            user_id=current_user["user_id"], book_slug=book_slug
+            user_id=current_user["user_id"],
+            book_slug=book_slug,
+            language=language,
         )
         asyncio.create_task(
             _refresh_personal_recommendations_after_user_write(current_user["user_id"])
@@ -377,6 +388,7 @@ async def get_user_bookshelves(
     current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
         app.middleware.auth.require_user
     ),
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
     try:
         response = await app.grpc_clients.user_data_client.get_user_bookshelves(
@@ -387,6 +399,7 @@ async def get_user_bookshelves(
             favourites_only=favourites_only,
             sort_by=sort_by,
             order=order,
+            language=language,
         )
         items = [_bookshelf_proto_to_dict(b) for b in response.bookshelves]
         return app.utils.responses.success_response(
@@ -439,6 +452,7 @@ async def get_public_bookshelves(
         "created_at"
     ),
     order: typing.Literal["asc", "desc"] = fastapi.Query("desc"),
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
     try:
         response = await app.grpc_clients.user_data_client.get_public_bookshelves(
@@ -449,6 +463,7 @@ async def get_public_bookshelves(
             favourites_only=favourites_only,
             sort_by=sort_by,
             order=order,
+            language=language,
         )
         items = [_bookshelf_proto_to_dict(b) for b in response.bookshelves]
         return app.utils.responses.success_response(
@@ -549,10 +564,12 @@ async def get_public_profile_stats(
 async def get_profile_overview(
     request: fastapi.Request,
     username: str,
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
     try:
         response = await app.grpc_clients.user_data_client.get_profile_overview(
-            username=username
+            username=username,
+            language=language,
         )
         u = response.user
         reading_now = None
@@ -628,10 +645,13 @@ async def get_year_in_review(
     current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
         app.middleware.auth.require_user
     ),
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
     try:
         response = await app.grpc_clients.user_data_client.get_year_in_review(
-            user_id=current_user["user_id"], year=year or 0
+            user_id=current_user["user_id"],
+            year=year or 0,
+            language=language,
         )
         r = response.review
         try:
@@ -738,10 +758,14 @@ async def add_favourite(
     current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
         app.middleware.auth.require_user
     ),
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
     try:
         response = await app.grpc_clients.user_data_client.toggle_favourite(
-            user_id=current_user["user_id"], book_slug=book_slug, is_favorite=True
+            user_id=current_user["user_id"],
+            book_slug=book_slug,
+            is_favorite=True,
+            language=language,
         )
         asyncio.create_task(
             _refresh_personal_recommendations_after_user_write(current_user["user_id"])
@@ -785,10 +809,14 @@ async def remove_favourite(
     current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
         app.middleware.auth.require_user
     ),
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
     try:
         response = await app.grpc_clients.user_data_client.toggle_favourite(
-            user_id=current_user["user_id"], book_slug=book_slug, is_favorite=False
+            user_id=current_user["user_id"],
+            book_slug=book_slug,
+            is_favorite=False,
+            language=language,
         )
         asyncio.create_task(
             _refresh_personal_recommendations_after_user_write(current_user["user_id"])
@@ -832,10 +860,14 @@ async def get_user_favourites(
     current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
         app.middleware.auth.require_user
     ),
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
     try:
         response = await app.grpc_clients.user_data_client.get_user_favourites(
-            user_id=current_user["user_id"], limit=limit, offset=offset
+            user_id=current_user["user_id"],
+            limit=limit,
+            offset=offset,
+            language=language,
         )
         items = [_bookshelf_proto_to_dict(b) for b in response.bookshelves]
         return app.utils.responses.success_response(
@@ -896,6 +928,7 @@ async def upsert_rating(
     current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
         app.middleware.auth.require_user
     ),
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
     try:
         response = await app.grpc_clients.user_data_client.upsert_rating(
@@ -911,6 +944,7 @@ async def upsert_rating(
             readability=body.readability,
             plot_complexity=body.plot_complexity,
             humor=body.humor,
+            language=language,
         )
         asyncio.create_task(
             _refresh_personal_recommendations_after_user_write(current_user["user_id"])
@@ -952,10 +986,13 @@ async def delete_rating(
     current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
         app.middleware.auth.require_user
     ),
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
     try:
         await app.grpc_clients.user_data_client.delete_rating(
-            user_id=current_user["user_id"], book_slug=book_slug
+            user_id=current_user["user_id"],
+            book_slug=book_slug,
+            language=language,
         )
         asyncio.create_task(
             _refresh_personal_recommendations_after_user_write(current_user["user_id"])
@@ -1003,6 +1040,7 @@ async def get_user_ratings(
     current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
         app.middleware.auth.require_user
     ),
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
     try:
         response = await app.grpc_clients.user_data_client.get_user_ratings(
@@ -1013,6 +1051,7 @@ async def get_user_ratings(
             order=order,
             min_rating=min_rating or 0.0,
             max_rating=max_rating or 0.0,
+            language=language,
         )
         items = [_rating_proto_to_dict(r) for r in response.ratings]
         return app.utils.responses.success_response(
@@ -1070,6 +1109,7 @@ async def create_comment(
     current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
         app.middleware.auth.require_user
     ),
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
     try:
         response = await app.grpc_clients.user_data_client.create_comment(
@@ -1077,6 +1117,7 @@ async def create_comment(
             book_slug=book_slug,
             body=body.body,
             is_spoiler=body.is_spoiler,
+            language=language,
         )
         return app.utils.responses.success_response(
             {"comment": _comment_proto_to_dict(response.comment)}, status_code=201
@@ -1116,6 +1157,7 @@ async def update_comment(
     current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
         app.middleware.auth.require_user
     ),
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
     try:
         response = await app.grpc_clients.user_data_client.update_comment(
@@ -1123,6 +1165,7 @@ async def update_comment(
             user_id=current_user["user_id"],
             body=body.body,
             is_spoiler=body.is_spoiler,
+            language=language,
         )
         return app.utils.responses.success_response(
             {"comment": _comment_proto_to_dict(response.comment)}
@@ -1206,6 +1249,7 @@ async def get_user_comments(
     current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
         app.middleware.auth.require_user
     ),
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
     try:
         response = await app.grpc_clients.user_data_client.get_user_comments(
@@ -1215,6 +1259,7 @@ async def get_user_comments(
             sort_by=sort_by,
             order=order,
             book_slug=book_slug or "",
+            language=language,
         )
         items = [_comment_proto_to_dict(c) for c in response.comments]
         return app.utils.responses.success_response(

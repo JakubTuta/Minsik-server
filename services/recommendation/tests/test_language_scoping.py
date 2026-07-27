@@ -65,15 +65,25 @@ class TestDedupeByWork:
         assert len(result) == 1
         assert result[0]["readers"] == 100
 
-    def test_falls_back_to_most_read_edition_when_language_absent(self):
+    def test_falls_back_to_english_before_the_most_read_edition(self):
         items = [
-            {"work_id": "W1", "language": "en", "score": 1, "readers": 500},
-            {"work_id": "W1", "language": "de", "score": 9, "readers": 40},
+            {"work_id": "W1", "language": "en", "score": 1, "readers": 40},
+            {"work_id": "W1", "language": "de", "score": 9, "readers": 500},
         ]
 
         result = language_boost.dedupe_by_work(items, "pl")
 
         assert result[0]["language"] == "en"
+
+    def test_falls_back_to_most_read_edition_when_neither_language_exists(self):
+        items = [
+            {"work_id": "W1", "language": "fr", "score": 9, "readers": 40},
+            {"work_id": "W1", "language": "de", "score": 1, "readers": 500},
+        ]
+
+        result = language_boost.dedupe_by_work(items, "pl")
+
+        assert result[0]["language"] == "de"
 
     def test_keeps_distinct_works_apart(self):
         items = [

@@ -14,85 +14,42 @@ logger = logging.getLogger(__name__)
 
 ES_RECONCILE_THROTTLE_SECONDS = 0.2
 
-StaleIdFinder = typing.Callable[
-    [sqlalchemy.ext.asyncio.AsyncSession, list],
-    typing.Awaitable[typing.Set[str]],
-]
+# Every index keys its documents by the identity the catalog uses — work_id,
+# author_id, series slug — so a ghost is simply an id Postgres no longer knows,
+# and no document source has to be fetched to notice.
+_IDENTITY_QUERIES: typing.Dict[str, str] = {
+    "books": "SELECT DISTINCT work_id AS identity FROM books.books WHERE work_id = ANY(:ids)",
+    "authors": "SELECT author_id::text AS identity FROM books.authors WHERE author_id::text = ANY(:ids)",
+    "series": "SELECT DISTINCT slug AS identity FROM books.series WHERE slug = ANY(:ids)",
+}
 
 
-async def _find_stale_book_ids(
-    session: sqlalchemy.ext.asyncio.AsyncSession, hits: list
+async def _find_stale_ids(
+    session: sqlalchemy.ext.asyncio.AsyncSession, entity: str, ids: typing.List[str]
 ) -> typing.Set[str]:
-    book_ids = [int(hit["_id"]) for hit in hits]
     result = await session.execute(
-        sqlalchemy.text("SELECT book_id FROM books.books WHERE book_id = ANY(:ids)"),
-        {"ids": book_ids},
+        sqlalchemy.text(_IDENTITY_QUERIES[entity]), {"ids": ids}
     )
-    present = {row[0] for row in result.fetchall()}
-    return {hit["_id"] for hit in hits if int(hit["_id"]) not in present}
+    present = {row.identity for row in result.fetchall()}
 
-
-async def _find_stale_author_ids(
-    session: sqlalchemy.ext.asyncio.AsyncSession, hits: list
-) -> typing.Set[str]:
-    author_ids = list({hit["_source"]["author_id"] for hit in hits})
-    result = await session.execute(
-        sqlalchemy.text(
-            """
-            SELECT DISTINCT ba.author_id, b.language
-            FROM books.book_authors ba
-            JOIN books.books b ON ba.book_id = b.book_id
-            WHERE ba.author_id = ANY(:author_ids)
-            """
-        ),
-        {"author_ids": author_ids},
-    )
-    present = {(row[0], row[1]) for row in result.fetchall()}
-    return {
-        hit["_id"]
-        for hit in hits
-        if (hit["_source"]["author_id"], hit["_source"]["language"]) not in present
-    }
-
-
-async def _find_stale_series_ids(
-    session: sqlalchemy.ext.asyncio.AsyncSession, hits: list
-) -> typing.Set[str]:
-    series_ids = list({hit["_source"]["series_id"] for hit in hits})
-    result = await session.execute(
-        sqlalchemy.text(
-            """
-            SELECT DISTINCT b.series_id, b.language
-            FROM books.books b
-            WHERE b.series_id = ANY(:series_ids)
-            """
-        ),
-        {"series_ids": series_ids},
-    )
-    present = {(row[0], row[1]) for row in result.fetchall()}
-    return {
-        hit["_id"]
-        for hit in hits
-        if (hit["_source"]["series_id"], hit["_source"]["language"]) not in present
-    }
+    return {doc_id for doc_id in ids if doc_id not in present}
 
 
 async def _reconcile_index(
     es: elasticsearch.AsyncElasticsearch,
     index: str,
-    source_fields: typing.Union[bool, list],
-    stale_id_finder: StaleIdFinder,
+    entity: str,
     batch_size: int,
 ) -> int:
     total_deleted = 0
-    batch: list = []
+    batch: typing.List[str] = []
 
-    async def _flush(current_batch: list) -> int:
+    async def _flush(current_batch: typing.List[str]) -> int:
         if not current_batch:
             return 0
         try:
             async with app.db.async_session_maker() as session:
-                stale_ids = await stale_id_finder(session, current_batch)
+                stale_ids = await _find_stale_ids(session, entity, current_batch)
         except Exception as e:
             logger.error(f"[ES] Reconcile PG lookup failed for {index}: {e}")
             return 0
@@ -115,9 +72,9 @@ async def _reconcile_index(
 
     try:
         async for hit in elasticsearch.helpers.async_scan(
-            es, index=index, size=batch_size, _source=source_fields
+            es, index=index, size=batch_size, _source=False
         ):
-            batch.append(hit)
+            batch.append(hit["_id"])
             if len(batch) >= batch_size:
                 total_deleted += await _flush(batch)
                 batch = []
@@ -140,26 +97,19 @@ async def reconcile_deleted_docs() -> typing.Dict[str, int]:
     es = app.es_client.get_es()
     batch_size = settings.es_reconcile_scan_size
 
-    try:
-        stats["books_deleted"] = await _reconcile_index(
-            es, settings.es_index_books, False, _find_stale_book_ids, batch_size
-        )
-        stats["authors_deleted"] = await _reconcile_index(
-            es,
-            settings.es_index_authors,
-            ["author_id", "language"],
-            _find_stale_author_ids,
-            batch_size,
-        )
-        stats["series_deleted"] = await _reconcile_index(
-            es,
-            settings.es_index_series,
-            ["series_id", "language"],
-            _find_stale_series_ids,
-            batch_size,
-        )
-    except Exception as e:
-        logger.error(f"[ES] Reconcile failed: {e}")
+    indexes = (
+        ("books", settings.es_index_books),
+        ("authors", settings.es_index_authors),
+        ("series", settings.es_index_series),
+    )
+
+    for entity, index in indexes:
+        try:
+            stats[f"{entity}_deleted"] = await _reconcile_index(
+                es, index, entity, batch_size
+            )
+        except Exception as e:
+            logger.error(f"[ES] Reconcile failed for {index}: {e}")
 
     logger.info(
         f"[ES] Reconcile complete. books_deleted={stats['books_deleted']}, "

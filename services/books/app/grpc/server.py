@@ -1101,6 +1101,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                     slug=item["slug"],
                     updated_at=item["updated_at"],
                     language=item.get("language") or "",
+                    work_id=item.get("work_id") or "",
                 )
                 for item in items
             ]

@@ -17,14 +17,16 @@ class ListSitemapSlugsRequest(_message.Message):
     def __init__(self, entity: _Optional[str] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ...) -> None: ...
 
 class SitemapSlugItem(_message.Message):
-    __slots__ = ("slug", "updated_at", "language")
+    __slots__ = ("slug", "updated_at", "language", "work_id")
     SLUG_FIELD_NUMBER: _ClassVar[int]
     UPDATED_AT_FIELD_NUMBER: _ClassVar[int]
     LANGUAGE_FIELD_NUMBER: _ClassVar[int]
+    WORK_ID_FIELD_NUMBER: _ClassVar[int]
     slug: str
     updated_at: str
     language: str
-    def __init__(self, slug: _Optional[str] = ..., updated_at: _Optional[str] = ..., language: _Optional[str] = ...) -> None: ...
+    work_id: str
+    def __init__(self, slug: _Optional[str] = ..., updated_at: _Optional[str] = ..., language: _Optional[str] = ..., work_id: _Optional[str] = ...) -> None: ...
 
 class ListSitemapSlugsResponse(_message.Message):
     __slots__ = ("items", "total_count")

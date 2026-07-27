@@ -34,7 +34,10 @@ services:
   # ElasticSearch - Production Configuration
   # ============================================================================
   elasticsearch:
-    image: docker.elastic.co/elasticsearch/elasticsearch:8.17.4
+    build:
+      context: .
+      dockerfile: services/elasticsearch/Dockerfile
+    image: minsik-elasticsearch:8.17.4
     container_name: minsik-elasticsearch
     environment:
       - discovery.type=single-node

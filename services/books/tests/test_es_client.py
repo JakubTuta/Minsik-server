@@ -3,149 +3,199 @@ import typing
 
 import app.config
 import app.es_client
+import elasticsearch
 import pytest
 
 
 class FakeIndices:
-    def __init__(self, live: typing.Dict[str, typing.Any]) -> None:
-        self.live = live
-        self.calls: typing.List[typing.Tuple[typing.Any, ...]] = []
+    def __init__(self) -> None:
+        self.indexes: typing.Dict[str, typing.Any] = {}
+        self.aliases: typing.Dict[str, typing.Set[str]] = {}
+        self.calls: typing.List[typing.Tuple[str, str]] = []
 
     async def exists(self, index: str) -> bool:
-        return index in self.live
+        return index in self.indexes
 
-    async def create(self, index: str, body: typing.Dict[str, typing.Any]) -> None:
+    async def create(
+        self,
+        index: str,
+        settings: typing.Dict[str, typing.Any],
+        mappings: typing.Dict[str, typing.Any],
+    ) -> None:
         self.calls.append(("create", index))
-        self.live[index] = body["mappings"]
+        self.indexes[index] = {"settings": settings, "mappings": mappings}
 
-    async def get_mapping(self, index: str) -> typing.Dict[str, typing.Any]:
-        return {index: {"mappings": self.live[index]}}
+    async def delete(self, index: str, ignore_unavailable: bool = False) -> None:
+        self.calls.append(("delete", index))
+        self.indexes.pop(index, None)
+        for members in self.aliases.values():
+            members.discard(index)
 
-    async def close(self, index: str) -> None:
-        self.calls.append(("close", index))
+    async def get_alias(self, name: str) -> typing.Dict[str, typing.Any]:
+        members = self.aliases.get(name)
+        if not members:
+            raise elasticsearch.NotFoundError("alias_missing", None, None)
+        return {index: {} for index in members}
 
-    async def open(self, index: str) -> None:
-        self.calls.append(("open", index))
+    async def exists_alias(self, name: str) -> bool:
+        return bool(self.aliases.get(name))
 
-    async def put_settings(
-        self, index: str, settings: typing.Dict[str, typing.Any]
+    async def update_aliases(
+        self, actions: typing.List[typing.Dict[str, typing.Any]]
     ) -> None:
-        self.calls.append(("put_settings", index, sorted(settings["analysis"]["analyzer"])))
-
-    async def put_mapping(
-        self, index: str, properties: typing.Dict[str, typing.Any]
-    ) -> None:
-        self.calls.append(("put_mapping", index, sorted(properties)))
-        self.live[index]["properties"].update(properties)
+        for action in actions:
+            if "remove" in action:
+                self.calls.append(("unalias", action["remove"]["index"]))
+                self.aliases.setdefault(action["remove"]["alias"], set()).discard(
+                    action["remove"]["index"]
+                )
+            if "add" in action:
+                self.calls.append(("alias", action["add"]["index"]))
+                self.aliases.setdefault(action["add"]["alias"], set()).add(
+                    action["add"]["index"]
+                )
 
 
 class FakeClient:
-    def __init__(self, live: typing.Dict[str, typing.Any]) -> None:
-        self.indices = FakeIndices(live)
+    def __init__(self, indices: FakeIndices) -> None:
+        self.indices = indices
 
 
 @pytest.fixture
 def es_state(monkeypatch: pytest.MonkeyPatch):
-    live: typing.Dict[str, typing.Any] = {}
+    indices = FakeIndices()
+    monkeypatch.setattr(
+        app.es_client, "_es_client", FakeClient(indices), raising=False
+    )
 
-    def run(languages: str) -> typing.Tuple[bool, typing.List[typing.Any]]:
+    def configure(languages: str, plugins: typing.Optional[typing.Set[str]] = None) -> None:
         monkeypatch.setattr(
             app.config.settings, "available_languages", languages, raising=False
         )
-        client = FakeClient(live)
-        monkeypatch.setattr(app.es_client, "_es_client", client, raising=False)
-        changed = asyncio.run(
-            app.es_client.create_indexes("books", "authors", "series")
+        monkeypatch.setattr(
+            app.es_client, "_installed_plugins", plugins or set(), raising=False
         )
 
-        return changed, client.indices.calls
+    def plan() -> app.es_client.IndexPlan:
+        return asyncio.run(app.es_client.plan_indexes())
 
-    return live, run
+    def promote(index_plan: app.es_client.IndexPlan) -> None:
+        asyncio.run(app.es_client.promote(index_plan))
 
+    configure("en")
 
-def test_create_indexes_creates_missing_indexes(es_state):
-    _live, run = es_state
-    changed, calls = run("en")
-
-    assert changed is True
-    assert [c[1] for c in calls if c[0] == "create"] == ["books", "authors", "series"]
+    return indices, configure, plan, promote
 
 
-def test_create_indexes_is_a_noop_when_up_to_date(es_state):
-    _live, run = es_state
-    run("en")
-    changed, calls = run("en")
+def test_first_run_creates_versioned_indexes_and_requires_a_rebuild(es_state):
+    indices, _configure, plan, _promote = es_state
 
-    assert changed is False
-    assert calls == []
+    index_plan = plan()
 
-
-def test_added_language_updates_analysis_then_mapping(es_state):
-    live, run = es_state
-    run("en")
-    changed, calls = run("en,de")
-
-    assert changed is True
-
-    kinds = [c[0] for c in calls]
-    assert kinds.index("close") < kinds.index("put_settings") < kinds.index("open")
-    assert kinds.index("open") < kinds.index("put_mapping")
-
-    analyzers = next(c[2] for c in calls if c[0] == "put_settings")
-    assert "book_analyzer_de" in analyzers
-
-    title_fields = live["books"]["properties"]["title"]["fields"]
-    assert title_fields["lang_de"]["analyzer"] == "book_analyzer_de"
+    assert index_plan.rebuild is True
+    created = [name for kind, name in indices.calls if kind == "create"]
+    assert sorted(created) == sorted(index_plan.targets.values())
+    assert all("-" in name for name in index_plan.targets.values())
 
 
-def test_only_lagging_text_fields_are_resent(es_state):
-    _live, run = es_state
-    run("en")
-    _changed, calls = run("en,de")
+def test_rebuild_writes_to_the_new_index_while_the_alias_still_serves(es_state):
+    _indices, _configure, plan, promote = es_state
 
-    resent = next(c[2] for c in calls if c[0] == "put_mapping" and c[1] == "books")
-    assert resent == ["authors_names", "series_name", "title"]
+    index_plan = plan()
 
+    assert index_plan.write_index("books") == index_plan.targets["books"]
 
-def test_language_without_builtin_stemmer_uses_generic_analyzer(es_state):
-    live, run = es_state
-    run("en")
-    _changed, calls = run("en,pl")
+    promote(index_plan)
+    settled = plan()
 
-    analyzers = next(c[2] for c in calls if c[0] == "put_settings")
-    assert "book_analyzer_pl" not in analyzers
-
-    title_fields = live["books"]["properties"]["title"]["fields"]
-    assert title_fields["lang_pl"]["analyzer"] == "generic_analyzer"
+    assert settled.rebuild is False
+    assert settled.write_index("books") == "books"
 
 
-def test_reconciled_index_is_stable(es_state):
-    _live, run = es_state
-    run("en")
-    run("en,de")
-    changed, calls = run("en,de")
+def test_promote_swaps_the_alias_and_drops_the_previous_index(es_state):
+    indices, configure, plan, promote = es_state
 
-    assert changed is False
-    assert calls == []
+    first = plan()
+    promote(first)
+
+    configure("en,de")
+    second = plan()
+    promote(second)
+
+    assert second.rebuild is True
+    assert indices.aliases["books"] == {second.targets["books"]}
+    assert first.targets["books"] not in indices.indexes
 
 
-def test_index_is_reopened_when_settings_update_fails(es_state, monkeypatch):
-    live, run = es_state
-    run("en")
+def test_unchanged_configuration_is_a_noop(es_state):
+    indices, _configure, plan, promote = es_state
 
-    class ExplodingIndices(FakeIndices):
-        async def put_settings(self, index, settings):
-            raise RuntimeError("mapper conflict")
+    promote(plan())
+    indices.calls.clear()
 
-    monkeypatch.setattr(
-        app.config.settings, "available_languages", "en,de", raising=False
-    )
-    client = FakeClient(live)
-    client.indices = ExplodingIndices(live)
-    monkeypatch.setattr(app.es_client, "_es_client", client, raising=False)
+    assert plan().rebuild is False
+    assert indices.calls == []
 
-    with pytest.raises(RuntimeError):
-        asyncio.run(app.es_client.create_indexes("books", "authors", "series"))
 
-    kinds = [c[0] for c in client.indices.calls]
-    assert kinds.count("open") == kinds.count("close")
+def test_pre_alias_index_is_replaced_by_the_alias(es_state):
+    indices, _configure, plan, promote = es_state
+    indices.indexes["books"] = {"legacy": True}
+
+    promote(plan())
+
+    assert "books" not in indices.indexes
+    assert indices.aliases["books"]
+
+
+def test_half_written_index_from_a_failed_run_is_rebuilt_from_scratch(es_state):
+    indices, _configure, plan, _promote = es_state
+    first = plan()
+    indices.calls.clear()
+
+    second = plan()
+
+    assert second.targets == first.targets
+    assert ("delete", first.targets["books"]) in indices.calls
+    assert ("create", first.targets["books"]) in indices.calls
+
+
+def test_language_without_a_stemmer_gets_no_dedicated_field(es_state):
+    _indices, configure, _plan, _promote = es_state
+    configure("en,pl")
+
+    assert app.es_client.stemmed_languages() == ["en"]
+    assert "titles_pl" not in app.es_client.works_index_mapping()["mappings"]["properties"]
+
+
+def test_stempel_plugin_enables_polish_stemming(es_state):
+    _indices, configure, _plan, _promote = es_state
+    configure("en,pl", plugins={"analysis-stempel"})
+
+    assert app.es_client.stemmed_languages() == ["en", "pl"]
+    properties = app.es_client.works_index_mapping()["mappings"]["properties"]
+    assert properties["titles_pl"]["analyzer"] == "text_analyzer_pl"
+
+
+def test_icu_plugin_upgrades_folding(es_state):
+    _indices, configure, _plan, _promote = es_state
+
+    configure("en")
+    assert "asciifolding" in app.es_client.works_index_mapping()["settings"]["analysis"][
+        "analyzer"
+    ]["generic_analyzer"]["filter"]
+
+    configure("en", plugins={app.es_client.ICU_PLUGIN})
+    assert "icu_folding" in app.es_client.works_index_mapping()["settings"]["analysis"][
+        "analyzer"
+    ]["generic_analyzer"]["filter"]
+
+
+def test_analysis_changes_produce_a_new_index_name(es_state):
+    _indices, configure, plan, promote = es_state
+
+    promote(plan())
+    before = plan().targets["books"]
+
+    configure("en", plugins={app.es_client.ICU_PLUGIN})
+
+    assert plan().targets["books"] != before

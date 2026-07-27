@@ -48,6 +48,7 @@ async def list_sitemap_slugs(
                 "slug": item.slug,
                 "updated_at": item.updated_at or None,
                 "language": item.language or None,
+                "work_id": item.work_id or None,
             }
             for item in response.items
         ]
