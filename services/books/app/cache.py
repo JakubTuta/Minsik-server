@@ -85,6 +85,19 @@ async def delete_by_pattern(pattern: str) -> int:
         return 0
 
 
+async def delete_localized(prefix: str, slug: str) -> int:
+    """Drop every per-language entry cached under `{prefix}:{slug}:{language}`.
+
+    Detail caches are keyed by the language the reader *asked for*, not by the
+    language of the row that was served: a request for a language with no
+    edition falls back to another edition and caches it under the requested
+    language. Invalidating one language therefore leaves the entries readers
+    actually hit stale until the TTL expires, which is why every one of these
+    invalidations has to be a pattern delete.
+    """
+    return await delete_by_pattern(f"{prefix}:{slug}:*")
+
+
 async def increment_view_count(entity_type: str, entity_id: int) -> None:
     try:
         key = f"view_count:{entity_type}:{entity_id}"

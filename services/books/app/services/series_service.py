@@ -377,7 +377,7 @@ async def update_series(
     if not series:
         return None
 
-    old_cache_key = f"series_slug:{series.slug}:{language}"
+    old_slug = series.slug
 
     for field, value in updates.items():
         setattr(series, field, value)
@@ -385,10 +385,11 @@ async def update_series(
     await session.commit()
     await session.refresh(series)
 
-    await app.cache.delete_cached(old_cache_key)
-    if "slug" in updates:
-        new_cache_key = f"series_slug:{series.slug}:{language}"
-        await app.cache.delete_cached(new_cache_key)
+    await app.cache.delete_localized("series_slug", old_slug)
+    await app.cache.delete_localized("series_books", old_slug)
+    if series.slug != old_slug:
+        await app.cache.delete_localized("series_slug", series.slug)
+        await app.cache.delete_localized("series_books", series.slug)
 
     stats_query = sqlalchemy.text(
         """
@@ -471,7 +472,8 @@ async def remove_series_author(
     series_result = await session.execute(series_stmt)
     series = series_result.scalars().first()
     if series:
-        await app.cache.delete_cached(f"series_slug:{series.slug}:{series.language}")
+        await app.cache.delete_localized("series_slug", series.slug)
+        await app.cache.delete_localized("series_books", series.slug)
 
     return result.rowcount
 
@@ -498,8 +500,6 @@ async def delete_series(
 
     slug = series.slug
     name = series.name
-    language = series.language
-
     unlink_result = await session.execute(
         sqlalchemy.text(
             """
@@ -515,6 +515,7 @@ async def delete_series(
     await session.delete(series)
     await session.commit()
 
-    await app.cache.delete_cached(f"series_slug:{slug}:{language}")
+    await app.cache.delete_localized("series_slug", slug)
+    await app.cache.delete_localized("series_books", slug)
 
     return {"series_id": series_id, "name": name, "books_unlinked": books_unlinked}

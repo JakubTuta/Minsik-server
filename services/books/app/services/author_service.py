@@ -392,7 +392,6 @@ async def update_author(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     author_id: int,
     updates: typing.Dict[str, typing.Any],
-    language: str = "en",
 ) -> typing.Optional[typing.Dict[str, typing.Any]]:
     stmt = sqlalchemy.select(app.models.author.Author).filter(
         app.models.author.Author.author_id == author_id
@@ -404,7 +403,7 @@ async def update_author(
     if not author:
         return None
 
-    old_cache_key = f"author_slug:{author.slug}:{language}"
+    old_slug = author.slug
 
     for field, value in updates.items():
         setattr(author, field, value)
@@ -412,10 +411,11 @@ async def update_author(
     await session.commit()
     await session.refresh(author)
 
-    await app.cache.delete_cached(old_cache_key)
-    if "slug" in updates:
-        new_cache_key = f"author_slug:{author.slug}:{language}"
-        await app.cache.delete_cached(new_cache_key)
+    await app.cache.delete_localized("author_slug", old_slug)
+    await app.cache.delete_localized("author_books", old_slug)
+    if author.slug != old_slug:
+        await app.cache.delete_localized("author_slug", author.slug)
+        await app.cache.delete_localized("author_books", author.slug)
 
     book_categories = await _get_author_book_categories(session, author.author_id)
     books_aggregates = await _get_author_books_aggregates(session, author.author_id)
@@ -593,8 +593,10 @@ async def delete_author(
 
     await session.commit()
 
-    await app.cache.delete_cached(f"author_slug:{slug}:en")
+    await app.cache.delete_localized("author_slug", slug)
+    await app.cache.delete_localized("author_books", slug)
     for book in sole_books:
-        await app.cache.delete_cached(f"book_slug:{book.slug}:{book.language}")
+        await app.cache.delete_localized("book_slug", book.slug)
+        await app.cache.delete_localized("book_lang_variants", book.slug)
 
     return {"author_id": author_id, "name": name}

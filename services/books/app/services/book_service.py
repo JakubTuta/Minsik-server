@@ -269,7 +269,7 @@ async def update_book(
     if not book:
         return None
 
-    old_cache_key = f"book_slug:{book.slug}:{book.language}"
+    old_slug = book.slug
 
     for field, value in updates.items():
         setattr(book, field, value)
@@ -308,12 +308,11 @@ async def update_book(
     if not book:
         return None
 
-    await app.cache.delete_cached(old_cache_key)
-    await app.cache.delete_cached(f"book_lang_variants:{book.slug}:{book.language}")
-    if "slug" in updates or "language" in updates:
-        new_cache_key = f"book_slug:{book.slug}:{book.language}"
-        await app.cache.delete_cached(new_cache_key)
-        await app.cache.delete_cached(f"book_lang_variants:{book.slug}:*")
+    await app.cache.delete_localized("book_slug", old_slug)
+    await app.cache.delete_localized("book_lang_variants", old_slug)
+    if book.slug != old_slug:
+        await app.cache.delete_localized("book_slug", book.slug)
+        await app.cache.delete_localized("book_lang_variants", book.slug)
 
     book_data = _book_to_dict(book)
 
@@ -356,10 +355,10 @@ async def remove_book_author(
     if not book:
         return None
 
-    await app.cache.delete_cached(f"book_slug:{book.slug}:{book.language}")
-    await app.cache.delete_cached(f"book_lang_variants:{book.slug}:{book.language}")
-    await app.cache.delete_by_pattern(f"author_slug:{author_slug}:*")
-    await app.cache.delete_by_pattern(f"author_books:{author_slug}:*")
+    await app.cache.delete_localized("book_slug", book.slug)
+    await app.cache.delete_localized("book_lang_variants", book.slug)
+    await app.cache.delete_localized("author_slug", author_slug)
+    await app.cache.delete_localized("author_books", author_slug)
 
     book_data = _book_to_dict(book)
 
@@ -417,7 +416,6 @@ async def delete_book(
         raise ValueError("not_found")
 
     slug = book.slug
-    language = book.language
     title = book.title
 
     affected_users_result = await session.execute(
@@ -501,8 +499,8 @@ async def delete_book(
         )
 
     await session.commit()
-    await app.cache.delete_cached(f"book_slug:{slug}:{language}")
-    await app.cache.delete_cached(f"book_lang_variants:{slug}:{language}")
+    await app.cache.delete_localized("book_slug", slug)
+    await app.cache.delete_localized("book_lang_variants", slug)
 
     return {
         "book_id": book_id,

@@ -156,6 +156,11 @@ async def _read_precomputed(
                 }
             )
         else:
+            # No language to prefer: precompute seeds one row per edition and
+            # elects the edition through preferred_edition_sql, so the stored
+            # ids already hold one language-correct edition per work. This call
+            # is the net for that invariant breaking, and with no better
+            # signal it keeps the most-read edition of any duplicated work.
             deduped = app.services._language_boost.dedupe_by_work(items, "")
             sections.append(
                 {

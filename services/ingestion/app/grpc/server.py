@@ -49,10 +49,12 @@ class IngestionService(app.proto.ingestion_pb2_grpc.IngestionServiceServicer):
                 )
 
             async with app.models.AsyncSessionLocal() as session:
+                # Every row, not just the English ones: this is a raw inventory
+                # shown next to the unfiltered author and series totals, and a
+                # catalogue whose editions are mostly non-English would
+                # otherwise report a near-empty database.
                 books_result = await session.execute(
-                    sqlalchemy.text(
-                        "SELECT COUNT(*) FROM books.books WHERE language = 'en'"
-                    )
+                    sqlalchemy.text("SELECT COUNT(*) FROM books.books")
                 )
                 db_books_count = books_result.scalar_one()
 
