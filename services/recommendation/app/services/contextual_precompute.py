@@ -1,4 +1,5 @@
 import asyncio
+import json
 import logging
 import typing
 
@@ -96,6 +97,7 @@ def _extract_section_rows(
                 "section_key": section["section_key"],
                 "display_name": section.get("display_name", ""),
                 "similar_ids": similar_ids,
+                "title_params": json.dumps(section.get("title_params") or {}),
             }
         )
     return rows
@@ -112,12 +114,13 @@ async def _upsert_batch(
             sqlalchemy.text(
                 """
                 INSERT INTO recommendation.contextual_recs
-                    (entity_type, entity_id, section_key, display_name, similar_ids)
-                VALUES (:entity_type, :entity_id, :section_key, :display_name, :similar_ids)
+                    (entity_type, entity_id, section_key, display_name, similar_ids, title_params)
+                VALUES (:entity_type, :entity_id, :section_key, :display_name, :similar_ids, CAST(:title_params AS jsonb))
                 ON CONFLICT (entity_type, entity_id, section_key)
                 DO UPDATE SET
                     display_name = EXCLUDED.display_name,
                     similar_ids  = EXCLUDED.similar_ids,
+                    title_params = EXCLUDED.title_params,
                     computed_at  = now()
                 """
             ),

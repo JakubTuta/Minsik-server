@@ -78,9 +78,9 @@ _BOOK_SELECT = """
     LEFT JOIN (
         SELECT
             wb.work_id,
-            COUNT(*) FILTER (WHERE bsh.status = 'want_to_read') AS app_want_to_read_count,
-            COUNT(*) FILTER (WHERE bsh.status = 'reading') AS app_reading_count,
-            COUNT(*) FILTER (WHERE bsh.status = 'read') AS app_read_count
+            COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'want_to_read') AS app_want_to_read_count,
+            COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'reading') AS app_reading_count,
+            COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'read') AS app_read_count
         FROM user_data.bookshelves bsh
         JOIN books.books wb ON wb.book_id = bsh.book_id
         WHERE bsh.status != 'abandoned'
@@ -356,9 +356,9 @@ async def _fetch_all_display_books(
             LEFT JOIN (
                 SELECT
                     wb.work_id,
-                    COUNT(*) FILTER (WHERE bsh.status = 'want_to_read') AS app_want_to_read_count,
-                    COUNT(*) FILTER (WHERE bsh.status = 'reading')      AS app_reading_count,
-                    COUNT(*) FILTER (WHERE bsh.status = 'read')         AS app_read_count
+                    COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'want_to_read') AS app_want_to_read_count,
+                    COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'reading')      AS app_reading_count,
+                    COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'read')         AS app_read_count
                 FROM user_data.bookshelves bsh
                 JOIN books.books wb ON wb.book_id = bsh.book_id
                 WHERE bsh.status != 'abandoned'

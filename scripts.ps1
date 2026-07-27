@@ -93,6 +93,16 @@ EXAMPLES:
 "@ -ForegroundColor $ColorInfo
 }
 
+function Get-EnvFile {
+    # .env holds the real credentials this machine's volumes were initialised
+    # with; .env.example is only the fallback for a fresh checkout. Preferring
+    # the example file silently breaks against an existing database volume.
+    if (Test-Path ".env") {
+        return ".env"
+    }
+    return ".env.example"
+}
+
 function Write-Step {
     param([string]$Message)
     Write-Host "`n $Message" -ForegroundColor $ColorInfo
@@ -285,7 +295,8 @@ function Build-And-Push-Images {
         @{ Name = "User Data Service";      Dockerfile = "services/user_data/Dockerfile";      ImageName = "user-data-service" },
         @{ Name = "Recommendation Service"; Dockerfile = "services/recommendation/Dockerfile"; ImageName = "recommendation-service" },
         @{ Name = "DB Migrator";            Dockerfile = "services/db_migrator/Dockerfile";    ImageName = "db-migrator" },
-        @{ Name = "RQ Worker";              Dockerfile = "services/ingestion/Dockerfile";      ImageName = "rq-worker" }
+        @{ Name = "RQ Worker";              Dockerfile = "services/ingestion/Dockerfile";      ImageName = "rq-worker" },
+        @{ Name = "Frontend";               Dockerfile = "../Minsik-web/Dockerfile";          ImageName = "frontend"; Context = "../Minsik-web" }
     )
 
     Write-Step "Building and pushing images to $Registry..."
@@ -306,7 +317,15 @@ function Build-And-Push-Images {
         }
 
         $absoluteDockerfilePath = (Resolve-Path $service.Dockerfile).Path
-        & docker build -t $imageTag -f $absoluteDockerfilePath .
+
+        # The frontend lives in a sibling repo directory, so it needs its own
+        # build context rather than the server root.
+        $buildContext = "."
+        if ($service.Context) {
+            $buildContext = (Resolve-Path $service.Context).Path
+        }
+
+        & docker build -t $imageTag -f $absoluteDockerfilePath $buildContext
 
         if ($LASTEXITCODE -ne 0) {
             Write-Error-Message "Failed to build $($service.Name)"
@@ -336,7 +355,7 @@ function Run-Migrations {
         return
     }
 
-    & docker-compose --env-file .env.example run --rm db-migrator
+    & docker-compose --env-file (Get-EnvFile) run --rm db-migrator
 
     if ($LASTEXITCODE -eq 0) {
         Write-Success "Database migrations completed successfully!"
@@ -353,11 +372,11 @@ function Deploy-Services {
     if ($Environment -eq "dev") {
         Write-Step "Starting development environment..."
 
-        & docker-compose --env-file .env.example up -d --build
+        & docker-compose --env-file (Get-EnvFile) up -d --build
 
         if ($LASTEXITCODE -eq 0) {
             Write-Success "Development environment started!"
-            & docker-compose --env-file .env.example ps
+            & docker-compose --env-file (Get-EnvFile) ps
         } else {
             Write-Error-Message "Failed to start development environment"
         }
@@ -378,9 +397,9 @@ function Show-Logs {
     Write-Step "Viewing logs..."
 
     if ($Service) {
-        & docker-compose --env-file .env.example logs -f $Service
+        & docker-compose --env-file (Get-EnvFile) logs -f $Service
     } else {
-        & docker-compose --env-file .env.example logs -f
+        & docker-compose --env-file (Get-EnvFile) logs -f
     }
 }
 
@@ -456,7 +475,7 @@ function Clean-All {
         return
     }
 
-    & docker-compose --env-file .env.example down -v
+    & docker-compose --env-file (Get-EnvFile) down -v
     & docker volume prune -f
 
     Write-Success "Cleanup complete!"

@@ -18,6 +18,10 @@ class MockRpcError(grpc.RpcError):
 def make_book_item(mocker, book_id=1):
     item = mocker.MagicMock()
     item.book_id = book_id
+    # work_id is the cross-language identity the route passes through so the
+    # client can dedupe translations of one work; unset it would be a MagicMock
+    # and fail serialization.
+    item.work_id = f"OL{book_id}W"
     item.title = f"Book {book_id}"
     item.slug = f"book-{book_id}"
     item.language = "en"
@@ -45,10 +49,14 @@ def make_author_item(mocker, author_id=1):
     return item
 
 
-def make_list_response(mocker, item_type="book", category="most_read"):
+def make_list_response(mocker, item_type="book", category="most_read", title_params=None):
     resp = mocker.MagicMock()
     resp.category = category
     resp.display_name = "Most Read Books"
+    # The route resolves section titles client-side from `category` plus these
+    # params, so it always reads the field. Leaving it unset on a MagicMock
+    # yields a mock that dict() cannot serialize, which surfaces as a 500.
+    resp.title_params = title_params or {}
     resp.item_type = item_type
     resp.total = 1
     if item_type == "book":

@@ -56,10 +56,9 @@ _DISCOVERY_SELECT = f"""
         {_TOTAL_READERS_EXPR} AS total_readers
     FROM books.books b
     LEFT JOIN (
-        SELECT wb.work_id, COUNT(*) AS minsik_readers
+        SELECT wb.work_id, COUNT(DISTINCT bsh.user_id) AS minsik_readers
         FROM user_data.bookshelves bsh
         JOIN books.books wb ON wb.book_id = bsh.book_id
-        WHERE bsh.status != 'abandoned'
         GROUP BY wb.work_id
     ) bs ON b.work_id = bs.work_id
 """
@@ -103,9 +102,9 @@ _BOOK_SUMMARY_SELECT = """
     LEFT JOIN (
         SELECT
             wb.work_id,
-            COUNT(*) FILTER (WHERE bsh.status = 'want_to_read') AS app_want_to_read_count,
-            COUNT(*) FILTER (WHERE bsh.status = 'reading') AS app_reading_count,
-            COUNT(*) FILTER (WHERE bsh.status = 'read') AS app_read_count
+            COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'want_to_read') AS app_want_to_read_count,
+            COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'reading') AS app_reading_count,
+            COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'read') AS app_read_count
         FROM user_data.bookshelves bsh
         JOIN books.books wb ON wb.book_id = bsh.book_id
         WHERE bsh.status != 'abandoned'

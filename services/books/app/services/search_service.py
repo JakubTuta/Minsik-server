@@ -38,9 +38,30 @@ def _normalize_scores(
 
 
 _BOOKS_EXACT_FIELDS = [("title.exact", 10.0), ("authors_names.exact", 7.0), ("series_name.exact", 5.0)]
-_BOOKS_PHRASE_FIELDS = [("title", 5.0), ("authors_names", 3.0), ("series_name", 2.0)]
-_BOOKS_MULTI_FIELDS = ["title^3", "authors_names^2", "series_name"]
+_BOOKS_PHRASE_FIELD_BOOSTS = [("title", 5.0), ("authors_names", 3.0), ("series_name", 2.0)]
+_BOOKS_MULTI_FIELD_BOOSTS = [("title", 3.0), ("authors_names", 2.0), ("series_name", 1.0)]
 _BOOKS_PREFIX_FIELDS = [("title.exact", 4.0), ("authors_names.exact", 2.5)]
+
+
+def _with_language_subfields(
+    field_boosts: typing.List[typing.Tuple[str, float]], language: str
+) -> typing.List[typing.Tuple[str, float]]:
+    fields = list(field_boosts)
+    if app.es_client.has_language_subfield(language):
+        fields += [(f"{field}.lang_{language}", boost) for field, boost in field_boosts]
+    return fields
+
+
+def _books_phrase_fields(language: str) -> typing.List[typing.Tuple[str, float]]:
+    return _with_language_subfields(_BOOKS_PHRASE_FIELD_BOOSTS, language)
+
+
+def _books_multi_fields(language: str) -> typing.List[str]:
+    return [
+        f"{field}^{boost}" for field, boost in _with_language_subfields(_BOOKS_MULTI_FIELD_BOOSTS, language)
+    ]
+
+
 _BOOKS_SUGGEST_FIELDS = [
     "title.suggest^3",
     "title.suggest._2gram",
@@ -51,9 +72,19 @@ _BOOKS_SUGGEST_FIELDS = [
 ]
 
 _NAME_EXACT_FIELDS = [("name.exact", 10.0)]
-_NAME_PHRASE_FIELDS = [("name", 5.0)]
-_NAME_MULTI_FIELDS = ["name^3"]
+_NAME_PHRASE_FIELD_BOOSTS = [("name", 5.0)]
+_NAME_MULTI_FIELD_BOOSTS = [("name", 3.0)]
 _NAME_PREFIX_FIELDS = [("name.exact", 4.0)]
+
+
+def _name_phrase_fields(language: str) -> typing.List[typing.Tuple[str, float]]:
+    return _with_language_subfields(_NAME_PHRASE_FIELD_BOOSTS, language)
+
+
+def _name_multi_fields(language: str) -> typing.List[str]:
+    return [
+        f"{field}^{boost}" for field, boost in _with_language_subfields(_NAME_MULTI_FIELD_BOOSTS, language)
+    ]
 _NAME_SUGGEST_FIELDS = [
     "name.suggest^3",
     "name.suggest._2gram",
@@ -154,7 +185,7 @@ def _build_full_search_books_query(
     query: str, language: str
 ) -> typing.Dict[str, typing.Any]:
     return _build_full_search_query(
-        query, language, _BOOKS_EXACT_FIELDS, _BOOKS_PHRASE_FIELDS, _BOOKS_MULTI_FIELDS
+        query, language, _BOOKS_EXACT_FIELDS, _books_phrase_fields(language), _books_multi_fields(language)
     )
 
 
@@ -162,7 +193,7 @@ def _build_full_search_authors_query(
     query: str, language: str
 ) -> typing.Dict[str, typing.Any]:
     return _build_full_search_query(
-        query, language, _NAME_EXACT_FIELDS, _NAME_PHRASE_FIELDS, _NAME_MULTI_FIELDS
+        query, language, _NAME_EXACT_FIELDS, _name_phrase_fields(language), _name_multi_fields(language)
     )
 
 
@@ -170,7 +201,7 @@ def _build_full_search_series_query(
     query: str, language: str
 ) -> typing.Dict[str, typing.Any]:
     return _build_full_search_query(
-        query, language, _NAME_EXACT_FIELDS, _NAME_PHRASE_FIELDS, _NAME_MULTI_FIELDS
+        query, language, _NAME_EXACT_FIELDS, _name_phrase_fields(language), _name_multi_fields(language)
     )
 
 
@@ -620,18 +651,17 @@ async def _search_books_by_category(
 ) -> typing.Tuple[typing.List[typing.Dict[str, typing.Any]], int]:
     count_query = sqlalchemy.text(
         """
-        SELECT COUNT(DISTINCT b.book_id)
+        SELECT COUNT(DISTINCT b.work_id)
         FROM books.books b
         JOIN books.book_genres bg ON b.book_id = bg.book_id
         JOIN books.genres g ON bg.genre_id = g.genre_id
-        WHERE b.language = :language
-          AND (g.slug ILIKE :query_pattern OR g.name ILIKE :query_pattern)
+        WHERE (g.slug ILIKE :query_pattern OR g.name ILIKE :query_pattern)
     """
     )
 
     count_result = await session.execute(
         count_query,
-        {"language": language, "query_pattern": f"%{query}%"},
+        {"query_pattern": f"%{query}%"},
     )
     total = count_result.scalar() or 0
 
@@ -647,9 +677,7 @@ async def _search_books_by_category(
             b.avg_rating as app_avg_rating,
             COALESCE(b.ol_rating_count, 0) as ol_rating_count,
             b.ol_avg_rating,
-            b.ol_want_to_read_count + b.ol_currently_reading_count
-                + b.ol_already_read_count
-                + {app.services._language_boost.work_reader_count_sql()} AS readers,
+            {app.services._language_boost.work_readers_sql()} AS readers,
             ARRAY_AGG(DISTINCT a.name) FILTER (WHERE a.name IS NOT NULL) as authors_names,
             ARRAY_AGG(DISTINCT a.slug) FILTER (WHERE a.slug IS NOT NULL) as author_slugs,
             s.slug as series_slug
@@ -659,7 +687,7 @@ async def _search_books_by_category(
         LEFT JOIN books.book_authors ba ON b.book_id = ba.book_id
         LEFT JOIN books.authors a ON ba.author_id = a.author_id
         LEFT JOIN books.series s ON b.series_id = s.series_id
-        WHERE b.language = :language
+        WHERE {app.services._language_boost.preferred_edition_sql(require_cover=False)}
           AND (g.slug ILIKE :query_pattern OR g.name ILIKE :query_pattern)
         GROUP BY b.book_id, b.title, b.slug, b.work_id, b.primary_cover_url,
                  b.rating_count, b.avg_rating, b.ol_rating_count, b.ol_avg_rating,
@@ -731,9 +759,7 @@ async def _get_author_top_books(
             b.avg_rating as app_avg_rating,
             COALESCE(b.ol_rating_count, 0) as ol_rating_count,
             b.ol_avg_rating,
-            b.ol_want_to_read_count + b.ol_currently_reading_count
-                + b.ol_already_read_count
-                + {app.services._language_boost.work_reader_count_sql()} AS readers,
+            {app.services._language_boost.work_readers_sql()} AS readers,
             ARRAY_AGG(a.name) FILTER (WHERE a.name IS NOT NULL) as authors_names,
             ARRAY_AGG(a.slug) FILTER (WHERE a.slug IS NOT NULL) as author_slugs,
             s.slug as series_slug
@@ -741,7 +767,7 @@ async def _get_author_top_books(
         JOIN books.book_authors ba ON b.book_id = ba.book_id
         LEFT JOIN books.authors a ON ba.author_id = a.author_id
         LEFT JOIN books.series s ON b.series_id = s.series_id
-        WHERE ba.author_id = :author_id AND b.language = :language
+        WHERE ba.author_id = :author_id AND {app.services._language_boost.preferred_edition_sql(require_cover=False)}
         GROUP BY b.book_id, b.title, b.slug, b.work_id, b.primary_cover_url, b.rating_count, b.avg_rating, b.ol_rating_count, b.ol_avg_rating, b.created_at, s.slug
         ORDER BY
             COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0) DESC,
@@ -805,9 +831,7 @@ async def _get_series_top_books(
             b.avg_rating as app_avg_rating,
             COALESCE(b.ol_rating_count, 0) as ol_rating_count,
             b.ol_avg_rating,
-            b.ol_want_to_read_count + b.ol_currently_reading_count
-                + b.ol_already_read_count
-                + {app.services._language_boost.work_reader_count_sql()} AS readers,
+            {app.services._language_boost.work_readers_sql()} AS readers,
             ARRAY_AGG(a.name) FILTER (WHERE a.name IS NOT NULL) as authors_names,
             ARRAY_AGG(a.slug) FILTER (WHERE a.slug IS NOT NULL) as author_slugs,
             s.slug as series_slug
@@ -815,7 +839,7 @@ async def _get_series_top_books(
         LEFT JOIN books.book_authors ba ON b.book_id = ba.book_id
         LEFT JOIN books.authors a ON ba.author_id = a.author_id
         LEFT JOIN books.series s ON b.series_id = s.series_id
-        WHERE b.series_id = :series_id AND b.language = :language
+        WHERE b.series_id = :series_id AND {app.services._language_boost.preferred_edition_sql(require_cover=False)}
         GROUP BY b.book_id, b.title, b.slug, b.work_id, b.primary_cover_url, b.series_position, b.rating_count, b.avg_rating, b.ol_rating_count, b.ol_avg_rating, b.created_at, s.slug
         ORDER BY
             b.series_position ASC NULLS LAST,

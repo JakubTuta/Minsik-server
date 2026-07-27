@@ -2,6 +2,7 @@ import asyncio
 import logging
 import typing
 
+import app.services._language_boost
 import app.services.list_builder
 import sqlalchemy
 import sqlalchemy.ext.asyncio
@@ -104,8 +105,10 @@ async def _build_similar_by_genre(
                 FROM books.book_genres bg
                 JOIN series_genres sg ON bg.genre_id = sg.genre_id
                 JOIN books.books bc ON bg.book_id = bc.book_id
-                WHERE bc.series_id IS DISTINCT FROM :series_id
-                  AND bc.language = :language
+                WHERE bc.work_id NOT IN (
+                          SELECT work_id FROM books.books WHERE series_id = :series_id
+                      )
+                  AND {app.services._language_boost.preferred_edition_sql(book_alias='bc')}
                   AND (COALESCE(bc.rating_count, 0) + COALESCE(bc.ol_rating_count, 0)) >= 50
                 GROUP BY bg.book_id
                 HAVING COUNT(*) >= 2
@@ -193,6 +196,7 @@ def _make_book_section(
     section_key: str,
     display_name: str,
     items: typing.List[typing.Dict[str, typing.Any]],
+    title_params: typing.Optional[typing.Dict[str, str]] = None,
 ) -> typing.Dict[str, typing.Any]:
     return {
         "section_key": section_key,
@@ -200,6 +204,7 @@ def _make_book_section(
         "item_type": "book",
         "book_items": items,
         "total": len(items),
+        "title_params": title_params or {},
     }
 
 
@@ -221,7 +226,7 @@ async def build_series_recommendations(
     language = metadata["language"]
     author_ids = metadata["author_ids"]
     author_names = metadata["author_names"]
-    author_label = ", ".join(author_names) if author_names else "this author"
+    author_label = ", ".join(author_names) if author_names else ""
 
     more_by_author_result, similar_genre_result, readers_enjoyed_result = (
         await asyncio.gather(
@@ -248,11 +253,13 @@ async def build_series_recommendations(
     sections: typing.List[typing.Dict[str, typing.Any]] = []
 
     if more_by_author_result and not isinstance(more_by_author_result, Exception):
+        display_author = author_label or "this author"
         sections.append(
             _make_book_section(
                 "more_by_author",
-                f"More by {author_label}",
+                f"More by {display_author}",
                 more_by_author_result,
+                {"author": author_label} if author_label else {},
             )
         )
 
@@ -262,6 +269,7 @@ async def build_series_recommendations(
                 "similar_by_genre",
                 f"Similar to {series_name}",
                 similar_genre_result,
+                {"title": series_name},
             )
         )
 

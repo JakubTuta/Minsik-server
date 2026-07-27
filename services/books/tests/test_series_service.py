@@ -203,8 +203,11 @@ class TestSeriesService:
 
     @pytest.mark.asyncio
     async def test_get_series_books_series_not_found(self, mock_session):
+        # No row in the requested language and no other-language row to fall
+        # back to, so the list is genuinely empty rather than a fallback miss.
         mock_result = MagicMock()
         mock_result.scalars.return_value.first.return_value = None
+        mock_result.scalars.return_value.all.return_value = []
         mock_session.execute.return_value = mock_result
 
         with patch("app.cache.get_cached", return_value=None):
@@ -214,6 +217,47 @@ class TestSeriesService:
 
             assert books == []
             assert total == 0
+
+    @pytest.mark.asyncio
+    async def test_get_series_books_falls_back_to_other_language(
+        self, mock_session, mock_series, mock_series_book_row
+    ):
+        # Requested in Polish, only an English row exists: the page must list
+        # the English series' books instead of rendering an empty shelf, and it
+        # must query with the served language, not the requested one.
+        mock_series.language = "en"
+
+        no_match_result = MagicMock()
+        no_match_result.scalars.return_value.first.return_value = None
+
+        fallback_result = MagicMock()
+        fallback_result.scalars.return_value.all.return_value = [mock_series]
+
+        books_result = MagicMock()
+        books_result.fetchall.return_value = [mock_series_book_row]
+
+        count_result = MagicMock()
+        count_result.scalar.return_value = 1
+
+        mock_session.execute.side_effect = [
+            no_match_result,
+            fallback_result,
+            books_result,
+            count_result,
+        ]
+
+        with patch("app.cache.get_cached", return_value=None), patch(
+            "app.cache.set_cached", new_callable=AsyncMock
+        ):
+            books, total = await series_service.get_series_books(
+                mock_session, "harry-potter", 10, 0, language="pl"
+            )
+
+        assert total == 1
+        assert len(books) == 1
+
+        books_params = mock_session.execute.call_args_list[2].args[1]
+        assert books_params["language"] == "en"
 
     @pytest.mark.asyncio
     async def test_get_series_books_with_pagination(

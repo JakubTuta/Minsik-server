@@ -61,11 +61,14 @@ async def reindex_all_to_es(full: bool = False) -> None:
     settings = app.config.settings
     epoch = datetime.datetime(1970, 1, 1)
 
-    await app.es_client.create_indexes(
+    index_changed = await app.es_client.create_indexes(
         settings.es_index_books,
         settings.es_index_authors,
         settings.es_index_series,
     )
+    if index_changed and not full:
+        logger.info("[ES] Index mapping changed, upgrading to a full reindex")
+        full = True
 
     if full:
         last_sync_books = epoch
@@ -109,9 +112,7 @@ async def reindex_all_to_es(full: bool = False) -> None:
             b.primary_cover_url,
             b.rating_count AS app_rating_count, b.avg_rating AS app_avg_rating,
             b.ol_rating_count, b.ol_avg_rating,
-            b.ol_want_to_read_count + b.ol_currently_reading_count
-                + b.ol_already_read_count
-                + {app.services._language_boost.work_reader_count_sql()} AS readers,
+            {app.services._language_boost.work_readers_sql()} AS readers,
             ARRAY_AGG(DISTINCT a.name) FILTER (WHERE a.name IS NOT NULL) as authors_names,
             ARRAY_AGG(DISTINCT a.slug) FILTER (WHERE a.slug IS NOT NULL) as author_slugs,
             s.name as series_name, s.slug as series_slug
@@ -195,35 +196,67 @@ async def reindex_all_to_es(full: bool = False) -> None:
     except Exception as e:
         logger.error(f"[ES] Books reindex failed: {str(e)}")
 
+    # One document per (author, language), but the aggregates behind it are
+    # work-level and language-agnostic: counting every edition would multiply an
+    # author's ratings and readers by how many translations they happen to have.
     authors_query = sqlalchemy.text(
         """
-        SELECT
+        WITH synced_authors AS (
+            SELECT author_id FROM books.authors WHERE updated_at > :last_sync
+        ),
+        author_works AS (
+            SELECT DISTINCT ON (ba.author_id, b.work_id)
+                ba.author_id, b.rating_count, b.avg_rating,
+                b.ol_rating_count, b.ol_avg_rating,
+                b.ol_want_to_read_count, b.ol_currently_reading_count,
+                b.ol_already_read_count
+            FROM books.book_authors ba
+            JOIN books.books b ON ba.book_id = b.book_id
+            JOIN synced_authors sa ON sa.author_id = ba.author_id
+            ORDER BY ba.author_id, b.work_id,
+                     (COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0)) DESC
+        ),
+        author_app_readers AS (
+            SELECT ba.author_id, COUNT(DISTINCT bs.user_id) AS app_readers
+            FROM user_data.bookshelves bs
+            JOIN books.book_authors ba ON ba.book_id = bs.book_id
+            JOIN synced_authors sa ON sa.author_id = ba.author_id
+            GROUP BY ba.author_id
+        ),
+        author_stats AS (
+            SELECT
+                aw.author_id,
+                COUNT(*) AS book_count,
+                COALESCE(SUM(aw.rating_count), 0) AS app_rating_count,
+                CASE WHEN SUM(aw.rating_count) > 0
+                     THEN SUM(aw.avg_rating * aw.rating_count) / SUM(aw.rating_count)
+                     ELSE NULL END AS app_avg_rating,
+                COALESCE(SUM(aw.ol_rating_count), 0) AS ol_rating_count,
+                CASE WHEN SUM(aw.ol_rating_count) > 0
+                     THEN SUM(aw.ol_avg_rating * aw.ol_rating_count) / SUM(aw.ol_rating_count)
+                     ELSE NULL END AS ol_avg_rating,
+                COALESCE(SUM(
+                    aw.ol_want_to_read_count + aw.ol_currently_reading_count
+                    + aw.ol_already_read_count
+                ), 0) AS ol_readers
+            FROM author_works aw
+            GROUP BY aw.author_id
+        )
+        SELECT DISTINCT
             a.author_id, a.name, a.slug, a.photo_url,
             b.language,
-            COUNT(DISTINCT b.book_id) as book_count,
-            COALESCE(SUM(b.rating_count), 0) as app_rating_count,
-            CASE WHEN SUM(b.rating_count) > 0
-                 THEN SUM(b.avg_rating * b.rating_count) / SUM(b.rating_count)
-                 ELSE NULL END as app_avg_rating,
-            COALESCE(SUM(b.ol_rating_count), 0) as ol_rating_count,
-            CASE WHEN SUM(b.ol_rating_count) > 0
-                 THEN SUM(b.ol_avg_rating * b.ol_rating_count) / SUM(b.ol_rating_count)
-                 ELSE NULL END as ol_avg_rating,
-            COALESCE(SUM(
-                b.ol_want_to_read_count + b.ol_currently_reading_count
-                + b.ol_already_read_count + COALESCE(bs.bookshelf_count, 0)
-            ), 0) as readers
+            ast.book_count,
+            ast.app_rating_count,
+            ast.app_avg_rating,
+            ast.ol_rating_count,
+            ast.ol_avg_rating,
+            ast.ol_readers + COALESCE(aar.app_readers, 0) AS readers
         FROM books.authors a
         JOIN books.book_authors ba ON a.author_id = ba.author_id
         JOIN books.books b ON ba.book_id = b.book_id
-        LEFT JOIN (
-            SELECT book_id, COUNT(*) AS bookshelf_count
-            FROM user_data.bookshelves
-            WHERE status != 'abandoned'
-            GROUP BY book_id
-        ) bs ON b.book_id = bs.book_id
+        JOIN author_stats ast ON ast.author_id = a.author_id
+        LEFT JOIN author_app_readers aar ON aar.author_id = a.author_id
         WHERE a.updated_at > :last_sync AND b.language IS NOT NULL
-        GROUP BY a.author_id, a.name, a.slug, a.photo_url, b.language
         ORDER BY a.author_id, b.language
     """
     )
@@ -315,11 +348,11 @@ async def reindex_all_to_es(full: bool = False) -> None:
         FROM books.series s
         JOIN books.books b ON s.series_id = b.series_id
         LEFT JOIN (
-            SELECT book_id, COUNT(*) AS bookshelf_count
-            FROM user_data.bookshelves
-            WHERE status != 'abandoned'
-            GROUP BY book_id
-        ) bs ON b.book_id = bs.book_id
+            SELECT wb.work_id, COUNT(DISTINCT bsh.user_id) AS bookshelf_count
+            FROM user_data.bookshelves bsh
+            JOIN books.books wb ON wb.book_id = bsh.book_id
+            GROUP BY wb.work_id
+        ) bs ON b.work_id = bs.work_id
         WHERE s.updated_at > :last_sync AND b.language IS NOT NULL
         GROUP BY s.series_id, s.name, s.slug, b.language
         ORDER BY s.series_id, b.language

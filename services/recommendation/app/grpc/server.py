@@ -54,6 +54,7 @@ def _dict_to_section(section: dict) -> app.proto.recommendation_pb2.Recommendati
         display_name=section["display_name"],
         item_type=item_type,
         total=section["total"],
+        title_params=section.get("title_params") or {},
     )
     if item_type == "book":
         for item in section.get("book_items", []):
@@ -71,6 +72,7 @@ def _dict_to_list_response(data: dict) -> app.proto.recommendation_pb2.Recommend
         display_name=data["display_name"],
         item_type=item_type,
         total=data["total"],
+        title_params=data.get("title_params") or {},
     )
 
     if item_type == "book":
@@ -246,7 +248,8 @@ class RecommendationServicer(app.proto.recommendation_pb2_grpc.RecommendationSer
             async with app.db.async_session_maker() as session:
                 result = await session.execute(
                     sqlalchemy.text(
-                        "SELECT user_id FROM auth.users WHERE username = :username"
+                        "SELECT user_id, COALESCE(preferred_language, 'en') AS preferred_language "
+                        "FROM auth.users WHERE username = :username"
                     ),
                     {"username": username},
                 )
@@ -259,7 +262,7 @@ class RecommendationServicer(app.proto.recommendation_pb2_grpc.RecommendationSer
             user_id = int(row.user_id)
             deleted = await app.cache.invalidate_user_personal_recommendations(user_id)
             await app.services.personal_refresher.refresh_user_personal(
-                app.db.async_session_maker, user_id
+                app.db.async_session_maker, user_id, row.preferred_language
             )
             return app.proto.recommendation_pb2.RefreshUserPersonalRecommendationsResponse(
                 success=True,

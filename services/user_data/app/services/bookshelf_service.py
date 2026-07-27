@@ -13,6 +13,65 @@ _BOOKSHELF_SORT_COLUMNS: typing.Dict[str, typing.Any] = {
 _VALID_STATUSES = {"want_to_read", "reading", "read", "abandoned"}
 
 
+async def _move_sibling_edition_shelf_entry(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    user_id: int,
+    book_id: int,
+) -> None:
+    """Move this user's bookshelf row from another edition of the same work onto this one.
+
+    `uq_bookshelves_user_book` is keyed on (user_id, book_id), which is per-edition —
+    shelving two language editions of the same work would otherwise create two rows,
+    double-counting the user in work-level stats and personal shelf counts.
+
+    The sibling row is re-pointed rather than deleted so status, is_favorite and the
+    started_at/finished_at reading history survive the move: a reader who finished the
+    Polish edition and then favourites the English one must not silently lose the
+    'read' status and its finish date. Only when a row already exists for this edition
+    (nothing to preserve into) are leftover siblings dropped.
+    """
+    params = {"user_id": user_id, "book_id": book_id}
+
+    await session.execute(
+        sqlalchemy.text(
+            """
+            UPDATE user_data.bookshelves
+            SET book_id = :book_id, updated_at = now()
+            WHERE bookshelf_id = (
+                SELECT bsh.bookshelf_id
+                FROM user_data.bookshelves bsh
+                JOIN books.books b ON b.book_id = bsh.book_id
+                WHERE bsh.user_id = :user_id
+                  AND bsh.book_id != :book_id
+                  AND b.work_id = (SELECT work_id FROM books.books WHERE book_id = :book_id)
+                ORDER BY bsh.updated_at DESC
+                LIMIT 1
+            )
+            AND NOT EXISTS (
+                SELECT 1 FROM user_data.bookshelves existing
+                WHERE existing.user_id = :user_id AND existing.book_id = :book_id
+            )
+            """
+        ),
+        params,
+    )
+
+    await session.execute(
+        sqlalchemy.text(
+            """
+            DELETE FROM user_data.bookshelves
+            WHERE user_id = :user_id
+              AND book_id != :book_id
+              AND book_id IN (
+                  SELECT b.book_id FROM books.books b
+                  WHERE b.work_id = (SELECT work_id FROM books.books WHERE book_id = :book_id)
+              )
+            """
+        ),
+        params,
+    )
+
+
 async def upsert_bookshelf(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     user_id: int,
@@ -21,6 +80,8 @@ async def upsert_bookshelf(
 ) -> app.models.bookshelf.Bookshelf:
     if status not in _VALID_STATUSES:
         raise ValueError(f"invalid_status")
+
+    await _move_sibling_edition_shelf_entry(session, user_id, book_id)
 
     insert_stmt = sqlalchemy.dialects.postgresql.insert(app.models.bookshelf.Bookshelf)
 
@@ -147,6 +208,8 @@ async def toggle_favourite(
     book_id: int,
     is_favorite: bool,
 ) -> app.models.bookshelf.Bookshelf:
+    await _move_sibling_edition_shelf_entry(session, user_id, book_id)
+
     stmt = (
         sqlalchemy.dialects.postgresql.insert(app.models.bookshelf.Bookshelf)
         .values(

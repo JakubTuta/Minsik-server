@@ -663,5 +663,5 @@ async def test_cleanup_orphan_authors_removes_junk_publisher_name(
     )
 
     result = await commit_session.execute(select(func.count()).select_from(Author))
-    assert result.scalar_one() == 1
-    assert stats["deleted"] == 0
+    assert result.scalar_one() == 0
+    assert stats["deleted"] == 1

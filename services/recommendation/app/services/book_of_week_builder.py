@@ -5,6 +5,7 @@ import typing
 import app.cache
 import app.config
 import app.db
+import app.services._language_boost
 import sqlalchemy
 import sqlalchemy.ext.asyncio
 
@@ -13,6 +14,20 @@ logger = logging.getLogger(__name__)
 BOW_TTL = 7 * 24 * 3600 + 3600
 BOW_HISTORY_SIZE = 12
 BOW_POOL_SIZE = 1
+
+# A book of the week needs a usable first sentence, which is per-edition. The
+# edition picker repeats the test so a work isn't dropped just because the
+# reader-language edition happens to lack one.
+def _has_first_sentence(alias: str) -> str:
+    return f"{alias}.first_sentence IS NOT NULL AND length({alias}.first_sentence) > 10"
+
+
+_BOW_EDITION_WHERE = (
+    f"b.primary_cover_url IS NOT NULL AND {_has_first_sentence('b')} AND "
+    + app.services._language_boost.preferred_edition_sql(
+        extra_where=_has_first_sentence("pe")
+    )
+)
 
 
 def bow_pool_cache_key(language: str) -> str:
@@ -54,7 +69,7 @@ async def _fetch_candidate_pool(
 ) -> typing.List[typing.Dict[str, typing.Any]]:
     result = await session.execute(
         sqlalchemy.text(
-            """
+            f"""
             SELECT
                 b.book_id,
                 b.title,
@@ -94,10 +109,7 @@ async def _fetch_candidate_pool(
                     LIMIT 4
                 ) AS categories
             FROM books.books b
-            WHERE b.primary_cover_url IS NOT NULL
-              AND b.first_sentence IS NOT NULL
-              AND length(b.first_sentence) > 10
-              AND b.language = :language
+            WHERE {_BOW_EDITION_WHERE}
               AND EXISTS (SELECT 1 FROM books.book_authors ba2 WHERE ba2.book_id = b.book_id)
               AND EXISTS (SELECT 1 FROM books.book_genres bg2 WHERE bg2.book_id = b.book_id)
               AND (COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0)) >= 100

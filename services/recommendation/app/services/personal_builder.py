@@ -15,6 +15,7 @@ def _make_home_section(
     display_name: str,
     item_type: str,
     items: typing.List[typing.Dict[str, typing.Any]],
+    title_params: typing.Optional[typing.Dict[str, str]] = None,
 ) -> typing.Dict[str, typing.Any]:
     items_key = "book_items" if item_type == "book" else "author_items"
     return {
@@ -23,6 +24,7 @@ def _make_home_section(
         "item_type": item_type,
         items_key: items,
         "total": len(items),
+        "title_params": title_params or {},
     }
 
 
@@ -30,6 +32,7 @@ def _make_book_page_section(
     section_key: str,
     display_name: str,
     items: typing.List[typing.Dict[str, typing.Any]],
+    title_params: typing.Optional[typing.Dict[str, str]] = None,
 ) -> typing.Dict[str, typing.Any]:
     return {
         "section_key": section_key,
@@ -37,6 +40,7 @@ def _make_book_page_section(
         "item_type": "book",
         "book_items": items,
         "total": len(items),
+        "title_params": title_params or {},
     }
 
 
@@ -443,7 +447,7 @@ async def _build_hidden_gems(
               AND NOT (b.book_id = ANY(CAST(:exclude_ids AS bigint[])))
               AND b.avg_rating >= 4.0
               AND b.rating_count BETWEEN 3 AND 20
-              AND COALESCE(b.view_count, 0) < 500
+              AND {app.services._language_boost.work_view_count_sql()} < 500
               AND EXISTS (
                   SELECT 1 FROM books.book_genres bg2
                   JOIN books.genres g ON bg2.genre_id = g.genre_id
@@ -642,8 +646,7 @@ async def _build_explore_adjacent_genres(
         for row in rows
     ]
     source_slug: str = rows[0].source_genre_slug if rows else ""
-    display_genre = source_slug.replace("-", " ").title()
-    return items, display_genre
+    return items, source_slug
 
 
 async def build_personal_home_sections(
@@ -711,6 +714,7 @@ async def build_personal_home_sections(
                 f"Because You Liked {anchor_title}",
                 "book",
                 _deduped(because_items),
+                {"title": anchor_title},
             )
         )
     if continue_items:
@@ -732,7 +736,8 @@ async def build_personal_home_sections(
         display_genre = genre_slug.replace("-", " ").title()
         sections.append(
             _make_home_section(
-                "top_in_your_genres", f"Top in {display_genre}", "book", _deduped(top_genre_items)
+                "top_in_your_genres", f"Top in {display_genre}", "book", _deduped(top_genre_items),
+                {"genre": genre_slug},
             )
         )
     if want_to_read_items:
@@ -760,12 +765,14 @@ async def build_personal_home_sections(
             )
         )
     if adjacent_items and adjacent_genre:
+        display_adjacent_genre = adjacent_genre.replace("-", " ").title()
         sections.append(
             _make_home_section(
                 "explore_adjacent_genres",
-                f"Explore {adjacent_genre}",
+                f"Explore {display_adjacent_genre}",
                 "book",
                 _deduped(adjacent_items),
+                {"genre": adjacent_genre},
             )
         )
 

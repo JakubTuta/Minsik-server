@@ -47,7 +47,14 @@ async def _bulk_fetch_authors(
         result = await session.execute(
             sqlalchemy.text(
                 f"""
-                WITH {app.services.list_builder._AUTHOR_WORKS_CTE}
+                WITH author_app_readers AS (
+                    SELECT ba_r.author_id, COUNT(DISTINCT bs_a.user_id) AS app_readers
+                    FROM user_data.bookshelves bs_a
+                    JOIN books.book_authors ba_r ON bs_a.book_id = ba_r.book_id
+                    WHERE ba_r.author_id = ANY(:ids)
+                    GROUP BY ba_r.author_id
+                ),
+                {app.services.list_builder._AUTHOR_WORKS_CTE}
                 SELECT
                     a.author_id,
                     a.name,
@@ -69,11 +76,12 @@ async def _bulk_fetch_authors(
                             COALESCE(aw.ol_currently_reading_count, 0) +
                             COALESCE(aw.ol_already_read_count, 0)
                         ), 0
-                    ) AS readers
+                    ) + COALESCE(aar.app_readers, 0) AS readers
                 FROM books.authors a
                 LEFT JOIN author_works aw ON aw.author_id = a.author_id
+                LEFT JOIN author_app_readers aar ON aar.author_id = a.author_id
                 WHERE a.author_id = ANY(:ids)
-                GROUP BY a.author_id, a.name, a.slug, a.photo_url
+                GROUP BY a.author_id, a.name, a.slug, a.photo_url, aar.app_readers
                 """
             ),
             {"ids": author_ids},
@@ -103,7 +111,7 @@ async def _read_precomputed(
     async with session_maker() as session:
         result = await session.execute(
             sqlalchemy.text(
-                "SELECT section_key, display_name, similar_ids "
+                "SELECT section_key, display_name, similar_ids, title_params "
                 "FROM recommendation.contextual_recs "
                 "WHERE entity_type = :etype AND entity_id = :eid"
             ),
@@ -144,6 +152,7 @@ async def _read_precomputed(
                     "item_type": "author",
                     "author_items": items,
                     "total": len(items),
+                    "title_params": row.title_params or {},
                 }
             )
         else:
@@ -155,6 +164,7 @@ async def _read_precomputed(
                     "item_type": "book",
                     "book_items": deduped,
                     "total": len(deduped),
+                    "title_params": row.title_params or {},
                 }
             )
 
@@ -194,19 +204,19 @@ async def _build_minimal_book_fallback(
     results = await asyncio.gather(*tasks, return_exceptions=True)
 
     sections = []
-    author_label = (
-        ", ".join(metadata["author_names"]) if metadata["author_names"] else "this author"
-    )
+    author_label = ", ".join(metadata["author_names"]) if metadata["author_names"] else ""
 
     if results[0] and not isinstance(results[0], Exception):
         deduped_author = app.services._language_boost.dedupe_by_work(results[0], language)
+        display_author = author_label or "this author"
         sections.append(
             {
                 "section_key": "more_by_author",
-                "display_name": f"More by {author_label}",
+                "display_name": f"More by {display_author}",
                 "item_type": "book",
                 "book_items": deduped_author,
                 "total": len(deduped_author),
+                "title_params": {"author": author_label} if author_label else {},
             }
         )
 
@@ -219,6 +229,7 @@ async def _build_minimal_book_fallback(
                 "item_type": "book",
                 "book_items": deduped_series,
                 "total": len(deduped_series),
+                "title_params": {"series": metadata["series_name"]},
             }
         )
 
@@ -281,18 +292,16 @@ async def _build_minimal_series_fallback(
         if not result:
             return []
 
-        author_label = (
-            ", ".join(metadata["author_names"])
-            if metadata["author_names"]
-            else "this author"
-        )
+        author_label = ", ".join(metadata["author_names"]) if metadata["author_names"] else ""
+        display_author = author_label or "this author"
         return [
             {
                 "section_key": "more_by_author",
-                "display_name": f"More by {author_label}",
+                "display_name": f"More by {display_author}",
                 "item_type": "book",
                 "book_items": result,
                 "total": len(result),
+                "title_params": {"author": author_label} if author_label else {},
             }
         ]
     except (asyncio.TimeoutError, Exception) as e:

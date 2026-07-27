@@ -32,14 +32,22 @@ async def close_redis() -> None:
         await redis_client.aclose()
 
 
-async def delete_book_cache(book_slug: str) -> None:
-    try:
-        pattern = f"book_slug:{book_slug}:*"
-        keys = [key async for key in redis_client.scan_iter(match=pattern)]
-        if keys:
-            await redis_client.delete(*keys)
-    except Exception as e:
-        logger.error(f"Redis DELETE error for book_slug:{book_slug}:*: {str(e)}")
+async def delete_book_cache(*book_slugs: str) -> None:
+    """Drop the cached book payloads for the given edition slugs.
+
+    Ratings and shelf counts pool across every edition of a work, so a write
+    against one edition changes what the others should render. Passing only
+    the edition that was written leaves its translations serving stale
+    community stats until their TTL expires.
+    """
+    for book_slug in book_slugs:
+        try:
+            pattern = f"book_slug:{book_slug}:*"
+            keys = [key async for key in redis_client.scan_iter(match=pattern)]
+            if keys:
+                await redis_client.delete(*keys)
+        except Exception as e:
+            logger.error(f"Redis DELETE error for book_slug:{book_slug}:*: {str(e)}")
 
 
 async def get_json(key: str) -> typing.Optional[typing.Any]:

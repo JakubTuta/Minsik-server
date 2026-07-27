@@ -35,7 +35,13 @@ class RecommendationSectionData(pydantic.BaseModel):
     key: str = pydantic.Field(
         description="Section key (e.g. 'most_read', 'more_by_author')"
     )
-    display_name: str = pydantic.Field(description="Human-readable label")
+    display_name: str = pydantic.Field(description="Human-readable label (English)")
+    title_params: typing.Dict[str, str] = pydantic.Field(
+        default_factory=dict,
+        description="Interpolation values for a frontend translation of the title, "
+        "keyed by section 'key' (e.g. {'author': 'Ursula K. Le Guin'} for "
+        "'more_by_author'). Empty for sections with a static title.",
+    )
     item_type: str = pydantic.Field(description="'book' or 'author'")
     book_items: typing.Optional[typing.List[RecommendationBookItemSchema]] = None
     author_items: typing.Optional[typing.List[RecommendationAuthorItemSchema]] = None

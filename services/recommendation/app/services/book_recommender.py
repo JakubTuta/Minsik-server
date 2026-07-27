@@ -2,6 +2,7 @@ import asyncio
 import logging
 import typing
 
+import app.services._language_boost
 import app.services.list_builder
 import sqlalchemy
 import sqlalchemy.ext.asyncio
@@ -127,8 +128,10 @@ async def _build_similar_by_genre(
                 FROM books.book_genres bg
                 JOIN source_genres sg ON bg.genre_id = sg.genre_id
                 JOIN books.books bc ON bg.book_id = bc.book_id
-                WHERE bg.book_id != :book_id
-                  AND bc.language = :language
+                WHERE bc.work_id IS DISTINCT FROM (
+                          SELECT work_id FROM books.books WHERE book_id = :book_id
+                      )
+                  AND {app.services._language_boost.preferred_edition_sql(book_alias='bc')}
                   AND (COALESCE(bc.rating_count, 0) + COALESCE(bc.ol_rating_count, 0)) >= 50
                 GROUP BY bg.book_id
                 HAVING COUNT(*) >= 2
@@ -214,6 +217,7 @@ def _make_book_section(
     section_key: str,
     display_name: str,
     items: typing.List[typing.Dict[str, typing.Any]],
+    title_params: typing.Optional[typing.Dict[str, str]] = None,
 ) -> typing.Dict[str, typing.Any]:
     return {
         "section_key": section_key,
@@ -221,6 +225,7 @@ def _make_book_section(
         "item_type": "book",
         "book_items": items,
         "total": len(items),
+        "title_params": title_params or {},
     }
 
 
@@ -244,7 +249,7 @@ async def build_book_recommendations(
     series_name = metadata["series_name"]
     author_names = metadata["author_names"]
 
-    author_label = ", ".join(author_names) if author_names else "this author"
+    author_label = ", ".join(author_names) if author_names else ""
 
     tasks = [
         run(_build_more_by_author, book_id, limit_per_section, language),
@@ -278,13 +283,23 @@ async def build_book_recommendations(
     sections: typing.List[typing.Dict[str, typing.Any]] = []
 
     if more_by_author_items:
-        sections.append(_make_book_section("more_by_author", f"More by {author_label}", more_by_author_items))
+        display_author = author_label or "this author"
+        sections.append(_make_book_section(
+            "more_by_author", f"More by {display_author}", more_by_author_items,
+            {"author": author_label} if author_label else {},
+        ))
 
     if series_items:
-        sections.append(_make_book_section("more_from_series", f"More from {series_name}", series_items))
+        sections.append(_make_book_section(
+            "more_from_series", f"More from {series_name}", series_items,
+            {"series": series_name},
+        ))
 
     if similar_genre_items:
-        sections.append(_make_book_section("similar_by_genre", f"Similar to {title}", similar_genre_items))
+        sections.append(_make_book_section(
+            "similar_by_genre", f"Similar to {title}", similar_genre_items,
+            {"title": title},
+        ))
 
     if readers_enjoyed_items:
         sections.append(_make_book_section("readers_also_enjoyed", "Readers also enjoyed", readers_enjoyed_items))

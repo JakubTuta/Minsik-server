@@ -45,6 +45,8 @@ class Settings(pydantic_settings.BaseSettings):
     grpc_admin_timeout: float = pydantic.Field(default=60.0)
     recommendation_recompute_on_user_write: bool = pydantic.Field(default=True)
 
+    available_languages: str = pydantic.Field(default="en")
+
     cors_origins: str = pydantic.Field(default="http://localhost:3000")
     cors_allow_credentials: bool = pydantic.Field(default=True)
     cors_allow_methods: str = pydantic.Field(default="GET,POST,PUT,DELETE,PATCH,OPTIONS")

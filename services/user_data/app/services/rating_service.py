@@ -81,6 +81,63 @@ async def _update_book_stats(
     )
 
 
+async def _move_sibling_edition_rating(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    user_id: int,
+    book_id: int,
+) -> None:
+    """Move this user's rating from another edition of the same work onto this one.
+
+    `uq_ratings_user_book` is keyed on (user_id, book_id), which is per-edition —
+    rating two language editions of the same work would otherwise count this one
+    user twice in _update_book_stats' pooled average.
+
+    The sibling row is re-pointed rather than deleted so the original created_at (and
+    any sub-rating dimensions the incoming payload leaves untouched) survive the move.
+    Only when a rating already exists for this edition are leftover siblings dropped.
+    """
+    params = {"user_id": user_id, "book_id": book_id}
+
+    await session.execute(
+        sqlalchemy.text(
+            """
+            UPDATE user_data.ratings
+            SET book_id = :book_id
+            WHERE rating_id = (
+                SELECT r.rating_id
+                FROM user_data.ratings r
+                JOIN books.books b ON b.book_id = r.book_id
+                WHERE r.user_id = :user_id
+                  AND r.book_id != :book_id
+                  AND b.work_id = (SELECT work_id FROM books.books WHERE book_id = :book_id)
+                ORDER BY r.updated_at DESC
+                LIMIT 1
+            )
+            AND NOT EXISTS (
+                SELECT 1 FROM user_data.ratings existing
+                WHERE existing.user_id = :user_id AND existing.book_id = :book_id
+            )
+            """
+        ),
+        params,
+    )
+
+    await session.execute(
+        sqlalchemy.text(
+            """
+            DELETE FROM user_data.ratings
+            WHERE user_id = :user_id
+              AND book_id != :book_id
+              AND book_id IN (
+                  SELECT b.book_id FROM books.books b
+                  WHERE b.work_id = (SELECT work_id FROM books.books WHERE book_id = :book_id)
+              )
+            """
+        ),
+        params,
+    )
+
+
 async def upsert_rating(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     user_id: int,
@@ -89,6 +146,8 @@ async def upsert_rating(
     sub_ratings: typing.Dict[str, float],
     review_text: typing.Optional[str],
 ) -> app.models.rating.Rating:
+    await _move_sibling_edition_rating(session, user_id, book_id)
+
     insert_values: typing.Dict[str, typing.Any] = {
         "user_id": user_id,
         "book_id": book_id,

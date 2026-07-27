@@ -158,13 +158,7 @@ class CategoryService:
         genre_ids_list = list(genre_ids)
 
         if sort_by == "popularity":
-            sort_col = (
-                "COALESCE(b.rating_count, 0)"
-                " + COALESCE(b.ol_rating_count, 0)"
-                " + COALESCE(b.ol_want_to_read_count, 0)"
-                " + COALESCE(b.ol_currently_reading_count, 0)"
-                " + COALESCE(b.ol_already_read_count, 0)"
-            )
+            sort_col = app.services._language_boost.work_popularity_sql()
         else:
             sort_col = (
                 "CASE"
@@ -177,6 +171,7 @@ class CategoryService:
             )
 
         order_dir = "DESC" if order.lower() == "desc" else "ASC"
+        preferred_edition = app.services._language_boost.preferred_edition_sql()
 
         query = sqlalchemy.text(
             f"""
@@ -189,6 +184,7 @@ class CategoryService:
                 b.book_id,
                 b.title,
                 b.slug,
+                b.work_id,
                 b.description,
                 b.original_publication_year,
                 b.primary_cover_url,
@@ -200,6 +196,9 @@ class CategoryService:
                 b.ol_want_to_read_count,
                 b.ol_currently_reading_count,
                 b.ol_already_read_count,
+                COALESCE(bs.want_to_read_count, 0) AS app_want_to_read_count,
+                COALESCE(bs.reading_count, 0) AS app_reading_count,
+                COALESCE(bs.read_count, 0) AS app_read_count,
                 (
                     SELECT COALESCE(json_agg(json_build_object(
                         'author_id', a2.author_id,
@@ -214,7 +213,21 @@ class CategoryService:
                 COUNT(*) OVER() AS total_count
             FROM books.books b
             JOIN genre_books gb ON b.book_id = gb.book_id
-            WHERE b.primary_cover_url IS NOT NULL AND b.language = :language
+            LEFT JOIN (
+                SELECT
+                    wb.work_id,
+                    COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'want_to_read')
+                        AS want_to_read_count,
+                    COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'reading')
+                        AS reading_count,
+                    COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'read')
+                        AS read_count
+                FROM user_data.bookshelves bsh
+                JOIN books.books wb ON wb.book_id = bsh.book_id
+                GROUP BY wb.work_id
+            ) bs ON b.work_id = bs.work_id
+            WHERE b.primary_cover_url IS NOT NULL
+              AND {preferred_edition}
             ORDER BY {sort_col} {order_dir} NULLS LAST, b.book_id DESC
             LIMIT :limit OFFSET :offset
             """
@@ -247,6 +260,7 @@ class CategoryService:
                     "book_id": row.book_id,
                     "title": row.title,
                     "slug": row.slug,
+                    "work_id": row.work_id or "",
                     "description": row.description or "",
                     "original_publication_year": int(
                         row.original_publication_year or 0
@@ -262,6 +276,9 @@ class CategoryService:
                     "ol_want_to_read_count": row.ol_want_to_read_count or 0,
                     "ol_currently_reading_count": row.ol_currently_reading_count or 0,
                     "ol_already_read_count": row.ol_already_read_count or 0,
+                    "app_want_to_read_count": int(row.app_want_to_read_count or 0),
+                    "app_reading_count": int(row.app_reading_count or 0),
+                    "app_read_count": int(row.app_read_count or 0),
                     "authors": authors_list,
                 }
             )

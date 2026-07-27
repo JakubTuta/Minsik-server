@@ -23,6 +23,7 @@ def _to_section_dict(key: str, item) -> dict:
     result = {
         "key": key,
         "display_name": item.display_name,
+        "title_params": dict(item.title_params),
         "item_type": item_type,
         "total": item.total,
     }

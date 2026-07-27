@@ -14,10 +14,14 @@ class MockRpcError(grpc.RpcError):
         return self._details
 
 
-def make_slug_item(mocker, slug="the-hobbit", updated_at="2026-01-01T00:00:00"):
+def make_slug_item(mocker, slug="the-hobbit", updated_at="2026-01-01T00:00:00", language="en"):
     item = mocker.MagicMock()
     item.slug = slug
     item.updated_at = updated_at
+    # Every field the route reads must be set explicitly: an unset attribute on
+    # a MagicMock returns another MagicMock, which is truthy and then fails to
+    # serialize, surfacing as an opaque 500 rather than a missing-field error.
+    item.language = language
     return item
 
 
@@ -55,9 +59,7 @@ class TestListSitemapSlugs:
 
     def test_empty_updated_at_becomes_null(self, client, mock_books_client, mocker):
         resp = mocker.MagicMock()
-        item = mocker.MagicMock()
-        item.slug = "no-date"
-        item.updated_at = ""
+        item = make_slug_item(mocker, slug="no-date", updated_at="")
         resp.items = [item]
         resp.total_count = 1
         mock_books_client.list_sitemap_slugs.return_value = resp

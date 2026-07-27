@@ -4,6 +4,7 @@ import typing
 
 import app.cache
 import app.config
+import app.services._language_boost
 import app.services.author_recommender
 import app.services.book_of_week_builder
 import app.services.book_recommender
@@ -13,7 +14,26 @@ import sqlalchemy.ext.asyncio
 
 logger = logging.getLogger(__name__)
 
-_BOOK_FIELDS = """
+# Shelf counts are pooled per work and counted per distinct user, so a book's
+# popularity is the same in every language and a reader who shelved two
+# translations still counts once. ol_* counts are already work-level: the dump
+# pipeline writes them identically to every language row.
+_READERS_EXPR = """
+    COALESCE(b.ol_want_to_read_count, 0) + COALESCE(b.ol_currently_reading_count, 0)
+    + COALESCE(b.ol_already_read_count, 0) + COALESCE(MAX(bs_agg.app_readers), 0)
+"""
+
+_WANT_TO_READ_EXPR = (
+    "COALESCE(b.ol_want_to_read_count, 0) + COALESCE(MAX(bs_agg.app_want_to_read), 0)"
+)
+
+_CURRENTLY_READING_EXPR = (
+    "COALESCE(b.ol_currently_reading_count, 0) + COALESCE(MAX(bs_agg.app_reading), 0)"
+)
+
+_RATING_COUNT_EXPR = "COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0)"
+
+_BOOK_FIELDS = f"""
     b.book_id,
     b.title,
     b.slug,
@@ -21,34 +41,40 @@ _BOOK_FIELDS = """
     b.language,
     b.primary_cover_url,
     CASE
-        WHEN (COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0)) > 0
+        WHEN ({_RATING_COUNT_EXPR}) > 0
         THEN ROUND(
             (COALESCE(b.avg_rating::numeric, 0) * COALESCE(b.rating_count, 0)
              + COALESCE(b.ol_avg_rating::numeric, 0) * COALESCE(b.ol_rating_count, 0))
-            / (COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0)), 2
+            / ({_RATING_COUNT_EXPR}), 2
         )::text
         ELSE ''
     END AS avg_rating,
-    COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0) AS rating_count,
+    {_RATING_COUNT_EXPR} AS rating_count,
     ARRAY_AGG(DISTINCT a.name) FILTER (WHERE a.name IS NOT NULL) AS author_names,
     ARRAY_AGG(DISTINCT a.slug) FILTER (WHERE a.slug IS NOT NULL) AS author_slugs,
-    COALESCE(b.ol_want_to_read_count, 0) + COALESCE(b.ol_currently_reading_count, 0)
-        + COALESCE(b.ol_already_read_count, 0) + COALESCE(MAX(bs_agg.app_readers), 0) AS readers
+    {_READERS_EXPR} AS readers
 """
 
 _BOOK_JOINS = """
     LEFT JOIN books.book_authors ba ON b.book_id = ba.book_id
     LEFT JOIN books.authors a ON ba.author_id = a.author_id
     LEFT JOIN LATERAL (
-        SELECT COUNT(*) AS app_readers
+        SELECT
+            COUNT(DISTINCT bs_r.user_id) AS app_readers,
+            COUNT(DISTINCT bs_r.user_id) FILTER (WHERE bs_r.status = 'want_to_read')
+                AS app_want_to_read,
+            COUNT(DISTINCT bs_r.user_id) FILTER (WHERE bs_r.status = 'reading')
+                AS app_reading
         FROM user_data.bookshelves bs_r
-        JOIN books.books wb ON wb.book_id = bs_r.book_id
-        WHERE wb.work_id = b.work_id
-          AND bs_r.status IN ('want_to_read', 'reading', 'read')
+        JOIN books.books rb ON rb.book_id = bs_r.book_id
+        WHERE rb.work_id = b.work_id
     ) bs_agg ON TRUE
 """
 
-_BOOK_BASE_WHERE = "b.primary_cover_url IS NOT NULL AND b.language = :language"
+_BOOK_BASE_WHERE = (
+    "b.primary_cover_url IS NOT NULL AND "
+    + app.services._language_boost.preferred_edition_sql()
+)
 
 _BOOK_GROUP_BY = "GROUP BY b.book_id"
 
@@ -97,11 +123,11 @@ async def _build_most_read(
     result = await session.execute(
         sqlalchemy.text(
             f"""
-        SELECT {_BOOK_FIELDS}, b.ol_already_read_count AS score
+        SELECT {_BOOK_FIELDS}, {_READERS_EXPR} AS score
         FROM books.books b {_BOOK_JOINS}
         WHERE {_BOOK_BASE_WHERE}
         {_BOOK_GROUP_BY}
-        ORDER BY b.ol_already_read_count DESC NULLS LAST
+        ORDER BY score DESC NULLS LAST
         LIMIT :limit
     """
         ),
@@ -116,11 +142,11 @@ async def _build_most_wanted(
     result = await session.execute(
         sqlalchemy.text(
             f"""
-        SELECT {_BOOK_FIELDS}, b.ol_want_to_read_count AS score
+        SELECT {_BOOK_FIELDS}, {_WANT_TO_READ_EXPR} AS score
         FROM books.books b {_BOOK_JOINS}
         WHERE {_BOOK_BASE_WHERE}
         {_BOOK_GROUP_BY}
-        ORDER BY b.ol_want_to_read_count DESC NULLS LAST
+        ORDER BY score DESC NULLS LAST
         LIMIT :limit
     """
         ),
@@ -135,11 +161,11 @@ async def _build_trending_reads(
     result = await session.execute(
         sqlalchemy.text(
             f"""
-        SELECT {_BOOK_FIELDS}, b.ol_currently_reading_count AS score
+        SELECT {_BOOK_FIELDS}, {_CURRENTLY_READING_EXPR} AS score
         FROM books.books b {_BOOK_JOINS}
         WHERE {_BOOK_BASE_WHERE}
         {_BOOK_GROUP_BY}
-        ORDER BY b.ol_currently_reading_count DESC NULLS LAST
+        ORDER BY score DESC NULLS LAST
         LIMIT :limit
     """
         ),
@@ -154,11 +180,12 @@ async def _build_most_viewed(
     result = await session.execute(
         sqlalchemy.text(
             f"""
-        SELECT {_BOOK_FIELDS}, b.view_count AS score
+        SELECT {_BOOK_FIELDS},
+               {app.services._language_boost.work_view_count_sql()} AS score
         FROM books.books b {_BOOK_JOINS}
         WHERE {_BOOK_BASE_WHERE}
         {_BOOK_GROUP_BY}
-        ORDER BY b.view_count DESC NULLS LAST
+        ORDER BY score DESC NULLS LAST
         LIMIT :limit
     """
         ),
@@ -258,13 +285,13 @@ async def _build_classics(
     result = await session.execute(
         sqlalchemy.text(
             f"""
-        SELECT {_BOOK_FIELDS}, b.ol_already_read_count AS score
+        SELECT {_BOOK_FIELDS}, {_READERS_EXPR} AS score
         FROM books.books b {_BOOK_JOINS}
         WHERE {_BOOK_BASE_WHERE}
           AND b.original_publication_year < 1980
-          AND (b.ol_already_read_count >= 100 OR b.avg_rating >= 4.0)
         {_BOOK_GROUP_BY}
-        ORDER BY b.ol_already_read_count DESC NULLS LAST, b.avg_rating DESC NULLS LAST
+        HAVING ({_READERS_EXPR}) >= 100 OR b.avg_rating >= 4.0
+        ORDER BY score DESC NULLS LAST, b.avg_rating DESC NULLS LAST
         LIMIT :limit
     """
         ),
@@ -279,14 +306,14 @@ async def _build_user_favorites(
     result = await session.execute(
         sqlalchemy.text(
             f"""
-        SELECT {_BOOK_FIELDS}, COUNT(*) AS score
+        SELECT {_BOOK_FIELDS}, COUNT(DISTINCT bs.user_id) AS score
         FROM books.books b
         JOIN books.books wb ON wb.work_id = b.work_id
         JOIN user_data.bookshelves bs ON bs.book_id = wb.book_id
         {_BOOK_JOINS}
         WHERE bs.is_favorite = true AND {_BOOK_BASE_WHERE}
         {_BOOK_GROUP_BY}
-        ORDER BY COUNT(*) DESC
+        ORDER BY score DESC
         LIMIT :limit
     """
         ),
@@ -323,14 +350,14 @@ async def _build_currently_reading(
     result = await session.execute(
         sqlalchemy.text(
             f"""
-        SELECT {_BOOK_FIELDS}, COUNT(*) AS score
+        SELECT {_BOOK_FIELDS}, COUNT(DISTINCT bs.user_id) AS score
         FROM books.books b
         JOIN books.books wb ON wb.work_id = b.work_id
         JOIN user_data.bookshelves bs ON bs.book_id = wb.book_id
         {_BOOK_JOINS}
         WHERE bs.status = 'reading' AND {_BOOK_BASE_WHERE}
         {_BOOK_GROUP_BY}
-        ORDER BY COUNT(*) DESC
+        ORDER BY score DESC
         LIMIT :limit
     """
         ),
@@ -405,10 +432,9 @@ async def _build_top_authors(
         sqlalchemy.text(
             f"""
         WITH author_app_readers AS (
-            SELECT ba_r.author_id, COUNT(*) AS app_readers
+            SELECT ba_r.author_id, COUNT(DISTINCT bs_a.user_id) AS app_readers
             FROM user_data.bookshelves bs_a
             JOIN books.book_authors ba_r ON bs_a.book_id = ba_r.book_id
-            WHERE bs_a.status IN ('want_to_read', 'reading', 'read')
             GROUP BY ba_r.author_id
         ),
         {_AUTHOR_WORKS_CTE}
@@ -432,7 +458,11 @@ async def _build_top_authors(
                 COALESCE(aw.ol_already_read_count, 0)
             ), 0) + COALESCE(aar.app_readers, 0) AS readers,
             COALESCE(SUM(aw.rating_count + aw.ol_rating_count), 0) AS rating_count,
-            COALESCE(SUM(aw.ol_already_read_count), 0) AS score
+            COALESCE(SUM(
+                COALESCE(aw.ol_want_to_read_count, 0) +
+                COALESCE(aw.ol_currently_reading_count, 0) +
+                COALESCE(aw.ol_already_read_count, 0)
+            ), 0) + COALESCE(aar.app_readers, 0) AS score
         FROM books.authors a
         JOIN author_works aw ON aw.author_id = a.author_id
         LEFT JOIN author_app_readers aar ON aar.author_id = a.author_id
@@ -466,10 +496,9 @@ async def _build_popular_authors(
         sqlalchemy.text(
             f"""
         WITH author_app_readers AS (
-            SELECT ba_r.author_id, COUNT(*) AS app_readers
+            SELECT ba_r.author_id, COUNT(DISTINCT bs_a.user_id) AS app_readers
             FROM user_data.bookshelves bs_a
             JOIN books.book_authors ba_r ON bs_a.book_id = ba_r.book_id
-            WHERE bs_a.status IN ('want_to_read', 'reading', 'read')
             GROUP BY ba_r.author_id
         ),
         {_AUTHOR_WORKS_CTE}

@@ -73,14 +73,17 @@ _POOL_QUERY = sqlalchemy.text(
         LEFT JOIN books.authors a ON ba.author_id = a.author_id
         LEFT JOIN (
             SELECT
-                book_id,
-                COUNT(*) FILTER (WHERE status = 'want_to_read') AS app_want_to_read_count,
-                COUNT(*) FILTER (WHERE status = 'reading')      AS app_reading_count,
-                COUNT(*) FILTER (WHERE status = 'read')         AS app_read_count
-            FROM user_data.bookshelves
-            WHERE status != 'abandoned'
-            GROUP BY book_id
-        ) bs ON b.book_id = bs.book_id
+                wb.work_id,
+                COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'want_to_read')
+                    AS app_want_to_read_count,
+                COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'reading')
+                    AS app_reading_count,
+                COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'read')
+                    AS app_read_count
+            FROM user_data.bookshelves bsh
+            JOIN books.books wb ON wb.book_id = bsh.book_id
+            GROUP BY wb.work_id
+        ) bs ON b.work_id = bs.work_id
         WHERE (b.rating_count + b.ol_rating_count) >= 1
         GROUP BY b.book_id, b.title, b.slug, b.work_id, b.description, b.primary_cover_url,
                  b.language, b.rating_count, b.avg_rating, b.ol_rating_count, b.ol_avg_rating,

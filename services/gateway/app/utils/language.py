@@ -1,6 +1,21 @@
 import typing
 
+import app.config
 import fastapi
+
+
+def _normalize(raw: typing.Optional[str]) -> typing.Optional[str]:
+    """Reduce a raw language tag (e.g. "pl-PL", "PL_pl") to its base subtag ("pl")."""
+    if not raw:
+        return None
+    base = raw.strip().lower().replace("_", "-").split("-")[0][:10]
+    return base or None
+
+
+def _available_languages() -> typing.List[str]:
+    raw = app.config.settings.available_languages or "en"
+    languages = [lang.strip() for lang in raw.split(",") if lang.strip()]
+    return languages or ["en"]
 
 
 async def resolve_language(
@@ -16,8 +31,17 @@ async def resolve_language(
         ),
     ),
 ) -> str:
-    if language:
-        return language
+    # Every candidate is validated against AVAILABLE_LANGUAGES before use: an
+    # unvalidated value (a stray region subtag, a typo, an arbitrary query
+    # string) would otherwise mint its own Redis cache-key namespace
+    # (book_slug:{slug}:{junk}, rec:{category}:{junk}, ...) and never match
+    # b.language in any query, so it's worse than useless — fall through to
+    # the next source instead of accepting it.
+    available = _available_languages()
+
+    candidate = _normalize(language)
+    if candidate and candidate in available:
+        return candidate
 
     # Lazy import: app.middleware.auth imports app.utils.cookies, which would
     # otherwise import this module back (app.utils package init) before this
@@ -27,17 +51,22 @@ async def resolve_language(
 
     credentials = await app.middleware.auth._bearer_scheme(request)
     user = await app.middleware.auth.get_current_user_optional(request, credentials)
-    if user and user.get("preferred_language"):
-        return user["preferred_language"]
+    candidate = _normalize(user.get("preferred_language")) if user else None
+    if candidate and candidate in available:
+        return candidate
 
-    cookie_lang = request.cookies.get("pref_lang")
-    if cookie_lang:
-        return cookie_lang
+    candidate = _normalize(request.cookies.get("pref_lang"))
+    if candidate and candidate in available:
+        return candidate
 
     accept_lang = request.headers.get("Accept-Language", "")
     if accept_lang:
-        lang = accept_lang.split(",")[0].split(";")[0].strip()[:8]
-        if lang:
-            return lang
+        candidate = _normalize(accept_lang.split(",")[0].split(";")[0])
+        if candidate and candidate in available:
+            return candidate
 
-    return "en"
+    # Last resort is the first configured language rather than a literal "en":
+    # a deployment whose AVAILABLE_LANGUAGES omits English would otherwise get
+    # a code that matches no b.language row anywhere. Mirrors the same choice
+    # in the recommendation service's gRPC server.
+    return "en" if "en" in available else available[0]

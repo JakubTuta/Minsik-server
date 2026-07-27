@@ -28,10 +28,21 @@ class TestUpsertRating:
         assert result.writing_quality == 5.0
 
     @pytest.mark.asyncio
-    async def test_upsert_calls_update_book_stats(self, mock_session, mock_rating):
+    async def test_upsert_pools_stats_and_moves_sibling_editions(
+        self, mock_session, mock_rating
+    ):
         mock_session.execute.return_value = make_scalar_result(mock_rating)
         await rating_service.upsert_rating(mock_session, 10, 100, 4.5, {}, None)
-        assert mock_session.execute.call_count == 2
+
+        statements = " ".join(
+            str(call.args[0]) for call in mock_session.execute.call_args_list
+        )
+        # A rating is stored against one edition but belongs to the work: any
+        # rating the same user left on another edition is re-pointed first, then
+        # the pooled average is written back to every edition of the work.
+        assert "user_data.ratings" in statements
+        assert statements.count("work_id") >= 2
+        assert "UPDATE books.books" in statements
 
 
 class TestDeleteRating:

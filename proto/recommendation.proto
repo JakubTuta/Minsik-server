@@ -34,6 +34,10 @@ message RecommendationListResponse {
   repeated RecommendationBookItem book_items = 4;
   repeated RecommendationAuthorItem author_items = 5;
   int32 total = 6;
+  // Interpolation values for a section-key-based frontend translation of
+  // display_name (e.g. {"title": "Neuromancer"} for "because_you_liked").
+  // Empty for sections whose title has no dynamic part.
+  map<string, string> title_params = 7;
 }
 
 message RecommendationBookItem {
@@ -160,6 +164,8 @@ message RecommendationSection {
   repeated RecommendationBookItem book_items = 4;
   repeated RecommendationAuthorItem author_items = 5;
   int32 total = 6;
+  // See RecommendationListResponse.title_params.
+  map<string, string> title_params = 7;
 }
 
 message BookRecommendationsResponse {

@@ -92,6 +92,26 @@ async def _resolve_book(session, book_slug: str) -> typing.Tuple[int, str, str]:
     return row.book_id, row.title or "", row.primary_cover_url or ""
 
 
+async def _work_edition_slugs(session, book_slug: str) -> typing.List[str]:
+    """Every edition slug belonging to the same work as `book_slug`.
+
+    slug alone is not unique — only (language, slug) is — so the work is
+    resolved from a single deterministic row before fanning back out.
+    """
+    result = await session.execute(
+        sqlalchemy.text(
+            "SELECT slug FROM books.books WHERE work_id = ("
+            "  SELECT work_id FROM books.books WHERE slug = :slug"
+            "  ORDER BY (language = 'en') DESC, book_id ASC LIMIT 1"
+            ")"
+        ),
+        {"slug": book_slug},
+    )
+    slugs = [row.slug for row in result.fetchall()]
+
+    return slugs or [book_slug]
+
+
 async def _resolve_book_meta(session, book_slug: str) -> typing.Dict[str, typing.Any]:
     result = await session.execute(
         sqlalchemy.text(
@@ -828,6 +848,9 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 bookshelf = await app.services.bookshelf_service.upsert_bookshelf(
                     session, request.user_id, book_meta["book_id"], request.status
                 )
+                await app.cache.delete_book_cache(
+                    *await _work_edition_slugs(session, request.book_slug)
+                )
                 await app.cache.delete_profile_stats(request.user_id)
                 await app.cache.delete_profile_overview(request.user_id)
                 await app.cache.delete_year_in_review(request.user_id)
@@ -865,6 +888,9 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 book_id, _, _ = await _resolve_book(session, request.book_slug)
                 await app.services.bookshelf_service.delete_bookshelf(
                     session, request.user_id, book_id
+                )
+                await app.cache.delete_book_cache(
+                    *await _work_edition_slugs(session, request.book_slug)
                 )
                 await app.cache.delete_profile_stats(request.user_id)
                 await app.cache.delete_profile_overview(request.user_id)
@@ -1106,7 +1132,9 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                     sub_ratings,
                     request.review_text or None,
                 )
-                await app.cache.delete_book_cache(request.book_slug)
+                await app.cache.delete_book_cache(
+                    *await _work_edition_slugs(session, request.book_slug)
+                )
                 await app.cache.delete_profile_stats(request.user_id)
                 await app.cache.delete_profile_overview(request.user_id)
                 await app.cache.delete_year_in_review(request.user_id)
@@ -1144,7 +1172,9 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 await app.services.rating_service.delete_rating(
                     session, request.user_id, book_id
                 )
-                await app.cache.delete_book_cache(request.book_slug)
+                await app.cache.delete_book_cache(
+                    *await _work_edition_slugs(session, request.book_slug)
+                )
                 await app.cache.delete_profile_stats(request.user_id)
                 await app.cache.delete_profile_overview(request.user_id)
                 await app.cache.delete_year_in_review(request.user_id)
@@ -1216,6 +1246,9 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 book_id, _, _ = await _resolve_book(session, request.book_slug)
                 bookshelf = await app.services.bookshelf_service.toggle_favourite(
                     session, request.user_id, book_id, request.is_favorite
+                )
+                await app.cache.delete_book_cache(
+                    *await _work_edition_slugs(session, request.book_slug)
                 )
                 await app.cache.delete_profile_stats(request.user_id)
                 await app.cache.delete_profile_overview(request.user_id)

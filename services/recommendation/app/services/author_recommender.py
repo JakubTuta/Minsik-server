@@ -77,11 +77,10 @@ async def _build_similar_authors_by_genre(
                 GROUP BY ba2.author_id
             ),
             author_app_readers AS (
-                SELECT ba_r.author_id, COUNT(*) AS app_readers
+                SELECT ba_r.author_id, COUNT(DISTINCT bs_a.user_id) AS app_readers
                 FROM user_data.bookshelves bs_a
                 JOIN books.book_authors ba_r ON bs_a.book_id = ba_r.book_id
                 JOIN candidate_authors ca ON ca.author_id = ba_r.author_id
-                WHERE bs_a.status IN ('want_to_read', 'reading', 'read')
                 GROUP BY ba_r.author_id
             ),
             {app.services.list_builder._AUTHOR_WORKS_CTE}
@@ -154,11 +153,10 @@ async def _build_fans_also_read(
                 LIMIT 500
             ),
             author_app_readers AS (
-                SELECT ba_r.author_id, COUNT(*) AS app_readers
+                SELECT ba_r.author_id, COUNT(DISTINCT bs_a.user_id) AS app_readers
                 FROM user_data.bookshelves bs_a
                 JOIN books.book_authors ba_r ON bs_a.book_id = ba_r.book_id
                 JOIN co_authors ca ON ca.author_id = ba_r.author_id
-                WHERE bs_a.status IN ('want_to_read', 'reading', 'read')
                 GROUP BY ba_r.author_id
             ),
             {app.services.list_builder._AUTHOR_WORKS_CTE}
@@ -201,6 +199,7 @@ def _make_author_section(
     section_key: str,
     display_name: str,
     items: typing.List[typing.Dict[str, typing.Any]],
+    title_params: typing.Optional[typing.Dict[str, str]] = None,
 ) -> typing.Dict[str, typing.Any]:
     return {
         "section_key": section_key,
@@ -208,6 +207,7 @@ def _make_author_section(
         "item_type": "author",
         "author_items": items,
         "total": len(items),
+        "title_params": title_params or {},
     }
 
 
@@ -245,9 +245,10 @@ async def build_author_recommendations(
     if similar_items and not isinstance(similar_items, Exception):
         sections.append(
             _make_author_section(
-                "similar_authors",
+                "similar_to_author",
                 f"Similar to {author_name}",
                 similar_items,
+                {"author": author_name},
             )
         )
 

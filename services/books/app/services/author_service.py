@@ -9,6 +9,7 @@ import app.models.book
 import app.models.book_author
 import app.models.book_genre
 import app.models.genre
+import app.services._language_boost
 import sqlalchemy
 import sqlalchemy.ext.asyncio
 
@@ -78,6 +79,11 @@ async def get_author_books(
     }
     sort_col = sort_options.get(sort_by, "combined_rating")
     order_dir = "DESC" if order == "desc" else "ASC"
+    # An author's catalog is their works, not their translations: list every
+    # work once, rendered in the reader's language when that edition exists.
+    preferred_edition = app.services._language_boost.preferred_edition_sql(
+        require_cover=False
+    )
 
     books_query = sqlalchemy.text(
         f"""
@@ -127,15 +133,18 @@ async def get_author_books(
         JOIN books.book_authors ba ON b.book_id = ba.book_id
         LEFT JOIN (
             SELECT
-                book_id,
-                COUNT(*) FILTER (WHERE status = 'want_to_read') AS want_to_read_count,
-                COUNT(*) FILTER (WHERE status = 'reading') AS reading_count,
-                COUNT(*) FILTER (WHERE status = 'read') AS read_count
-            FROM user_data.bookshelves
-            WHERE status != 'abandoned'
-            GROUP BY book_id
-        ) bs ON b.book_id = bs.book_id
-        WHERE ba.author_id = :author_id AND b.language = :language
+                wb.work_id,
+                COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'want_to_read')
+                    AS want_to_read_count,
+                COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'reading')
+                    AS reading_count,
+                COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'read')
+                    AS read_count
+            FROM user_data.bookshelves bsh
+            JOIN books.books wb ON wb.book_id = bsh.book_id
+            GROUP BY wb.work_id
+        ) bs ON b.work_id = bs.work_id
+        WHERE ba.author_id = :author_id AND {preferred_edition}
         ORDER BY {sort_col} {order_dir} NULLS LAST
         LIMIT :limit OFFSET :offset
         """
@@ -143,10 +152,10 @@ async def get_author_books(
 
     count_query = sqlalchemy.text(
         """
-        SELECT COUNT(DISTINCT b.book_id)
+        SELECT COUNT(DISTINCT b.work_id)
         FROM books.books b
         JOIN books.book_authors ba ON b.book_id = ba.book_id
-        WHERE ba.author_id = :author_id AND b.language = :language
+        WHERE ba.author_id = :author_id
         """
     )
 
@@ -162,7 +171,7 @@ async def get_author_books(
     books_rows = books_result.fetchall()
 
     count_result = await session.execute(
-        count_query, {"author_id": author.author_id, "language": language}
+        count_query, {"author_id": author.author_id}
     )
     total = count_result.scalar() or 0
 
@@ -239,9 +248,9 @@ async def _get_author_books_aggregates(
         work_bookshelf_counts AS (
             SELECT
                 wb.work_id,
-                COUNT(*) FILTER (WHERE bsh.status = 'want_to_read') AS want_to_read_count,
-                COUNT(*) FILTER (WHERE bsh.status = 'reading') AS reading_count,
-                COUNT(*) FILTER (WHERE bsh.status = 'read') AS read_count
+                COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'want_to_read') AS want_to_read_count,
+                COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'reading') AS reading_count,
+                COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'read') AS read_count
             FROM user_data.bookshelves bsh
             JOIN books.books wb ON wb.book_id = bsh.book_id
             WHERE wb.work_id IN (SELECT work_id FROM author_works)

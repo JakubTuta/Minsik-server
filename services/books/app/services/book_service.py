@@ -95,36 +95,7 @@ async def get_book_by_slug(
 
     book_data = _book_to_dict(book)
 
-    bookshelves_result = await session.execute(
-        sqlalchemy.text(
-            """
-            SELECT
-                COUNT(*) FILTER (WHERE status = 'want_to_read') AS app_want_to_read_count,
-                COUNT(*) FILTER (WHERE status = 'reading') AS app_reading_count,
-                COUNT(*) FILTER (WHERE status = 'read') AS app_read_count
-            FROM user_data.bookshelves
-            WHERE book_id IN (SELECT book_id FROM books.books WHERE work_id = :work_id)
-              AND status != 'abandoned'
-            """
-        ),
-        {"work_id": book.work_id},
-    )
-    bookshelves_row = bookshelves_result.first()
-    book_data["app_want_to_read_count"] = (
-        int(bookshelves_row.app_want_to_read_count)
-        if bookshelves_row and bookshelves_row.app_want_to_read_count
-        else 0
-    )
-    book_data["app_reading_count"] = (
-        int(bookshelves_row.app_reading_count)
-        if bookshelves_row and bookshelves_row.app_reading_count
-        else 0
-    )
-    book_data["app_read_count"] = (
-        int(bookshelves_row.app_read_count)
-        if bookshelves_row and bookshelves_row.app_read_count
-        else 0
-    )
+    await _attach_work_stats(session, book_data, book.work_id)
 
     await app.cache.set_cached(
         cache_key, book_data, app.config.settings.cache_book_detail_ttl
@@ -133,6 +104,43 @@ async def get_book_by_slug(
     await _track_book_view(book.book_id)
 
     return book_data
+
+
+async def _attach_work_stats(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    book_data: typing.Dict[str, typing.Any],
+    work_id: str,
+) -> None:
+    """Overlay community stats pooled across every language edition of the work.
+
+    A reader who shelved two translations counts once, so the numbers are the
+    same whichever edition the page is rendered in.
+    """
+    result = await session.execute(
+        sqlalchemy.text(
+            """
+            SELECT
+                (
+                    SELECT COALESCE(SUM(view_count), 0)
+                    FROM books.books WHERE work_id = :work_id
+                ) AS view_count,
+                COUNT(DISTINCT user_id) FILTER (WHERE status = 'want_to_read')
+                    AS app_want_to_read_count,
+                COUNT(DISTINCT user_id) FILTER (WHERE status = 'reading')
+                    AS app_reading_count,
+                COUNT(DISTINCT user_id) FILTER (WHERE status = 'read')
+                    AS app_read_count
+            FROM user_data.bookshelves
+            WHERE book_id IN (SELECT book_id FROM books.books WHERE work_id = :work_id)
+            """
+        ),
+        {"work_id": work_id},
+    )
+    row = result.first()
+    book_data["view_count"] = int(row.view_count or 0) if row else 0
+    book_data["app_want_to_read_count"] = int(row.app_want_to_read_count or 0) if row else 0
+    book_data["app_reading_count"] = int(row.app_reading_count or 0) if row else 0
+    book_data["app_read_count"] = int(row.app_read_count or 0) if row else 0
 
 
 async def get_language_variants(
@@ -309,36 +317,7 @@ async def update_book(
 
     book_data = _book_to_dict(book)
 
-    bookshelves_result = await session.execute(
-        sqlalchemy.text(
-            """
-            SELECT
-                COUNT(*) FILTER (WHERE status = 'want_to_read') AS app_want_to_read_count,
-                COUNT(*) FILTER (WHERE status = 'reading') AS app_reading_count,
-                COUNT(*) FILTER (WHERE status = 'read') AS app_read_count
-            FROM user_data.bookshelves
-            WHERE book_id IN (SELECT book_id FROM books.books WHERE work_id = :work_id)
-              AND status != 'abandoned'
-            """
-        ),
-        {"work_id": book.work_id},
-    )
-    bookshelves_row = bookshelves_result.first()
-    book_data["app_want_to_read_count"] = (
-        int(bookshelves_row.app_want_to_read_count)
-        if bookshelves_row and bookshelves_row.app_want_to_read_count
-        else 0
-    )
-    book_data["app_reading_count"] = (
-        int(bookshelves_row.app_reading_count)
-        if bookshelves_row and bookshelves_row.app_reading_count
-        else 0
-    )
-    book_data["app_read_count"] = (
-        int(bookshelves_row.app_read_count)
-        if bookshelves_row and bookshelves_row.app_read_count
-        else 0
-    )
+    await _attach_work_stats(session, book_data, book.work_id)
 
     return book_data
 
@@ -384,36 +363,7 @@ async def remove_book_author(
 
     book_data = _book_to_dict(book)
 
-    bookshelves_result = await session.execute(
-        sqlalchemy.text(
-            """
-            SELECT
-                COUNT(*) FILTER (WHERE status = 'want_to_read') AS app_want_to_read_count,
-                COUNT(*) FILTER (WHERE status = 'reading') AS app_reading_count,
-                COUNT(*) FILTER (WHERE status = 'read') AS app_read_count
-            FROM user_data.bookshelves
-            WHERE book_id IN (SELECT book_id FROM books.books WHERE work_id = :work_id)
-              AND status != 'abandoned'
-            """
-        ),
-        {"work_id": book.work_id},
-    )
-    bookshelves_row = bookshelves_result.first()
-    book_data["app_want_to_read_count"] = (
-        int(bookshelves_row.app_want_to_read_count)
-        if bookshelves_row and bookshelves_row.app_want_to_read_count
-        else 0
-    )
-    book_data["app_reading_count"] = (
-        int(bookshelves_row.app_reading_count)
-        if bookshelves_row and bookshelves_row.app_reading_count
-        else 0
-    )
-    book_data["app_read_count"] = (
-        int(bookshelves_row.app_read_count)
-        if bookshelves_row and bookshelves_row.app_read_count
-        else 0
-    )
+    await _attach_work_stats(session, book_data, book.work_id)
 
     return book_data
 
