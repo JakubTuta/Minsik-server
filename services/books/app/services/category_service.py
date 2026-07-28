@@ -1,4 +1,3 @@
-import json
 import logging
 import re
 import typing
@@ -9,6 +8,7 @@ import app.config
 import app.db
 import app.models.genre
 import app.services._language_boost
+import app.services._row_helpers
 import sqlalchemy
 import sqlalchemy.ext.asyncio
 
@@ -247,13 +247,7 @@ class CategoryService:
 
         books_data = []
         for row in raw_rows:
-            authors_raw = row.authors
-            if isinstance(authors_raw, str):
-                authors_list = json.loads(authors_raw)
-            elif authors_raw is None:
-                authors_list = []
-            else:
-                authors_list = authors_raw
+            authors_list = app.services._row_helpers.json_agg_list(row.authors)
 
             books_data.append(
                 {

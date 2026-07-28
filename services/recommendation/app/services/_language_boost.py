@@ -1,25 +1,5 @@
 import typing
 
-LANGUAGE_BOOST_WEIGHT = 100.0
-
-
-def lang_boost_weight(book_language: str, user_language: str) -> float:
-    return LANGUAGE_BOOST_WEIGHT if book_language == user_language else 1.0
-
-
-def work_shelf_count_sql(book_alias: str = "b", bookshelf_alias: str = "bsh") -> str:
-    """Distinct app users who shelved any language edition of the same work.
-
-    Counts every status: shelving a book at all is the engagement signal, and
-    counting users rather than rows keeps a user who shelved two translations
-    from being counted twice.
-    """
-    return (
-        f"(SELECT COUNT(DISTINCT {bookshelf_alias}.user_id) FROM user_data.bookshelves {bookshelf_alias} "
-        f"JOIN books.books {bookshelf_alias}_wb ON {bookshelf_alias}_wb.book_id = {bookshelf_alias}.book_id "
-        f"WHERE {bookshelf_alias}_wb.work_id = {book_alias}.work_id)"
-    )
-
 
 def preferred_edition_sql(
     book_alias: str = "b",

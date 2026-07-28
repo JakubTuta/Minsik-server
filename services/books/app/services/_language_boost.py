@@ -69,14 +69,6 @@ def preferred_edition_sql(
     )
 
 
-def work_view_count_sql(book_alias: str = "b", view_alias: str = "vb") -> str:
-    """View count pooled across every language edition of the same work."""
-    return (
-        f"(SELECT COALESCE(SUM({view_alias}.view_count), 0) FROM books.books {view_alias} "
-        f"WHERE {view_alias}.work_id = {book_alias}.work_id)"
-    )
-
-
 def work_readers_sql(book_alias: str = "b", bookshelf_alias: str = "bsh") -> str:
     """Everyone who shelved the work here or on Open Library, all statuses."""
     return (

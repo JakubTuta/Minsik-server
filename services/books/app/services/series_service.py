@@ -1,4 +1,3 @@
-import json
 import logging
 import typing
 
@@ -6,6 +5,7 @@ import app.cache
 import app.config
 import app.models.book
 import app.models.series
+import app.services._row_helpers
 import sqlalchemy
 import sqlalchemy.ext.asyncio
 
@@ -332,13 +332,7 @@ def _series_to_dict(
 
 
 def _series_book_row_to_dict(row: typing.Any) -> typing.Dict[str, typing.Any]:
-    authors_raw = row.authors
-    if isinstance(authors_raw, str):
-        authors_list = json.loads(authors_raw)
-    elif authors_raw is None:
-        authors_list = []
-    else:
-        authors_list = authors_raw
+    authors_list = app.services._row_helpers.json_agg_list(row.authors)
     return {
         "book_id": row.book_id,
         "title": row.title,

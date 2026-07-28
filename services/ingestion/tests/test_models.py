@@ -1,6 +1,6 @@
 import pytest
 from app.models import Author, Book, BookAuthor, BookGenre, Genre
-from sqlalchemy import func, select
+from sqlalchemy import select
 
 
 @pytest.mark.asyncio

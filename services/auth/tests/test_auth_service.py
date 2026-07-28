@@ -1,7 +1,6 @@
 import pytest
 import datetime
-from unittest.mock import AsyncMock, MagicMock, patch
-from sqlalchemy.ext.asyncio import AsyncSession
+from unittest.mock import patch
 import app.services.auth_service as auth_service
 from tests.conftest import make_execute_result
 
@@ -260,7 +259,7 @@ class TestUpdateProfile:
     async def test_update_profile_display_name(self, mock_session, mock_user):
         mock_session.execute.return_value = make_execute_result(mock_user)
 
-        result = await auth_service.update_profile(
+        await auth_service.update_profile(
             mock_session, 1, "New Name", None, None
         )
 

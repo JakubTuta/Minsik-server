@@ -16,19 +16,6 @@ class UserSchema(pydantic.BaseModel):
     preferred_language: str = "en"
 
 
-class AuthTokensData(pydantic.BaseModel):
-    access_token: str
-    refresh_token: str
-    token_type: str
-    user: UserSchema
-
-
-class AuthResponse(pydantic.BaseModel):
-    success: bool = True
-    data: AuthTokensData
-    error: typing.Optional[app.models.responses.ErrorDetail] = None
-
-
 class SessionData(pydantic.BaseModel):
     user: UserSchema
     expires_in: int

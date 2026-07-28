@@ -25,20 +25,6 @@ async def _get_author_metadata(
     return {"author_id": row.author_id, "name": row.name or ""}
 
 
-def _row_to_author_item(row: typing.Any, score: float) -> typing.Dict[str, typing.Any]:
-    return {
-        "author_id": row.author_id,
-        "name": row.name or "",
-        "slug": row.slug or "",
-        "photo_url": row.photo_url or "",
-        "book_count": int(row.book_count or 0),
-        "avg_rating": str(row.avg_rating) if row.avg_rating else "",
-        "rating_count": int(row.rating_count or 0),
-        "readers": int(row.readers or 0),
-        "score": score,
-    }
-
-
 async def _build_similar_authors_by_genre(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     author_id: int,
@@ -120,7 +106,10 @@ async def _build_similar_authors_by_genre(
         ),
         {"author_id": author_id, "limit": limit},
     )
-    return [_row_to_author_item(row, float(row.score or 0)) for row in result]
+    return [
+        app.services.list_builder._row_to_author_item(row, float(row.score or 0))
+        for row in result
+    ]
 
 
 async def _build_fans_also_read(
@@ -192,7 +181,10 @@ async def _build_fans_also_read(
         ),
         {"author_id": author_id, "limit": limit},
     )
-    return [_row_to_author_item(row, float(row.score or 0)) for row in result]
+    return [
+        app.services.list_builder._row_to_author_item(row, float(row.score or 0))
+        for row in result
+    ]
 
 
 def _make_author_section(

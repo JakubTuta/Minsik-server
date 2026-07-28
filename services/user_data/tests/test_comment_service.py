@@ -9,7 +9,7 @@ class TestCreateComment:
     @pytest.mark.asyncio
     async def test_create_success(self, mock_session, mock_comment):
         mock_session.refresh = AsyncMock()
-        result = await comment_service.create_comment(
+        await comment_service.create_comment(
             mock_session, 10, 100, "Really enjoyed this book!", False
         )
         mock_session.add.assert_called_once()
@@ -18,7 +18,7 @@ class TestCreateComment:
 
     @pytest.mark.asyncio
     async def test_create_spoiler_comment(self, mock_session, mock_comment):
-        result = await comment_service.create_comment(
+        await comment_service.create_comment(
             mock_session, 10, 100, "The ending was surprising", True
         )
         added = mock_session.add.call_args[0][0]
@@ -29,7 +29,7 @@ class TestUpdateComment:
     @pytest.mark.asyncio
     async def test_update_success(self, mock_session, mock_comment):
         mock_session.execute.return_value = make_scalar_result(mock_comment)
-        result = await comment_service.update_comment(
+        await comment_service.update_comment(
             mock_session, 1, 10, "Updated body", False
         )
         assert mock_comment.body == "Updated body"

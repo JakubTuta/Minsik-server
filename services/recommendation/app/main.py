@@ -113,7 +113,7 @@ async def start_server() -> None:
 
 
 async def shutdown() -> None:
-    global grpc_server, scheduler
+    global scheduler
 
     logger.info("Shutting down Recommendation service")
 
@@ -141,7 +141,6 @@ async def shutdown() -> None:
 
 
 def handle_signal(signum, frame):
-    global _shutdown_event
     logger.info(f"Received signal {signum}")
     if _shutdown_event and not _shutdown_event.is_set():
         _shutdown_event.set()

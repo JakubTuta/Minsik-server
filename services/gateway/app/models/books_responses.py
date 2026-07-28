@@ -521,12 +521,6 @@ class AdminUpdateSeriesRequest(pydantic.BaseModel):
     )
 
 
-class UpdateSeriesResponse(pydantic.BaseModel):
-    success: bool = True
-    data: typing.Optional[SeriesDetailData] = None
-    error: typing.Optional[app.models.responses.ErrorDetail] = None
-
-
 class OpenCaseData(pydantic.BaseModel):
     winner: BookSummarySchema = pydantic.Field(description="The winning book item")
 

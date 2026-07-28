@@ -18,50 +18,7 @@ admin_router = fastapi.APIRouter(prefix="/api/v1/admin", tags=["Admin"])
 
 limiter = app.middleware.rate_limit.limiter
 
-
-def _to_section_dict(key: str, item) -> dict:
-    item_type = item.item_type
-    result = {
-        "key": key,
-        "display_name": item.display_name,
-        "title_params": dict(item.title_params),
-        "item_type": item_type,
-        "total": item.total,
-    }
-    if item_type == "book":
-        result["book_items"] = [
-            {
-                "book_id": i.book_id,
-                "work_id": i.work_id or None,
-                "title": i.title,
-                "slug": i.slug,
-                "language": i.language,
-                "primary_cover_url": i.primary_cover_url or None,
-                "author_names": list(i.author_names),
-                "author_slugs": list(i.author_slugs),
-                "avg_rating": float(i.avg_rating) if i.avg_rating else 0.0,
-                "rating_count": i.rating_count,
-                "readers": i.readers,
-                "score": i.score,
-            }
-            for i in item.book_items
-        ]
-    else:
-        result["author_items"] = [
-            {
-                "author_id": i.author_id,
-                "name": i.name,
-                "slug": i.slug,
-                "photo_url": i.photo_url or None,
-                "book_count": i.book_count,
-                "avg_rating": float(i.avg_rating) if i.avg_rating else 0.0,
-                "rating_count": i.rating_count,
-                "readers": i.readers,
-                "score": i.score,
-            }
-            for i in item.author_items
-        ]
-    return result
+_to_section_dict = app.utils.responses.recommendation_section_to_dict
 
 
 @router.get(

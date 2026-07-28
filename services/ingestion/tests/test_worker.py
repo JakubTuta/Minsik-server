@@ -1,9 +1,7 @@
-from unittest.mock import AsyncMock, patch
-
 import pytest
 from app.models import Author, Book, Genre
-from app.services.book_service import insert_books_batch, process_single_book
-from sqlalchemy import func, select
+from app.services.book_service import process_single_book
+from sqlalchemy import select
 
 
 @pytest.mark.asyncio

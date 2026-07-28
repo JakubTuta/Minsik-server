@@ -19,14 +19,6 @@ class UserDataClient(base.GrpcClientBase):
         return app.proto.user_data_pb2_grpc.UserDataServiceStub(channel)
 
 
-    async def get_bookshelf(
-        self, user_id: int, book_slug: str, language: str = "en"
-    ) -> app.proto.user_data_pb2.BookshelfResponse:
-        request = app.proto.user_data_pb2.GetBookshelfRequest(
-            user_id=user_id, book_slug=book_slug, language=language
-        )
-        return await self._call("GetBookshelf", request)
-
     async def get_user_book_info(
         self, user_id: int, book_slug: str, language: str = "en"
     ) -> app.proto.user_data_pb2.UserBookInfoResponse:
@@ -104,14 +96,6 @@ class UserDataClient(base.GrpcClientBase):
             language=language,
         )
         return await self._call("GetPublicBookshelves", request)
-
-    async def get_rating(
-        self, user_id: int, book_slug: str, language: str = "en"
-    ) -> app.proto.user_data_pb2.RatingResponse:
-        request = app.proto.user_data_pb2.GetRatingRequest(
-            user_id=user_id, book_slug=book_slug, language=language
-        )
-        return await self._call("GetRating", request)
 
     async def upsert_rating(
         self,
@@ -222,10 +206,14 @@ class UserDataClient(base.GrpcClientBase):
         return await self._call("CreateComment", request)
 
     async def update_comment(
-        self, comment_id: int, user_id: int, body: str, is_spoiler: bool
+        self, comment_id: int, user_id: int, body: str, is_spoiler: bool, language: str
     ) -> app.proto.user_data_pb2.CommentResponse:
         request = app.proto.user_data_pb2.UpdateCommentRequest(
-            comment_id=comment_id, user_id=user_id, body=body, is_spoiler=is_spoiler
+            comment_id=comment_id,
+            user_id=user_id,
+            body=body,
+            is_spoiler=is_spoiler,
+            language=language,
         )
         return await self._call("UpdateComment", request)
 

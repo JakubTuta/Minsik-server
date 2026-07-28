@@ -117,6 +117,36 @@ def _row_to_book_item(row: typing.Any, score: float) -> typing.Dict[str, typing.
     }
 
 
+def _row_to_author_item(row: typing.Any, score: float) -> typing.Dict[str, typing.Any]:
+    return {
+        "author_id": row.author_id,
+        "name": row.name or "",
+        "slug": row.slug or "",
+        "photo_url": row.photo_url or "",
+        "book_count": int(row.book_count or 0),
+        "avg_rating": str(row.avg_rating) if row.avg_rating else "",
+        "rating_count": int(row.rating_count or 0),
+        "readers": int(row.readers or 0),
+        "score": score,
+    }
+
+
+def _make_book_section(
+    section_key: str,
+    display_name: str,
+    items: typing.List[typing.Dict[str, typing.Any]],
+    title_params: typing.Optional[typing.Dict[str, str]] = None,
+) -> typing.Dict[str, typing.Any]:
+    return {
+        "section_key": section_key,
+        "display_name": display_name,
+        "item_type": "book",
+        "book_items": items,
+        "total": len(items),
+        "title_params": title_params or {},
+    }
+
+
 async def _build_most_read(
     session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
@@ -473,20 +503,7 @@ async def _build_top_authors(
         ),
         {"limit": limit},
     )
-    return [
-        {
-            "author_id": row.author_id,
-            "name": row.name or "",
-            "slug": row.slug or "",
-            "photo_url": row.photo_url or "",
-            "book_count": int(row.book_count or 0),
-            "avg_rating": str(row.avg_rating) if row.avg_rating else "",
-            "rating_count": int(row.rating_count or 0),
-            "readers": int(row.readers or 0),
-            "score": float(row.score or 0),
-        }
-        for row in result
-    ]
+    return [_row_to_author_item(row, float(row.score or 0)) for row in result]
 
 
 async def _build_popular_authors(
@@ -533,20 +550,7 @@ async def _build_popular_authors(
         ),
         {"limit": limit},
     )
-    return [
-        {
-            "author_id": row.author_id,
-            "name": row.name or "",
-            "slug": row.slug or "",
-            "photo_url": row.photo_url or "",
-            "book_count": int(row.book_count or 0),
-            "avg_rating": str(row.avg_rating) if row.avg_rating else "",
-            "rating_count": int(row.rating_count or 0),
-            "readers": int(row.readers or 0),
-            "score": float(row.score or 0),
-        }
-        for row in result
-    ]
+    return [_row_to_author_item(row, float(row.score or 0)) for row in result]
 
 
 CATEGORIES: typing.List[typing.Dict[str, typing.Any]] = [

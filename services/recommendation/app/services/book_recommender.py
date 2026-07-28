@@ -47,7 +47,6 @@ async def _get_book_metadata(
     }
 
 
-
 async def _build_more_by_author(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     book_id: int,
@@ -212,23 +211,6 @@ async def _build_readers_also_enjoyed(
     ]
 
 
-
-def _make_book_section(
-    section_key: str,
-    display_name: str,
-    items: typing.List[typing.Dict[str, typing.Any]],
-    title_params: typing.Optional[typing.Dict[str, str]] = None,
-) -> typing.Dict[str, typing.Any]:
-    return {
-        "section_key": section_key,
-        "display_name": display_name,
-        "item_type": "book",
-        "book_items": items,
-        "total": len(items),
-        "title_params": title_params or {},
-    }
-
-
 async def build_book_recommendations(
     session_maker: typing.Any,
     book_id: int,
@@ -284,24 +266,34 @@ async def build_book_recommendations(
 
     if more_by_author_items:
         display_author = author_label or "this author"
-        sections.append(_make_book_section(
-            "more_by_author", f"More by {display_author}", more_by_author_items,
-            {"author": author_label} if author_label else {},
-        ))
+        sections.append(
+            app.services.list_builder._make_book_section(
+                "more_by_author", f"More by {display_author}", more_by_author_items,
+                {"author": author_label} if author_label else {},
+            )
+        )
 
     if series_items:
-        sections.append(_make_book_section(
-            "more_from_series", f"More from {series_name}", series_items,
-            {"series": series_name},
-        ))
+        sections.append(
+            app.services.list_builder._make_book_section(
+                "more_from_series", f"More from {series_name}", series_items,
+                {"series": series_name},
+            )
+        )
 
     if similar_genre_items:
-        sections.append(_make_book_section(
-            "similar_by_genre", f"Similar to {title}", similar_genre_items,
-            {"title": title},
-        ))
+        sections.append(
+            app.services.list_builder._make_book_section(
+                "similar_by_genre", f"Similar to {title}", similar_genre_items,
+                {"title": title},
+            )
+        )
 
     if readers_enjoyed_items:
-        sections.append(_make_book_section("readers_also_enjoyed", "Readers also enjoyed", readers_enjoyed_items))
+        sections.append(
+            app.services.list_builder._make_book_section(
+                "readers_also_enjoyed", "Readers also enjoyed", readers_enjoyed_items
+            )
+        )
 
     return sections

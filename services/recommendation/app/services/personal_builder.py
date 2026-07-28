@@ -28,22 +28,6 @@ def _make_home_section(
     }
 
 
-def _make_book_page_section(
-    section_key: str,
-    display_name: str,
-    items: typing.List[typing.Dict[str, typing.Any]],
-    title_params: typing.Optional[typing.Dict[str, str]] = None,
-) -> typing.Dict[str, typing.Any]:
-    return {
-        "section_key": section_key,
-        "display_name": display_name,
-        "item_type": "book",
-        "book_items": items,
-        "total": len(items),
-        "title_params": title_params or {},
-    }
-
-
 async def _build_for_you(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     profile: typing.Dict[str, typing.Any],
@@ -790,7 +774,9 @@ async def build_personal_book_sections(
     items = app.services._language_boost.dedupe_by_work(items, language)
     if not items:
         return []
-    return [_make_book_page_section("you_might_like", "You Might Also Like", items)]
+    return [
+        app.services.list_builder._make_book_section("you_might_like", "You Might Also Like", items)
+    ]
 
 
 async def build_personal_author_sections(
@@ -807,5 +793,5 @@ async def build_personal_author_sections(
     if not items:
         return []
     return [
-        _make_book_page_section("unread_by_author", "Books You Haven't Read", items)
+        app.services.list_builder._make_book_section("unread_by_author", "Books You Haven't Read", items)
     ]

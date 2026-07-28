@@ -1,6 +1,5 @@
-import datetime
 import pytest
-from unittest.mock import AsyncMock, MagicMock, patch, PropertyMock
+from unittest.mock import AsyncMock, MagicMock, patch
 import app.services.google_auth_service as google_auth_service
 
 
@@ -246,7 +245,7 @@ class TestAuthenticateWithGoogle:
 
         with patch.object(google_auth_service, "exchange_code_for_tokens", AsyncMock(return_value=self._token_data)):
             with patch.object(google_auth_service, "fetch_google_user_info", AsyncMock(return_value=self._user_info)):
-                result = await google_auth_service.authenticate_with_google(
+                await google_auth_service.authenticate_with_google(
                     mock_session, "code", "http://localhost/cb"
                 )
 

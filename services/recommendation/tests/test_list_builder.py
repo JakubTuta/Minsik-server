@@ -1,5 +1,5 @@
 from contextlib import asynccontextmanager
-from unittest.mock import AsyncMock, MagicMock, patch
+from unittest.mock import AsyncMock, patch
 
 import app.services.list_builder as list_builder
 import pytest

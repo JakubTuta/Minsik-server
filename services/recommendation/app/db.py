@@ -30,6 +30,5 @@ async def init_db() -> None:
 
 
 async def close_db() -> None:
-    global engine
     if engine:
         await engine.dispose()

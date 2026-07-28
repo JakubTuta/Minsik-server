@@ -11,7 +11,6 @@ import app.models.genre
 import app.utils
 import sqlalchemy
 import sqlalchemy.dialects.postgresql
-import sqlalchemy.exc
 import sqlalchemy.ext.asyncio
 
 logger = logging.getLogger(__name__)
@@ -23,7 +22,6 @@ async def insert_books_batch(
     commit: bool = True,
     author_id_map: typing.Optional[typing.Dict[str, int]] = None,
     genre_id_cache: typing.Optional[typing.Dict[str, int]] = None,
-    series_id_cache: typing.Optional[typing.Dict[str, int]] = None,  # kept for backward compat, unused
 ) -> typing.Dict[str, int]:
     if not books_data:
         return {"successful": 0, "failed": 0, "updated": 0}

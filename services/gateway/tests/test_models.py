@@ -1,5 +1,4 @@
 import app.models.responses
-import pytest
 
 
 def test_api_response_success():

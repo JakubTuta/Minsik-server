@@ -192,22 +192,6 @@ async def _build_readers_also_enjoyed(
     ]
 
 
-def _make_book_section(
-    section_key: str,
-    display_name: str,
-    items: typing.List[typing.Dict[str, typing.Any]],
-    title_params: typing.Optional[typing.Dict[str, str]] = None,
-) -> typing.Dict[str, typing.Any]:
-    return {
-        "section_key": section_key,
-        "display_name": display_name,
-        "item_type": "book",
-        "book_items": items,
-        "total": len(items),
-        "title_params": title_params or {},
-    }
-
-
 async def build_series_recommendations(
     session_maker: typing.Any,
     series_id: int,
@@ -255,7 +239,7 @@ async def build_series_recommendations(
     if more_by_author_result and not isinstance(more_by_author_result, Exception):
         display_author = author_label or "this author"
         sections.append(
-            _make_book_section(
+            app.services.list_builder._make_book_section(
                 "more_by_author",
                 f"More by {display_author}",
                 more_by_author_result,
@@ -265,7 +249,7 @@ async def build_series_recommendations(
 
     if similar_genre_result and not isinstance(similar_genre_result, Exception):
         sections.append(
-            _make_book_section(
+            app.services.list_builder._make_book_section(
                 "similar_by_genre",
                 f"Similar to {series_name}",
                 similar_genre_result,
@@ -275,7 +259,7 @@ async def build_series_recommendations(
 
     if readers_enjoyed_result and not isinstance(readers_enjoyed_result, Exception):
         sections.append(
-            _make_book_section(
+            app.services.list_builder._make_book_section(
                 "readers_also_enjoyed",
                 "Readers also enjoyed",
                 readers_enjoyed_result,

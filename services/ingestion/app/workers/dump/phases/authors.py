@@ -41,19 +41,25 @@ async def process_authors_dump(file_path: str) -> int:
                         name = app.utils.clean_name(name, max_length=300) or name[:300]
 
                         bio_raw = author_data.get("bio")
-                        bio = parsers.extract_description(bio_raw) if bio_raw else None
+                        bio = (
+                            app.workers.dump.parsers.extract_description(bio_raw)
+                            if bio_raw
+                            else None
+                        )
 
                         photo_url = None
                         photos = author_data.get("photos")
                         if photos and isinstance(photos, list):
                             for photo_id in photos:
                                 if isinstance(photo_id, int) and photo_id > 0:
-                                    photo_url = parsers.OL_AUTHOR_PHOTO_URL.format(
-                                        photo_id=photo_id
+                                    photo_url = (
+                                        app.workers.dump.parsers.OL_AUTHOR_PHOTO_URL.format(
+                                            photo_id=photo_id
+                                        )
                                     )
                                     break
 
-                        remote_ids = parsers.extract_remote_ids(author_data)
+                        remote_ids = app.workers.dump.parsers.extract_remote_ids(author_data)
                         wikidata_id = remote_ids.get("wikidata")
                         wikipedia_url = author_data.get("wikipedia")
                         if isinstance(
@@ -77,10 +83,10 @@ async def process_authors_dump(file_path: str) -> int:
                             "name": name,
                             "slug": slug,
                             "bio": bio,
-                            "birth_date": parsers.parse_free_date(
+                            "birth_date": app.workers.dump.parsers.parse_free_date(
                                 author_data.get("birth_date")
                             ),
-                            "death_date": parsers.parse_free_date(
+                            "death_date": app.workers.dump.parsers.parse_free_date(
                                 author_data.get("death_date")
                             ),
                             "photo_url": photo_url,

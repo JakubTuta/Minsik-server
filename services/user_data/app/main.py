@@ -56,8 +56,6 @@ async def start_server() -> None:
 
 
 async def shutdown() -> None:
-    global grpc_server
-
     logger.info("Shutting down User data service")
 
     shutdown_event.set()

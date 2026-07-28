@@ -547,77 +547,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
             )
             return
 
-        authors = [
-            app.proto.books_pb2.AuthorInfo(
-                author_id=a["author_id"],
-                name=a["name"],
-                slug=a["slug"],
-                photo_url=a.get("photo_url", ""),
-            )
-            for a in book.get("authors", [])
-        ]
-        genres = [
-            app.proto.books_pb2.GenreInfo(
-                genre_id=g["genre_id"], name=g["name"], slug=g["slug"]
-            )
-            for g in book.get("genres", [])
-        ]
-        series_info = None
-        if book.get("series"):
-            s = book["series"]
-            series_info = app.proto.books_pb2.SeriesInfo(
-                series_id=s["series_id"],
-                name=s["name"],
-                slug=s["slug"],
-                total_books=int(s.get("total_books") or 0),
-            )
-
-        sub_rating_stats = {
-            k: app.proto.books_pb2.SubRatingStat(
-                avg=v.get("avg", "0"), count=v.get("count", 0)
-            )
-            for k, v in book.get("sub_rating_stats", {}).items()
-        }
-
-        book_detail = app.proto.books_pb2.BookDetail(
-            book_id=book["book_id"],
-            work_id=book.get("work_id", "") or "",
-            title=book["title"],
-            slug=book["slug"],
-            description=book.get("description", ""),
-            first_sentence=book.get("first_sentence", ""),
-            language=book["language"],
-            original_publication_year=book.get("original_publication_year", 0),
-            formats=book.get("formats", []),
-            primary_cover_url=book.get("primary_cover_url", ""),
-            rating_count=book.get("rating_count", 0),
-            avg_rating=book.get("avg_rating", "0.00"),
-            sub_rating_stats=sub_rating_stats,
-            view_count=book.get("view_count", 0),
-            last_viewed_at=book.get("last_viewed_at", ""),
-            authors=authors,
-            genres=genres,
-            open_library_id=book.get("open_library_id", ""),
-            google_books_id=book.get("google_books_id", ""),
-            created_at=book.get("created_at", ""),
-            updated_at=book.get("updated_at", ""),
-            series=series_info,
-            series_position=book.get("series_position", ""),
-            isbn=book.get("isbn", []),
-            publisher=book.get("publisher", ""),
-            number_of_pages=book.get("number_of_pages", 0),
-            external_ids=book.get("external_ids", {}),
-            ol_rating_count=book.get("ol_rating_count", 0),
-            ol_avg_rating=book.get("ol_avg_rating", "0.00"),
-            ol_want_to_read_count=book.get("ol_want_to_read_count", 0),
-            ol_currently_reading_count=book.get(
-                "ol_currently_reading_count", 0
-            ),
-            ol_already_read_count=book.get("ol_already_read_count", 0),
-            app_want_to_read_count=book.get("app_want_to_read_count", 0),
-            app_reading_count=book.get("app_reading_count", 0),
-            app_read_count=book.get("app_read_count", 0),
-        )
+        book_detail = _build_book_detail_proto(book)
 
         return app.proto.books_pb2.BookDetailResponse(book=book_detail)
 
@@ -1266,4 +1196,3 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
         except Exception as e:
             logger.error(f"Error in AuditSeries: {str(e)}")
             await context.abort(grpc.StatusCode.INTERNAL, f"Audit series failed: {str(e)}")
-            return app.proto.books_pb2.ReindexAllResponse()

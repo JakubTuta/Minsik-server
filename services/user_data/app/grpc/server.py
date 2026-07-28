@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import logging
 import time
 import typing
@@ -122,8 +123,6 @@ async def _fetch_profile_overview(
     user_id: int,
     language: str,
 ) -> typing.Dict[str, typing.Any]:
-    import datetime
-
     year_start = datetime.datetime(datetime.date.today().year, 1, 1)
 
     user_row = (await session.execute(
@@ -426,6 +425,31 @@ def _bookshelf_to_proto(
     )
 
 
+def _bookshelf_cache_entries(
+    rows: typing.Iterable[typing.Any],
+    meta_map: typing.Dict[int, typing.Dict[str, typing.Any]],
+) -> typing.List[typing.Dict[str, typing.Any]]:
+    return [
+        {
+            "bookshelf_id": r.bookshelf_id,
+            "user_id": r.user_id,
+            "book_id": r.book_id,
+            "book_slug": meta_map.get(r.book_id, {}).get("slug", ""),
+            "book_title": meta_map.get(r.book_id, {}).get("title", ""),
+            "book_cover_url": meta_map.get(r.book_id, {}).get("cover_url", ""),
+            "status": r.status,
+            "is_favorite": r.is_favorite,
+            "created_at": r.created_at.isoformat() if r.created_at else "",
+            "updated_at": r.updated_at.isoformat() if r.updated_at else "",
+            "book_author_names": meta_map.get(r.book_id, {}).get("author_names", []),
+            "book_author_slugs": meta_map.get(r.book_id, {}).get("author_slugs", []),
+            "book_series_name": meta_map.get(r.book_id, {}).get("series_name", ""),
+            "book_series_slug": meta_map.get(r.book_id, {}).get("series_slug", ""),
+        }
+        for r in rows
+    ]
+
+
 def _rating_to_proto(
     rating,
     book_slug: str = "",
@@ -594,13 +618,11 @@ async def _handle_error(error: Exception, context: grpc.aio.ServicerContext) -> 
         )
 
 
-"""Everything one reader has recorded about one book.
-
-The book is the edition the slug names, but the reader's own shelf entry,
-rating and comment are looked up across every edition of the work: those are
-recorded against whichever translation they happened to be reading at the time,
-and they belong to the reader and the work, not to a language.
-"""
+# Everything one reader has recorded about one book. The book is the edition
+# the slug names, but the reader's own shelf entry, rating and comment are
+# looked up across every edition of the work: those are recorded against
+# whichever translation they happened to be reading at the time, and they
+# belong to the reader and the work, not to a language.
 _USER_BOOK_INFO_SQL = f"""
     WITH target AS (
         SELECT b.book_id, b.work_id, b.title, b.primary_cover_url, b.series_id
@@ -942,26 +964,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 meta_map = await app.services.edition_resolver.book_meta_map(
                     session, [r.book_id for r in rows], language
                 )
-
-                entries = [
-                    {
-                        "bookshelf_id": r.bookshelf_id,
-                        "user_id": r.user_id,
-                        "book_id": r.book_id,
-                        "book_slug": meta_map.get(r.book_id, {}).get("slug", ""),
-                        "book_title": meta_map.get(r.book_id, {}).get("title", ""),
-                        "book_cover_url": meta_map.get(r.book_id, {}).get("cover_url", ""),
-                        "status": r.status,
-                        "is_favorite": r.is_favorite,
-                        "created_at": r.created_at.isoformat() if r.created_at else "",
-                        "updated_at": r.updated_at.isoformat() if r.updated_at else "",
-                        "book_author_names": meta_map.get(r.book_id, {}).get("author_names", []),
-                        "book_author_slugs": meta_map.get(r.book_id, {}).get("author_slugs", []),
-                        "book_series_name": meta_map.get(r.book_id, {}).get("series_name", ""),
-                        "book_series_slug": meta_map.get(r.book_id, {}).get("series_slug", ""),
-                    }
-                    for r in rows
-                ]
+                entries = _bookshelf_cache_entries(rows, meta_map)
 
             await app.cache.set_json(cache_key, {"total_count": total_count, "bookshelves": entries}, ttl=300)
             protos = [app.proto.user_data_pb2.Bookshelf(**e) for e in entries]
@@ -1018,26 +1021,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 meta_map = await app.services.edition_resolver.book_meta_map(
                     session, [r.book_id for r in rows], language
                 )
-
-                entries = [
-                    {
-                        "bookshelf_id": r.bookshelf_id,
-                        "user_id": r.user_id,
-                        "book_id": r.book_id,
-                        "book_slug": meta_map.get(r.book_id, {}).get("slug", ""),
-                        "book_title": meta_map.get(r.book_id, {}).get("title", ""),
-                        "book_cover_url": meta_map.get(r.book_id, {}).get("cover_url", ""),
-                        "status": r.status,
-                        "is_favorite": r.is_favorite,
-                        "created_at": r.created_at.isoformat() if r.created_at else "",
-                        "updated_at": r.updated_at.isoformat() if r.updated_at else "",
-                        "book_author_names": meta_map.get(r.book_id, {}).get("author_names", []),
-                        "book_author_slugs": meta_map.get(r.book_id, {}).get("author_slugs", []),
-                        "book_series_name": meta_map.get(r.book_id, {}).get("series_name", ""),
-                        "book_series_slug": meta_map.get(r.book_id, {}).get("series_slug", ""),
-                    }
-                    for r in rows
-                ]
+                entries = _bookshelf_cache_entries(rows, meta_map)
 
             await app.cache.set_json(cache_key, {"total_count": total_count, "bookshelves": entries}, ttl=300)
             protos = [app.proto.user_data_pb2.Bookshelf(**e) for e in entries]
@@ -1809,8 +1793,6 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
     ) -> app.proto.user_data_pb2.YearInReviewResponse:
         try:
             language = request.language or "en"
-            import datetime
-
             current_year = datetime.date.today().year
             year = request.year if request.year else current_year
             year = max(2000, min(year, current_year))

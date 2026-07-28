@@ -5,6 +5,8 @@ import typing
 
 import app.config
 import redis.asyncio
+import sqlalchemy
+import sqlalchemy.ext.asyncio
 
 logger = logging.getLogger(__name__)
 
@@ -56,15 +58,6 @@ async def set_cached(key: str, value: typing.Any, ttl: int) -> bool:
         return True
     except Exception as e:
         logger.error(f"Redis SET error for key {key}: {str(e)}")
-        return False
-
-
-async def delete_cached(key: str) -> bool:
-    try:
-        await redis_client.delete(key)
-        return True
-    except Exception as e:
-        logger.error(f"Redis DELETE error for key {key}: {str(e)}")
         return False
 
 
@@ -144,3 +137,37 @@ async def clear_view_counts(entity_type: str, entity_ids: typing.List[int]) -> N
         await redis_client.delete(*keys)
     except Exception as e:
         logger.error(f"Redis clear view counts error: {str(e)}")
+
+
+async def flush_view_counts(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    entity_type: str,
+    table: str,
+    id_column: str,
+) -> int:
+    """Apply Redis-buffered view counts to `table` and clear them. Returns rows flushed."""
+    pending_counts = await get_pending_view_counts(entity_type)
+    if not pending_counts:
+        return 0
+
+    for entity_id, data in pending_counts.items():
+        await session.execute(
+            sqlalchemy.text(
+                f"""
+                UPDATE {table}
+                SET
+                    view_count = view_count + :increment,
+                    last_viewed_at = to_timestamp(:last_viewed)
+                WHERE {id_column} = :entity_id
+                """
+            ),
+            {
+                "entity_id": entity_id,
+                "increment": data["count"],
+                "last_viewed": data["last_viewed"],
+            },
+        )
+
+    await session.commit()
+    await clear_view_counts(entity_type, list(pending_counts.keys()))
+    return len(pending_counts)

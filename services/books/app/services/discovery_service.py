@@ -1,10 +1,10 @@
-import json
 import logging
 import typing
 
 import sqlalchemy
 import sqlalchemy.ext.asyncio
 import app.services._language_boost
+import app.services._row_helpers
 
 logger = logging.getLogger(__name__)
 
@@ -281,13 +281,7 @@ async def _fetch_book_summary_by_id(
 
 
 def _row_to_discover_item(row: typing.Any) -> typing.Dict[str, typing.Any]:
-    authors_raw = row.authors
-    if isinstance(authors_raw, str):
-        authors_list = json.loads(authors_raw)
-    elif authors_raw is None:
-        authors_list = []
-    else:
-        authors_list = authors_raw
+    authors_list = app.services._row_helpers.json_agg_list(row.authors)
 
     return {
         "book_id": row.book_id,

@@ -18,24 +18,6 @@ RARITY_TIERS: typing.List[typing.Tuple[str, float, float, float]] = [
     ("common", 0.00, 2.25, 0.35),
 ]
 
-RARITY_MIN_RATINGS: typing.Dict[str, int] = {
-    "legendary": 25,
-    "ultra_rare": 20,
-    "super_rare": 15,
-    "rare": 8,
-    "uncommon": 3,
-    "common": 1,
-}
-
-POOL_SIZES: typing.Dict[str, int] = {
-    "legendary": 20,
-    "ultra_rare": 30,
-    "super_rare": 50,
-    "rare": 80,
-    "uncommon": 110,
-    "common": 150,
-}
-
 CACHE_KEY_PREFIX = "case:pool"
 
 _POOL_QUERY = sqlalchemy.text(

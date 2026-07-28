@@ -1,5 +1,3 @@
-import datetime
-
 import sqlalchemy
 import sqlalchemy.dialects.postgresql
 import sqlalchemy.orm

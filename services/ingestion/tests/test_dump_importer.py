@@ -1,7 +1,3 @@
-import datetime
-import typing
-
-import pytest
 from app.workers.dump.parsers import (
     OL_LANG_TO_ISO,
     extract_cover_url,

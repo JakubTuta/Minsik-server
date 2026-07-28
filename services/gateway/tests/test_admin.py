@@ -3,7 +3,6 @@ import datetime
 import app.config
 import grpc
 import jwt
-import pytest
 
 
 def make_token(role: str = "admin", user_id: int = 1) -> str:

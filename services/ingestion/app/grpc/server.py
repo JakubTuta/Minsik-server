@@ -14,7 +14,6 @@ import app.workers.dump
 import grpc
 import redis
 import sqlalchemy
-import sqlalchemy.ext.asyncio
 
 logger = logging.getLogger(__name__)
 

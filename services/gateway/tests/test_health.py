@@ -1,5 +1,4 @@
 import grpc
-import pytest
 
 
 class MockRpcError(grpc.RpcError):
@@ -54,8 +53,6 @@ def test_deep_health_endpoint_when_services_healthy(client, mocker):
 
 
 def test_deep_health_endpoint_when_service_unhealthy(client, mocker):
-    import grpc
-
     async def mock_get_status(*args, **kwargs):
         raise MockRpcError(grpc.StatusCode.UNAVAILABLE, "Service unavailable")
 

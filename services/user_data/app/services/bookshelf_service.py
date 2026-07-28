@@ -79,7 +79,7 @@ async def upsert_bookshelf(
     status: str,
 ) -> app.models.bookshelf.Bookshelf:
     if status not in _VALID_STATUSES:
-        raise ValueError(f"invalid_status")
+        raise ValueError("invalid_status")
 
     await _move_sibling_edition_shelf_entry(session, user_id, book_id)
 

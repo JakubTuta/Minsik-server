@@ -1,5 +1,4 @@
 import pytest
-from unittest.mock import AsyncMock, MagicMock
 import app.services.bookshelf_service as bookshelf_service
 from tests.conftest import make_scalar_result, make_list_result
 

@@ -87,17 +87,7 @@ async def _bulk_fetch_authors(
             {"ids": author_ids},
         )
         return {
-            row.author_id: {
-                "author_id": row.author_id,
-                "name": row.name or "",
-                "slug": row.slug or "",
-                "photo_url": row.photo_url or "",
-                "book_count": int(row.book_count or 0),
-                "avg_rating": str(row.avg_rating) if row.avg_rating else "",
-                "rating_count": int(row.rating_count or 0),
-                "readers": int(row.readers or 0),
-                "score": 0.0,
-            }
+            row.author_id: app.services.list_builder._row_to_author_item(row, 0.0)
             for row in result
         }
 
@@ -215,27 +205,19 @@ async def _build_minimal_book_fallback(
         deduped_author = app.services._language_boost.dedupe_by_work(results[0], language)
         display_author = author_label or "this author"
         sections.append(
-            {
-                "section_key": "more_by_author",
-                "display_name": f"More by {display_author}",
-                "item_type": "book",
-                "book_items": deduped_author,
-                "total": len(deduped_author),
-                "title_params": {"author": author_label} if author_label else {},
-            }
+            app.services.list_builder._make_book_section(
+                "more_by_author", f"More by {display_author}", deduped_author,
+                {"author": author_label} if author_label else {},
+            )
         )
 
     if len(results) > 1 and results[1] and not isinstance(results[1], Exception):
         deduped_series = app.services._language_boost.dedupe_by_work(results[1], language)
         sections.append(
-            {
-                "section_key": "more_from_series",
-                "display_name": f"More from {metadata['series_name']}",
-                "item_type": "book",
-                "book_items": deduped_series,
-                "total": len(deduped_series),
-                "title_params": {"series": metadata["series_name"]},
-            }
+            app.services.list_builder._make_book_section(
+                "more_from_series", f"More from {metadata['series_name']}", deduped_series,
+                {"series": metadata["series_name"]},
+            )
         )
 
     return sections
@@ -257,13 +239,9 @@ async def _build_minimal_author_fallback(
         if not result:
             return []
         return [
-            {
-                "section_key": "similar_authors",
-                "display_name": "Similar authors",
-                "item_type": "author",
-                "author_items": result,
-                "total": len(result),
-            }
+            app.services.author_recommender._make_author_section(
+                "similar_authors", "Similar authors", result
+            )
         ]
     except (asyncio.TimeoutError, Exception) as e:
         logger.warning(f"[rec:cold] author {author_id} fallback failed: {e}")
@@ -300,14 +278,10 @@ async def _build_minimal_series_fallback(
         author_label = ", ".join(metadata["author_names"]) if metadata["author_names"] else ""
         display_author = author_label or "this author"
         return [
-            {
-                "section_key": "more_by_author",
-                "display_name": f"More by {display_author}",
-                "item_type": "book",
-                "book_items": result,
-                "total": len(result),
-                "title_params": {"author": author_label} if author_label else {},
-            }
+            app.services.list_builder._make_book_section(
+                "more_by_author", f"More by {display_author}", result,
+                {"author": author_label} if author_label else {},
+            )
         ]
     except (asyncio.TimeoutError, Exception) as e:
         logger.warning(f"[rec:cold] series {series_id} fallback failed: {e}")
