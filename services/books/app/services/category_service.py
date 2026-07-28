@@ -171,14 +171,29 @@ class CategoryService:
             )
 
         order_dir = "DESC" if order.lower() == "desc" else "ASC"
-        preferred_edition = app.services._language_boost.preferred_edition_sql()
+
+        # The candidate set is a whole category, so the edition pick runs as one
+        # DISTINCT ON sort instead of a subquery per candidate row.
+        canonical_editions = app.services._language_boost.canonical_edition_cte(
+            select_list=(
+                "b.book_id, b.title, b.slug, b.work_id, b.description,"
+                " b.original_publication_year, b.primary_cover_url, b.language,"
+                " b.rating_count, b.avg_rating, b.ol_rating_count, b.ol_avg_rating,"
+                " b.ol_want_to_read_count, b.ol_currently_reading_count,"
+                " b.ol_already_read_count"
+            ),
+            source=(
+                "books.books b "
+                "JOIN books.book_genres bg ON bg.book_id = b.book_id "
+                "AND bg.genre_id = ANY(:genre_ids)"
+            ),
+            where="b.primary_cover_url IS NOT NULL",
+        )
 
         query = sqlalchemy.text(
             f"""
-            WITH genre_books AS (
-                SELECT DISTINCT book_id
-                FROM books.book_genres
-                WHERE genre_id = ANY(:genre_ids)
+            WITH b AS (
+                {canonical_editions}
             )
             SELECT
                 b.book_id,
@@ -196,9 +211,9 @@ class CategoryService:
                 b.ol_want_to_read_count,
                 b.ol_currently_reading_count,
                 b.ol_already_read_count,
-                COALESCE(bs.want_to_read_count, 0) AS app_want_to_read_count,
-                COALESCE(bs.reading_count, 0) AS app_reading_count,
-                COALESCE(bs.read_count, 0) AS app_read_count,
+                COALESCE(wsc.want_to_read_count, 0) AS app_want_to_read_count,
+                COALESCE(wsc.reading_count, 0) AS app_reading_count,
+                COALESCE(wsc.read_count, 0) AS app_read_count,
                 (
                     SELECT COALESCE(json_agg(json_build_object(
                         'author_id', a2.author_id,
@@ -211,23 +226,8 @@ class CategoryService:
                     WHERE ba2.book_id = b.book_id
                 ) AS authors,
                 COUNT(*) OVER() AS total_count
-            FROM books.books b
-            JOIN genre_books gb ON b.book_id = gb.book_id
-            LEFT JOIN (
-                SELECT
-                    wb.work_id,
-                    COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'want_to_read')
-                        AS want_to_read_count,
-                    COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'reading')
-                        AS reading_count,
-                    COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'read')
-                        AS read_count
-                FROM user_data.bookshelves bsh
-                JOIN books.books wb ON wb.book_id = bsh.book_id
-                GROUP BY wb.work_id
-            ) bs ON b.work_id = bs.work_id
-            WHERE b.primary_cover_url IS NOT NULL
-              AND {preferred_edition}
+            FROM b
+            {app.services._language_boost.work_shelf_counts_join()}
             ORDER BY {sort_col} {order_dir} NULLS LAST, b.book_id DESC
             LIMIT :limit OFFSET :offset
             """

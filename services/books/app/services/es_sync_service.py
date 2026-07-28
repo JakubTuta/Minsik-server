@@ -155,11 +155,9 @@ _WORKS_QUERY = sqlalchemy.text(
         WHERE updated_at > :last_sync AND work_id IS NOT NULL
     ),
     work_shelves AS (
-        SELECT wb.work_id, COUNT(DISTINCT bsh.user_id) AS app_readers
-        FROM user_data.bookshelves bsh
-        JOIN books.books wb ON wb.book_id = bsh.book_id
-        JOIN changed c ON c.work_id = wb.work_id
-        GROUP BY wb.work_id
+        SELECT wsc.work_id, wsc.readers AS app_readers
+        FROM books.work_shelf_counts wsc
+        JOIN changed c ON c.work_id = wsc.work_id
     ),
     work_authors AS (
         SELECT
@@ -347,16 +345,11 @@ _SERIES_QUERY = sqlalchemy.text(
                 + COALESCE(b.ol_currently_reading_count, 0)
                 + COALESCE(b.ol_already_read_count, 0)
             ), 0) AS ol_readers,
-            COALESCE(SUM(COALESCE(bs.bookshelf_count, 0)), 0) AS app_readers
+            COALESCE(SUM(COALESCE(wsc.readers, 0)), 0) AS app_readers
         FROM books.series s
         JOIN changed c ON c.slug = s.slug
         LEFT JOIN books.books b ON b.series_id = s.series_id
-        LEFT JOIN (
-            SELECT wb.work_id, COUNT(DISTINCT bsh.user_id) AS bookshelf_count
-            FROM user_data.bookshelves bsh
-            JOIN books.books wb ON wb.book_id = bsh.book_id
-            GROUP BY wb.work_id
-        ) bs ON bs.work_id = b.work_id
+        LEFT JOIN books.work_shelf_counts wsc ON wsc.work_id = b.work_id
         GROUP BY s.series_id, s.slug, s.name, s.language
     )
     SELECT

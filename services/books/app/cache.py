@@ -150,23 +150,32 @@ async def flush_view_counts(
     if not pending_counts:
         return 0
 
-    for entity_id, data in pending_counts.items():
-        await session.execute(
-            sqlalchemy.text(
-                f"""
-                UPDATE {table}
-                SET
-                    view_count = view_count + :increment,
-                    last_viewed_at = to_timestamp(:last_viewed)
-                WHERE {id_column} = :entity_id
-                """
-            ),
-            {
-                "entity_id": entity_id,
-                "increment": data["count"],
-                "last_viewed": data["last_viewed"],
-            },
-        )
+    # One statement for the whole flush: the buffer holds every entity viewed
+    # since the last run, so a statement per entity meant thousands of round
+    # trips every few minutes.
+    await session.execute(
+        sqlalchemy.text(
+            f"""
+            UPDATE {table} AS t
+            SET
+                view_count = t.view_count + v.increment,
+                last_viewed_at = to_timestamp(v.last_viewed)
+            FROM UNNEST(
+                CAST(:entity_ids AS bigint[]),
+                CAST(:increments AS int[]),
+                CAST(:last_viewed AS double precision[])
+            ) AS v(entity_id, increment, last_viewed)
+            WHERE t.{id_column} = v.entity_id
+            """
+        ),
+        {
+            "entity_ids": [int(entity_id) for entity_id in pending_counts],
+            "increments": [int(data["count"]) for data in pending_counts.values()],
+            "last_viewed": [
+                float(data["last_viewed"]) for data in pending_counts.values()
+            ],
+        },
+    )
 
     await session.commit()
     await clear_view_counts(entity_type, list(pending_counts.keys()))

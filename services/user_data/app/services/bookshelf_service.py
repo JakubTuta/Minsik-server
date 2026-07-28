@@ -37,7 +37,10 @@ async def _move_sibling_edition_shelf_entry(
             """
             UPDATE user_data.bookshelves
             SET book_id = :book_id, updated_at = now()
-            WHERE bookshelf_id = (
+            -- user_id is repeated here purely so the planner can prune to the
+            -- one hash partition instead of touching all four.
+            WHERE user_id = :user_id
+            AND bookshelf_id = (
                 SELECT bsh.bookshelf_id
                 FROM user_data.bookshelves bsh
                 JOIN books.books b ON b.book_id = bsh.book_id

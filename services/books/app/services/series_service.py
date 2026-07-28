@@ -5,11 +5,54 @@ import app.cache
 import app.config
 import app.models.book
 import app.models.series
+import app.services._language_boost
 import app.services._row_helpers
 import sqlalchemy
 import sqlalchemy.ext.asyncio
 
 logger = logging.getLogger(__name__)
+
+
+def _series_stats_query() -> sqlalchemy.TextClause:
+    """Rating, reader and page totals for one language row of a series."""
+    return sqlalchemy.text(
+        f"""
+        SELECT
+            COUNT(*) as total_books,
+            COALESCE(SUM(b.rating_count), 0) as rating_count,
+            CASE
+                WHEN SUM(b.rating_count) > 0
+                THEN ROUND(SUM(b.avg_rating::numeric * b.rating_count) / SUM(b.rating_count), 2)
+                ELSE NULL
+            END as avg_rating,
+            COALESCE(SUM(b.ol_rating_count), 0) as ol_rating_count,
+            CASE
+                WHEN SUM(b.ol_rating_count) > 0
+                THEN ROUND(SUM(b.ol_avg_rating::numeric * b.ol_rating_count) / SUM(b.ol_rating_count), 2)
+                ELSE NULL
+            END as ol_avg_rating,
+            COALESCE(SUM(b.ol_want_to_read_count), 0) AS ol_want_to_read_count,
+            COALESCE(SUM(b.ol_currently_reading_count), 0) AS ol_currently_reading_count,
+            COALESCE(SUM(b.ol_already_read_count), 0) AS ol_already_read_count,
+            COALESCE(SUM(wsc.want_to_read_count), 0) AS app_want_to_read_count,
+            COALESCE(SUM(wsc.reading_count), 0) AS app_reading_count,
+            COALESCE(SUM(wsc.read_count), 0) AS app_read_count,
+            COALESCE(SUM(b.number_of_pages), 0) AS total_pages,
+            (
+                SELECT b2.description
+                FROM books.books b2
+                WHERE b2.series_id = :series_id
+                  AND b2.language = :language
+                  AND b2.description IS NOT NULL
+                  AND length(trim(b2.description)) > 0
+                ORDER BY b2.series_position ASC NULLS LAST, b2.created_at ASC
+                LIMIT 1
+            ) AS fallback_description
+        FROM books.books b
+        {app.services._language_boost.work_shelf_counts_join()}
+        WHERE b.series_id = :series_id AND b.language = :language
+        """
+    )
 
 
 async def _fallback_series_edition(
@@ -60,56 +103,8 @@ async def get_series_by_slug(
     if not series:
         return None
 
-    stats_query = sqlalchemy.text(
-        """
-        SELECT
-            COUNT(*) as total_books,
-            COALESCE(SUM(b.rating_count), 0) as rating_count,
-            CASE
-                WHEN SUM(b.rating_count) > 0
-                THEN ROUND(SUM(b.avg_rating::numeric * b.rating_count) / SUM(b.rating_count), 2)
-                ELSE NULL
-            END as avg_rating,
-            COALESCE(SUM(b.ol_rating_count), 0) as ol_rating_count,
-            CASE
-                WHEN SUM(b.ol_rating_count) > 0
-                THEN ROUND(SUM(b.ol_avg_rating::numeric * b.ol_rating_count) / SUM(b.ol_rating_count), 2)
-                ELSE NULL
-            END as ol_avg_rating,
-            COALESCE(SUM(b.ol_want_to_read_count), 0) AS ol_want_to_read_count,
-            COALESCE(SUM(b.ol_currently_reading_count), 0) AS ol_currently_reading_count,
-            COALESCE(SUM(b.ol_already_read_count), 0) AS ol_already_read_count,
-            COALESCE(SUM(bs_counts.want_to_read_count), 0) AS app_want_to_read_count,
-            COALESCE(SUM(bs_counts.reading_count), 0) AS app_reading_count,
-            COALESCE(SUM(bs_counts.read_count), 0) AS app_read_count,
-            COALESCE(SUM(b.number_of_pages), 0) AS total_pages,
-            (
-                SELECT b2.description
-                FROM books.books b2
-                WHERE b2.series_id = :series_id
-                  AND b2.language = :language
-                  AND b2.description IS NOT NULL
-                  AND length(trim(b2.description)) > 0
-                ORDER BY b2.series_position ASC NULLS LAST, b2.created_at ASC
-                LIMIT 1
-            ) AS fallback_description
-        FROM books.books b
-        LEFT JOIN (
-            SELECT
-                wb.work_id,
-                COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'want_to_read') AS want_to_read_count,
-                COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'reading') AS reading_count,
-                COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'read') AS read_count
-            FROM user_data.bookshelves bsh
-            JOIN books.books wb ON wb.book_id = bsh.book_id
-            WHERE bsh.status != 'abandoned'
-            GROUP BY wb.work_id
-        ) bs_counts ON b.work_id = bs_counts.work_id
-        WHERE b.series_id = :series_id AND b.language = :language
-    """
-    )
     stats_result = await session.execute(
-        stats_query, {"series_id": series.series_id, "language": series.language}
+        _series_stats_query(), {"series_id": series.series_id, "language": series.language}
     )
     stats = stats_result.first()
 
@@ -202,9 +197,9 @@ async def get_series_books(
             b.ol_already_read_count,
             b.series_position,
             b.number_of_pages,
-            COALESCE(bs.want_to_read_count, 0) AS app_want_to_read_count,
-            COALESCE(bs.reading_count, 0) AS app_reading_count,
-            COALESCE(bs.read_count, 0) AS app_read_count,
+            COALESCE(wsc.want_to_read_count, 0) AS app_want_to_read_count,
+            COALESCE(wsc.reading_count, 0) AS app_reading_count,
+            COALESCE(wsc.read_count, 0) AS app_read_count,
             CASE
                 WHEN (b.rating_count + b.ol_rating_count) > 0
                 THEN (
@@ -215,9 +210,9 @@ async def get_series_books(
             END AS combined_rating,
             (
                 b.ol_want_to_read_count + b.ol_currently_reading_count + b.ol_already_read_count
-                + COALESCE(bs.want_to_read_count, 0)
-                + COALESCE(bs.reading_count, 0)
-                + COALESCE(bs.read_count, 0)
+                + COALESCE(wsc.want_to_read_count, 0)
+                + COALESCE(wsc.reading_count, 0)
+                + COALESCE(wsc.read_count, 0)
             ) AS total_readers,
             (
                 SELECT COALESCE(json_agg(json_build_object(
@@ -231,17 +226,7 @@ async def get_series_books(
                 WHERE ba.book_id = b.book_id
             ) AS authors
         FROM books.books b
-        LEFT JOIN (
-            SELECT
-                wb.work_id,
-                COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'want_to_read') AS want_to_read_count,
-                COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'reading') AS reading_count,
-                COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'read') AS read_count
-            FROM user_data.bookshelves bsh
-            JOIN books.books wb ON wb.book_id = bsh.book_id
-            WHERE bsh.status != 'abandoned'
-            GROUP BY wb.work_id
-        ) bs ON b.work_id = bs.work_id
+        {app.services._language_boost.work_shelf_counts_join()}
         WHERE b.series_id = :series_id AND b.language = :language
         ORDER BY {sort_col} {order_dir} NULLS LAST{secondary_sort}
         LIMIT :limit OFFSET :offset
@@ -385,56 +370,8 @@ async def update_series(
         await app.cache.delete_localized("series_slug", series.slug)
         await app.cache.delete_localized("series_books", series.slug)
 
-    stats_query = sqlalchemy.text(
-        """
-        SELECT
-            COUNT(*) as total_books,
-            COALESCE(SUM(b.rating_count), 0) as rating_count,
-            CASE
-                WHEN SUM(b.rating_count) > 0
-                THEN ROUND(SUM(b.avg_rating::numeric * b.rating_count) / SUM(b.rating_count), 2)
-                ELSE NULL
-            END as avg_rating,
-            COALESCE(SUM(b.ol_rating_count), 0) as ol_rating_count,
-            CASE
-                WHEN SUM(b.ol_rating_count) > 0
-                THEN ROUND(SUM(b.ol_avg_rating::numeric * b.ol_rating_count) / SUM(b.ol_rating_count), 2)
-                ELSE NULL
-            END as ol_avg_rating,
-            COALESCE(SUM(b.ol_want_to_read_count), 0) AS ol_want_to_read_count,
-            COALESCE(SUM(b.ol_currently_reading_count), 0) AS ol_currently_reading_count,
-            COALESCE(SUM(b.ol_already_read_count), 0) AS ol_already_read_count,
-            COALESCE(SUM(COALESCE(bs.want_to_read_count, 0)), 0) AS app_want_to_read_count,
-            COALESCE(SUM(COALESCE(bs.reading_count, 0)), 0) AS app_reading_count,
-            COALESCE(SUM(COALESCE(bs.read_count, 0)), 0) AS app_read_count,
-            COALESCE(SUM(b.number_of_pages), 0) AS total_pages,
-            (
-                SELECT b2.description
-                FROM books.books b2
-                WHERE b2.series_id = :series_id
-                  AND b2.language = :language
-                  AND b2.description IS NOT NULL
-                  AND length(trim(b2.description)) > 0
-                ORDER BY b2.series_position ASC NULLS LAST, b2.created_at ASC
-                LIMIT 1
-            ) AS fallback_description
-        FROM books.books b
-        LEFT JOIN (
-            SELECT
-                wb.work_id,
-                COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'want_to_read') AS want_to_read_count,
-                COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'reading') AS reading_count,
-                COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'read') AS read_count
-            FROM user_data.bookshelves bsh
-            JOIN books.books wb ON wb.book_id = bsh.book_id
-            WHERE bsh.status != 'abandoned'
-            GROUP BY wb.work_id
-        ) bs ON b.work_id = bs.work_id
-        WHERE b.series_id = :series_id AND b.language = :language
-        """
-    )
     stats_result = await session.execute(
-        stats_query, {"series_id": series.series_id, "language": language}
+        _series_stats_query(), {"series_id": series.series_id, "language": language}
     )
     stats = stats_result.first()
 

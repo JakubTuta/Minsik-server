@@ -39,6 +39,13 @@ class Settings(pydantic_settings.BaseSettings):
     view_count_flush_enabled: bool = pydantic.Field(default=True)
     view_count_flush_cron: str = pydantic.Field(default="*/5 * * * *")
 
+    # Every list surface reads shelf counts from books.work_shelf_counts. The
+    # rebuild is one pass over user_data.bookshelves, so it can run often; the
+    # book detail page still computes its own counts live, which is where a
+    # reader looks for their own shelf change to show up immediately.
+    work_shelf_counts_refresh_enabled: bool = pydantic.Field(default=True)
+    work_shelf_counts_refresh_cron: str = pydantic.Field(default="*/15 * * * *")
+
     search_author_books_expansion: int = pydantic.Field(default=3)
 
     # Ranking signals are additive on top of the text score. The pivots are the

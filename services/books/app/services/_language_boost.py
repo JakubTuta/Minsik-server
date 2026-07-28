@@ -18,21 +18,27 @@ def lang_boost_weight(book_language: str, user_language: str) -> float:
     return LANGUAGE_BOOST_WEIGHT if book_language == user_language else 1.0
 
 
-def work_shelf_count_sql(book_alias: str = "b", bookshelf_alias: str = "bsh") -> str:
+def work_shelf_counts_join(book_alias: str = "b", counts_alias: str = "wsc") -> str:
+    """Join the per-work shelf rollup onto a `books.books` row already in scope.
+
+    Aggregating user_data.bookshelves inline made every list query group the
+    whole table by work_id just to read a handful of rows; books.work_shelf_counts
+    holds the same numbers, refreshed on a cron by the books service.
+    """
+    return (
+        f"LEFT JOIN books.work_shelf_counts {counts_alias} "
+        f"ON {counts_alias}.work_id = {book_alias}.work_id"
+    )
+
+
+def work_shelf_count_sql(counts_alias: str = "wsc") -> str:
     """Distinct app users who shelved any language edition of the same work.
 
     Counts every status: shelving a book at all is the engagement signal, and
     counting users rather than rows keeps a user who shelved two translations
-    from being counted twice.
-
-    `book_alias` must be a `books.books` row in scope (for its `work_id`).
-    `bookshelf_alias` must not collide with another alias in the query.
+    from being counted twice. Requires `work_shelf_counts_join` in the query.
     """
-    return (
-        f"(SELECT COUNT(DISTINCT {bookshelf_alias}.user_id) FROM user_data.bookshelves {bookshelf_alias} "
-        f"JOIN books.books {bookshelf_alias}_wb ON {bookshelf_alias}_wb.book_id = {bookshelf_alias}.book_id "
-        f"WHERE {bookshelf_alias}_wb.work_id = {book_alias}.work_id)"
-    )
+    return f"COALESCE({counts_alias}.readers, 0)"
 
 
 def preferred_edition_sql(
@@ -69,20 +75,44 @@ def preferred_edition_sql(
     )
 
 
-def work_readers_sql(book_alias: str = "b", bookshelf_alias: str = "bsh") -> str:
+def canonical_edition_cte(
+    select_list: str,
+    source: str,
+    where: str = "",
+    book_alias: str = "b",
+    language_param: str = "language",
+) -> str:
+    """One edition per work, picked the same way `preferred_edition_sql` picks it.
+
+    `preferred_edition_sql` re-runs its subquery once per candidate row, which
+    is fine for a handful of rows and quadratic for a whole-catalog list. This
+    does the same pick as a single sort, so it is the form to use whenever the
+    candidate set isn't already narrow.
+    """
+    where_clause = f"WHERE {where} " if where else ""
+    return (
+        f"SELECT DISTINCT ON ({book_alias}.work_id) {select_list} "
+        f"FROM {source} {where_clause}"
+        f"ORDER BY {book_alias}.work_id, "
+        f"({book_alias}.language = :{language_param}) DESC, "
+        f"({book_alias}.language = 'en') DESC, {book_alias}.book_id ASC"
+    )
+
+
+def work_readers_sql(book_alias: str = "b", counts_alias: str = "wsc") -> str:
     """Everyone who shelved the work here or on Open Library, all statuses."""
     return (
         f"(COALESCE({book_alias}.ol_want_to_read_count, 0)"
         f" + COALESCE({book_alias}.ol_currently_reading_count, 0)"
         f" + COALESCE({book_alias}.ol_already_read_count, 0)"
-        f" + {work_shelf_count_sql(book_alias, bookshelf_alias)})"
+        f" + {work_shelf_count_sql(counts_alias)})"
     )
 
 
-def work_popularity_sql(book_alias: str = "b", bookshelf_alias: str = "bsh") -> str:
+def work_popularity_sql(book_alias: str = "b", counts_alias: str = "wsc") -> str:
     """Single popularity signal: every shelf status plus every rating."""
     return (
-        f"({work_readers_sql(book_alias, bookshelf_alias)}"
+        f"({work_readers_sql(book_alias, counts_alias)}"
         f" + COALESCE({book_alias}.rating_count, 0)"
         f" + COALESCE({book_alias}.ol_rating_count, 0))"
     )

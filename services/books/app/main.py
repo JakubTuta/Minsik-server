@@ -11,6 +11,7 @@ import app.grpc.server
 import app.jobs
 import app.proto.books_pb2
 import app.proto.books_pb2_grpc
+import app.services.work_shelf_counts
 import app.tracing
 import apscheduler
 import apscheduler.triggers.cron
@@ -60,6 +61,13 @@ async def start_server() -> None:
     listen_addr = f"{app.config.settings.books_service_host}:{app.config.settings.books_grpc_port}"
     grpc_server.add_insecure_port(listen_addr)
 
+    # Before serving, not after: on the first boot after the rollup table is
+    # created it is empty, and every list surface would report zero readers
+    # until it filled. Only does work when the table is empty, so this costs
+    # nothing on subsequent restarts.
+    if app.config.settings.work_shelf_counts_refresh_enabled:
+        await app.services.work_shelf_counts.populate_if_empty()
+
     logger.info(f"Starting gRPC server on {listen_addr}")
     await grpc_server.start()
 
@@ -73,6 +81,18 @@ async def start_server() -> None:
         )
         logger.info(
             f"[books] View count flush scheduled (cron: '{app.config.settings.view_count_flush_cron}')"
+        )
+
+    if app.config.settings.work_shelf_counts_refresh_enabled:
+        await scheduler.add_schedule(
+            app.jobs.work_shelf_counts_refresh_job,
+            apscheduler.triggers.cron.CronTrigger.from_crontab(
+                app.config.settings.work_shelf_counts_refresh_cron
+            ),
+        )
+        logger.info(
+            f"[books] Work shelf counts refresh scheduled "
+            f"(cron: '{app.config.settings.work_shelf_counts_refresh_cron}')"
         )
 
     if app.config.settings.es_reindex_enabled:

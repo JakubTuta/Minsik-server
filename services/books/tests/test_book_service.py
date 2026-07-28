@@ -155,7 +155,11 @@ class TestBookService:
 
             await book_service.flush_view_counts_to_db(mock_session)
 
-            assert mock_session.execute.call_count == 2
+            # One statement for the whole buffer, not one per entity.
+            assert mock_session.execute.call_count == 1
+            params = mock_session.execute.call_args[0][1]
+            assert params["entity_ids"] == [1, 2]
+            assert params["increments"] == [10, 5]
             mock_session.commit.assert_called_once()
             mock_clear.assert_called_once_with("book", [1, 2])
 

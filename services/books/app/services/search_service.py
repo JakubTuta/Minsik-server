@@ -651,11 +651,12 @@ async def _search_books_by_category(
         LEFT JOIN books.book_authors ba ON b.book_id = ba.book_id
         LEFT JOIN books.authors a ON ba.author_id = a.author_id
         LEFT JOIN books.series s ON b.series_id = s.series_id
+        {app.services._language_boost.work_shelf_counts_join()}
         WHERE {app.services._language_boost.preferred_edition_sql(require_cover=False)}
           AND (g.slug ILIKE :query_pattern OR g.name ILIKE :query_pattern)
         GROUP BY b.book_id, b.title, b.slug, b.work_id, b.language, b.primary_cover_url,
                  b.rating_count, b.avg_rating, b.ol_rating_count, b.ol_avg_rating,
-                 b.created_at, s.slug
+                 b.created_at, s.slug, wsc.readers
         ORDER BY
             COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0) DESC,
             COALESCE(b.avg_rating, 0) DESC,
@@ -732,8 +733,9 @@ async def _get_author_top_books(
         JOIN books.book_authors ba ON b.book_id = ba.book_id
         LEFT JOIN books.authors a ON ba.author_id = a.author_id
         LEFT JOIN books.series s ON b.series_id = s.series_id
+        {app.services._language_boost.work_shelf_counts_join()}
         WHERE ba.author_id = :author_id AND {app.services._language_boost.preferred_edition_sql(require_cover=False)}
-        GROUP BY b.book_id, b.title, b.slug, b.work_id, b.language, b.primary_cover_url, b.rating_count, b.avg_rating, b.ol_rating_count, b.ol_avg_rating, b.created_at, s.slug
+        GROUP BY b.book_id, b.title, b.slug, b.work_id, b.language, b.primary_cover_url, b.rating_count, b.avg_rating, b.ol_rating_count, b.ol_avg_rating, b.created_at, s.slug, wsc.readers
         ORDER BY
             COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0) DESC,
             COALESCE(b.avg_rating, 0) DESC,
@@ -777,8 +779,9 @@ async def _get_series_top_books(
         LEFT JOIN books.book_authors ba ON b.book_id = ba.book_id
         LEFT JOIN books.authors a ON ba.author_id = a.author_id
         LEFT JOIN books.series s ON b.series_id = s.series_id
+        {app.services._language_boost.work_shelf_counts_join()}
         WHERE b.series_id = :series_id AND {app.services._language_boost.preferred_edition_sql(require_cover=False)}
-        GROUP BY b.book_id, b.title, b.slug, b.work_id, b.language, b.primary_cover_url, b.series_position, b.rating_count, b.avg_rating, b.ol_rating_count, b.ol_avg_rating, b.created_at, s.slug
+        GROUP BY b.book_id, b.title, b.slug, b.work_id, b.language, b.primary_cover_url, b.series_position, b.rating_count, b.avg_rating, b.ol_rating_count, b.ol_avg_rating, b.created_at, s.slug, wsc.readers
         ORDER BY
             b.series_position ASC NULLS LAST,
             b.created_at ASC

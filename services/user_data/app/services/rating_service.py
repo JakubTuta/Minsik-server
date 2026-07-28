@@ -9,19 +9,36 @@ import sqlalchemy.ext.asyncio
 async def _update_book_stats(
     session: sqlalchemy.ext.asyncio.AsyncSession, book_id: int
 ) -> None:
+    await _update_work_stats(session, [book_id])
+
+
+async def _update_work_stats(
+    session: sqlalchemy.ext.asyncio.AsyncSession, book_ids: typing.List[int]
+) -> None:
+    """Recompute pooled rating stats for every work the given books belong to.
+
+    Takes a list because a bulk delete leaves many books stale at once, and the
+    per-work aggregate is the same shape whether it covers one work or all of
+    them — running it once per book meant one full statement per rating.
+    """
+    if not book_ids:
+        return
+
     await session.execute(
         sqlalchemy.text(
             """
         WITH canonical AS (
-            SELECT work_id FROM books.books WHERE book_id = :book_id
+            SELECT DISTINCT work_id FROM books.books WHERE book_id = ANY(:book_ids)
         ),
-        sibling_books AS (
-            SELECT b.book_id
-            FROM books.books b, canonical
-            WHERE b.work_id = canonical.work_id
+        work_ratings AS (
+            SELECT b.work_id, r.*
+            FROM books.books b
+            JOIN canonical c ON c.work_id = b.work_id
+            JOIN user_data.ratings r ON r.book_id = b.book_id
         ),
         stats AS (
             SELECT
+                work_id,
                 ROUND(AVG(overall_rating)::NUMERIC, 2)    AS avg_overall,
                 COUNT(*)                                   AS total_count,
                 ROUND(AVG(pacing)::NUMERIC, 2)            AS avg_pacing,
@@ -40,44 +57,43 @@ async def _update_book_stats(
                 COUNT(plot_complexity)                     AS plot_complexity_count,
                 ROUND(AVG(humor)::NUMERIC, 2)             AS avg_humor,
                 COUNT(humor)                               AS humor_count
-            FROM user_data.ratings
-            WHERE book_id IN (SELECT book_id FROM sibling_books)
+            FROM work_ratings
+            GROUP BY work_id
         ),
         dist AS (
-            SELECT COALESCE(
-                jsonb_object_agg(overall_rating::text, cnt),
-                '{}'
-            ) AS distribution
+            SELECT work_id, jsonb_object_agg(overall_rating::text, cnt) AS distribution
             FROM (
-                SELECT overall_rating, COUNT(*) AS cnt
-                FROM user_data.ratings
-                WHERE book_id IN (SELECT book_id FROM sibling_books)
-                GROUP BY overall_rating
+                SELECT work_id, overall_rating, COUNT(*) AS cnt
+                FROM work_ratings
+                GROUP BY work_id, overall_rating
             ) t
+            GROUP BY work_id
         )
         UPDATE books.books
         SET
             avg_rating           = stats.avg_overall,
-            rating_count         = stats.total_count,
-            rating_distribution  = dist.distribution,
+            rating_count         = COALESCE(stats.total_count, 0),
+            rating_distribution  = COALESCE(dist.distribution, '{}'::jsonb),
             sub_rating_stats = (
                 SELECT jsonb_object_agg(key, value)
                 FROM (VALUES
-                    ('pacing',            jsonb_build_object('avg', COALESCE(stats.avg_pacing, 0)::text,            'count', stats.pacing_count)),
-                    ('emotional_impact',  jsonb_build_object('avg', COALESCE(stats.avg_emotional_impact, 0)::text,  'count', stats.emotional_impact_count)),
-                    ('intellectual_depth',jsonb_build_object('avg', COALESCE(stats.avg_intellectual_depth, 0)::text,'count', stats.intellectual_depth_count)),
-                    ('writing_quality',   jsonb_build_object('avg', COALESCE(stats.avg_writing_quality, 0)::text,   'count', stats.writing_quality_count)),
-                    ('rereadability',     jsonb_build_object('avg', COALESCE(stats.avg_rereadability, 0)::text,     'count', stats.rereadability_count)),
-                    ('readability',       jsonb_build_object('avg', COALESCE(stats.avg_readability, 0)::text,       'count', stats.readability_count)),
-                    ('plot_complexity',   jsonb_build_object('avg', COALESCE(stats.avg_plot_complexity, 0)::text,   'count', stats.plot_complexity_count)),
-                    ('humor',             jsonb_build_object('avg', COALESCE(stats.avg_humor, 0)::text,             'count', stats.humor_count))
+                    ('pacing',            jsonb_build_object('avg', COALESCE(stats.avg_pacing, 0)::text,            'count', COALESCE(stats.pacing_count, 0))),
+                    ('emotional_impact',  jsonb_build_object('avg', COALESCE(stats.avg_emotional_impact, 0)::text,  'count', COALESCE(stats.emotional_impact_count, 0))),
+                    ('intellectual_depth',jsonb_build_object('avg', COALESCE(stats.avg_intellectual_depth, 0)::text,'count', COALESCE(stats.intellectual_depth_count, 0))),
+                    ('writing_quality',   jsonb_build_object('avg', COALESCE(stats.avg_writing_quality, 0)::text,   'count', COALESCE(stats.writing_quality_count, 0))),
+                    ('rereadability',     jsonb_build_object('avg', COALESCE(stats.avg_rereadability, 0)::text,     'count', COALESCE(stats.rereadability_count, 0))),
+                    ('readability',       jsonb_build_object('avg', COALESCE(stats.avg_readability, 0)::text,       'count', COALESCE(stats.readability_count, 0))),
+                    ('plot_complexity',   jsonb_build_object('avg', COALESCE(stats.avg_plot_complexity, 0)::text,   'count', COALESCE(stats.plot_complexity_count, 0))),
+                    ('humor',             jsonb_build_object('avg', COALESCE(stats.avg_humor, 0)::text,             'count', COALESCE(stats.humor_count, 0)))
                 ) AS t(key, value)
             )
-        FROM stats, dist, canonical
+        FROM canonical
+        LEFT JOIN stats ON stats.work_id = canonical.work_id
+        LEFT JOIN dist ON dist.work_id = canonical.work_id
         WHERE books.books.work_id = canonical.work_id
     """
         ),
-        {"book_id": book_id},
+        {"book_ids": list({int(book_id) for book_id in book_ids})},
     )
 
 
@@ -285,5 +301,4 @@ async def delete_user_ratings(
         )
     )
 
-    for book_id in affected_book_ids:
-        await _update_book_stats(session, book_id)
+    await _update_work_stats(session, affected_book_ids)

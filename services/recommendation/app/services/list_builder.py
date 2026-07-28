@@ -20,15 +20,15 @@ logger = logging.getLogger(__name__)
 # pipeline writes them identically to every language row.
 _READERS_EXPR = """
     COALESCE(b.ol_want_to_read_count, 0) + COALESCE(b.ol_currently_reading_count, 0)
-    + COALESCE(b.ol_already_read_count, 0) + COALESCE(MAX(bs_agg.app_readers), 0)
+    + COALESCE(b.ol_already_read_count, 0) + COALESCE(MAX(wsc.readers), 0)
 """
 
 _WANT_TO_READ_EXPR = (
-    "COALESCE(b.ol_want_to_read_count, 0) + COALESCE(MAX(bs_agg.app_want_to_read), 0)"
+    "COALESCE(b.ol_want_to_read_count, 0) + COALESCE(MAX(wsc.want_to_read_count), 0)"
 )
 
 _CURRENTLY_READING_EXPR = (
-    "COALESCE(b.ol_currently_reading_count, 0) + COALESCE(MAX(bs_agg.app_reading), 0)"
+    "COALESCE(b.ol_currently_reading_count, 0) + COALESCE(MAX(wsc.reading_count), 0)"
 )
 
 _RATING_COUNT_EXPR = "COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0)"
@@ -55,32 +55,55 @@ _BOOK_FIELDS = f"""
     {_READERS_EXPR} AS readers
 """
 
+# The shelf counts come from books.work_shelf_counts (refreshed on a cron by the
+# books service) rather than a lateral aggregate over user_data.bookshelves:
+# that lateral ran once per candidate book, so a 40-row list re-aggregated the
+# shelf table hundreds of thousands of times.
 _BOOK_JOINS = """
     LEFT JOIN books.book_authors ba ON b.book_id = ba.book_id
     LEFT JOIN books.authors a ON ba.author_id = a.author_id
-    LEFT JOIN LATERAL (
-        SELECT
-            COUNT(DISTINCT bs_r.user_id) AS app_readers,
-            COUNT(DISTINCT bs_r.user_id) FILTER (WHERE bs_r.status = 'want_to_read')
-                AS app_want_to_read,
-            COUNT(DISTINCT bs_r.user_id) FILTER (WHERE bs_r.status = 'reading')
-                AS app_reading
-        FROM user_data.bookshelves bs_r
-        JOIN books.books rb ON rb.book_id = bs_r.book_id
-        WHERE rb.work_id = b.work_id
-    ) bs_agg ON TRUE
+    LEFT JOIN books.work_shelf_counts wsc ON wsc.work_id = b.work_id
 """
 
+# For a query that already narrows to a handful of books (one series, one
+# author, a list of ids) the per-row edition subquery is cheap.
 _BOOK_BASE_WHERE = (
     "b.primary_cover_url IS NOT NULL AND "
     + app.services._language_boost.preferred_edition_sql()
 )
 
+# For a query whose candidates are the whole catalog it is not: it re-ran the
+# subquery once per book. This elects the same edition in a single sort, and is
+# what every catalog-wide list below drives off.
+#
+# It yields ids rather than whole rows so the outer query still reads columns
+# from books.books itself, which is what lets `GROUP BY b.book_id` stand in for
+# grouping by every selected column.
+_CANONICAL_BOOKS_CTE = """
+    WITH canonical_books AS (
+        SELECT DISTINCT ON (work_id) book_id
+        FROM books.books
+        WHERE primary_cover_url IS NOT NULL
+        ORDER BY work_id, (language = :language) DESC, (language = 'en') DESC, book_id ASC
+    )
+"""
+
+_BOOK_FROM_CANONICAL = (
+    "FROM canonical_books cb JOIN books.books b ON b.book_id = cb.book_id"
+)
+
 _BOOK_GROUP_BY = "GROUP BY b.book_id"
 
-# One row per (author, work): picks the edition with the most ratings so an
-# author's translated catalog isn't summed/counted once per language.
-_AUTHOR_WORKS_CTE = """
+def author_works_cte(author_filter: str = "") -> str:
+    """One row per (author, work): the edition with the most ratings, so an
+    author's translated catalog isn't summed once per language.
+
+    `author_filter` must be supplied whenever the caller only wants a few
+    authors. A join predicate in the outer query cannot be pushed into this
+    CTE, so without it the whole of books.book_authors is sorted every time.
+    """
+    where_clause = f"WHERE {author_filter} " if author_filter else ""
+    return f"""
         author_works AS (
             SELECT DISTINCT ON (ba.author_id, b.work_id)
                 ba.author_id,
@@ -94,7 +117,7 @@ _AUTHOR_WORKS_CTE = """
                 b.ol_already_read_count
             FROM books.book_authors ba
             JOIN books.books b ON ba.book_id = b.book_id
-            ORDER BY ba.author_id, b.work_id,
+            {where_clause}ORDER BY ba.author_id, b.work_id,
                      (COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0)) DESC
         )
 """
@@ -152,10 +175,9 @@ async def _build_most_read(
 ) -> typing.List[typing.Dict]:
     result = await session.execute(
         sqlalchemy.text(
-            f"""
+            f"""{_CANONICAL_BOOKS_CTE}
         SELECT {_BOOK_FIELDS}, {_READERS_EXPR} AS score
-        FROM books.books b {_BOOK_JOINS}
-        WHERE {_BOOK_BASE_WHERE}
+        {_BOOK_FROM_CANONICAL} {_BOOK_JOINS}
         {_BOOK_GROUP_BY}
         ORDER BY score DESC NULLS LAST
         LIMIT :limit
@@ -171,10 +193,9 @@ async def _build_most_wanted(
 ) -> typing.List[typing.Dict]:
     result = await session.execute(
         sqlalchemy.text(
-            f"""
+            f"""{_CANONICAL_BOOKS_CTE}
         SELECT {_BOOK_FIELDS}, {_WANT_TO_READ_EXPR} AS score
-        FROM books.books b {_BOOK_JOINS}
-        WHERE {_BOOK_BASE_WHERE}
+        {_BOOK_FROM_CANONICAL} {_BOOK_JOINS}
         {_BOOK_GROUP_BY}
         ORDER BY score DESC NULLS LAST
         LIMIT :limit
@@ -190,10 +211,9 @@ async def _build_trending_reads(
 ) -> typing.List[typing.Dict]:
     result = await session.execute(
         sqlalchemy.text(
-            f"""
+            f"""{_CANONICAL_BOOKS_CTE}
         SELECT {_BOOK_FIELDS}, {_CURRENTLY_READING_EXPR} AS score
-        FROM books.books b {_BOOK_JOINS}
-        WHERE {_BOOK_BASE_WHERE}
+        {_BOOK_FROM_CANONICAL} {_BOOK_JOINS}
         {_BOOK_GROUP_BY}
         ORDER BY score DESC NULLS LAST
         LIMIT :limit
@@ -209,11 +229,13 @@ async def _build_most_viewed(
 ) -> typing.List[typing.Dict]:
     result = await session.execute(
         sqlalchemy.text(
-            f"""
-        SELECT {_BOOK_FIELDS},
-               {app.services._language_boost.work_view_count_sql()} AS score
-        FROM books.books b {_BOOK_JOINS}
-        WHERE {_BOOK_BASE_WHERE}
+            f"""{_CANONICAL_BOOKS_CTE},
+        work_views AS (
+            SELECT work_id, SUM(view_count) AS views FROM books.books GROUP BY work_id
+        )
+        SELECT {_BOOK_FIELDS}, COALESCE(MAX(wv.views), 0) AS score
+        {_BOOK_FROM_CANONICAL} {_BOOK_JOINS}
+        LEFT JOIN work_views wv ON wv.work_id = b.work_id
         {_BOOK_GROUP_BY}
         ORDER BY score DESC NULLS LAST
         LIMIT :limit
@@ -229,7 +251,7 @@ async def _build_highest_rated(
 ) -> typing.List[typing.Dict]:
     result = await session.execute(
         sqlalchemy.text(
-            f"""
+            f"""{_CANONICAL_BOOKS_CTE}
         SELECT {_BOOK_FIELDS},
                CASE
                    WHEN (COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0)) = 0 THEN 0
@@ -238,9 +260,8 @@ async def _build_highest_rated(
                        + COALESCE(b.ol_avg_rating::numeric, 0) * COALESCE(b.ol_rating_count, 0)
                    ) / (COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0))
                END AS score
-        FROM books.books b {_BOOK_JOINS}
-        WHERE {_BOOK_BASE_WHERE}
-          AND (COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0)) >= 3
+        {_BOOK_FROM_CANONICAL} {_BOOK_JOINS}
+        WHERE (COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0)) >= 3
         {_BOOK_GROUP_BY}
         ORDER BY score DESC NULLS LAST
         LIMIT :limit
@@ -256,10 +277,10 @@ async def _build_community_top_rated(
 ) -> typing.List[typing.Dict]:
     result = await session.execute(
         sqlalchemy.text(
-            f"""
+            f"""{_CANONICAL_BOOKS_CTE}
         SELECT {_BOOK_FIELDS}, b.ol_avg_rating AS score
-        FROM books.books b {_BOOK_JOINS}
-        WHERE {_BOOK_BASE_WHERE} AND b.ol_rating_count >= 20
+        {_BOOK_FROM_CANONICAL} {_BOOK_JOINS}
+        WHERE b.ol_rating_count >= 20
         {_BOOK_GROUP_BY}
         ORDER BY b.ol_avg_rating DESC NULLS LAST
         LIMIT :limit
@@ -275,11 +296,10 @@ async def _build_most_rated(
 ) -> typing.List[typing.Dict]:
     result = await session.execute(
         sqlalchemy.text(
-            f"""
+            f"""{_CANONICAL_BOOKS_CTE}
         SELECT {_BOOK_FIELDS},
                COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0) AS score
-        FROM books.books b {_BOOK_JOINS}
-        WHERE {_BOOK_BASE_WHERE}
+        {_BOOK_FROM_CANONICAL} {_BOOK_JOINS}
         {_BOOK_GROUP_BY}
         ORDER BY score DESC NULLS LAST
         LIMIT :limit
@@ -295,10 +315,9 @@ async def _build_recently_added(
 ) -> typing.List[typing.Dict]:
     result = await session.execute(
         sqlalchemy.text(
-            f"""
+            f"""{_CANONICAL_BOOKS_CTE}
         SELECT {_BOOK_FIELDS}, EXTRACT(EPOCH FROM b.created_at) AS score
-        FROM books.books b {_BOOK_JOINS}
-        WHERE {_BOOK_BASE_WHERE}
+        {_BOOK_FROM_CANONICAL} {_BOOK_JOINS}
         {_BOOK_GROUP_BY}
         ORDER BY b.created_at DESC
         LIMIT :limit
@@ -314,11 +333,10 @@ async def _build_classics(
 ) -> typing.List[typing.Dict]:
     result = await session.execute(
         sqlalchemy.text(
-            f"""
+            f"""{_CANONICAL_BOOKS_CTE}
         SELECT {_BOOK_FIELDS}, {_READERS_EXPR} AS score
-        FROM books.books b {_BOOK_JOINS}
-        WHERE {_BOOK_BASE_WHERE}
-          AND b.original_publication_year < 1980
+        {_BOOK_FROM_CANONICAL} {_BOOK_JOINS}
+        WHERE b.original_publication_year < 1980
         {_BOOK_GROUP_BY}
         HAVING ({_READERS_EXPR}) >= 100 OR b.avg_rating >= 4.0
         ORDER BY score DESC NULLS LAST, b.avg_rating DESC NULLS LAST
@@ -335,13 +353,13 @@ async def _build_user_favorites(
 ) -> typing.List[typing.Dict]:
     result = await session.execute(
         sqlalchemy.text(
-            f"""
+            f"""{_CANONICAL_BOOKS_CTE}
         SELECT {_BOOK_FIELDS}, COUNT(DISTINCT bs.user_id) AS score
-        FROM books.books b
+        {_BOOK_FROM_CANONICAL}
         JOIN books.books wb ON wb.work_id = b.work_id
         JOIN user_data.bookshelves bs ON bs.book_id = wb.book_id
         {_BOOK_JOINS}
-        WHERE bs.is_favorite = true AND {_BOOK_BASE_WHERE}
+        WHERE bs.is_favorite = true
         {_BOOK_GROUP_BY}
         ORDER BY score DESC
         LIMIT :limit
@@ -357,13 +375,13 @@ async def _build_recently_finished(
 ) -> typing.List[typing.Dict]:
     result = await session.execute(
         sqlalchemy.text(
-            f"""
+            f"""{_CANONICAL_BOOKS_CTE}
         SELECT {_BOOK_FIELDS}, EXTRACT(EPOCH FROM MAX(bs.updated_at)) AS score
-        FROM books.books b
+        {_BOOK_FROM_CANONICAL}
         JOIN books.books wb ON wb.work_id = b.work_id
         JOIN user_data.bookshelves bs ON bs.book_id = wb.book_id
         {_BOOK_JOINS}
-        WHERE bs.status = 'read' AND {_BOOK_BASE_WHERE}
+        WHERE bs.status = 'read'
         {_BOOK_GROUP_BY}
         ORDER BY MAX(bs.updated_at) DESC
         LIMIT :limit
@@ -379,13 +397,13 @@ async def _build_currently_reading(
 ) -> typing.List[typing.Dict]:
     result = await session.execute(
         sqlalchemy.text(
-            f"""
+            f"""{_CANONICAL_BOOKS_CTE}
         SELECT {_BOOK_FIELDS}, COUNT(DISTINCT bs.user_id) AS score
-        FROM books.books b
+        {_BOOK_FROM_CANONICAL}
         JOIN books.books wb ON wb.work_id = b.work_id
         JOIN user_data.bookshelves bs ON bs.book_id = wb.book_id
         {_BOOK_JOINS}
-        WHERE bs.status = 'reading' AND {_BOOK_BASE_WHERE}
+        WHERE bs.status = 'reading'
         {_BOOK_GROUP_BY}
         ORDER BY score DESC
         LIMIT :limit
@@ -397,12 +415,11 @@ async def _build_currently_reading(
 
 
 def _build_sub_rating_query(dimension: str) -> str:
-    return f"""
+    return f"""{_CANONICAL_BOOKS_CTE}
         SELECT {_BOOK_FIELDS},
                CAST(b.sub_rating_stats->'{dimension}'->>'avg' AS FLOAT) AS score
-        FROM books.books b {_BOOK_JOINS}
-        WHERE {_BOOK_BASE_WHERE}
-          AND b.sub_rating_stats->'{dimension}'->>'count' IS NOT NULL
+        {_BOOK_FROM_CANONICAL} {_BOOK_JOINS}
+        WHERE b.sub_rating_stats->'{dimension}'->>'count' IS NOT NULL
           AND CAST(b.sub_rating_stats->'{dimension}'->>'count' AS INTEGER) >= 3
         {_BOOK_GROUP_BY}
         ORDER BY score DESC NULLS LAST
@@ -467,7 +484,7 @@ async def _build_top_authors(
             JOIN books.book_authors ba_r ON bs_a.book_id = ba_r.book_id
             GROUP BY ba_r.author_id
         ),
-        {_AUTHOR_WORKS_CTE}
+        {author_works_cte()}
         SELECT
             a.author_id,
             a.name,
@@ -512,13 +529,21 @@ async def _build_popular_authors(
     result = await session.execute(
         sqlalchemy.text(
             f"""
-        WITH author_app_readers AS (
+        -- Ranked purely on view_count, so the winners are known before any
+        -- stats are computed: take them first, then aggregate only those.
+        WITH popular AS (
+            SELECT author_id FROM books.authors
+            ORDER BY view_count DESC NULLS LAST
+            LIMIT :limit
+        ),
+        author_app_readers AS (
             SELECT ba_r.author_id, COUNT(DISTINCT bs_a.user_id) AS app_readers
             FROM user_data.bookshelves bs_a
             JOIN books.book_authors ba_r ON bs_a.book_id = ba_r.book_id
+            JOIN popular p ON p.author_id = ba_r.author_id
             GROUP BY ba_r.author_id
         ),
-        {_AUTHOR_WORKS_CTE}
+        {author_works_cte("ba.author_id IN (SELECT author_id FROM popular)")}
         SELECT
             a.author_id,
             a.name,
@@ -540,12 +565,12 @@ async def _build_popular_authors(
             ), 0) + COALESCE(aar.app_readers, 0) AS readers,
             COALESCE(SUM(aw.rating_count + aw.ol_rating_count), 0) AS rating_count,
             COALESCE(a.view_count, 0) AS score
-        FROM books.authors a
+        FROM popular p
+        JOIN books.authors a ON a.author_id = p.author_id
         LEFT JOIN author_works aw ON aw.author_id = a.author_id
         LEFT JOIN author_app_readers aar ON aar.author_id = a.author_id
         GROUP BY a.author_id, aar.app_readers
         ORDER BY a.view_count DESC NULLS LAST
-        LIMIT :limit
     """
         ),
         {"limit": limit},

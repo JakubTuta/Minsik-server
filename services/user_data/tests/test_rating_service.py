@@ -70,8 +70,19 @@ class TestUpdateBookStatsAggregatesAcrossLanguages:
     ):
         await rating_service._update_book_stats(mock_session, 100)
         executed_sql = str(mock_session.execute.call_args[0][0])
-        assert "sibling_books" in executed_sql
-        assert "WHERE book_id IN (SELECT book_id FROM sibling_books)" in executed_sql
+        # Ratings are gathered for every edition sharing the work, and written
+        # back to every one of them, rather than for the single book_id given.
+        assert "JOIN canonical c ON c.work_id = b.work_id" in executed_sql
+        assert "JOIN user_data.ratings r ON r.book_id = b.book_id" in executed_sql
+        assert "WHERE books.books.work_id = canonical.work_id" in executed_sql
+
+    @pytest.mark.asyncio
+    async def test_stats_query_groups_per_work(self, mock_session):
+        """A batch covering several works must not pool their ratings together."""
+        await rating_service._update_work_stats(mock_session, [100, 200])
+        executed_sql = str(mock_session.execute.call_args[0][0])
+        assert "GROUP BY work_id" in executed_sql
+        assert "stats.work_id = canonical.work_id" in executed_sql
 
 
 class TestGetRating:

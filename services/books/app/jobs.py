@@ -5,6 +5,7 @@ import app.services.author_service
 import app.services.book_service
 import app.services.category_service
 import app.services.es_sync_service
+import app.services.work_shelf_counts
 
 logger = logging.getLogger(__name__)
 
@@ -29,6 +30,10 @@ async def reindex_job() -> None:
         await app.services.es_sync_service.reindex_all_to_es(full=False)
     except Exception as e:
         logger.error(f"[books] ES reindex error: {str(e)}")
+
+
+async def work_shelf_counts_refresh_job() -> None:
+    await app.services.work_shelf_counts.rebuild_job()
 
 
 async def category_cache_refresh_job() -> None:

@@ -44,7 +44,7 @@ _COMBINED_RATING_EXPR = (
 
 _TOTAL_READERS_EXPR = (
     "(b.ol_want_to_read_count + b.ol_currently_reading_count + b.ol_already_read_count"
-    " + COALESCE(bs.minsik_readers, 0))"
+    " + COALESCE(wsc.readers, 0))"
 )
 
 _DISCOVERY_SELECT = f"""
@@ -55,22 +55,17 @@ _DISCOVERY_SELECT = f"""
         {_COMBINED_RATING_EXPR} AS combined_rating,
         {_TOTAL_READERS_EXPR} AS total_readers
     FROM books.books b
-    LEFT JOIN (
-        SELECT wb.work_id, COUNT(DISTINCT bsh.user_id) AS minsik_readers
-        FROM user_data.bookshelves bsh
-        JOIN books.books wb ON wb.book_id = bsh.book_id
-        GROUP BY wb.work_id
-    ) bs ON b.work_id = bs.work_id
+    {app.services._language_boost.work_shelf_counts_join()}
 """
 
 _DISCOVERY_GROUP_BY = """
     GROUP BY b.book_id, b.slug, b.avg_rating, b.rating_count,
              b.ol_avg_rating, b.ol_rating_count,
              b.ol_want_to_read_count, b.ol_currently_reading_count,
-             b.ol_already_read_count, bs.minsik_readers
+             b.ol_already_read_count, wsc.readers
 """
 
-_BOOK_SUMMARY_SELECT = """
+_BOOK_SUMMARY_SELECT = f"""
     SELECT
         b.book_id,
         b.title,
@@ -84,9 +79,9 @@ _BOOK_SUMMARY_SELECT = """
         b.ol_want_to_read_count,
         b.ol_currently_reading_count,
         b.ol_already_read_count,
-        COALESCE(bs.app_want_to_read_count, 0) AS app_want_to_read_count,
-        COALESCE(bs.app_reading_count, 0) AS app_reading_count,
-        COALESCE(bs.app_read_count, 0) AS app_read_count,
+        COALESCE(wsc.want_to_read_count, 0) AS app_want_to_read_count,
+        COALESCE(wsc.reading_count, 0) AS app_reading_count,
+        COALESCE(wsc.read_count, 0) AS app_read_count,
         (
             SELECT COALESCE(json_agg(json_build_object(
                 'author_id', a2.author_id,
@@ -99,17 +94,7 @@ _BOOK_SUMMARY_SELECT = """
             WHERE ba2.book_id = b.book_id
         ) AS authors
     FROM books.books b
-    LEFT JOIN (
-        SELECT
-            wb.work_id,
-            COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'want_to_read') AS app_want_to_read_count,
-            COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'reading') AS app_reading_count,
-            COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'read') AS app_read_count
-        FROM user_data.bookshelves bsh
-        JOIN books.books wb ON wb.book_id = bsh.book_id
-        WHERE bsh.status != 'abandoned'
-        GROUP BY wb.work_id
-    ) bs ON b.work_id = bs.work_id
+    {app.services._language_boost.work_shelf_counts_join()}
     WHERE b.book_id = :book_id
 """
 

@@ -102,9 +102,9 @@ async def get_author_books(
             b.ol_want_to_read_count,
             b.ol_currently_reading_count,
             b.ol_already_read_count,
-            COALESCE(bs.want_to_read_count, 0) AS app_want_to_read_count,
-            COALESCE(bs.reading_count, 0) AS app_reading_count,
-            COALESCE(bs.read_count, 0) AS app_read_count,
+            COALESCE(wsc.want_to_read_count, 0) AS app_want_to_read_count,
+            COALESCE(wsc.reading_count, 0) AS app_reading_count,
+            COALESCE(wsc.read_count, 0) AS app_read_count,
             CASE
                 WHEN (b.rating_count + b.ol_rating_count) > 0
                 THEN (
@@ -115,9 +115,9 @@ async def get_author_books(
             END AS combined_rating,
             (
                 b.ol_want_to_read_count + b.ol_currently_reading_count + b.ol_already_read_count
-                + COALESCE(bs.want_to_read_count, 0)
-                + COALESCE(bs.reading_count, 0)
-                + COALESCE(bs.read_count, 0)
+                + COALESCE(wsc.want_to_read_count, 0)
+                + COALESCE(wsc.reading_count, 0)
+                + COALESCE(wsc.read_count, 0)
             ) AS total_readers,
             (
                 SELECT COALESCE(json_agg(json_build_object(
@@ -132,19 +132,7 @@ async def get_author_books(
             ) AS authors
         FROM books.books b
         JOIN books.book_authors ba ON b.book_id = ba.book_id
-        LEFT JOIN (
-            SELECT
-                wb.work_id,
-                COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'want_to_read')
-                    AS want_to_read_count,
-                COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'reading')
-                    AS reading_count,
-                COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'read')
-                    AS read_count
-            FROM user_data.bookshelves bsh
-            JOIN books.books wb ON wb.book_id = bsh.book_id
-            GROUP BY wb.work_id
-        ) bs ON b.work_id = bs.work_id
+        {app.services._language_boost.work_shelf_counts_join()}
         WHERE ba.author_id = :author_id AND {preferred_edition}
         ORDER BY {sort_col} {order_dir} NULLS LAST
         LIMIT :limit OFFSET :offset
@@ -248,15 +236,12 @@ async def _get_author_books_aggregates(
         ),
         work_bookshelf_counts AS (
             SELECT
-                wb.work_id,
-                COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'want_to_read') AS want_to_read_count,
-                COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'reading') AS reading_count,
-                COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'read') AS read_count
-            FROM user_data.bookshelves bsh
-            JOIN books.books wb ON wb.book_id = bsh.book_id
-            WHERE wb.work_id IN (SELECT work_id FROM author_works)
-              AND bsh.status != 'abandoned'
-            GROUP BY wb.work_id
+                wsc.work_id,
+                wsc.want_to_read_count,
+                wsc.reading_count,
+                wsc.read_count
+            FROM books.work_shelf_counts wsc
+            WHERE wsc.work_id IN (SELECT work_id FROM author_works)
         )
         SELECT
             COUNT(*) AS books_count,

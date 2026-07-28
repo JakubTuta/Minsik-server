@@ -69,7 +69,7 @@ async def _build_similar_authors_by_genre(
                 JOIN candidate_authors ca ON ca.author_id = ba_r.author_id
                 GROUP BY ba_r.author_id
             ),
-            {app.services.list_builder._AUTHOR_WORKS_CTE}
+            {app.services.list_builder.author_works_cte('ba.author_id IN (SELECT author_id FROM candidate_authors)')}
             SELECT
                 a.author_id,
                 a.name,
@@ -148,7 +148,7 @@ async def _build_fans_also_read(
                 JOIN co_authors ca ON ca.author_id = ba_r.author_id
                 GROUP BY ba_r.author_id
             ),
-            {app.services.list_builder._AUTHOR_WORKS_CTE}
+            {app.services.list_builder.author_works_cte('ba.author_id IN (SELECT author_id FROM co_authors)')}
             SELECT
                 a.author_id,
                 a.name,

@@ -29,7 +29,7 @@ RARITY_MIN_RATINGS: typing.Dict[str, int] = {
 
 CACHE_POOL_KEY_PREFIX = "case:pool"
 
-_BOOK_SELECT = """
+_BOOK_SELECT = f"""
     SELECT
         b.book_id,
         b.title,
@@ -50,12 +50,12 @@ _BOOK_SELECT = """
         )::numeric / NULLIF(b.rating_count + b.ol_rating_count, 0) AS combined_rating,
         b.rating_count + b.ol_rating_count AS total_rating_count,
         b.ol_want_to_read_count + b.ol_currently_reading_count + b.ol_already_read_count
-            + COALESCE(bs.app_want_to_read_count, 0)
-            + COALESCE(bs.app_reading_count, 0)
-            + COALESCE(bs.app_read_count, 0) AS total_readers,
-        COALESCE(bs.app_want_to_read_count, 0) AS app_want_to_read_count,
-        COALESCE(bs.app_reading_count, 0) AS app_reading_count,
-        COALESCE(bs.app_read_count, 0) AS app_read_count,
+            + COALESCE(wsc.want_to_read_count, 0)
+            + COALESCE(wsc.reading_count, 0)
+            + COALESCE(wsc.read_count, 0) AS total_readers,
+        COALESCE(wsc.want_to_read_count, 0) AS app_want_to_read_count,
+        COALESCE(wsc.reading_count, 0) AS app_reading_count,
+        COALESCE(wsc.read_count, 0) AS app_read_count,
         ARRAY_AGG(a.author_id) FILTER (WHERE a.author_id IS NOT NULL) AS author_ids,
         ARRAY_AGG(a.name) FILTER (WHERE a.name IS NOT NULL) AS author_names,
         ARRAY_AGG(a.slug) FILTER (WHERE a.slug IS NOT NULL) AS author_slugs,
@@ -63,25 +63,15 @@ _BOOK_SELECT = """
     FROM books.books b
     LEFT JOIN books.book_authors ba ON b.book_id = ba.book_id
     LEFT JOIN books.authors a ON ba.author_id = a.author_id
-    LEFT JOIN (
-        SELECT
-            wb.work_id,
-            COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'want_to_read') AS app_want_to_read_count,
-            COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'reading') AS app_reading_count,
-            COUNT(DISTINCT bsh.user_id) FILTER (WHERE bsh.status = 'read') AS app_read_count
-        FROM user_data.bookshelves bsh
-        JOIN books.books wb ON wb.book_id = bsh.book_id
-        WHERE bsh.status != 'abandoned'
-        GROUP BY wb.work_id
-    ) bs ON b.work_id = bs.work_id
+    {app.services._language_boost.work_shelf_counts_join()}
 """
 
 _BOOK_GROUP_BY = """
     GROUP BY b.book_id, b.title, b.slug, b.description, b.primary_cover_url,
              b.language, b.rating_count, b.avg_rating, b.ol_rating_count, b.ol_avg_rating,
              b.ol_want_to_read_count, b.ol_currently_reading_count,
-             b.ol_already_read_count, bs.app_want_to_read_count,
-             bs.app_reading_count, bs.app_read_count
+             b.ol_already_read_count, wsc.want_to_read_count,
+             wsc.reading_count, wsc.read_count
 """
 
 _COMBINED_RATING_FILTER = """

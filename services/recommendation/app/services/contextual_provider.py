@@ -54,7 +54,7 @@ async def _bulk_fetch_authors(
                     WHERE ba_r.author_id = ANY(:ids)
                     GROUP BY ba_r.author_id
                 ),
-                {app.services.list_builder._AUTHOR_WORKS_CTE}
+                {app.services.list_builder.author_works_cte("ba.author_id = ANY(:ids)")}
                 SELECT
                     a.author_id,
                     a.name,
