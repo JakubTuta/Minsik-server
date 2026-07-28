@@ -22,18 +22,14 @@ def _trim_heap() -> None:
 
 
 async def process_reading_log_dump(file_path: str) -> int:
-    async with app.models.AsyncSessionLocal() as reset_session:
-        await reset_session.execute(
-            sqlalchemy.text(
-                "UPDATE books.books SET "
-                "ol_want_to_read_count = 0, "
-                "ol_currently_reading_count = 0, "
-                "ol_already_read_count = 0 "
-                "WHERE open_library_id IS NOT NULL"
-            )
-        )
-        await reset_session.commit()
-    logger.info("[dump] Phase 6: reset OL reading counts, starting streaming parse")
+    # Accumulate into a staging table rather than books.books directly: the
+    # parse can run for hours, and an interruption partway through must leave
+    # the previous good counts in place, not zeroed. books.books is only
+    # touched once, in _apply_staged_counts, after the whole file has parsed.
+    async with app.models.AsyncSessionLocal() as staging_session:
+        await staging_session.execute(sqlalchemy.text("TRUNCATE books.reading_log_staging"))
+        await staging_session.commit()
+    logger.info("[dump] Phase 6: cleared reading-log staging, starting streaming parse")
 
     queue: asyncio.Queue = asyncio.Queue(maxsize=4)
     loop = asyncio.get_running_loop()
@@ -96,9 +92,12 @@ async def process_reading_log_dump(file_path: str) -> int:
                 )
 
             logger.info(
-                f"[dump] Phase 6 complete: {updated} book rows updated with reading log"
+                f"[dump] Phase 6: parse complete, {updated} staged rows, "
+                "applying to books.books"
             )
-            return updated
+            applied = await _apply_staged_counts(session)
+            logger.info(f"[dump] Phase 6 complete: {applied} book rows updated with reading log")
+            return applied
 
         except Exception as e:
             await session.rollback()
@@ -151,15 +150,18 @@ async def _flush_reading_log_batch(
                 params[f"want_{k}"] = p["want"]
                 params[f"reading_{k}"] = p["reading"]
                 params[f"read_{k}"] = p["read"]
+            # Same work can straddle two streamed batches, so this accumulates
+            # onto the staging row rather than overwriting it.
             await session.execute(
                 sqlalchemy.text(
-                    "UPDATE books.books AS b SET "
-                    "ol_want_to_read_count = b.ol_want_to_read_count + v.want, "
-                    "ol_currently_reading_count = b.ol_currently_reading_count + v.reading, "
-                    "ol_already_read_count = b.ol_already_read_count + v.already_read "
-                    f"FROM (VALUES {', '.join(values_parts)}) "
+                    "INSERT INTO books.reading_log_staging AS s "
+                    "(book_id, ol_want_to_read_count, ol_currently_reading_count, ol_already_read_count) "
+                    f"SELECT * FROM (VALUES {', '.join(values_parts)}) "
                     "AS v(bid, want, reading, already_read) "
-                    "WHERE b.book_id = v.bid"
+                    "ON CONFLICT (book_id) DO UPDATE SET "
+                    "ol_want_to_read_count = s.ol_want_to_read_count + EXCLUDED.ol_want_to_read_count, "
+                    "ol_currently_reading_count = s.ol_currently_reading_count + EXCLUDED.ol_currently_reading_count, "
+                    "ol_already_read_count = s.ol_already_read_count + EXCLUDED.ol_already_read_count"
                 ),
                 params,
             )
@@ -167,3 +169,32 @@ async def _flush_reading_log_batch(
 
     await session.commit()
     return updated
+
+
+async def _apply_staged_counts(session: sqlalchemy.ext.asyncio.AsyncSession) -> int:
+    # Only now, with the full dump file parsed, do we touch books.books —
+    # in one shot, so a crash before this point leaves the last good data
+    # untouched instead of half-reset.
+    applied_result = await session.execute(
+        sqlalchemy.text(
+            "UPDATE books.books AS b SET "
+            "ol_want_to_read_count = s.ol_want_to_read_count, "
+            "ol_currently_reading_count = s.ol_currently_reading_count, "
+            "ol_already_read_count = s.ol_already_read_count "
+            "FROM books.reading_log_staging AS s "
+            "WHERE b.book_id = s.book_id"
+        )
+    )
+    applied = applied_result.rowcount or 0
+
+    await session.execute(
+        sqlalchemy.text(
+            "UPDATE books.books SET "
+            "ol_want_to_read_count = 0, ol_currently_reading_count = 0, ol_already_read_count = 0 "
+            "WHERE open_library_id IS NOT NULL "
+            "AND book_id NOT IN (SELECT book_id FROM books.reading_log_staging)"
+        )
+    )
+
+    await session.commit()
+    return applied

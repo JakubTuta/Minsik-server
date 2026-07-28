@@ -53,6 +53,9 @@ async def process_ratings_dump(file_path: str) -> int:
     work_ol_ids = list(rating_agg.keys())
     async with app.models.AsyncSessionLocal() as session:
         try:
+            await session.execute(sqlalchemy.text("TRUNCATE books.ratings_staging"))
+            await session.commit()
+
             for outer_start in range(0, len(work_ol_ids), outer_batch_size):
                 outer_chunk = work_ol_ids[outer_start : outer_start + outer_batch_size]
 
@@ -88,11 +91,13 @@ async def process_ratings_dump(file_path: str) -> int:
                             params[f"avg_{k}"] = p["avg"]
                         await session.execute(
                             sqlalchemy.text(
-                                "UPDATE books.books AS b SET "
-                                "ol_rating_count = v.cnt, ol_avg_rating = v.avg "
-                                f"FROM (VALUES {', '.join(values_parts)}) "
+                                "INSERT INTO books.ratings_staging "
+                                "(book_id, ol_rating_count, ol_avg_rating) "
+                                f"SELECT * FROM (VALUES {', '.join(values_parts)}) "
                                 "AS v(bid, cnt, avg) "
-                                "WHERE b.book_id = v.bid"
+                                "ON CONFLICT (book_id) DO UPDATE SET "
+                                "ol_rating_count = EXCLUDED.ol_rating_count, "
+                                "ol_avg_rating = EXCLUDED.ol_avg_rating"
                             ),
                             params,
                         )
@@ -104,12 +109,28 @@ async def process_ratings_dump(file_path: str) -> int:
                 gc.collect()
                 _trim_heap()
 
-            logger.info(
-                f"[dump] Phase 5 complete: {updated} book rows updated with ratings"
-            )
-            return updated
+            logger.info(f"[dump] Phase 5: parse complete, {updated} staged rows, applying to books.books")
+            applied = await _apply_staged_ratings(session)
+            logger.info(f"[dump] Phase 5 complete: {applied} book rows updated with ratings")
+            return applied
 
         except Exception as e:
             await session.rollback()
             logger.error(f"[dump] Error in process_ratings_dump: {e}")
             raise
+
+
+async def _apply_staged_ratings(session: sqlalchemy.ext.asyncio.AsyncSession) -> int:
+    # Only now, with the full dump file parsed, do we touch books.books — in
+    # one shot, so a crash before this point leaves the last good data
+    # untouched instead of a mix of this run's and the previous run's values.
+    result = await session.execute(
+        sqlalchemy.text(
+            "UPDATE books.books AS b SET "
+            "ol_rating_count = s.ol_rating_count, ol_avg_rating = s.ol_avg_rating "
+            "FROM books.ratings_staging AS s "
+            "WHERE b.book_id = s.book_id"
+        )
+    )
+    await session.commit()
+    return result.rowcount or 0
