@@ -43,10 +43,25 @@ def _check_stale_import_flag_sync() -> bool:
         state = app.workers.dump.get_job_state(r)
 
         if state and len(state.get("completed_phases", [])) < 6:
+            attempts = state.get("resume_attempts", 0) + 1
+            max_attempts = app.config.settings.dump_max_resume_attempts
+
+            if attempts > max_attempts:
+                logger.error(
+                    f"Dump job {state['job_id']} failed to progress past phase "
+                    f"{sorted(state.get('completed_phases', []))} after {max_attempts} "
+                    "resume attempts. Abandoning job and clearing state to stop the "
+                    "crash-restart loop."
+                )
+                app.workers.dump.clear_job_state(r)
+                return False
+
+            state["resume_attempts"] = attempts
+            app.workers.dump.save_job_state(r, state)
             logger.info(
                 f"Resumable dump job detected (job_id: {state['job_id']}), "
-                f"completed phases: {state['completed_phases']}. "
-                f"Auto-resuming."
+                f"completed phases: {state['completed_phases']}, "
+                f"resume attempt {attempts}/{max_attempts}. Auto-resuming."
             )
             return True
         return False

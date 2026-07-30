@@ -72,6 +72,9 @@ async def run_import_dump(job_id: str, redis_client: redis.Redis) -> None:
         phase_files[phase].unlink(missing_ok=True)
         saved_state["completed_phases"] = sorted(completed)
         saved_state["phase_results"] = phase_results
+        # A phase finishing is real progress, so forgive prior crash-resume
+        # attempts charged against the phase that just completed.
+        saved_state["resume_attempts"] = 0
         app.workers.dump.state.save_job_state(redis_client, saved_state)
         gc.collect()
         _trim_heap()

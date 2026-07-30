@@ -57,6 +57,7 @@ class Settings(pydantic_settings.BaseSettings):
     dump_edition_flush_interval: int = pydantic.Field(default=100_000)
     dump_work_min_quality_score: int = pydantic.Field(default=2)
     dump_author_min_quality_score: int = pydantic.Field(default=2)
+    dump_max_resume_attempts: int = pydantic.Field(default=5)
 
     cleanup_enabled: bool = pydantic.Field(default=True)
     cleanup_cron: str = pydantic.Field(default="0 3,15 * * *")
