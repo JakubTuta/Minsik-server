@@ -359,25 +359,20 @@ class RecommendationServicer(app.proto.recommendation_pb2_grpc.RecommendationSer
         context: grpc.aio.ServicerContext,
     ) -> app.proto.recommendation_pb2.RefreshBookOfTheWeekResponse:
         try:
-            languages = app.services.book_of_week_builder.available_languages()
-            keys = [
-                app.services.book_of_week_builder.bow_pool_cache_key(lang)
-                for lang in languages
-            ]
-            deleted = await app.cache.delete_keys(*keys)
-            results = await app.services.book_of_week_builder.refresh_book_of_the_week(
+            drawn = await app.services.book_of_week_builder.refresh_book_of_the_week(
                 app.db.async_session_maker
             )
-            built = {lang: len(pool) for lang, pool in results.items() if pool}
-            if not built:
+            if not drawn:
                 return app.proto.recommendation_pb2.RefreshBookOfTheWeekResponse(
                     success=False,
-                    message=f"Flushed {deleted} bow cache keys, no eligible candidates found",
+                    message="No eligible work found",
                 )
-            summary = ", ".join(f"{lang}={count}" for lang, count in built.items())
+            summary = ", ".join(
+                f"{language}={work_id}" for language, work_id in drawn.items()
+            )
             return app.proto.recommendation_pb2.RefreshBookOfTheWeekResponse(
                 success=True,
-                message=f"Flushed {deleted} bow cache keys, pools cached ({summary})",
+                message=f"Book of the week drawn ({summary})",
             )
         except grpc.aio.AbortError:
             raise
@@ -485,18 +480,14 @@ class RecommendationServicer(app.proto.recommendation_pb2_grpc.RecommendationSer
             available = app.services.book_of_week_builder.available_languages()
             if language not in available:
                 language = available[0]
-            cache_key = app.services.book_of_week_builder.bow_pool_cache_key(language)
-            pool = await app.cache.get_cached(cache_key)
-            if not pool:
-                pool = await app.services.book_of_week_builder.refresh_book_of_the_week_for_language(
-                    app.db.async_session_maker, language
-                )
-            if not pool:
+            book = await app.services.book_of_week_builder.get_book_of_the_week(
+                app.db.async_session_maker, language
+            )
+            if not book:
                 await context.abort(
                     grpc.StatusCode.UNAVAILABLE, "Book of the week not yet available"
                 )
                 return
-            book = pool[0]
             response = app.proto.recommendation_pb2.BookOfTheWeekResponse(
                 book_id=book["book_id"],
                 title=book["title"],

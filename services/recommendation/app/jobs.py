@@ -61,3 +61,12 @@ async def book_of_week_job() -> None:
         logger.info("[rec:bow] Book of the week refresh complete")
     except Exception as e:
         logger.error(f"[rec:bow] Book of the week refresh error: {str(e)}")
+
+
+async def ensure_book_of_week_job() -> None:
+    try:
+        await app.services.book_of_week_builder.ensure_book_of_the_week(
+            app.db.async_session_maker
+        )
+    except Exception as e:
+        logger.error(f"[rec:bow] Book of the week ensure error: {str(e)}")

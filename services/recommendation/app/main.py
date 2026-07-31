@@ -27,6 +27,8 @@ logger = logging.getLogger(__name__)
 grpc_server: grpc.aio.Server = None
 scheduler: apscheduler.AsyncScheduler = None
 _shutdown_event: asyncio.Event = None
+# Held so the startup draw is not garbage collected mid-flight.
+_startup_tasks: set = set()
 
 
 async def start_server() -> None:
@@ -106,6 +108,14 @@ async def start_server() -> None:
         logger.info(
             f"[rec:bow] Book of the week scheduled (cron: '{app.config.settings.book_of_week_cron}')"
         )
+
+        # The read path never draws, so a selection lost between cron runs
+        # (eviction, expiry, first boot) would leave every reader without a book
+        # of the week until the next Monday. Backgrounded: the draw scans the
+        # catalogue and must not hold up the gRPC server accepting traffic.
+        startup_draw = asyncio.create_task(app.jobs.ensure_book_of_week_job())
+        _startup_tasks.add(startup_draw)
+        startup_draw.add_done_callback(_startup_tasks.discard)
 
     await scheduler.start_in_background()
 
