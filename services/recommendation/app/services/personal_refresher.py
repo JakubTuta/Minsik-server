@@ -69,8 +69,8 @@ async def refresh_all_personal(session_maker: typing.Any) -> None:
             try:
                 await refresh_user_personal(session_maker, uid, language)
                 success_count += 1
-            except Exception as e:
-                logger.error(f"[rec:personal] Error refreshing user {uid}: {e}")
+            except Exception:
+                logger.exception(f"[rec:personal] Error refreshing user {uid}")
                 error_count += 1
 
     await asyncio.gather(*[refresh_with_limit(uid, language) for uid, language in users])

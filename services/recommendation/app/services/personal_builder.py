@@ -44,10 +44,16 @@ async def _build_for_you(
     read_book_ids = profile.get("read_book_ids", []) or [-1]
     user_id = profile["user_id"]
 
+    # Candidates here are catalog-wide, so electing the edition with a per-row
+    # correlated subquery (_BOOK_BASE_WHERE) ran that subquery once per book —
+    # twice over, since the outer query repeated the filter the CTE had already
+    # applied. canonical_books settles it in one sort, and the author join is
+    # deferred until after LIMIT rather than aggregating every scored book.
     result = await session.execute(
         sqlalchemy.text(
             f"""
-            WITH user_genres AS (
+            WITH {app.services.list_builder.CANONICAL_BOOKS_CTE},
+            user_genres AS (
                 SELECT
                     unnest(CAST(:genre_slugs AS text[])) AS slug,
                     unnest(CAST(:genre_weights AS float[])) AS weight
@@ -59,11 +65,11 @@ async def _build_for_you(
             ),
             genre_scored AS (
                 SELECT b.book_id, SUM(ugi.weight) AS genre_score
-                FROM books.books b
+                FROM canonical_books cb
+                JOIN books.books b ON b.book_id = cb.book_id
                 JOIN books.book_genres bg ON b.book_id = bg.book_id
                 JOIN user_genre_ids ugi ON bg.genre_id = ugi.genre_id
                 WHERE NOT (b.book_id = ANY(CAST(:exclude_ids AS bigint[])))
-                  AND {app.services.list_builder._BOOK_BASE_WHERE}
                 GROUP BY b.book_id
             ),
             similar_users AS (
@@ -87,22 +93,22 @@ async def _build_for_you(
             ),
             max_collab AS (
                 SELECT NULLIF(MAX(collab_score), 0)::float AS max_val FROM collab_scored
+            ),
+            ranked AS (
+                SELECT gs.book_id,
+                    (
+                        gs.genre_score * 0.6 +
+                        COALESCE(cs.collab_score, 0)::float
+                            / COALESCE((SELECT max_val FROM max_collab), 1) * 0.25 +
+                        COALESCE(b.avg_rating::float, 0) / 5.0 * 0.15
+                    ) AS score
+                FROM genre_scored gs
+                JOIN books.books b ON gs.book_id = b.book_id
+                LEFT JOIN collab_scored cs ON gs.book_id = cs.book_id
+                ORDER BY score DESC
+                LIMIT :limit
             )
-            SELECT {app.services.list_builder._BOOK_FIELDS},
-                (
-                    gs.genre_score * 0.6 +
-                    COALESCE(cs.collab_score, 0)::float
-                        / COALESCE((SELECT max_val FROM max_collab), 1) * 0.25 +
-                    COALESCE(b.avg_rating::float, 0) / 5.0 * 0.15
-                ) AS score
-            FROM genre_scored gs
-            JOIN books.books b ON gs.book_id = b.book_id
-            {app.services.list_builder._BOOK_JOINS}
-            LEFT JOIN collab_scored cs ON gs.book_id = cs.book_id
-            WHERE {app.services.list_builder._BOOK_BASE_WHERE}
-            GROUP BY b.book_id, gs.genre_score, cs.collab_score
-            ORDER BY score DESC
-            LIMIT :limit
+            {app.services.list_builder.hydrate_books_from()}
             """
         ),
         {
@@ -134,10 +140,18 @@ async def _build_because_you_liked(
     anchor_title = anchor_book["title"]
     exclude_ids = profile.get("excluded_book_ids", []) or [-1]
 
+    # Sharing one genre with the anchor is not selective — for a broad genre it
+    # matches much of the catalog — and the old shape then ran a correlated
+    # COUNT over books.book_genres for every one of those rows before joining
+    # authors and aggregating, all with no cut until the final LIMIT. Taking the
+    # 500 best-overlapping canonical editions first (the same bound
+    # book_recommender._build_similar_by_genre uses) makes the genre-count join
+    # and the hydration bounded work.
     result = await session.execute(
         sqlalchemy.text(
             f"""
-            WITH source_genres AS (
+            WITH {app.services.list_builder.CANONICAL_BOOKS_CTE},
+            source_genres AS (
                 SELECT genre_id FROM books.book_genres WHERE book_id = :anchor_id
             ),
             source_count AS (
@@ -149,19 +163,26 @@ async def _build_because_you_liked(
                        (SELECT cnt FROM source_count) AS source_cnt
                 FROM books.book_genres bg
                 JOIN source_genres sg ON bg.genre_id = sg.genre_id
+                JOIN canonical_books cb ON cb.book_id = bg.book_id
                 WHERE bg.book_id != :anchor_id
                   AND NOT (bg.book_id = ANY(CAST(:exclude_ids AS bigint[])))
                 GROUP BY bg.book_id
+                ORDER BY shared DESC
+                LIMIT 500
+            ),
+            candidate_genre_counts AS (
+                SELECT bg2.book_id, COUNT(*) AS candidate_cnt
+                FROM books.book_genres bg2
+                JOIN genre_similar gs2 ON gs2.book_id = bg2.book_id
+                GROUP BY bg2.book_id
             ),
             genre_scored AS (
-                SELECT book_id,
-                       shared::float / NULLIF(
-                           source_cnt + (
-                               SELECT COUNT(*) FROM books.book_genres bg2
-                               WHERE bg2.book_id = genre_similar.book_id
-                           ) - shared, 0
+                SELECT gs.book_id,
+                       gs.shared::float / NULLIF(
+                           gs.source_cnt + cgc.candidate_cnt - gs.shared, 0
                        ) AS genre_score
-                FROM genre_similar
+                FROM genre_similar gs
+                JOIN candidate_genre_counts cgc ON cgc.book_id = gs.book_id
             ),
             source_readers AS (
                 SELECT DISTINCT user_id
@@ -190,15 +211,15 @@ async def _build_because_you_liked(
                         / COALESCE((SELECT max_val FROM max_collab), 1) * 0.5 AS score
                 FROM genre_scored gs
                 FULL OUTER JOIN collab_scored cs ON gs.book_id = cs.book_id
+            ),
+            ranked AS (
+                SELECT c.book_id, c.score
+                FROM combined c
+                JOIN canonical_books cb ON cb.book_id = c.book_id
+                ORDER BY c.score DESC
+                LIMIT :limit
             )
-            SELECT {app.services.list_builder._BOOK_FIELDS}, c.score AS score
-            FROM combined c
-            JOIN books.books b ON c.book_id = b.book_id
-            {app.services.list_builder._BOOK_JOINS}
-            WHERE {app.services.list_builder._BOOK_BASE_WHERE}
-            GROUP BY b.book_id, c.score
-            ORDER BY c.score DESC
-            LIMIT :limit
+            {app.services.list_builder.hydrate_books_from()}
             """
         ),
         {"anchor_id": anchor_book_id, "exclude_ids": exclude_ids, "limit": limit, "language": language},
@@ -297,19 +318,24 @@ async def _build_top_in_genre(
     result = await session.execute(
         sqlalchemy.text(
             f"""
-            SELECT {app.services.list_builder._BOOK_FIELDS}, b.avg_rating AS score
-            FROM books.books b {app.services.list_builder._BOOK_JOINS}
-            WHERE {app.services.list_builder._BOOK_BASE_WHERE}
-              AND NOT (b.book_id = ANY(CAST(:exclude_ids AS bigint[])))
-              AND b.avg_rating IS NOT NULL
-              AND EXISTS (
-                  SELECT 1 FROM books.book_genres bg2
-                  JOIN books.genres g ON bg2.genre_id = g.genre_id
-                  WHERE bg2.book_id = b.book_id AND g.slug = :genre_slug
-              )
-            {app.services.list_builder._BOOK_GROUP_BY}
-            ORDER BY b.avg_rating DESC NULLS LAST, b.rating_count DESC NULLS LAST
-            LIMIT :limit
+            WITH {app.services.list_builder.CANONICAL_BOOKS_CTE},
+            ranked AS (
+                SELECT b.book_id, b.avg_rating AS score
+                FROM canonical_books cb
+                JOIN books.books b ON b.book_id = cb.book_id
+                WHERE NOT (b.book_id = ANY(CAST(:exclude_ids AS bigint[])))
+                  AND b.avg_rating IS NOT NULL
+                  AND EXISTS (
+                      SELECT 1 FROM books.book_genres bg2
+                      JOIN books.genres g ON bg2.genre_id = g.genre_id
+                      WHERE bg2.book_id = b.book_id AND g.slug = :genre_slug
+                  )
+                ORDER BY b.avg_rating DESC NULLS LAST, b.rating_count DESC NULLS LAST
+                LIMIT :limit
+            )
+            {app.services.list_builder.hydrate_books_from(
+                order_sql="score DESC NULLS LAST, b.rating_count DESC NULLS LAST"
+            )}
             """
         ),
         {"genre_slug": genre_slug, "exclude_ids": exclude_ids, "limit": limit, "language": language},
@@ -422,6 +448,11 @@ async def _build_hidden_gems(
 
     exclude_ids = profile.get("excluded_book_ids", []) or [-1]
 
+    # Unlike the other catalog-wide personal lists this one keeps the per-row
+    # edition subquery: `avg_rating >= 4.0 AND rating_count BETWEEN 3 AND 20` is
+    # selective enough to leave few rows for it to run on, whereas the
+    # canonical_books CTE would sort every covered book in the catalog to elect
+    # editions this query is about to discard.
     result = await session.execute(
         sqlalchemy.text(
             f"""
@@ -574,7 +605,8 @@ async def _build_explore_adjacent_genres(
     result = await session.execute(
         sqlalchemy.text(
             f"""
-            WITH user_top_genres AS (
+            WITH {app.services.list_builder.CANONICAL_BOOKS_CTE},
+            user_top_genres AS (
                 SELECT g.genre_id, g.slug
                 FROM books.genres g
                 WHERE g.slug = ANY(CAST(:top_slugs AS text[]))
@@ -599,19 +631,25 @@ async def _build_explore_adjacent_genres(
                 WHERE NOT (g.slug = ANY(CAST(:top_slugs AS text[])))
                 ORDER BY ag.max_strength DESC
                 LIMIT 5
+            ),
+            ranked AS (
+                SELECT b.book_id, ant.max_strength AS score, ant.adj_slug
+                FROM adj_not_top ant
+                JOIN books.book_genres bg ON bg.genre_id = ant.adj_genre_id
+                JOIN canonical_books cb ON cb.book_id = bg.book_id
+                JOIN books.books b ON b.book_id = cb.book_id
+                WHERE NOT (b.book_id = ANY(CAST(:exclude_ids AS bigint[])))
+                ORDER BY ant.max_strength DESC, b.avg_rating DESC NULLS LAST
+                LIMIT :limit
             )
             SELECT {app.services.list_builder._BOOK_FIELDS},
-                   ant.max_strength AS score,
-                   ant.adj_slug AS source_genre_slug
-            FROM adj_not_top ant
-            JOIN books.book_genres bg ON bg.genre_id = ant.adj_genre_id
-            JOIN books.books b ON b.book_id = bg.book_id
+                   r.score AS score,
+                   r.adj_slug AS source_genre_slug
+            FROM ranked r
+            JOIN books.books b ON b.book_id = r.book_id
             {app.services.list_builder._BOOK_JOINS}
-            WHERE {app.services.list_builder._BOOK_BASE_WHERE}
-              AND NOT (b.book_id = ANY(CAST(:exclude_ids AS bigint[])))
-            GROUP BY b.book_id, ant.max_strength, ant.adj_slug
-            ORDER BY ant.max_strength DESC, b.avg_rating DESC NULLS LAST
-            LIMIT :limit
+            GROUP BY b.book_id, r.score, r.adj_slug
+            ORDER BY r.score DESC, b.avg_rating DESC NULLS LAST
             """
         ),
         {
@@ -664,7 +702,10 @@ async def build_personal_home_sections(
     ]
     for i, result in enumerate(results):
         if isinstance(result, Exception):
-            logger.error(f"[rec:personal:{user_id}] {section_names[i]} failed: {result}")
+            logger.error(
+                f"[rec:personal:{user_id}] {section_names[i]} failed: {result}",
+                exc_info=result,
+            )
 
     def safe(result: typing.Any) -> typing.Any:
         return result if not isinstance(result, Exception) else None

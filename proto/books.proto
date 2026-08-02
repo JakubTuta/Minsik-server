@@ -18,6 +18,7 @@ service BooksService {
   rpc OpenPack(OpenPackRequest) returns (OpenPackResponse);
   rpc SpinSlots(SpinSlotsRequest) returns (SpinSlotsResponse);
   rpc DiscoverBook(DiscoverBookRequest) returns (DiscoverBookResponse);
+  rpc CountMatchingBooks(DiscoverBookRequest) returns (CountMatchingBooksResponse);
   rpc DeleteBook(DeleteBookRequest) returns (DeleteEntityResponse);
   rpc DeleteAuthor(DeleteAuthorRequest) returns (DeleteEntityResponse);
   rpc DeleteSeries(DeleteSeriesRequest) returns (DeleteEntityResponse);
@@ -464,6 +465,14 @@ message DiscoverBookRequest {
 message DiscoverBookResponse {
   BookSummary book = 1;
   int32 matching_count = 2;
+}
+
+// Live filter-count while the user is still adjusting filters, before they
+// click "Discover" — counts matches without picking a random book or
+// fetching its detail, so adjusting a filter doesn't pay for a full
+// DiscoverBook on every debounced change.
+message CountMatchingBooksResponse {
+  int32 matching_count = 1;
 }
 
 message SpinSlotsRequest {

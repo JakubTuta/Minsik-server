@@ -202,6 +202,32 @@ class BooksClient(base.GrpcClientBase):
 
         return await self._call("DiscoverBook", request)
 
+    async def count_matching_books(
+        self,
+        language: str = "en",
+        genre_slugs: typing.Optional[typing.List[str]] = None,
+        book_length: str = "",
+        quality: str = "",
+        moods: typing.Optional[typing.List[str]] = None,
+        era: str = "",
+        series_filter: str = "",
+        popularity: str = "",
+        exclude_ids: typing.Optional[typing.List[int]] = None,
+    ) -> app.proto.books_pb2.CountMatchingBooksResponse:
+        request = app.proto.books_pb2.DiscoverBookRequest(
+            language=language,
+            genre_slugs=genre_slugs or [],
+            book_length=book_length,
+            quality=quality,
+            moods=moods or [],
+            era=era,
+            series_filter=series_filter,
+            popularity=popularity,
+            exclude_ids=exclude_ids or [],
+        )
+
+        return await self._call("CountMatchingBooks", request)
+
     async def open_case(self, language: str = "en") -> app.proto.books_pb2.OpenCaseResponse:
         request = app.proto.books_pb2.OpenCaseRequest(language=language)
 

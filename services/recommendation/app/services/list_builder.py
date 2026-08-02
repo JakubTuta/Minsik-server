@@ -18,20 +18,40 @@ logger = logging.getLogger(__name__)
 # popularity is the same in every language and a reader who shelved two
 # translations still counts once. ol_* counts are already work-level: the dump
 # pipeline writes them identically to every language row.
+#
+# books.work_shelf_counts is keyed by work_id, so the ranking stage below joins
+# it one-to-one and reads its columns directly (the _RANK_* variants). The
+# hydration stage also joins authors, which multiplies rows, so there the same
+# value has to be pulled back out of the group with MAX().
 _READERS_EXPR = """
     COALESCE(b.ol_want_to_read_count, 0) + COALESCE(b.ol_currently_reading_count, 0)
     + COALESCE(b.ol_already_read_count, 0) + COALESCE(MAX(wsc.readers), 0)
 """
 
-_WANT_TO_READ_EXPR = (
-    "COALESCE(b.ol_want_to_read_count, 0) + COALESCE(MAX(wsc.want_to_read_count), 0)"
+_RANK_READERS_EXPR = """
+    COALESCE(b.ol_want_to_read_count, 0) + COALESCE(b.ol_currently_reading_count, 0)
+    + COALESCE(b.ol_already_read_count, 0) + COALESCE(wsc.readers, 0)
+"""
+
+_RANK_WANT_TO_READ_EXPR = (
+    "COALESCE(b.ol_want_to_read_count, 0) + COALESCE(wsc.want_to_read_count, 0)"
 )
 
-_CURRENTLY_READING_EXPR = (
-    "COALESCE(b.ol_currently_reading_count, 0) + COALESCE(MAX(wsc.reading_count), 0)"
+_RANK_CURRENTLY_READING_EXPR = (
+    "COALESCE(b.ol_currently_reading_count, 0) + COALESCE(wsc.reading_count, 0)"
 )
 
 _RATING_COUNT_EXPR = "COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0)"
+
+_WEIGHTED_RATING_EXPR = f"""
+    CASE
+        WHEN ({_RATING_COUNT_EXPR}) = 0 THEN 0
+        ELSE (
+            COALESCE(b.avg_rating::numeric, 0) * COALESCE(b.rating_count, 0)
+            + COALESCE(b.ol_avg_rating::numeric, 0) * COALESCE(b.ol_rating_count, 0)
+        ) / ({_RATING_COUNT_EXPR})
+    END
+"""
 
 _BOOK_FIELDS = f"""
     b.book_id,
@@ -79,8 +99,8 @@ _BOOK_BASE_WHERE = (
 # It yields ids rather than whole rows so the outer query still reads columns
 # from books.books itself, which is what lets `GROUP BY b.book_id` stand in for
 # grouping by every selected column.
-_CANONICAL_BOOKS_CTE = """
-    WITH canonical_books AS (
+CANONICAL_BOOKS_CTE = """
+    canonical_books AS (
         SELECT DISTINCT ON (work_id) book_id
         FROM books.books
         WHERE primary_cover_url IS NOT NULL
@@ -88,11 +108,84 @@ _CANONICAL_BOOKS_CTE = """
     )
 """
 
-_BOOK_FROM_CANONICAL = (
-    "FROM canonical_books cb JOIN books.books b ON b.book_id = cb.book_id"
-)
-
 _BOOK_GROUP_BY = "GROUP BY b.book_id"
+
+
+def hydrate_books_from(
+    ranked_cte: str = "ranked", order_sql: str = "score DESC NULLS LAST"
+) -> str:
+    """Attach authors and shelf counts to an already-ranked, already-cut row set.
+
+    The author join multiplies rows and both ARRAY_AGGs sort within each group,
+    so this must never run over a candidate set the query has not yet narrowed
+    to the rows it will return. `ranked_cte` must expose `book_id` and `score`.
+    """
+    return f"""
+        SELECT {_BOOK_FIELDS}, r.score AS score
+        FROM {ranked_cte} r
+        JOIN books.books b ON b.book_id = r.book_id
+        {_BOOK_JOINS}
+        {_BOOK_GROUP_BY}, r.score
+        ORDER BY {order_sql}
+    """
+
+
+def _catalog_list_query(
+    score_sql: str,
+    where_sql: str = "",
+    order_sql: str = "score DESC NULLS LAST",
+    extra_cte: str = "",
+    rank_joins: str = "",
+    rank_group_by: str = "",
+) -> str:
+    """Rank the whole catalog on the lean row, then hydrate the survivors only.
+
+    Every list below scores the catalog and keeps `limit` rows. Joining authors
+    before that cut meant two `ARRAY_AGG(DISTINCT ...)` — each a per-group sort
+    — ran for every book in the catalog so a hundred of them could survive it,
+    the same shape that made the case pool refresh exhaust Postgres. Ranking
+    reads books.books and the work_shelf_counts rollup only, so the expensive
+    join and aggregation happen against `limit` rows instead of the catalog.
+
+    `order_sql` is applied in both stages and so may only reference the `score`
+    alias and columns of `b`, which the outer `GROUP BY b.book_id` leaves
+    functionally dependent and therefore selectable.
+    """
+    where_clause = f"WHERE {where_sql}" if where_sql else ""
+    group_by_clause = f"GROUP BY {rank_group_by}" if rank_group_by else ""
+
+    ranked_cte = f"""
+        ranked AS (
+            SELECT b.book_id, ({score_sql}) AS score
+            FROM canonical_books cb
+            JOIN books.books b ON b.book_id = cb.book_id
+            LEFT JOIN books.work_shelf_counts wsc ON wsc.work_id = b.work_id
+            {rank_joins}
+            {where_clause}
+            {group_by_clause}
+            ORDER BY {order_sql}
+            LIMIT :limit
+        )
+    """
+    ctes = [CANONICAL_BOOKS_CTE]
+    if extra_cte:
+        ctes.append(extra_cte)
+    ctes.append(ranked_cte)
+
+    return f"WITH {','.join(ctes)}\n{hydrate_books_from(order_sql=order_sql)}"
+
+
+async def _run_catalog_list(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    query: str,
+    limit: int,
+    language: str,
+) -> typing.List[typing.Dict]:
+    result = await session.execute(
+        sqlalchemy.text(query), {"limit": limit, "language": language}
+    )
+    return [_row_to_book_item(row, float(row.score or 0)) for row in result]
+
 
 def author_works_cte(author_filter: str = "") -> str:
     """One row per (author, work): the edition with the most ratings, so an
@@ -170,311 +263,232 @@ def _make_book_section(
     }
 
 
+# Shelf rows are pooled across a work's editions, so these two reach the whole
+# work through its sibling editions rather than only the canonical one.
+_WORK_SHELVES_JOIN = """
+    JOIN books.books wb ON wb.work_id = b.work_id
+    JOIN user_data.bookshelves bs ON bs.book_id = wb.book_id
+"""
+
+
 async def _build_most_read(
     session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
-    result = await session.execute(
-        sqlalchemy.text(
-            f"""{_CANONICAL_BOOKS_CTE}
-        SELECT {_BOOK_FIELDS}, {_READERS_EXPR} AS score
-        {_BOOK_FROM_CANONICAL} {_BOOK_JOINS}
-        {_BOOK_GROUP_BY}
-        ORDER BY score DESC NULLS LAST
-        LIMIT :limit
-    """
-        ),
-        {"limit": limit, "language": language},
+    return await _run_catalog_list(
+        session, _catalog_list_query(_RANK_READERS_EXPR), limit, language
     )
-    return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
 async def _build_most_wanted(
     session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
-    result = await session.execute(
-        sqlalchemy.text(
-            f"""{_CANONICAL_BOOKS_CTE}
-        SELECT {_BOOK_FIELDS}, {_WANT_TO_READ_EXPR} AS score
-        {_BOOK_FROM_CANONICAL} {_BOOK_JOINS}
-        {_BOOK_GROUP_BY}
-        ORDER BY score DESC NULLS LAST
-        LIMIT :limit
-    """
-        ),
-        {"limit": limit, "language": language},
+    return await _run_catalog_list(
+        session, _catalog_list_query(_RANK_WANT_TO_READ_EXPR), limit, language
     )
-    return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
 async def _build_trending_reads(
     session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
-    result = await session.execute(
-        sqlalchemy.text(
-            f"""{_CANONICAL_BOOKS_CTE}
-        SELECT {_BOOK_FIELDS}, {_CURRENTLY_READING_EXPR} AS score
-        {_BOOK_FROM_CANONICAL} {_BOOK_JOINS}
-        {_BOOK_GROUP_BY}
-        ORDER BY score DESC NULLS LAST
-        LIMIT :limit
-    """
-        ),
-        {"limit": limit, "language": language},
+    return await _run_catalog_list(
+        session, _catalog_list_query(_RANK_CURRENTLY_READING_EXPR), limit, language
     )
-    return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
 async def _build_most_viewed(
     session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
-    result = await session.execute(
-        sqlalchemy.text(
-            f"""{_CANONICAL_BOOKS_CTE},
-        work_views AS (
-            SELECT work_id, SUM(view_count) AS views FROM books.books GROUP BY work_id
-        )
-        SELECT {_BOOK_FIELDS}, COALESCE(MAX(wv.views), 0) AS score
-        {_BOOK_FROM_CANONICAL} {_BOOK_JOINS}
-        LEFT JOIN work_views wv ON wv.work_id = b.work_id
-        {_BOOK_GROUP_BY}
-        ORDER BY score DESC NULLS LAST
-        LIMIT :limit
-    """
+    return await _run_catalog_list(
+        session,
+        _catalog_list_query(
+            "COALESCE(wv.views, 0)",
+            extra_cte="""
+                work_views AS (
+                    SELECT work_id, SUM(view_count) AS views
+                    FROM books.books GROUP BY work_id
+                )
+            """,
+            rank_joins="LEFT JOIN work_views wv ON wv.work_id = b.work_id",
         ),
-        {"limit": limit, "language": language},
+        limit,
+        language,
     )
-    return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
 async def _build_highest_rated(
     session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
-    result = await session.execute(
-        sqlalchemy.text(
-            f"""{_CANONICAL_BOOKS_CTE}
-        SELECT {_BOOK_FIELDS},
-               CASE
-                   WHEN (COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0)) = 0 THEN 0
-                   ELSE (
-                       COALESCE(b.avg_rating::numeric, 0) * COALESCE(b.rating_count, 0)
-                       + COALESCE(b.ol_avg_rating::numeric, 0) * COALESCE(b.ol_rating_count, 0)
-                   ) / (COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0))
-               END AS score
-        {_BOOK_FROM_CANONICAL} {_BOOK_JOINS}
-        WHERE (COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0)) >= 3
-        {_BOOK_GROUP_BY}
-        ORDER BY score DESC NULLS LAST
-        LIMIT :limit
-    """
+    return await _run_catalog_list(
+        session,
+        _catalog_list_query(
+            _WEIGHTED_RATING_EXPR, where_sql=f"({_RATING_COUNT_EXPR}) >= 3"
         ),
-        {"limit": limit, "language": language},
+        limit,
+        language,
     )
-    return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
 async def _build_community_top_rated(
     session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
-    result = await session.execute(
-        sqlalchemy.text(
-            f"""{_CANONICAL_BOOKS_CTE}
-        SELECT {_BOOK_FIELDS}, b.ol_avg_rating AS score
-        {_BOOK_FROM_CANONICAL} {_BOOK_JOINS}
-        WHERE b.ol_rating_count >= 20
-        {_BOOK_GROUP_BY}
-        ORDER BY b.ol_avg_rating DESC NULLS LAST
-        LIMIT :limit
-    """
-        ),
-        {"limit": limit, "language": language},
+    return await _run_catalog_list(
+        session,
+        _catalog_list_query("b.ol_avg_rating", where_sql="b.ol_rating_count >= 20"),
+        limit,
+        language,
     )
-    return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
 async def _build_most_rated(
     session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
-    result = await session.execute(
-        sqlalchemy.text(
-            f"""{_CANONICAL_BOOKS_CTE}
-        SELECT {_BOOK_FIELDS},
-               COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0) AS score
-        {_BOOK_FROM_CANONICAL} {_BOOK_JOINS}
-        {_BOOK_GROUP_BY}
-        ORDER BY score DESC NULLS LAST
-        LIMIT :limit
-    """
-        ),
-        {"limit": limit, "language": language},
+    return await _run_catalog_list(
+        session, _catalog_list_query(_RATING_COUNT_EXPR), limit, language
     )
-    return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
 async def _build_recently_added(
     session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
-    result = await session.execute(
-        sqlalchemy.text(
-            f"""{_CANONICAL_BOOKS_CTE}
-        SELECT {_BOOK_FIELDS}, EXTRACT(EPOCH FROM b.created_at) AS score
-        {_BOOK_FROM_CANONICAL} {_BOOK_JOINS}
-        {_BOOK_GROUP_BY}
-        ORDER BY b.created_at DESC
-        LIMIT :limit
-    """
+    return await _run_catalog_list(
+        session,
+        _catalog_list_query(
+            "EXTRACT(EPOCH FROM b.created_at)", order_sql="b.created_at DESC"
         ),
-        {"limit": limit, "language": language},
+        limit,
+        language,
     )
-    return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
 async def _build_classics(
     session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
-    result = await session.execute(
-        sqlalchemy.text(
-            f"""{_CANONICAL_BOOKS_CTE}
-        SELECT {_BOOK_FIELDS}, {_READERS_EXPR} AS score
-        {_BOOK_FROM_CANONICAL} {_BOOK_JOINS}
-        WHERE b.original_publication_year < 1980
-        {_BOOK_GROUP_BY}
-        HAVING ({_READERS_EXPR}) >= 100 OR b.avg_rating >= 4.0
-        ORDER BY score DESC NULLS LAST, b.avg_rating DESC NULLS LAST
-        LIMIT :limit
-    """
+    return await _run_catalog_list(
+        session,
+        _catalog_list_query(
+            _RANK_READERS_EXPR,
+            where_sql=(
+                "b.original_publication_year < 1980 "
+                f"AND (({_RANK_READERS_EXPR}) >= 100 OR b.avg_rating >= 4.0)"
+            ),
+            order_sql="score DESC NULLS LAST, b.avg_rating DESC NULLS LAST",
         ),
-        {"limit": limit, "language": language},
+        limit,
+        language,
     )
-    return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
 async def _build_user_favorites(
     session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
-    result = await session.execute(
-        sqlalchemy.text(
-            f"""{_CANONICAL_BOOKS_CTE}
-        SELECT {_BOOK_FIELDS}, COUNT(DISTINCT bs.user_id) AS score
-        {_BOOK_FROM_CANONICAL}
-        JOIN books.books wb ON wb.work_id = b.work_id
-        JOIN user_data.bookshelves bs ON bs.book_id = wb.book_id
-        {_BOOK_JOINS}
-        WHERE bs.is_favorite = true
-        {_BOOK_GROUP_BY}
-        ORDER BY score DESC
-        LIMIT :limit
-    """
+    return await _run_catalog_list(
+        session,
+        _catalog_list_query(
+            "COUNT(DISTINCT bs.user_id)",
+            where_sql="bs.is_favorite = true",
+            rank_joins=_WORK_SHELVES_JOIN,
+            rank_group_by="b.book_id",
         ),
-        {"limit": limit, "language": language},
+        limit,
+        language,
     )
-    return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
 async def _build_recently_finished(
     session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
-    result = await session.execute(
-        sqlalchemy.text(
-            f"""{_CANONICAL_BOOKS_CTE}
-        SELECT {_BOOK_FIELDS}, EXTRACT(EPOCH FROM MAX(bs.updated_at)) AS score
-        {_BOOK_FROM_CANONICAL}
-        JOIN books.books wb ON wb.work_id = b.work_id
-        JOIN user_data.bookshelves bs ON bs.book_id = wb.book_id
-        {_BOOK_JOINS}
-        WHERE bs.status = 'read'
-        {_BOOK_GROUP_BY}
-        ORDER BY MAX(bs.updated_at) DESC
-        LIMIT :limit
-    """
+    return await _run_catalog_list(
+        session,
+        _catalog_list_query(
+            "EXTRACT(EPOCH FROM MAX(bs.updated_at))",
+            where_sql="bs.status = 'read'",
+            rank_joins=_WORK_SHELVES_JOIN,
+            rank_group_by="b.book_id",
         ),
-        {"limit": limit, "language": language},
+        limit,
+        language,
     )
-    return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
 async def _build_currently_reading(
     session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
-    result = await session.execute(
-        sqlalchemy.text(
-            f"""{_CANONICAL_BOOKS_CTE}
-        SELECT {_BOOK_FIELDS}, COUNT(DISTINCT bs.user_id) AS score
-        {_BOOK_FROM_CANONICAL}
-        JOIN books.books wb ON wb.work_id = b.work_id
-        JOIN user_data.bookshelves bs ON bs.book_id = wb.book_id
-        {_BOOK_JOINS}
-        WHERE bs.status = 'reading'
-        {_BOOK_GROUP_BY}
-        ORDER BY score DESC
-        LIMIT :limit
-    """
-        ),
-        {"limit": limit, "language": language},
+    # work_shelf_counts.reading_count is exactly this list's score — distinct
+    # app users with the work on 'reading', pooled over its editions — so it is
+    # read from the rollup instead of re-aggregating user_data.bookshelves.
+    return await _run_catalog_list(
+        session,
+        _catalog_list_query("COALESCE(wsc.reading_count, 0)"),
+        limit,
+        language,
     )
-    return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
 def _build_sub_rating_query(dimension: str) -> str:
-    return f"""{_CANONICAL_BOOKS_CTE}
-        SELECT {_BOOK_FIELDS},
-               CAST(b.sub_rating_stats->'{dimension}'->>'avg' AS FLOAT) AS score
-        {_BOOK_FROM_CANONICAL} {_BOOK_JOINS}
-        WHERE b.sub_rating_stats->'{dimension}'->>'count' IS NOT NULL
-          AND CAST(b.sub_rating_stats->'{dimension}'->>'count' AS INTEGER) >= 3
-        {_BOOK_GROUP_BY}
-        ORDER BY score DESC NULLS LAST
-        LIMIT :limit
-    """
+    return _catalog_list_query(
+        f"CAST(b.sub_rating_stats->'{dimension}'->>'avg' AS FLOAT)",
+        where_sql=(
+            f"b.sub_rating_stats->'{dimension}'->>'count' IS NOT NULL "
+            f"AND CAST(b.sub_rating_stats->'{dimension}'->>'count' AS INTEGER) >= 3"
+        ),
+    )
 
 
 async def _build_best_writing(
     session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
-    result = await session.execute(
-        sqlalchemy.text(_build_sub_rating_query("writing_quality")), {"limit": limit, "language": language}
+    return await _run_catalog_list(
+        session, _build_sub_rating_query("writing_quality"), limit, language
     )
-    return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
 async def _build_most_emotional(
     session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
-    result = await session.execute(
-        sqlalchemy.text(_build_sub_rating_query("emotional_impact")), {"limit": limit, "language": language}
+    return await _run_catalog_list(
+        session, _build_sub_rating_query("emotional_impact"), limit, language
     )
-    return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
 async def _build_funniest(
     session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
-    result = await session.execute(
-        sqlalchemy.text(_build_sub_rating_query("humor")), {"limit": limit, "language": language}
+    return await _run_catalog_list(
+        session, _build_sub_rating_query("humor"), limit, language
     )
-    return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
 async def _build_most_thought_provoking(
     session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
-    result = await session.execute(
-        sqlalchemy.text(_build_sub_rating_query("intellectual_depth")), {"limit": limit, "language": language}
+    return await _run_catalog_list(
+        session, _build_sub_rating_query("intellectual_depth"), limit, language
     )
-    return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
 async def _build_most_rereadable(
     session: sqlalchemy.ext.asyncio.AsyncSession, limit: int, language: str
 ) -> typing.List[typing.Dict]:
-    result = await session.execute(
-        sqlalchemy.text(_build_sub_rating_query("rereadability")), {"limit": limit, "language": language}
+    return await _run_catalog_list(
+        session, _build_sub_rating_query("rereadability"), limit, language
     )
-    return [_row_to_book_item(row, float(row.score or 0)) for row in result]
 
 
 async def _build_top_authors(
     session: sqlalchemy.ext.asyncio.AsyncSession, limit: int
 ) -> typing.List[typing.Dict]:
+    # The score needs no per-edition detail: ol_* reader counts are written
+    # identically to every edition of a work, so a MAX per (author, work) is that
+    # work's figure and summing those per author reproduces exactly what the old
+    # query got from an unfiltered author_works_cte() — which sorted the whole of
+    # books.book_authors joined to books.books to do it. Two narrow hash
+    # aggregates settle the ranking, then author_works_cte() runs edition-accurate
+    # over the `limit` authors that won.
+    #
+    # The aggregates are stacked rather than joined on work_id: joining a
+    # per-author CTE to a per-work one is a join Postgres cannot estimate (it
+    # guessed 173M rows for 48k), and the resulting cost was high enough to
+    # trigger JIT compilation that cost more than the query.
     result = await session.execute(
         sqlalchemy.text(
             f"""
@@ -484,7 +498,27 @@ async def _build_top_authors(
             JOIN books.book_authors ba_r ON bs_a.book_id = ba_r.book_id
             GROUP BY ba_r.author_id
         ),
-        {author_works_cte()}
+        author_work_readers AS (
+            SELECT ba.author_id, b.work_id, MAX(
+                COALESCE(b.ol_want_to_read_count, 0)
+                + COALESCE(b.ol_currently_reading_count, 0)
+                + COALESCE(b.ol_already_read_count, 0)
+            ) AS readers
+            FROM books.book_authors ba
+            JOIN books.books b ON b.book_id = ba.book_id
+            GROUP BY ba.author_id, b.work_id
+        ),
+        top_authors AS (
+            SELECT
+                awr.author_id,
+                COALESCE(SUM(awr.readers), 0) + COALESCE(MAX(aar.app_readers), 0) AS score
+            FROM author_work_readers awr
+            LEFT JOIN author_app_readers aar ON aar.author_id = awr.author_id
+            GROUP BY awr.author_id
+            ORDER BY score DESC
+            LIMIT :limit
+        ),
+        {author_works_cte("ba.author_id IN (SELECT author_id FROM top_authors)")}
         SELECT
             a.author_id,
             a.name,
@@ -499,23 +533,14 @@ async def _build_top_authors(
                 / NULLIF(SUM(aw.rating_count + aw.ol_rating_count), 0),
                 0
             ) AS avg_rating,
-            COALESCE(SUM(
-                COALESCE(aw.ol_want_to_read_count, 0) +
-                COALESCE(aw.ol_currently_reading_count, 0) +
-                COALESCE(aw.ol_already_read_count, 0)
-            ), 0) + COALESCE(aar.app_readers, 0) AS readers,
+            ta.score AS readers,
             COALESCE(SUM(aw.rating_count + aw.ol_rating_count), 0) AS rating_count,
-            COALESCE(SUM(
-                COALESCE(aw.ol_want_to_read_count, 0) +
-                COALESCE(aw.ol_currently_reading_count, 0) +
-                COALESCE(aw.ol_already_read_count, 0)
-            ), 0) + COALESCE(aar.app_readers, 0) AS score
-        FROM books.authors a
+            ta.score AS score
+        FROM top_authors ta
+        JOIN books.authors a ON a.author_id = ta.author_id
         JOIN author_works aw ON aw.author_id = a.author_id
-        LEFT JOIN author_app_readers aar ON aar.author_id = a.author_id
-        GROUP BY a.author_id, aar.app_readers
-        ORDER BY score DESC
-        LIMIT :limit
+        GROUP BY a.author_id, ta.score
+        ORDER BY ta.score DESC
     """
         ),
         {"limit": limit},
@@ -739,8 +764,8 @@ async def _precache_contextual(
                 if sections:
                     await app.cache.set_cached(f"{key_prefix}:{eid}", sections, ttl)
                     return True
-            except Exception as e:
-                logger.error(f"[rec] precache {key_prefix}:{eid} failed: {e}")
+            except Exception:
+                logger.exception(f"[rec] precache {key_prefix}:{eid} failed")
             return False
 
     results = await asyncio.gather(*(_one(i) for i in ids))
@@ -802,8 +827,8 @@ async def refresh_all(session_maker: sqlalchemy.orm.sessionmaker) -> None:
                         aid = item.get("author_id")
                         if aid:
                             author_ids.add(aid)
-            except Exception as e:
-                logger.error(f"[rec] Failed to build category '{key}' ({language}): {str(e)}")
+            except Exception:
+                logger.exception(f"[rec] Failed to build category '{key}' ({language})")
 
     logger.info("[rec] Recommendation list refresh complete")
 

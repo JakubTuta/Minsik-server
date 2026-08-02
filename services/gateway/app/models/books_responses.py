@@ -640,6 +640,18 @@ class DiscoverBookResponse(pydantic.BaseModel):
     error: typing.Optional[app.models.responses.ErrorDetail] = None
 
 
+class CountMatchingBooksData(pydantic.BaseModel):
+    matching_count: int = pydantic.Field(
+        description="Total number of books in the database that match the provided filters."
+    )
+
+
+class CountMatchingBooksResponse(pydantic.BaseModel):
+    success: bool = True
+    data: typing.Optional[CountMatchingBooksData] = None
+    error: typing.Optional[app.models.responses.ErrorDetail] = None
+
+
 class AdminBookUpdateData(pydantic.BaseModel):
     book_id: int
     title: str

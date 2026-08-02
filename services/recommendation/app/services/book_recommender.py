@@ -248,7 +248,10 @@ async def build_book_recommendations(
     section_labels = ["more_by_author", "similar_by_genre", "readers_also_enjoyed"]
     for i, result in enumerate(all_results[:3]):
         if isinstance(result, Exception):
-            logger.error(f"[rec:book:{book_id}] {section_labels[i]} failed: {result}")
+            logger.error(
+                f"[rec:book:{book_id}] {section_labels[i]} failed: {result}",
+                exc_info=result,
+            )
 
     more_by_author_items = all_results[0] if not isinstance(all_results[0], Exception) else []
     similar_genre_items = all_results[1] if not isinstance(all_results[1], Exception) else []
@@ -258,7 +261,9 @@ async def build_book_recommendations(
     if series_id is not None:
         raw = all_results[3]
         if isinstance(raw, Exception):
-            logger.error(f"[rec:book:{book_id}] more_from_series failed: {raw}")
+            logger.error(
+                f"[rec:book:{book_id}] more_from_series failed: {raw}", exc_info=raw
+            )
         else:
             series_items = raw
 

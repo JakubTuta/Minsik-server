@@ -823,6 +823,36 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
             matching_count=result["matching_count"],
         )
 
+    async def CountMatchingBooks(
+        self,
+        request: app.proto.books_pb2.DiscoverBookRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> app.proto.books_pb2.CountMatchingBooksResponse:
+        try:
+            async with app.db.async_session_maker() as session:
+                matching_count = await app.services.discovery_service.count_matching_books(
+                    session,
+                    language=request.language or "en",
+                    genre_slugs=list(request.genre_slugs),
+                    book_length=request.book_length or "",
+                    quality=request.quality or "",
+                    moods=list(request.moods),
+                    era=request.era or "",
+                    series_filter=request.series_filter or "",
+                    popularity=request.popularity or "",
+                    exclude_ids=list(request.exclude_ids),
+                )
+        except Exception as e:
+            logger.error(f"Error in CountMatchingBooks: {str(e)}")
+            await context.abort(
+                grpc.StatusCode.INTERNAL, f"Count matching books failed: {str(e)}"
+            )
+            return
+
+        return app.proto.books_pb2.CountMatchingBooksResponse(
+            matching_count=matching_count
+        )
+
     async def DeleteBook(
         self,
         request: app.proto.books_pb2.DeleteBookRequest,

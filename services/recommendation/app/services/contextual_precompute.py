@@ -183,8 +183,8 @@ async def _precompute_entities(
                     f"[rec:precompute] {entity_type} {eid} timed out after "
                     f"{_PER_ENTITY_TIMEOUT}s, skipping"
                 )
-            except Exception as e:
-                logger.error(f"[rec:precompute] {entity_type} {eid} failed: {e}")
+            except Exception:
+                logger.exception(f"[rec:precompute] {entity_type} {eid} failed")
             return None
 
     chunk_size = 100

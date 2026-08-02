@@ -52,20 +52,31 @@ class IngestionService(app.proto.ingestion_pb2_grpc.IngestionServiceServicer):
                 # shown next to the unfiltered author and series totals, and a
                 # catalogue whose editions are mostly non-English would
                 # otherwise report a near-empty database.
-                books_result = await session.execute(
-                    sqlalchemy.text("SELECT COUNT(*) FROM books.books")
+                #
+                # An exact COUNT(*) forces Postgres to walk every row of the
+                # table (no index makes that faster; MVCC visibility can't be
+                # answered from an index alone), which is what made this
+                # endpoint time out once books.books reached hundreds of
+                # thousands of rows. reltuples is the planner's own row-count
+                # estimate, refreshed by autovacuum/ANALYZE, and a dashboard
+                # stat has no need to be exact to the row.
+                counts_result = await session.execute(
+                    sqlalchemy.text(
+                        """
+                        SELECT relname, reltuples::bigint
+                        FROM pg_class
+                        WHERE oid IN (
+                            'books.books'::regclass,
+                            'books.authors'::regclass,
+                            'books.series'::regclass
+                        )
+                        """
+                    )
                 )
-                db_books_count = books_result.scalar_one()
-
-                authors_result = await session.execute(
-                    sqlalchemy.text("SELECT COUNT(*) FROM books.authors")
-                )
-                db_authors_count = authors_result.scalar_one()
-
-                series_result = await session.execute(
-                    sqlalchemy.text("SELECT COUNT(*) FROM books.series")
-                )
-                db_series_count = series_result.scalar_one()
+                estimates = {row.relname: max(row[1], 0) for row in counts_result}
+                db_books_count = estimates.get("books", 0)
+                db_authors_count = estimates.get("authors", 0)
+                db_series_count = estimates.get("series", 0)
 
             cache_data = {
                 "db_books_count": db_books_count,

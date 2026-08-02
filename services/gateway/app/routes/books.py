@@ -1202,6 +1202,51 @@ async def discover_book(
         )
 
 
+@router.post(
+    "/discover/count",
+    response_model=app.models.books_responses.CountMatchingBooksResponse,
+    summary="Count books matching discover filters",
+    description="""
+    Returns how many books match the given filter criteria, without picking a
+    book or fetching its detail.
+
+    Intended for the live "X books match" indicator while a user is still
+    adjusting filters, before clicking "Discover" — use `POST /discover` for
+    the actual pick. Same filter fields as `POST /discover`.
+    """,
+)
+@limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
+async def count_matching_books(
+    request: fastapi.Request,
+    filters: app.models.books_responses.DiscoverBookFilters,
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
+):
+    try:
+        response = await app.grpc_clients.books_client.count_matching_books(
+            language=filters.language or language,
+            genre_slugs=filters.genre_slugs,
+            book_length=filters.book_length or "",
+            quality=filters.quality or "",
+            moods=filters.moods,
+            era=filters.era or "",
+            series_filter=filters.series_filter or "",
+            popularity=filters.popularity or "",
+            exclude_ids=filters.exclude_ids,
+        )
+
+        return {
+            "success": True,
+            "data": {"matching_count": response.matching_count},
+            "error": None,
+        }
+    except grpc.RpcError as e:
+        app.utils.responses.log_grpc_error(logger, "counting matching books", e)
+        raise fastapi.HTTPException(
+            status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
+            detail=f"Count matching books failed: {e.details()}",
+        )
+
+
 @router.get(
     "/genres/{slug}/bubble",
     summary="Get genres that co-occur with a given genre",

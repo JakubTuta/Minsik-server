@@ -22,44 +22,26 @@ CACHE_KEY_PREFIX = "case:pool"
 
 _POOL_QUERY = sqlalchemy.text(
     """
-    WITH book_stats AS (
+    -- Rarity only depends on combined_rating/total_ratings, both derived from
+    -- books.books columns alone. The old version joined authors and carried
+    -- description/cover text through the dedup and windowed-sample passes for
+    -- every rated book (hundreds of thousands of rows) to keep ~440 rows at
+    -- the end — three full sorts/aggregates of the whole catalog per refresh,
+    -- heavy enough to crash Postgres under this container's memory limit.
+    -- Picking survivors on the lean row first and joining authors only for
+    -- those turns three catalog-wide passes into one, plus a join scoped to
+    -- ~440 rows.
+    WITH rated AS (
         SELECT
             b.book_id,
-            b.title,
-            b.slug,
             b.work_id,
-            b.description,
-            b.primary_cover_url,
-            b.language,
-            b.rating_count,
-            b.avg_rating,
-            b.ol_rating_count,
-            b.ol_avg_rating,
-            b.ol_want_to_read_count,
-            b.ol_currently_reading_count,
-            b.ol_already_read_count,
             (
                 COALESCE(b.avg_rating::numeric, 0) * b.rating_count
                 + COALESCE(b.ol_avg_rating::numeric, 0) * b.ol_rating_count
             )::numeric / (b.rating_count + b.ol_rating_count) AS combined_rating,
-            b.rating_count + b.ol_rating_count AS total_ratings,
-            COALESCE(wsc.want_to_read_count, 0) AS app_want_to_read_count,
-            COALESCE(wsc.reading_count, 0)      AS app_reading_count,
-            COALESCE(wsc.read_count, 0)         AS app_read_count,
-            ARRAY_AGG(a.author_id) FILTER (WHERE a.author_id IS NOT NULL) AS author_ids,
-            ARRAY_AGG(a.name)      FILTER (WHERE a.name IS NOT NULL)      AS author_names,
-            ARRAY_AGG(a.slug)      FILTER (WHERE a.slug IS NOT NULL)      AS author_slugs,
-            ARRAY_AGG(a.photo_url) FILTER (WHERE a.photo_url IS NOT NULL) AS author_photos
+            b.rating_count + b.ol_rating_count AS total_ratings
         FROM books.books b
-        LEFT JOIN books.book_authors ba ON b.book_id = ba.book_id
-        LEFT JOIN books.authors a ON ba.author_id = a.author_id
-        LEFT JOIN books.work_shelf_counts wsc ON wsc.work_id = b.work_id
         WHERE (b.rating_count + b.ol_rating_count) >= 1
-        GROUP BY b.book_id, b.title, b.slug, b.work_id, b.description, b.primary_cover_url,
-                 b.language, b.rating_count, b.avg_rating, b.ol_rating_count, b.ol_avg_rating,
-                 b.ol_want_to_read_count, b.ol_currently_reading_count,
-                 b.ol_already_read_count, wsc.want_to_read_count,
-                 wsc.reading_count, wsc.read_count
     ),
     -- ol_* stats and pooled ratings are identical across a work's translations,
     -- so without this a heavily-translated work would occupy many pool slots
@@ -68,12 +50,12 @@ _POOL_QUERY = sqlalchemy.text(
     -- reflects real edition popularity, letting pick_weighted_from_pool's
     -- language boost actually surface non-English editions.
     work_deduped AS (
-        SELECT DISTINCT ON (work_id) *
-        FROM book_stats
+        SELECT DISTINCT ON (work_id) book_id, combined_rating, total_ratings
+        FROM rated
         ORDER BY work_id, total_ratings DESC
     ),
     bucketed AS (
-        SELECT *,
+        SELECT book_id,
             CASE
                 WHEN total_ratings >= 25 AND combined_rating >  4.65                              THEN 'legendary'
                 WHEN total_ratings >= 20 AND combined_rating >  4.50 AND combined_rating <= 4.65  THEN 'ultra_rare'
@@ -86,18 +68,53 @@ _POOL_QUERY = sqlalchemy.text(
         FROM work_deduped
     ),
     sampled AS (
-        SELECT *,
+        SELECT book_id, rarity_name,
             ROW_NUMBER() OVER (PARTITION BY rarity_name ORDER BY RANDOM()) AS rn
         FROM bucketed
         WHERE rarity_name IS NOT NULL
+    ),
+    picked AS (
+        SELECT book_id, rarity_name FROM sampled
+        WHERE (rarity_name = 'legendary'  AND rn <= 20)
+           OR (rarity_name = 'ultra_rare' AND rn <= 30)
+           OR (rarity_name = 'super_rare' AND rn <= 50)
+           OR (rarity_name = 'rare'       AND rn <= 80)
+           OR (rarity_name = 'uncommon'   AND rn <= 110)
+           OR (rarity_name = 'common'     AND rn <= 150)
     )
-    SELECT * FROM sampled
-    WHERE (rarity_name = 'legendary'  AND rn <= 20)
-       OR (rarity_name = 'ultra_rare' AND rn <= 30)
-       OR (rarity_name = 'super_rare' AND rn <= 50)
-       OR (rarity_name = 'rare'       AND rn <= 80)
-       OR (rarity_name = 'uncommon'   AND rn <= 110)
-       OR (rarity_name = 'common'     AND rn <= 150)
+    SELECT
+        b.book_id,
+        b.title,
+        b.slug,
+        b.work_id,
+        b.description,
+        b.primary_cover_url,
+        b.language,
+        b.rating_count,
+        b.avg_rating,
+        b.ol_rating_count,
+        b.ol_avg_rating,
+        b.ol_want_to_read_count,
+        b.ol_currently_reading_count,
+        b.ol_already_read_count,
+        COALESCE(wsc.want_to_read_count, 0) AS app_want_to_read_count,
+        COALESCE(wsc.reading_count, 0)      AS app_reading_count,
+        COALESCE(wsc.read_count, 0)         AS app_read_count,
+        p.rarity_name,
+        ARRAY_AGG(a.author_id) FILTER (WHERE a.author_id IS NOT NULL) AS author_ids,
+        ARRAY_AGG(a.name)      FILTER (WHERE a.name IS NOT NULL)      AS author_names,
+        ARRAY_AGG(a.slug)      FILTER (WHERE a.slug IS NOT NULL)      AS author_slugs,
+        ARRAY_AGG(a.photo_url) FILTER (WHERE a.photo_url IS NOT NULL) AS author_photos
+    FROM picked p
+    JOIN books.books b ON b.book_id = p.book_id
+    LEFT JOIN books.book_authors ba ON b.book_id = ba.book_id
+    LEFT JOIN books.authors a ON ba.author_id = a.author_id
+    LEFT JOIN books.work_shelf_counts wsc ON wsc.work_id = b.work_id
+    GROUP BY b.book_id, b.title, b.slug, b.work_id, b.description, b.primary_cover_url,
+             b.language, b.rating_count, b.avg_rating, b.ol_rating_count, b.ol_avg_rating,
+             b.ol_want_to_read_count, b.ol_currently_reading_count,
+             b.ol_already_read_count, wsc.want_to_read_count,
+             wsc.reading_count, wsc.read_count, p.rarity_name
     """
 )
 
@@ -152,8 +169,8 @@ async def refresh_case_pools(session_maker: sqlalchemy.orm.sessionmaker) -> None
         async with session_maker() as session:
             result = await session.execute(_POOL_QUERY)
             rows = result.fetchall()
-    except Exception as e:
-        logger.error(f"[case] Failed to fetch case pool books: {str(e)}")
+    except Exception:
+        logger.exception("[case] Failed to fetch case pool books")
         return
 
     pools: typing.Dict[str, typing.List[typing.Dict[str, typing.Any]]] = {

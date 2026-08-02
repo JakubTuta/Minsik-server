@@ -109,6 +109,11 @@ class BooksServiceStub(object):
                 request_serializer=books__pb2.DiscoverBookRequest.SerializeToString,
                 response_deserializer=books__pb2.DiscoverBookResponse.FromString,
                 _registered_method=True)
+        self.CountMatchingBooks = channel.unary_unary(
+                '/books.v1.BooksService/CountMatchingBooks',
+                request_serializer=books__pb2.DiscoverBookRequest.SerializeToString,
+                response_deserializer=books__pb2.CountMatchingBooksResponse.FromString,
+                _registered_method=True)
         self.DeleteBook = channel.unary_unary(
                 '/books.v1.BooksService/DeleteBook',
                 request_serializer=books__pb2.DeleteBookRequest.SerializeToString,
@@ -269,6 +274,12 @@ class BooksServiceServicer(object):
         context.set_details('Method not implemented!')
         raise NotImplementedError('Method not implemented!')
 
+    def CountMatchingBooks(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
     def DeleteBook(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
@@ -424,6 +435,11 @@ def add_BooksServiceServicer_to_server(servicer, server):
                     servicer.DiscoverBook,
                     request_deserializer=books__pb2.DiscoverBookRequest.FromString,
                     response_serializer=books__pb2.DiscoverBookResponse.SerializeToString,
+            ),
+            'CountMatchingBooks': grpc.unary_unary_rpc_method_handler(
+                    servicer.CountMatchingBooks,
+                    request_deserializer=books__pb2.DiscoverBookRequest.FromString,
+                    response_serializer=books__pb2.CountMatchingBooksResponse.SerializeToString,
             ),
             'DeleteBook': grpc.unary_unary_rpc_method_handler(
                     servicer.DeleteBook,
@@ -896,6 +912,33 @@ class BooksService(object):
             '/books.v1.BooksService/DiscoverBook',
             books__pb2.DiscoverBookRequest.SerializeToString,
             books__pb2.DiscoverBookResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def CountMatchingBooks(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/books.v1.BooksService/CountMatchingBooks',
+            books__pb2.DiscoverBookRequest.SerializeToString,
+            books__pb2.CountMatchingBooksResponse.FromString,
             options,
             channel_credentials,
             insecure,

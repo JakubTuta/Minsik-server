@@ -245,18 +245,29 @@ async def _fetch_random_book_from_tier(
     max_rating: float,
     min_ratings: int,
 ) -> typing.Optional[typing.Any]:
+    # This runs on the request path whenever the cached tier pools are missing,
+    # so it must not aggregate the tier to return one book. The draw needs only
+    # b.language and the rating columns; joining authors and building four
+    # ARRAY_AGGs for every book in the tier — 'common' and 'uncommon' are a large
+    # slice of the catalog — before ORDER BY RANDOM() discarded all but one row
+    # made a cold cache far more expensive than a warm one.
     boost = app.services._language_boost.lang_boost_sql()
     query = sqlalchemy.text(
-        _BOOK_SELECT
-        + f"""
-        WHERE (b.rating_count + b.ol_rating_count) >= :min_ratings
-          AND {_COMBINED_RATING_FILTER}
+        f"""
+        WITH winner AS (
+            SELECT b.book_id
+            FROM books.books b
+            WHERE (b.rating_count + b.ol_rating_count) >= :min_ratings
+              AND {_COMBINED_RATING_FILTER}
+            ORDER BY RANDOM() * {boost} DESC
+            LIMIT 1
+        )
+        """
+        + _BOOK_SELECT
+        + """
+        WHERE b.book_id = (SELECT book_id FROM winner)
         """
         + _BOOK_GROUP_BY
-        + f"""
-        ORDER BY RANDOM() * {boost} DESC
-        LIMIT 1
-        """
     )
     result = await session.execute(
         query,

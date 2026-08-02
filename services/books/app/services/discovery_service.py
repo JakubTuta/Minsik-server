@@ -123,18 +123,11 @@ async def discover_book(
         exclude_ids,
     )
 
-    matching_count = await _count_matching_books(
+    matching_count, book_id = await _count_and_pick_random_book(
         session, where_clauses, having_clauses, params
     )
 
-    if matching_count == 0:
-        return None
-
-    book_id = await _fetch_random_matching_book(
-        session, where_clauses, having_clauses, params
-    )
-
-    if book_id is None:
+    if matching_count == 0 or book_id is None:
         return None
 
     book_summary = await _fetch_book_summary_by_id(session, book_id)
@@ -146,6 +139,39 @@ async def discover_book(
         "book": book_summary,
         "matching_count": matching_count,
     }
+
+
+async def count_matching_books(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    language: str,
+    genre_slugs: typing.List[str],
+    book_length: str,
+    quality: str,
+    moods: typing.List[str],
+    era: str,
+    series_filter: str,
+    popularity: str,
+    exclude_ids: typing.List[int],
+) -> int:
+    """Count-only variant for the live "X books match" chip while filtering.
+
+    Filters are adjusted far more often than "Discover" is clicked, and each
+    change re-runs this debounced. Reuses `discover_book`'s filtered scan
+    without its random pick or book-detail fetch, which used to run the same
+    full DiscoverBook flow (pick + fetch) on every filter tweak.
+    """
+    where_clauses, having_clauses, params = _build_filter_clauses(
+        language,
+        genre_slugs,
+        book_length,
+        quality,
+        moods,
+        era,
+        series_filter,
+        popularity,
+        exclude_ids,
+    )
+    return await _count_matching_books(session, where_clauses, having_clauses, params)
 
 
 def _build_filter_clauses(
@@ -254,6 +280,49 @@ async def _count_matching_books(
     return result.scalar() or 0
 
 
+async def _count_and_pick_random_book(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    where_clauses: typing.List[str],
+    having_clauses: typing.List[str],
+    params: typing.Dict[str, typing.Any],
+) -> typing.Tuple[int, typing.Optional[int]]:
+    """Count and randomly pick from the filtered set in one pass.
+
+    The "Discover" click used to run the filtered scan (canonical join +
+    GROUP BY + HAVING over the whole catalog) twice: once to count matches,
+    once more with `ORDER BY RANDOM() LIMIT 1` to pick one. On the full
+    catalog that second sort is the expensive part, so doubling it was the
+    main cost of the request. The `filtered` CTE is referenced twice below,
+    which makes Postgres materialize it once and reuse it for both the count
+    and the random pick.
+    """
+    inner_query = _DISCOVERY_SELECT
+    if where_clauses:
+        inner_query += " WHERE " + " AND ".join(where_clauses)
+    inner_query += _DISCOVERY_GROUP_BY
+    if having_clauses:
+        inner_query += " HAVING " + " AND ".join(having_clauses)
+
+    boost = app.services._language_boost.lang_boost_sql()
+    query = f"""
+        WITH filtered AS MATERIALIZED (
+            {inner_query}
+        )
+        SELECT
+            (SELECT COUNT(DISTINCT work_id) FROM filtered) AS matching_count,
+            (
+                SELECT book_id FROM filtered
+                ORDER BY RANDOM() * {boost} DESC
+                LIMIT 1
+            ) AS book_id
+    """
+    result = await session.execute(sqlalchemy.text(query), params)
+    row = result.first()
+    if row is None:
+        return 0, None
+    return row.matching_count or 0, row.book_id
+
+
 async def _fetch_book_summary_by_id(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     book_id: int,
@@ -290,21 +359,3 @@ def _row_to_discover_item(row: typing.Any) -> typing.Dict[str, typing.Any]:
     }
 
 
-async def _fetch_random_matching_book(
-    session: sqlalchemy.ext.asyncio.AsyncSession,
-    where_clauses: typing.List[str],
-    having_clauses: typing.List[str],
-    params: typing.Dict[str, typing.Any],
-) -> typing.Optional[int]:
-    query = _DISCOVERY_SELECT
-    if where_clauses:
-        query += " WHERE " + " AND ".join(where_clauses)
-    query += _DISCOVERY_GROUP_BY
-    if having_clauses:
-        query += " HAVING " + " AND ".join(having_clauses)
-    boost = app.services._language_boost.lang_boost_sql()
-    query += f" ORDER BY RANDOM() * {boost} DESC LIMIT 1"
-
-    result = await session.execute(sqlalchemy.text(query), params)
-    row = result.first()
-    return row.book_id if row is not None else None

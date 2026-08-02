@@ -223,15 +223,18 @@ async def build_series_recommendations(
 
     if isinstance(more_by_author_result, Exception):
         logger.error(
-            f"[rec:series:{series_id}] more_by_author failed: {more_by_author_result}"
+            f"[rec:series:{series_id}] more_by_author failed: {more_by_author_result}",
+            exc_info=more_by_author_result,
         )
     if isinstance(similar_genre_result, Exception):
         logger.error(
-            f"[rec:series:{series_id}] similar_by_genre failed: {similar_genre_result}"
+            f"[rec:series:{series_id}] similar_by_genre failed: {similar_genre_result}",
+            exc_info=similar_genre_result,
         )
     if isinstance(readers_enjoyed_result, Exception):
         logger.error(
-            f"[rec:series:{series_id}] readers_also_enjoyed failed: {readers_enjoyed_result}"
+            f"[rec:series:{series_id}] readers_also_enjoyed failed: {readers_enjoyed_result}",
+            exc_info=readers_enjoyed_result,
         )
 
     sections: typing.List[typing.Dict[str, typing.Any]] = []

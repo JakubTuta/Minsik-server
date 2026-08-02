@@ -772,6 +772,12 @@ class DiscoverBookResponse(_message.Message):
     matching_count: int
     def __init__(self, book: _Optional[_Union[BookSummary, _Mapping]] = ..., matching_count: _Optional[int] = ...) -> None: ...
 
+class CountMatchingBooksResponse(_message.Message):
+    __slots__ = ("matching_count",)
+    MATCHING_COUNT_FIELD_NUMBER: _ClassVar[int]
+    matching_count: int
+    def __init__(self, matching_count: _Optional[int] = ...) -> None: ...
+
 class SpinSlotsRequest(_message.Message):
     __slots__ = ("language",)
     LANGUAGE_FIELD_NUMBER: _ClassVar[int]

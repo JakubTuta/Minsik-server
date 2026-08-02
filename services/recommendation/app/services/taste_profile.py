@@ -273,6 +273,16 @@ async def build_taste_profile(
         return_exceptions=True,
     )
 
+    query_names = [
+        "bookshelves", "genre_scores", "ratings", "series_in_progress", "author_ids_read",
+    ]
+    for i, result in enumerate(results):
+        if isinstance(result, Exception):
+            logger.error(
+                f"[rec:profile:{user_id}] {query_names[i]} failed: {result}",
+                exc_info=result,
+            )
+
     shelf_data = (
         results[0]
         if not isinstance(results[0], Exception)
