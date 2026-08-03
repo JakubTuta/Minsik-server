@@ -46,11 +46,12 @@ class Settings(pydantic_settings.BaseSettings):
     work_shelf_counts_refresh_enabled: bool = pydantic.Field(default=True)
     work_shelf_counts_refresh_cron: str = pydantic.Field(default="*/15 * * * *")
 
-    search_author_books_expansion: int = pydantic.Field(default=3)
-
-    # Ranking signals are additive on top of the text score. The pivots are the
-    # value at which a signal contributes half its boost, so `popularity_pivot`
-    # is roughly "an averagely-read book" and `quality_pivot` an average rating.
+    # Ranking signals ride a `rescore` pass over the text-matched hits rather
+    # than summing into the query score, so their weight is a real multiplier
+    # instead of a fixed amount a large BM25 sum can drown out. The pivots are
+    # the value at which a signal contributes half its boost, so
+    # `popularity_pivot` is roughly "an averagely-read book" and
+    # `quality_pivot` an average rating; `*_signal_weight` scales the pair.
     search_popularity_pivot: float = pydantic.Field(default=50.0)
     search_popularity_boost: float = pydantic.Field(default=1.5)
     search_quality_pivot: float = pydantic.Field(default=3.5)
@@ -59,11 +60,18 @@ class Settings(pydantic_settings.BaseSettings):
     # wants, so this just favours what they can actually read among equals.
     search_language_boost: float = pydantic.Field(default=0.3)
 
+    # Search page: relevance-led. Full recall, popularity only separates
+    # near-equal text matches — nothing textually relevant is hidden.
+    search_signal_weight: float = pydantic.Field(default=0.8)
+    search_min_score: float = pydantic.Field(default=0.0)
+    # App-bar quick search: popularity-led and pruned. No loose recall tier,
+    # and `min_score` cuts the weak-match tail instead of merely down-ranking it.
+    suggest_signal_weight: float = pydantic.Field(default=6.0)
+    suggest_min_score: float = pydantic.Field(default=4.0)
+
     es_host: str = pydantic.Field(default="elasticsearch")
     es_port: int = pydantic.Field(default=9200)
-    es_index_books: str = pydantic.Field(default="books")
-    es_index_authors: str = pydantic.Field(default="authors")
-    es_index_series: str = pydantic.Field(default="series")
+    es_index_catalog: str = pydantic.Field(default="catalog")
     es_reindex_enabled: bool = pydantic.Field(default=True)
     es_reindex_cron: str = pydantic.Field(default="0 5,11,17,23 * * *")
     es_reindex_batch_size: int = pydantic.Field(default=1000)

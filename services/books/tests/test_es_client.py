@@ -103,13 +103,13 @@ def test_rebuild_writes_to_the_new_index_while_the_alias_still_serves(es_state):
 
     index_plan = plan()
 
-    assert index_plan.write_index("books") == index_plan.targets["books"]
+    assert index_plan.write_index("catalog") == index_plan.targets["catalog"]
 
     promote(index_plan)
     settled = plan()
 
     assert settled.rebuild is False
-    assert settled.write_index("books") == "books"
+    assert settled.write_index("catalog") == "catalog"
 
 
 def test_promote_swaps_the_alias_and_drops_the_previous_index(es_state):
@@ -123,8 +123,8 @@ def test_promote_swaps_the_alias_and_drops_the_previous_index(es_state):
     promote(second)
 
     assert second.rebuild is True
-    assert indices.aliases["books"] == {second.targets["books"]}
-    assert first.targets["books"] not in indices.indexes
+    assert indices.aliases["catalog"] == {second.targets["catalog"]}
+    assert first.targets["catalog"] not in indices.indexes
 
 
 def test_unchanged_configuration_is_a_noop(es_state):
@@ -139,12 +139,12 @@ def test_unchanged_configuration_is_a_noop(es_state):
 
 def test_pre_alias_index_is_replaced_by_the_alias(es_state):
     indices, _configure, plan, promote = es_state
-    indices.indexes["books"] = {"legacy": True}
+    indices.indexes["catalog"] = {"legacy": True}
 
     promote(plan())
 
-    assert "books" not in indices.indexes
-    assert indices.aliases["books"]
+    assert "catalog" not in indices.indexes
+    assert indices.aliases["catalog"]
 
 
 def test_half_written_index_from_a_failed_run_is_rebuilt_from_scratch(es_state):
@@ -155,8 +155,8 @@ def test_half_written_index_from_a_failed_run_is_rebuilt_from_scratch(es_state):
     second = plan()
 
     assert second.targets == first.targets
-    assert ("delete", first.targets["books"]) in indices.calls
-    assert ("create", first.targets["books"]) in indices.calls
+    assert ("delete", first.targets["catalog"]) in indices.calls
+    assert ("create", first.targets["catalog"]) in indices.calls
 
 
 def test_language_without_a_stemmer_gets_no_dedicated_field(es_state):
@@ -164,7 +164,7 @@ def test_language_without_a_stemmer_gets_no_dedicated_field(es_state):
     configure("en,pl")
 
     assert app.es_client.stemmed_languages() == ["en"]
-    assert "titles_pl" not in app.es_client.works_index_mapping()["mappings"]["properties"]
+    assert "name_pl" not in app.es_client.catalog_index_mapping()["mappings"]["properties"]
 
 
 def test_stempel_plugin_enables_polish_stemming(es_state):
@@ -172,20 +172,20 @@ def test_stempel_plugin_enables_polish_stemming(es_state):
     configure("en,pl", plugins={"analysis-stempel"})
 
     assert app.es_client.stemmed_languages() == ["en", "pl"]
-    properties = app.es_client.works_index_mapping()["mappings"]["properties"]
-    assert properties["titles_pl"]["analyzer"] == "text_analyzer_pl"
+    properties = app.es_client.catalog_index_mapping()["mappings"]["properties"]
+    assert properties["name_pl"]["analyzer"] == "text_analyzer_pl"
 
 
 def test_icu_plugin_upgrades_folding(es_state):
     _indices, configure, _plan, _promote = es_state
 
     configure("en")
-    assert "asciifolding" in app.es_client.works_index_mapping()["settings"]["analysis"][
+    assert "asciifolding" in app.es_client.catalog_index_mapping()["settings"]["analysis"][
         "analyzer"
     ]["generic_analyzer"]["filter"]
 
     configure("en", plugins={app.es_client.ICU_PLUGIN})
-    assert "icu_folding" in app.es_client.works_index_mapping()["settings"]["analysis"][
+    assert "icu_folding" in app.es_client.catalog_index_mapping()["settings"]["analysis"][
         "analyzer"
     ]["generic_analyzer"]["filter"]
 
@@ -194,8 +194,33 @@ def test_analysis_changes_produce_a_new_index_name(es_state):
     _indices, configure, plan, promote = es_state
 
     promote(plan())
-    before = plan().targets["books"]
+    before = plan().targets["catalog"]
 
     configure("en", plugins={app.es_client.ICU_PLUGIN})
 
-    assert plan().targets["books"] != before
+    assert plan().targets["catalog"] != before
+
+
+def test_catalog_mapping_shares_one_field_vocabulary_across_kinds(es_state):
+    _indices, _configure, _plan, _promote = es_state
+
+    properties = app.es_client.catalog_index_mapping()["mappings"]["properties"]
+
+    assert properties["kind"] == {"type": "keyword"}
+    assert "prefix" in properties["name"]["fields"]
+    assert "exact" in properties["name"]["fields"]
+    assert properties["name"]["fields"]["exact"]["normalizer"] == "folded_normalizer"
+    # Recall-only aliases must never gain norms-based weight over the
+    # canonical name just because a work happens to have many editions.
+    assert properties["alt_names"]["norms"] is False
+    assert properties["alt_names"]["fields"]["prefix"]["norms"] is False
+
+
+def test_prefix_field_ngrams_at_index_time_only(es_state):
+    _indices, _configure, _plan, _promote = es_state
+
+    properties = app.es_client.catalog_index_mapping()["mappings"]["properties"]
+    prefix_field = properties["name"]["fields"]["prefix"]
+
+    assert prefix_field["analyzer"] == "edge_ngram_analyzer"
+    assert prefix_field["search_analyzer"] == "generic_analyzer"

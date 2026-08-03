@@ -41,7 +41,9 @@ _PLUGIN_STEMMERS: typing.Dict[str, typing.Tuple[str, typing.Dict[str, str]]] = {
 
 # Elasticsearch rejects analyzer names beginning with an underscore.
 _GENERIC_ANALYZER = "generic_analyzer"
-_FOLDED_ANALYZER = "folded_analyzer"
+_EDGE_NGRAM_ANALYZER = "edge_ngram_analyzer"
+_EDGE_NGRAM_FILTER = "edge_ngram_filter"
+_FOLDED_NORMALIZER = "folded_normalizer"
 
 
 def _available_languages() -> typing.List[str]:
@@ -108,16 +110,25 @@ def _analysis_settings() -> typing.Dict[str, typing.Any]:
             "tokenizer": "standard",
             "filter": ["lowercase", folding],
         },
-        # Whole value as a single token: an "exact title" clause that still
-        # ignores case and diacritics, without the filter restrictions a
-        # keyword normalizer imposes.
-        _FOLDED_ANALYZER: {
+        # Index-time only (fields using this set a plain `generic_analyzer`
+        # search_analyzer): a title like "The Hobbit" is indexed as the grams
+        # "th", "the", "the h", ... "the hobbit", so a query for "hobbi" finds
+        # it via the "the hobbi" gram without the query itself being ngrammed.
+        _EDGE_NGRAM_ANALYZER: {
             "type": "custom",
-            "tokenizer": "keyword",
-            "filter": ["lowercase", folding],
+            "tokenizer": "standard",
+            "filter": ["lowercase", folding, _EDGE_NGRAM_FILTER],
         },
     }
-    filters: typing.Dict[str, typing.Any] = {}
+    filters: typing.Dict[str, typing.Any] = {
+        _EDGE_NGRAM_FILTER: {"type": "edge_ngram", "min_gram": 2, "max_gram": 20},
+    }
+    normalizers: typing.Dict[str, typing.Any] = {
+        # Applied automatically to `term`/`terms` queries against a keyword
+        # field that declares it, so a `name.exact` lookup needs no manual
+        # case/diacritic folding of the query string.
+        _FOLDED_NORMALIZER: {"type": "custom", "filter": ["lowercase", folding]},
+    }
 
     for language in stemmed_languages():
         stemmer = _stemmer_filter(language)
@@ -131,18 +142,47 @@ def _analysis_settings() -> typing.Dict[str, typing.Any]:
 
     return {
         "number_of_replicas": 0,
-        "analysis": {"analyzer": analyzers, "filter": filters},
+        "analysis": {
+            "analyzer": analyzers,
+            "filter": filters,
+            "normalizer": normalizers,
+        },
     }
 
 
-def _text_field(suggest: bool = False) -> typing.Dict[str, typing.Any]:
-    fields: typing.Dict[str, typing.Any] = {
-        "folded": {"type": "text", "analyzer": _FOLDED_ANALYZER},
+def _prefix_subfield() -> typing.Dict[str, typing.Any]:
+    return {
+        "type": "text",
+        "analyzer": _EDGE_NGRAM_ANALYZER,
+        "search_analyzer": _GENERIC_ANALYZER,
     }
-    if suggest:
-        fields["suggest"] = {"type": "search_as_you_type", "analyzer": _GENERIC_ANALYZER}
+
+
+def _name_field(exact: bool = True) -> typing.Dict[str, typing.Any]:
+    """The canonical display name for an entity: a book's title, an author's
+    name, a series' name. Norms stay on — a short, single-valued field is
+    exactly where length norms should matter.
+    """
+    fields: typing.Dict[str, typing.Any] = {"prefix": _prefix_subfield()}
+    if exact:
+        fields["exact"] = {"type": "keyword", "normalizer": _FOLDED_NORMALIZER}
 
     return {"type": "text", "analyzer": _GENERIC_ANALYZER, "fields": fields}
+
+
+def _alt_name_field() -> typing.Dict[str, typing.Any]:
+    """Every other title/name an entity is known by (other editions, other
+    language rows). Recall only: `norms: false` so a work with many editions
+    never scores worse than one with a single, short title.
+    """
+    return {
+        "type": "text",
+        "analyzer": _GENERIC_ANALYZER,
+        "norms": False,
+        "fields": {
+            "prefix": {**_prefix_subfield(), "norms": False},
+        },
+    }
 
 
 def _language_text_fields(base: str) -> typing.Dict[str, typing.Any]:
@@ -150,6 +190,7 @@ def _language_text_fields(base: str) -> typing.Dict[str, typing.Any]:
         language_field(base, language): {
             "type": "text",
             "analyzer": _analyzer_name(language),
+            "fields": {"prefix": _prefix_subfield()},
         }
         for language in stemmed_languages()
     }
@@ -173,78 +214,43 @@ _DISPLAY_RATING_FIELDS = {
 }
 
 
-def works_index_mapping() -> typing.Dict[str, typing.Any]:
-    """One document per work, holding every edition's title in every language.
+def catalog_index_mapping() -> typing.Dict[str, typing.Any]:
+    """One document per entity — book (by work), author, or series — sharing
+    one field vocabulary and discriminated by `kind`.
 
-    The alternative — a document per edition — makes translations of one book
-    compete with each other for the same query, forces a de-duplication pass
-    after the result window has already been cut (so pages shrink and totals
-    over-report), and counts one work's popularity once per translation.
+    A book document holds one document per *work*, not per edition: the
+    alternative makes translations of one book compete with each other for
+    the same query, forces a de-duplication pass after the result window has
+    already been cut, and counts one work's popularity once per translation.
+
+    A single index for all three kinds means one query produces one
+    comparable score space across books, authors and series — the three-index
+    design this replaced could only compare them by an arbitrary per-type
+    rescale, which is what let a fuzzy author match outrank an exact title.
     """
     return {
         "settings": _analysis_settings(),
         "mappings": {
             "properties": {
+                "kind": {"type": "keyword"},
                 "work_id": {"type": "keyword", "index": False},
-                "titles": _text_field(suggest=True),
-                **_language_text_fields("titles"),
-                "authors_names": _text_field(suggest=True),
-                "author_slugs": {"type": "keyword", "index": False},
-                "series_name": _text_field(),
-                "series_slug": {"type": "keyword", "index": False},
-                "languages": {"type": "keyword"},
-                **_RANK_FEATURES,
-                **_DISPLAY_RATING_FIELDS,
-                # Rendering payload: which edition to show is decided per
-                # request from the reader's language, not at index time.
-                "editions": {"type": "object", "enabled": False},
-            }
-        },
-    }
-
-
-def authors_index_mapping() -> typing.Dict[str, typing.Any]:
-    """One document per author — authors are language-agnostic in the catalog.
-
-    Names are not translated, so they get no per-language analyzed fields:
-    running a stemmer over a surname invents tokens rather than finding them.
-    """
-    return {
-        "settings": _analysis_settings(),
-        "mappings": {
-            "properties": {
                 "author_id": {"type": "long", "index": False},
-                "name": _text_field(suggest=True),
                 "slug": {"type": "keyword", "index": False},
+                "name": _name_field(),
+                **_language_text_fields("name"),
+                "alt_names": _alt_name_field(),
+                "authors_names": _name_field(exact=False),
+                "author_slugs": {"type": "keyword", "index": False},
+                "series_name": {"type": "text", "analyzer": _GENERIC_ANALYZER, "norms": False},
+                "series_slug": {"type": "keyword", "index": False},
                 "photo_url": {"type": "keyword", "index": False},
                 "book_count": {"type": "integer", "index": False},
                 "languages": {"type": "keyword"},
                 **_RANK_FEATURES,
                 **_DISPLAY_RATING_FIELDS,
-            }
-        },
-    }
-
-
-def series_index_mapping() -> typing.Dict[str, typing.Any]:
-    """One document per series slug, which is the identity the routes use.
-
-    `books.series` holds a row per language, but the slug comes from the source
-    book's series name — untranslated series share one slug across languages and
-    belong in one document, while a translated series name slugifies differently
-    and separates itself.
-    """
-    return {
-        "settings": _analysis_settings(),
-        "mappings": {
-            "properties": {
-                "slug": {"type": "keyword", "index": False},
-                "names": _text_field(suggest=True),
-                **_language_text_fields("names"),
-                "book_count": {"type": "integer", "index": False},
-                "languages": {"type": "keyword"},
-                **_RANK_FEATURES,
-                **_DISPLAY_RATING_FIELDS,
+                # Rendering payload: which edition/row to show is decided per
+                # request from the reader's language, not at index time.
+                "editions": {"type": "object", "enabled": False},
                 "rows": {"type": "object", "enabled": False},
             }
         },
@@ -253,11 +259,7 @@ def series_index_mapping() -> typing.Dict[str, typing.Any]:
 
 def index_specs() -> typing.Dict[str, typing.Dict[str, typing.Any]]:
     settings = app.config.settings
-    return {
-        settings.es_index_books: works_index_mapping(),
-        settings.es_index_authors: authors_index_mapping(),
-        settings.es_index_series: series_index_mapping(),
-    }
+    return {settings.es_index_catalog: catalog_index_mapping()}
 
 
 def _fingerprint(mapping: typing.Dict[str, typing.Any]) -> str:

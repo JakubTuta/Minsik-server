@@ -219,10 +219,18 @@ def _build_work_doc(row: typing.Any) -> typing.Optional[typing.Dict[str, typing.
         raw_authors = json.loads(raw_authors)
     author_names, author_slugs = _split_authors(raw_authors)
 
+    # `editions` is already ordered (language = 'en') DESC, book_id ASC, so
+    # the first title is the canonical one; the rest are recall-only aliases
+    # (other translations/printings) that must not compete with it for norms.
     titles = [edition["title"] for edition in editions if edition.get("title")]
+    canonical_title = titles[0] if titles else ""
+    alt_titles = list(dict.fromkeys(titles[1:]))
+
     source: typing.Dict[str, typing.Any] = {
+        "kind": "book",
         "work_id": row.work_id,
-        "titles": titles,
+        "name": canonical_title,
+        "alt_names": alt_titles,
         "authors_names": author_names,
         "author_slugs": author_slugs,
         "series_name": list(row.series_names or []),
@@ -238,9 +246,9 @@ def _build_work_doc(row: typing.Any) -> typing.Optional[typing.Dict[str, typing.
             if edition.get("title") and edition.get("language") == language
         ]
         if localized:
-            source[app.es_client.language_field("titles", language)] = localized
+            source[app.es_client.language_field("name", language)] = localized
 
-    return {"_id": row.work_id, "_source": source}
+    return {"_id": f"book:{row.work_id}", "_source": source}
 
 
 # One document per author. Aggregates are taken per work rather than per edition
@@ -311,8 +319,9 @@ _AUTHORS_QUERY = sqlalchemy.text(
 
 def _build_author_doc(row: typing.Any) -> typing.Dict[str, typing.Any]:
     return {
-        "_id": str(row.author_id),
+        "_id": f"author:{row.author_id}",
         "_source": {
+            "kind": "author",
             "author_id": row.author_id,
             "name": row.name or "",
             "slug": row.slug or "",
@@ -384,9 +393,17 @@ def _build_series_doc(row: typing.Any) -> typing.Optional[typing.Dict[str, typin
     if not rows:
         return None
 
+    # `rows` is already ordered (language = 'en') DESC, series_id ASC (unlike
+    # the unordered `names` aggregate), so the first name is the canonical one.
+    row_names = [entry["name"] for entry in rows if entry.get("name")]
+    canonical_name = row_names[0] if row_names else ""
+    alt_names = list(dict.fromkeys(row_names[1:]))
+
     source: typing.Dict[str, typing.Any] = {
+        "kind": "series",
         "slug": row.slug,
-        "names": list(row.names or []),
+        "name": canonical_name,
+        "alt_names": alt_names,
         "languages": list(row.languages or []),
         "rows": rows,
         "book_count": max((entry.get("book_count") or 0) for entry in rows),
@@ -400,9 +417,9 @@ def _build_series_doc(row: typing.Any) -> typing.Optional[typing.Dict[str, typin
             if entry.get("name") and entry.get("language") == language
         ]
         if localized:
-            source[app.es_client.language_field("names", language)] = localized
+            source[app.es_client.language_field("name", language)] = localized
 
-    return {"_id": row.slug, "_source": source}
+    return {"_id": f"series:{row.slug}", "_source": source}
 
 
 async def _read_last_sync(key: str) -> datetime.datetime:
@@ -418,6 +435,7 @@ async def reindex_all_to_es(full: bool = False) -> None:
     )
     es = app.es_client.get_es()
     settings = app.config.settings
+    alias = settings.es_index_catalog
 
     plan = await app.es_client.plan_indexes()
     if plan.rebuild and not full:
@@ -426,50 +444,54 @@ async def reindex_all_to_es(full: bool = False) -> None:
 
     if full:
         last_sync = {
-            settings.es_index_books: EPOCH,
-            settings.es_index_authors: EPOCH,
-            settings.es_index_series: EPOCH,
+            ES_LAST_SYNC_KEY: EPOCH,
+            ES_LAST_SYNC_KEY_AUTHORS: EPOCH,
+            ES_LAST_SYNC_KEY_SERIES: EPOCH,
         }
         logger.info("[ES] Starting full reindex")
     else:
         last_sync = {
-            settings.es_index_books: await _read_last_sync(ES_LAST_SYNC_KEY),
-            settings.es_index_authors: await _read_last_sync(ES_LAST_SYNC_KEY_AUTHORS),
-            settings.es_index_series: await _read_last_sync(ES_LAST_SYNC_KEY_SERIES),
+            ES_LAST_SYNC_KEY: await _read_last_sync(ES_LAST_SYNC_KEY),
+            ES_LAST_SYNC_KEY_AUTHORS: await _read_last_sync(ES_LAST_SYNC_KEY_AUTHORS),
+            ES_LAST_SYNC_KEY_SERIES: await _read_last_sync(ES_LAST_SYNC_KEY_SERIES),
         }
         logger.info(
             "[ES] Starting incremental reindex. last_sync "
-            + ", ".join(f"{alias}={ts.isoformat()}" for alias, ts in last_sync.items())
+            + ", ".join(f"{key}={ts.isoformat()}" for key, ts in last_sync.items())
         )
 
     now_ts = datetime.datetime.now(datetime.UTC).replace(tzinfo=None).isoformat()
     counts: typing.Dict[str, int] = {}
+    write_index = plan.write_index(alias)
 
+    # All three jobs write into the same target index — they key their docs
+    # by kind-prefixed _id (`book:`/`author:`/`series:`), so one job's bulk
+    # upserts never touch another's documents.
     jobs = (
-        (settings.es_index_books, _WORKS_QUERY, _build_work_doc, ES_LAST_SYNC_KEY),
-        (settings.es_index_authors, _AUTHORS_QUERY, _build_author_doc, ES_LAST_SYNC_KEY_AUTHORS),
-        (settings.es_index_series, _SERIES_QUERY, _build_series_doc, ES_LAST_SYNC_KEY_SERIES),
+        ("books", _WORKS_QUERY, _build_work_doc, ES_LAST_SYNC_KEY),
+        ("authors", _AUTHORS_QUERY, _build_author_doc, ES_LAST_SYNC_KEY_AUTHORS),
+        ("series", _SERIES_QUERY, _build_series_doc, ES_LAST_SYNC_KEY_SERIES),
     )
 
     succeeded = True
-    for alias, query, build_doc, sync_key in jobs:
+    for entity, query, build_doc, sync_key in jobs:
         try:
-            counts[alias] = await _sync_index(
+            counts[entity] = await _sync_index(
                 es,
-                plan.write_index(alias),
+                write_index,
                 query,
-                {"last_sync": last_sync[alias]},
+                {"last_sync": last_sync[sync_key]},
                 build_doc,
             )
             await app.cache.redis_client.set(sync_key, now_ts)
         except Exception as e:
             succeeded = False
-            counts[alias] = 0
-            logger.error(f"[ES] Reindex failed for '{alias}': {str(e)}")
+            counts[entity] = 0
+            logger.error(f"[ES] Reindex failed for '{entity}': {str(e)}")
 
     logger.info(
         "[ES] Reindex complete. "
-        + ", ".join(f"{alias}={count}" for alias, count in counts.items())
+        + ", ".join(f"{entity}={count}" for entity, count in counts.items())
     )
 
     if plan.rebuild:

@@ -14,9 +14,12 @@ logger = logging.getLogger(__name__)
 
 ES_RECONCILE_THROTTLE_SECONDS = 0.2
 
-# Every index keys its documents by the identity the catalog uses — work_id,
-# author_id, series slug — so a ghost is simply an id Postgres no longer knows,
-# and no document source has to be fetched to notice.
+# Every document keys itself as "<kind>:<identity>", identity being the same
+# value the catalog uses elsewhere — work_id, author_id, series slug — so a
+# ghost is simply an id whose bare identity Postgres no longer knows, and no
+# document source has to be fetched to notice.
+_ID_PREFIXES: typing.Dict[str, str] = {"books": "book:", "authors": "author:", "series": "series:"}
+_KINDS: typing.Dict[str, str] = {"books": "book", "authors": "author", "series": "series"}
 _IDENTITY_QUERIES: typing.Dict[str, str] = {
     "books": "SELECT DISTINCT work_id AS identity FROM books.books WHERE work_id = ANY(:ids)",
     "authors": "SELECT author_id::text AS identity FROM books.authors WHERE author_id::text = ANY(:ids)",
@@ -25,14 +28,20 @@ _IDENTITY_QUERIES: typing.Dict[str, str] = {
 
 
 async def _find_stale_ids(
-    session: sqlalchemy.ext.asyncio.AsyncSession, entity: str, ids: typing.List[str]
+    session: sqlalchemy.ext.asyncio.AsyncSession, entity: str, doc_ids: typing.List[str]
 ) -> typing.Set[str]:
+    prefix = _ID_PREFIXES[entity]
+    bare_ids = [doc_id[len(prefix):] for doc_id in doc_ids]
     result = await session.execute(
-        sqlalchemy.text(_IDENTITY_QUERIES[entity]), {"ids": ids}
+        sqlalchemy.text(_IDENTITY_QUERIES[entity]), {"ids": bare_ids}
     )
     present = {row.identity for row in result.fetchall()}
 
-    return {doc_id for doc_id in ids if doc_id not in present}
+    return {
+        doc_id
+        for doc_id, bare_id in zip(doc_ids, bare_ids)
+        if bare_id not in present
+    }
 
 
 async def _reconcile_index(
@@ -51,7 +60,7 @@ async def _reconcile_index(
             async with app.db.async_session_maker() as session:
                 stale_ids = await _find_stale_ids(session, entity, current_batch)
         except Exception as e:
-            logger.error(f"[ES] Reconcile PG lookup failed for {index}: {e}")
+            logger.error(f"[ES] Reconcile PG lookup failed for {index}/{entity}: {e}")
             return 0
 
         if not stale_ids:
@@ -67,12 +76,16 @@ async def _reconcile_index(
             )
             return len(ops) - (len(errors) if errors else 0)
         except Exception as e:
-            logger.error(f"[ES] Reconcile delete failed for {index}: {e}")
+            logger.error(f"[ES] Reconcile delete failed for {index}/{entity}: {e}")
             return 0
 
     try:
         async for hit in elasticsearch.helpers.async_scan(
-            es, index=index, size=batch_size, _source=False
+            es,
+            index=index,
+            size=batch_size,
+            _source=False,
+            query={"query": {"term": {"kind": _KINDS[entity]}}},
         ):
             batch.append(hit["_id"])
             if len(batch) >= batch_size:
@@ -82,7 +95,7 @@ async def _reconcile_index(
 
         total_deleted += await _flush(batch)
     except Exception as e:
-        logger.error(f"[ES] Reconcile scan failed for {index}: {e}")
+        logger.error(f"[ES] Reconcile scan failed for {index}/{entity}: {e}")
 
     return total_deleted
 
@@ -96,20 +109,15 @@ async def reconcile_deleted_docs() -> typing.Dict[str, int]:
 
     es = app.es_client.get_es()
     batch_size = settings.es_reconcile_scan_size
+    index = settings.es_index_catalog
 
-    indexes = (
-        ("books", settings.es_index_books),
-        ("authors", settings.es_index_authors),
-        ("series", settings.es_index_series),
-    )
-
-    for entity, index in indexes:
+    for entity in ("books", "authors", "series"):
         try:
             stats[f"{entity}_deleted"] = await _reconcile_index(
                 es, index, entity, batch_size
             )
         except Exception as e:
-            logger.error(f"[ES] Reconcile failed for {index}: {e}")
+            logger.error(f"[ES] Reconcile failed for {entity}: {e}")
 
     logger.info(
         f"[ES] Reconcile complete. books_deleted={stats['books_deleted']}, "
