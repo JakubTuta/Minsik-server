@@ -252,7 +252,6 @@ async def test_cleanup_orphan_authors(commit_session, session_factory_for_testin
         min_books=2,
         max_books=1000,
         batch_size=100,
-        spare_enriched=True,
         junk_publisher_names=True,
     )
 
@@ -286,7 +285,6 @@ async def test_cleanup_keeps_author_with_books(commit_session, session_factory_f
         min_books=2,
         max_books=1000,
         batch_size=100,
-        spare_enriched=True,
         junk_publisher_names=True,
     )
 
@@ -597,7 +595,7 @@ async def test_cleanup_removes_ol_condemned_book(
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_cleanup_orphan_authors_spares_enriched_borderline_author(
+async def test_cleanup_orphan_authors_removes_enriched_borderline_author_and_sole_book(
     commit_session, session_factory_for_testing
 ):
     author = Author(
@@ -620,13 +618,15 @@ async def test_cleanup_orphan_authors_spares_enriched_borderline_author(
         min_books=2,
         max_books=1000,
         batch_size=100,
-        spare_enriched=True,
         junk_publisher_names=True,
     )
 
-    result = await commit_session.execute(select(func.count()).select_from(Author))
-    assert result.scalar_one() == 1
-    assert stats["deleted"] == 0
+    author_result = await commit_session.execute(select(func.count()).select_from(Author))
+    assert author_result.scalar_one() == 0
+    assert stats["deleted"] == 1
+
+    book_result = await commit_session.execute(select(func.count()).select_from(Book))
+    assert book_result.scalar_one() == 0
 
 
 @pytest.mark.asyncio
@@ -658,10 +658,57 @@ async def test_cleanup_orphan_authors_removes_junk_publisher_name(
         min_books=2,
         max_books=1000,
         batch_size=100,
-        spare_enriched=True,
         junk_publisher_names=True,
     )
 
     result = await commit_session.execute(select(func.count()).select_from(Author))
     assert result.scalar_one() == 0
     assert stats["deleted"] == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_cleanup_orphan_authors_removes_engaged_sole_book(
+    commit_session, session_factory_for_testing
+):
+    author = Author(name="Solo Author", slug="solo-author", created_at=OLD_DATE)
+    commit_session.add(author)
+    await commit_session.flush()
+
+    book = Book(
+        title="Shelved Solo Book",
+        language="en",
+        work_id="ol-shelved-solo-book", slug="shelved-solo-book",
+        formats=[],
+    )
+    commit_session.add(book)
+    await commit_session.flush()
+    commit_session.add(BookAuthor(book_id=book.book_id, author_id=author.author_id))
+    await commit_session.execute(
+        text(
+            "INSERT INTO user_data.bookshelves (user_id, book_id) VALUES (1, :book_id)"
+        ),
+        {"book_id": book.book_id},
+    )
+    await commit_session.commit()
+
+    stats = await data_cleaner.cleanup_orphan_authors(
+        session_factory_for_testing,
+        min_books=2,
+        max_books=1000,
+        batch_size=100,
+        junk_publisher_names=True,
+    )
+
+    author_result = await commit_session.execute(select(func.count()).select_from(Author))
+    assert author_result.scalar_one() == 0
+    assert stats["deleted"] == 1
+
+    book_result = await commit_session.execute(select(func.count()).select_from(Book))
+    assert book_result.scalar_one() == 0
+
+    shelf_result = await commit_session.execute(
+        text("SELECT COUNT(*) FROM user_data.bookshelves WHERE book_id = :book_id"),
+        {"book_id": book.book_id},
+    )
+    assert shelf_result.scalar_one() == 0

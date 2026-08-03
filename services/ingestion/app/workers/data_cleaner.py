@@ -391,7 +391,6 @@ async def cleanup_orphan_authors(
     min_books: int,
     max_books: int,
     batch_size: int,
-    spare_enriched: bool,
     junk_publisher_names: bool,
     stop_check: typing.Callable[[], bool] = lambda: False,
 ) -> typing.Dict[str, int]:
@@ -412,13 +411,7 @@ async def cleanup_orphan_authors(
                             FROM books.book_authors
                             GROUP BY author_id
                         ) ba ON ba.author_id = a.author_id
-                        WHERE (
-                            COALESCE(ba.book_count, 0) < :min_books
-                            AND NOT (
-                              :spare_enriched
-                              AND (a.bio IS NOT NULL OR a.photo_url IS NOT NULL OR a.wikidata_id IS NOT NULL)
-                            )
-                          )
+                        WHERE COALESCE(ba.book_count, 0) < :min_books
                            OR COALESCE(ba.book_count, 0) > :max_books
                            OR a.name !~ '[A-Za-z]'
                            OR char_length(btrim(a.name)) < 2
@@ -429,7 +422,6 @@ async def cleanup_orphan_authors(
                     {
                         "min_books": min_books,
                         "max_books": max_books,
-                        "spare_enriched": spare_enriched,
                         "junk_publisher_names": junk_publisher_names,
                         "junk_publisher_pattern": _JUNK_PUBLISHER_NAME_PATTERN,
                         "batch_size": batch_size,
@@ -451,30 +443,9 @@ async def cleanup_orphan_authors(
                     ),
                     {"author_ids": author_ids},
                 )
-                candidate_sole_book_ids = [
+                sole_book_ids = [
                     row[0] for row in book_id_result.fetchall() if row[1] == 1
                 ]
-
-                sole_book_ids = candidate_sole_book_ids
-                if candidate_sole_book_ids:
-                    engaged_result = await session.execute(
-                        sqlalchemy.text(
-                            """
-                            SELECT DISTINCT book_id FROM user_data.bookshelves WHERE book_id = ANY(:book_ids)
-                            UNION
-                            SELECT DISTINCT book_id FROM user_data.ratings WHERE book_id = ANY(:book_ids)
-                            UNION
-                            SELECT DISTINCT book_id FROM user_data.comments WHERE book_id = ANY(:book_ids)
-                            """
-                        ),
-                        {"book_ids": candidate_sole_book_ids},
-                    )
-                    engaged_book_ids = {row[0] for row in engaged_result.fetchall()}
-                    sole_book_ids = [
-                        book_id
-                        for book_id in candidate_sole_book_ids
-                        if book_id not in engaged_book_ids
-                    ]
 
                 for i in range(0, len(sole_book_ids), _SOLE_BOOK_SUB_BATCH):
                     sub_batch = sole_book_ids[i : i + _SOLE_BOOK_SUB_BATCH]
@@ -1119,7 +1090,6 @@ async def run_cleanup_cycle(
     max_title_length = app.config.settings.cleanup_book_max_title_length
     ol_min_rating_count = app.config.settings.cleanup_book_ol_min_rating_count
     ol_min_avg_rating = app.config.settings.cleanup_book_ol_min_avg_rating
-    author_spare_enriched = app.config.settings.cleanup_author_spare_enriched
     author_junk_publisher_names = app.config.settings.cleanup_author_junk_publisher_names
 
     stats: typing.Dict[str, typing.Any] = {
@@ -1163,7 +1133,6 @@ async def run_cleanup_cycle(
         min_author_books,
         max_author_books,
         author_batch,
-        author_spare_enriched,
         author_junk_publisher_names,
         stop_check,
     )

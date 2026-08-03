@@ -10,7 +10,6 @@ import app.middleware.cors
 import app.middleware.csrf
 import app.middleware.logging
 import app.middleware.rate_limit
-import app.tracing
 import app.routes.admin
 import app.routes.auth
 import app.routes.books
@@ -20,6 +19,7 @@ import app.routes.recommendations
 import app.routes.sitemap
 import app.routes.user_data
 import app.routes.user_recommendations
+import app.tracing
 import fastapi
 import ledger.integrations.fastapi
 import slowapi
@@ -124,7 +124,11 @@ app = fastapi.FastAPI(
 ledger_client = tracing_module.init_ledger()
 
 if ledger_client:
-    app.add_middleware(ledger.integrations.fastapi.LedgerMiddleware, ledger_client=ledger_client)
+    app.add_middleware(
+        ledger.integrations.fastapi.LedgerMiddleware,
+        ledger_client=ledger_client,
+        trusted_proxies=[settings.trusted_proxy_ips_list],
+    )
 
 if settings.env == "development":
     _setup_cors(app)
@@ -134,7 +138,9 @@ _setup_logging(app)
 
 if settings.rate_limit_enabled:
     app.state.limiter = limiter
-    app.add_exception_handler(slowapi.errors.RateLimitExceeded, slowapi._rate_limit_exceeded_handler)
+    app.add_exception_handler(
+        slowapi.errors.RateLimitExceeded, slowapi._rate_limit_exceeded_handler
+    )
     app.add_middleware(slowapi.middleware.SlowAPIMiddleware)
 
 app.include_router(health_router)

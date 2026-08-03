@@ -77,7 +77,6 @@ class Settings(pydantic_settings.BaseSettings):
     cleanup_book_max_title_length: int = pydantic.Field(default=300)
     cleanup_book_ol_min_rating_count: int = pydantic.Field(default=20)
     cleanup_book_ol_min_avg_rating: float = pydantic.Field(default=1.5)
-    cleanup_author_spare_enriched: bool = pydantic.Field(default=True)
     cleanup_author_junk_publisher_names: bool = pydantic.Field(default=True)
 
     description_enrich_cooldown_days: int = pydantic.Field(default=30)
