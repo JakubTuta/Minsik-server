@@ -34,34 +34,30 @@ class SearchProfile:
     """Ranking behavior for one surface.
 
     Suggest (the app-bar dropdown) and the search page share the same text
-    tiers and the same popularity/quality signal, but disagree on two things:
-    whether the loose recall tier runs at all, and how hard popularity should
-    push. Suggest is popularity-led and prunes the weak-match tail with
-    `min_score`; the search page is relevance-led and never hides a textual
-    match, using popularity only to separate near-equal results.
+    tiers and the same popularity/quality signal, combined multiplicatively
+    (see `_build_rescore`), but disagree on two things: whether the loose
+    recall tier runs at all, and how sharply popularity should separate a
+    well-known title from an obscure one with a similar text match — that's
+    `popularity_pivot`, not a scalar weight. A uniform weight on top of a
+    *multiplicative* combination would scale every candidate's score by the
+    same factor and cancel out under sorting; the pivot instead reshapes the
+    saturation curve itself, which is what actually changes relative order.
+    Suggest uses a much higher pivot so the gap between a handful of readers
+    and a six-figure readership stays wide instead of both saturating near 1.0.
     """
 
     recall: bool
-    signal_weight: float
-    min_score: float
+    popularity_pivot: float
 
 
 def _search_profile() -> SearchProfile:
     settings = app.config.settings
-    return SearchProfile(
-        recall=True,
-        signal_weight=settings.search_signal_weight,
-        min_score=settings.search_min_score,
-    )
+    return SearchProfile(recall=True, popularity_pivot=settings.search_popularity_pivot)
 
 
 def _suggest_profile() -> SearchProfile:
     settings = app.config.settings
-    return SearchProfile(
-        recall=False,
-        signal_weight=settings.suggest_signal_weight,
-        min_score=settings.suggest_min_score,
-    )
+    return SearchProfile(recall=False, popularity_pivot=settings.suggest_popularity_pivot)
 
 
 def _localized_fields(base: str) -> typing.List[str]:
@@ -164,7 +160,7 @@ def _build_query(
     return {"bool": bool_query}
 
 
-def _signal_clauses(language: str) -> typing.List[typing.Dict[str, typing.Any]]:
+def _signal_clauses(language: str, popularity_pivot: float) -> typing.List[typing.Dict[str, typing.Any]]:
     """Popularity, quality and a light nudge toward languages the reader reads.
 
     The query text already says which language the reader wants — someone
@@ -178,7 +174,7 @@ def _signal_clauses(language: str) -> typing.List[typing.Dict[str, typing.Any]]:
         {
             "rank_feature": {
                 "field": "popularity",
-                "saturation": {"pivot": settings.search_popularity_pivot},
+                "saturation": {"pivot": popularity_pivot},
                 "boost": settings.search_popularity_boost,
             }
         },
@@ -199,18 +195,16 @@ def _signal_clauses(language: str) -> typing.List[typing.Dict[str, typing.Any]]:
 
 
 def _build_rescore(language: str, profile: SearchProfile) -> typing.Dict[str, typing.Any]:
-    # Signals ride a rescore pass over the text-matched hits instead of a
-    # top-level `should`: `rescore_query_weight` is then a real, tunable
-    # multiplier over the text score, not a fixed amount an unbounded BM25 sum
-    # can drown out. `min_score` (applied at the query phase, before rescore
-    # ever runs) therefore gates the text score alone — popularity can never
-    # buy a document past the floor.
+    # `score_mode: multiply` makes the signal a real proportional multiplier
+    # over the text score, regardless of that score's absolute magnitude — a
+    # necessity on a corpus this size, where `dis_max`/BM25 scores commonly
+    # run in the hundreds of thousands and would swallow any additive rank
+    # feature (max ~2.3) without ever moving the ranking.
     return {
         "window_size": 100,
         "query": {
-            "rescore_query": {"bool": {"should": _signal_clauses(language)}},
-            "query_weight": 1.0,
-            "rescore_query_weight": profile.signal_weight,
+            "rescore_query": {"bool": {"should": _signal_clauses(language, profile.popularity_pivot)}},
+            "score_mode": "multiply",
         },
     }
 
@@ -345,6 +339,7 @@ _SOURCE_FIELDS = [
     "work_id",
     "author_id",
     "slug",
+    "name",
     "authors_names",
     "author_slugs",
     "editions",
@@ -364,23 +359,18 @@ async def _run_search(
     rescore: typing.Dict[str, typing.Any],
     from_: int,
     size: int,
-    min_score: float,
     language: str,
 ) -> typing.Tuple[typing.List[typing.Dict[str, typing.Any]], int]:
     es = app.es_client.get_es()
-    kwargs: typing.Dict[str, typing.Any] = {
-        "index": app.config.settings.es_index_catalog,
-        "query": query_body,
-        "rescore": rescore,
-        "from_": from_,
-        "size": size,
-        "source": _SOURCE_FIELDS,
-        "track_total_hits": True,
-    }
-    if min_score > 0:
-        kwargs["min_score"] = min_score
-
-    response = await es.search(**kwargs)
+    response = await es.search(
+        index=app.config.settings.es_index_catalog,
+        query=query_body,
+        rescore=rescore,
+        from_=from_,
+        size=size,
+        source=_SOURCE_FIELDS,
+        track_total_hits=True,
+    )
 
     results = []
     for hit in response["hits"]["hits"]:
@@ -402,14 +392,12 @@ async def _search_catalog(
     rescore = _build_rescore(language, profile)
 
     body = _build_query(query, profile, kind, fuzzy=False)
-    results, total = await _run_search(body, rescore, offset, limit, profile.min_score, language)
+    results, total = await _run_search(body, rescore, offset, limit, language)
 
-    # A typo'd query returning nothing is worse than a fuzzy guess — but only
-    # fall back when the strict pass truly found nothing, and drop the
-    # min_score floor for it since a fuzzy match already starts weaker.
+    # A typo'd query returning nothing is worse than a fuzzy guess.
     if total == 0:
         fuzzy_body = _build_query(query, profile, kind, fuzzy=True)
-        results, total = await _run_search(fuzzy_body, rescore, offset, limit, 0.0, language)
+        results, total = await _run_search(fuzzy_body, rescore, offset, limit, language)
 
     return results, total
 
@@ -457,11 +445,10 @@ async def _fetch_suggest_buckets(
     query: str, profile: SearchProfile, language: str, fuzzy: bool
 ) -> typing.Dict[str, typing.List[typing.Dict[str, typing.Any]]]:
     rescore = _build_rescore(language, profile)
-    min_score = 0.0 if fuzzy else profile.min_score
 
     async def _fetch(kind: str, cap: int) -> typing.List[typing.Dict[str, typing.Any]]:
         body = _build_query(query, profile, kind, fuzzy=fuzzy)
-        results, _total = await _run_search(body, rescore, 0, cap, min_score, language)
+        results, _total = await _run_search(body, rescore, 0, cap, language)
         return results
 
     fetched = await asyncio.gather(*(_fetch(kind, cap) for kind, cap in _SUGGEST_BUCKETS))

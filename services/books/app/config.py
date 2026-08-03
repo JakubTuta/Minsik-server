@@ -46,28 +46,27 @@ class Settings(pydantic_settings.BaseSettings):
     work_shelf_counts_refresh_enabled: bool = pydantic.Field(default=True)
     work_shelf_counts_refresh_cron: str = pydantic.Field(default="*/15 * * * *")
 
-    # Ranking signals ride a `rescore` pass over the text-matched hits rather
-    # than summing into the query score, so their weight is a real multiplier
-    # instead of a fixed amount a large BM25 sum can drown out. The pivots are
-    # the value at which a signal contributes half its boost, so
-    # `popularity_pivot` is roughly "an averagely-read book" and
-    # `quality_pivot` an average rating; `*_signal_weight` scales the pair.
+    # Ranking signals ride a `rescore` pass over the text-matched hits,
+    # combined with `score_mode: multiply` so they scale the text score
+    # proportionally rather than summing into it — this corpus's `dis_max`
+    # scores commonly run in the hundreds of thousands, which would swallow
+    # any additive rank feature (max ~2.3) without ever moving the ranking.
+    # A pivot is the popularity value at which a signal contributes half its
+    # boost: `search_popularity_pivot` keeps the search page's popularity
+    # tie-break gentle (an averagely-read book already saturates most of it),
+    # while `suggest_popularity_pivot` sits much higher so the app-bar dropdown
+    # keeps a wide gap between a handful of readers and a six-figure
+    # readership instead of both saturating near the same value. A uniform
+    # weight on top of a multiplicative combination would cancel out under
+    # sorting, so the pivot — not a scalar — is the actual per-surface knob.
     search_popularity_pivot: float = pydantic.Field(default=50.0)
+    suggest_popularity_pivot: float = pydantic.Field(default=2000.0)
     search_popularity_boost: float = pydantic.Field(default=1.5)
     search_quality_pivot: float = pydantic.Field(default=3.5)
     search_quality_boost: float = pydantic.Field(default=0.5)
     # Tie-break only: the query text already carries the language the reader
     # wants, so this just favours what they can actually read among equals.
     search_language_boost: float = pydantic.Field(default=0.3)
-
-    # Search page: relevance-led. Full recall, popularity only separates
-    # near-equal text matches — nothing textually relevant is hidden.
-    search_signal_weight: float = pydantic.Field(default=0.8)
-    search_min_score: float = pydantic.Field(default=0.0)
-    # App-bar quick search: popularity-led and pruned. No loose recall tier,
-    # and `min_score` cuts the weak-match tail instead of merely down-ranking it.
-    suggest_signal_weight: float = pydantic.Field(default=6.0)
-    suggest_min_score: float = pydantic.Field(default=4.0)
 
     es_host: str = pydantic.Field(default="elasticsearch")
     es_port: int = pydantic.Field(default=9200)

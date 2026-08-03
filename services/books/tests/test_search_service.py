@@ -118,7 +118,7 @@ class TestSearchBooksAndAuthors:
                 mock_session, query="test", limit=5, offset=15, type_filter="books"
             )
 
-        _query_body, _rescore, from_, size, _min_score, _language = mock_run.call_args.args
+        _query_body, _rescore, from_, size, _language = mock_run.call_args.args
         assert from_ == 15
         assert size == 5
 
@@ -135,10 +135,6 @@ class TestSearchBooksAndAuthors:
         assert run_search.call_count == 2
         assert total == 1
         assert results == fuzzy_books
-        # The strict pass floors on min_score; the fuzzy retry drops the floor
-        # entirely, since a fuzzy match already starts weaker than an exact one.
-        fuzzy_min_score = run_search.call_args_list[1].args[4]
-        assert fuzzy_min_score == 0.0
 
     @pytest.mark.asyncio
     async def test_nonzero_hits_never_trigger_the_fuzzy_fallback(self, mock_session, mock_cache):
@@ -209,20 +205,34 @@ class TestQueryShape:
         assert fuzzy_count == strict_count + 1
 
     def test_language_is_a_tie_break_not_a_filter(self):
-        clauses = search_service._signal_clauses("pl")
+        clauses = search_service._signal_clauses("pl", popularity_pivot=50.0)
         language_clauses = [clause for clause in clauses if "terms" in clause]
 
         assert language_clauses[0]["terms"]["languages"] == ["pl"]
         assert language_clauses[0]["terms"]["boost"] < 1.0
 
-    def test_suggest_weighs_popularity_harder_than_search(self):
+    def test_rescore_combines_multiplicatively(self):
+        rescore = search_service._build_rescore("en", search_service._search_profile())
+
+        assert rescore["query"]["score_mode"] == "multiply"
+
+    def test_suggest_uses_a_wider_popularity_pivot_than_search(self):
+        # A uniform weight would cancel out under a multiplicative combination
+        # (it scales every candidate by the same factor), so the pivot — which
+        # reshapes the saturation curve itself — is the real per-surface knob.
+        search_pivot = search_service._search_profile().popularity_pivot
+        suggest_pivot = search_service._suggest_profile().popularity_pivot
+
+        assert suggest_pivot > search_pivot
+
         search_rescore = search_service._build_rescore("en", search_service._search_profile())
         suggest_rescore = search_service._build_rescore("en", search_service._suggest_profile())
 
-        assert (
-            suggest_rescore["query"]["rescore_query_weight"]
-            > search_rescore["query"]["rescore_query_weight"]
-        )
+        def _popularity_pivot(rescore: dict) -> float:
+            clauses = rescore["query"]["rescore_query"]["bool"]["should"]
+            return next(c["rank_feature"]["saturation"]["pivot"] for c in clauses if c.get("rank_feature", {}).get("field") == "popularity")
+
+        assert _popularity_pivot(suggest_rescore) > _popularity_pivot(search_rescore)
 
 
 class TestSuggestBuckets:
@@ -243,7 +253,7 @@ class TestSuggestBuckets:
     async def test_a_landslide_of_one_kind_cannot_crowd_out_another(self, mock_cache):
         books = [_book(i, 1.0 - i / 100) for i in range(10)]
 
-        async def fake_run_search(query_body, _rescore, _from, _size, _min_score, _language):
+        async def fake_run_search(query_body, _rescore, _from, _size, _language):
             if _kind_filter(query_body) == "book":
                 return books, len(books)
             return [], 0
@@ -260,7 +270,7 @@ class TestSuggestBuckets:
 
     @pytest.mark.asyncio
     async def test_no_fuzzy_retry_when_any_bucket_has_results(self, mock_cache):
-        async def fake_run_search(query_body, _rescore, _from, _size, _min_score, _language):
+        async def fake_run_search(query_body, _rescore, _from, _size, _language):
             if _kind_filter(query_body) == "author":
                 return [_author(1, 0.9)], 1
             return [], 0
