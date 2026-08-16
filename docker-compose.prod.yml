@@ -13,17 +13,25 @@ services:
       NUXT_PUBLIC_SITE_URL: ${NUXT_PUBLIC_SITE_URL}
       NUXT_PUBLIC_I18N_BASE_URL: ${NUXT_PUBLIC_SITE_URL}
       NUXT_PUBLIC_GOOGLE_CLIENT_ID: ${NUXT_PUBLIC_GOOGLE_CLIENT_ID}
+      # In-cluster gateway address for SSR data fetches — keeps them on the
+      # internal network instead of hairpinning out over public TLS to
+      # NUXT_PUBLIC_API_BASE and back in. Requires minsik-internal below.
+      NUXT_API_BASE_INTERNAL: http://gateway-service:8040
       PORT: 3000
+    depends_on:
+      gateway-service:
+        condition: service_healthy
     deploy:
       resources:
         limits:
-          cpus: "0.25"
-          memory: 256M
+          cpus: "1.0"
+          memory: 512M
         reservations:
-          cpus: "0.05"
+          cpus: "0.1"
           memory: 128M
     networks:
       - minsik-frontend
+      - minsik-internal
     logging:
       driver: "json-file"
       options:
@@ -150,7 +158,7 @@ services:
     command: >
       redis-server
       --requirepass ${REDIS_PASSWORD}
-      --maxmemory 128mb
+      --maxmemory 384mb
       --maxmemory-policy allkeys-lru
       --save 300 10
       --save 900 1
@@ -173,7 +181,7 @@ services:
       resources:
         limits:
           cpus: "0.25"
-          memory: 256M
+          memory: 512M
         reservations:
           cpus: "0.1"
           memory: 128M
@@ -245,6 +253,19 @@ services:
         condition: service_started
       recommendation-service:
         condition: service_started
+    # The frontend gates its own startup on this. Without it, Nuxt can serve —
+    # and SWR-cache — a render whose data fetches got ECONNREFUSED, pinning an
+    # empty home page for the whole cache lifetime after every deploy.
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import urllib.request; urllib.request.urlopen('http://localhost:8040/health', timeout=3)\"",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     deploy:
       resources:
         limits:

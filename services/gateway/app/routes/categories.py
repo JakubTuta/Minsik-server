@@ -32,7 +32,10 @@ async def get_popular_categories(
             {"slug": c.slug, "name": c.name, "book_count": c.book_count}
             for c in response.categories
         ]
-        return app.utils.responses.success_response({"categories": categories})
+        return app.utils.responses.success_response(
+            {"categories": categories},
+            cache_control="public, max-age=3600, stale-while-revalidate=86400",
+        )
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "in get_popular_categories", e)
         raise fastapi.HTTPException(status_code=500, detail="Failed to fetch popular categories")

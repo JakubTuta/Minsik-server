@@ -136,11 +136,6 @@ async def _refresh_personal_recommendations_after_user_write(user_id: int) -> No
         )
 
 
-# ============================================================
-# User Book Info (consolidated)
-# ============================================================
-
-
 @router.get(
     "/users/me/books/{book_slug}",
     response_model=app.models.user_data_responses.UserBookInfoResponse,
@@ -250,11 +245,6 @@ async def get_book_statuses(
         return app.utils.responses.error_response(
             "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
         )
-
-
-# ============================================================
-# Bookshelf
-# ============================================================
 
 
 @router.put(
@@ -731,11 +721,6 @@ async def get_year_in_review(
         )
 
 
-# ============================================================
-# Favourites
-# ============================================================
-
-
 @router.post(
     "/books/{book_slug}/favourite",
     response_model=app.models.user_data_responses.FavouriteResponse,
@@ -886,11 +871,6 @@ async def get_user_favourites(
         return app.utils.responses.error_response(
             "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
         )
-
-
-# ============================================================
-# Ratings
-# ============================================================
 
 
 @router.post(
@@ -1070,11 +1050,6 @@ async def get_user_ratings(
         return app.utils.responses.error_response(
             "INTERNAL_ERROR", "An unexpected error occurred", status_code=500
         )
-
-
-# ============================================================
-# Comments
-# ============================================================
 
 
 @router.post(

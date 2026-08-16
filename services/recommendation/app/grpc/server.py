@@ -1,6 +1,7 @@
 import logging
 
 import app.cache
+import app.config
 import app.db
 import app.proto.recommendation_pb2
 import app.proto.recommendation_pb2_grpc
@@ -129,12 +130,17 @@ class RecommendationServicer(app.proto.recommendation_pb2_grpc.RecommendationSer
             items_per_category = (
                 request.items_per_category if request.items_per_category > 0 else 20
             )
+            language = request.language or "en"
+            if user_id > 0:
+                await app.cache.add_seen_locale(
+                    user_id, language, app.config.settings.personal_seen_locale_ttl
+                )
             categories = await app.services.list_provider.get_home_page(
                 items_per_category,
                 user_id,
                 personal_cache_only=user_id > 0 and not force_personal_refresh,
                 force_personal_refresh=force_personal_refresh,
-                language=request.language or "en",
+                language=language,
             )
             response = app.proto.recommendation_pb2.HomePageResponse()
             for data in categories:

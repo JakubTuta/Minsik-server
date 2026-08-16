@@ -52,6 +52,7 @@ _DISCOVERY_SELECT = f"""
         b.book_id,
         b.work_id,
         b.slug,
+        b.language,
         {_COMBINED_RATING_EXPR} AS combined_rating,
         {_TOTAL_READERS_EXPR} AS total_readers
     FROM books.books b
@@ -59,11 +60,42 @@ _DISCOVERY_SELECT = f"""
 """
 
 _DISCOVERY_GROUP_BY = """
-    GROUP BY b.book_id, b.slug, b.avg_rating, b.rating_count,
+    GROUP BY b.book_id, b.slug, b.language, b.avg_rating, b.rating_count,
              b.ol_avg_rating, b.ol_rating_count,
              b.ol_want_to_read_count, b.ol_currently_reading_count,
              b.ol_already_read_count, wsc.readers
 """
+
+# quality/popularity/hidden_gem are the only filters that read combined_rating
+# or total_readers, and total_readers is the only one of those that needs
+# work_shelf_counts. Every other combination (including no filters at all,
+# the common "Discover" click with an untouched filter panel) doesn't need
+# either, so it uses this instead: no join, no GROUP BY, nothing computed per
+# row. Running the heavy join+aggregate unconditionally meant a click with no
+# filters selected — matching most of the catalog — paid for both on every
+# row before the random pick even started, which is what made an empty
+# filter set slow while any narrowing filter looked fine.
+_DISCOVERY_SELECT_LEAN = """
+    SELECT
+        b.book_id,
+        b.work_id,
+        b.slug,
+        b.language
+    FROM books.books b
+"""
+
+
+def _build_inner_query(
+    where_clauses: typing.List[str], having_clauses: typing.List[str]
+) -> str:
+    needs_aggregates = bool(having_clauses)
+    inner_query = _DISCOVERY_SELECT if needs_aggregates else _DISCOVERY_SELECT_LEAN
+    if where_clauses:
+        inner_query += " WHERE " + " AND ".join(where_clauses)
+    if needs_aggregates:
+        inner_query += _DISCOVERY_GROUP_BY
+        inner_query += " HAVING " + " AND ".join(having_clauses)
+    return inner_query
 
 _BOOK_SUMMARY_SELECT = f"""
     SELECT
@@ -268,13 +300,7 @@ async def _count_matching_books(
     having_clauses: typing.List[str],
     params: typing.Dict[str, typing.Any],
 ) -> int:
-    inner_query = _DISCOVERY_SELECT
-    if where_clauses:
-        inner_query += " WHERE " + " AND ".join(where_clauses)
-    inner_query += _DISCOVERY_GROUP_BY
-    if having_clauses:
-        inner_query += " HAVING " + " AND ".join(having_clauses)
-
+    inner_query = _build_inner_query(where_clauses, having_clauses)
     count_query = f"SELECT COUNT(DISTINCT work_id) FROM ({inner_query}) AS filtered"
     result = await session.execute(sqlalchemy.text(count_query), params)
     return result.scalar() or 0
@@ -296,14 +322,8 @@ async def _count_and_pick_random_book(
     which makes Postgres materialize it once and reuse it for both the count
     and the random pick.
     """
-    inner_query = _DISCOVERY_SELECT
-    if where_clauses:
-        inner_query += " WHERE " + " AND ".join(where_clauses)
-    inner_query += _DISCOVERY_GROUP_BY
-    if having_clauses:
-        inner_query += " HAVING " + " AND ".join(having_clauses)
-
-    boost = app.services._language_boost.lang_boost_sql()
+    inner_query = _build_inner_query(where_clauses, having_clauses)
+    boost = app.services._language_boost.lang_boost_sql(column="language")
     query = f"""
         WITH filtered AS MATERIALIZED (
             {inner_query}

@@ -35,13 +35,13 @@ class Settings(pydantic_settings.BaseSettings):
     ingestion_retry_delay: int = pydantic.Field(default=5)
 
     continuous_fetch_enabled: bool = pydantic.Field(default=True)
-    continuous_ol_cron: str = pydantic.Field(default="0 * * * *")
+    continuous_ol_cron: str = pydantic.Field(default="5 * * * *")
     continuous_ol_books_per_run: int = pydantic.Field(default=100)
-    continuous_gb_cron: str = pydantic.Field(default="0 4,10,16,22 * * *")
+    continuous_gb_cron: str = pydantic.Field(default="25 4,10,16,22 * * *")
     continuous_gb_books_per_run: int = pydantic.Field(default=40)
 
     description_enrich_enabled: bool = pydantic.Field(default=True)
-    description_enrich_cron: str = pydantic.Field(default="30 */2 * * *")
+    description_enrich_cron: str = pydantic.Field(default="45 */2 * * *")
     description_enrich_batch_size: int = pydantic.Field(default=50)
     description_min_length: int = pydantic.Field(default=100)
 
@@ -60,7 +60,7 @@ class Settings(pydantic_settings.BaseSettings):
     dump_max_resume_attempts: int = pydantic.Field(default=5)
 
     cleanup_enabled: bool = pydantic.Field(default=True)
-    cleanup_cron: str = pydantic.Field(default="0 3,15 * * *")
+    cleanup_cron: str = pydantic.Field(default="15 3,15 * * *")
     cleanup_book_batch_size: int = pydantic.Field(default=100)
     cleanup_author_batch_size: int = pydantic.Field(default=50)
     cleanup_series_batch_size: int = pydantic.Field(default=500)
@@ -83,7 +83,7 @@ class Settings(pydantic_settings.BaseSettings):
     description_enrich_request_delay: float = pydantic.Field(default=1.0)
 
     genre_bubble_enabled: bool = pydantic.Field(default=True)
-    genre_bubble_cron: str = pydantic.Field(default="0 6 * * 0")
+    genre_bubble_cron: str = pydantic.Field(default="35 6 * * 0")
     genre_bubble_min_pair_count: int = pydantic.Field(default=5)
 
     ledger_api_key: str = pydantic.Field(default="")

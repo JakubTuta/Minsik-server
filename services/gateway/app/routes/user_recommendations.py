@@ -63,7 +63,12 @@ async def get_personal_home_page(
             items_per_category=items_per_category, user_id=user_id, language=language
         )
         sections = [_to_section_dict(cat.category, cat) for cat in response.categories]
-        return app.utils.responses.success_response({"sections": sections})
+        # `private` is mandatory — this must never enter a shared cache. A
+        # short max-age just lets the browser skip an identical refetch on
+        # back/forward nav within the same minute.
+        return app.utils.responses.success_response(
+            {"sections": sections}, cache_control="private, max-age=60"
+        )
     except grpc.RpcError as e:
         logger.error(
             f"gRPC error in get_personal_home_page: {e.code()} - {e.details()}"

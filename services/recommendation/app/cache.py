@@ -99,6 +99,25 @@ async def delete_by_pattern(pattern: str, scan_count: int = 500) -> int:
     return deleted
 
 
+async def add_seen_locale(user_id: int, language: str, ttl: int) -> None:
+    # SADD has no inline TTL, so this is set-then-expire rather than one
+    # command — cheap and idempotent, called on every personal home request.
+    try:
+        key = f"rec:personal:seen:{user_id}"
+        await redis_client.sadd(key, language)
+        await redis_client.expire(key, ttl)
+    except Exception as e:
+        logger.error(f"Redis SADD error for seen locale user_id={user_id}: {str(e)}")
+
+
+async def get_seen_locales(user_id: int) -> typing.Set[str]:
+    try:
+        return await redis_client.smembers(f"rec:personal:seen:{user_id}")
+    except Exception as e:
+        logger.error(f"Redis SMEMBERS error for seen locale user_id={user_id}: {str(e)}")
+        return set()
+
+
 async def invalidate_user_personal_recommendations(user_id: int) -> int:
     deleted = await delete_keys(f"rec:profile:{user_id}")
     deleted += await delete_by_pattern(f"rec:personal:{user_id}:*")

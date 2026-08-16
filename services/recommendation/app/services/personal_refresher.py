@@ -1,4 +1,5 @@
 import asyncio
+import datetime
 import logging
 import typing
 
@@ -11,6 +12,14 @@ import app.services.personal_builder
 import app.services.taste_profile
 
 logger = logging.getLogger(__name__)
+
+# Cron-only personalized home means a miss shows the reader nothing, silently
+# — the only way to notice a broken refresh run is to look for it. Prod runs
+# LOG_LEVEL=ERROR, so a plain INFO summary is invisible; this key is what an
+# admin/status page can poll instead. TTL is a few cron intervals so a status
+# check still reports "stale" rather than "unknown" if the job stops running.
+REFRESH_STATUS_KEY = "rec:personal:refresh:status"
+REFRESH_STATUS_TTL = 3 * 86400
 
 
 async def _get_active_users(
@@ -27,7 +36,21 @@ async def _get_active_users(
         """),
         {"threshold": threshold},
     )
-    return [(row.user_id, row.preferred_language) for row in result.fetchall()]
+    pairs: typing.Set[typing.Tuple[int, str]] = {
+        (row.user_id, row.preferred_language) for row in result.fetchall()
+    }
+
+    # Also warm every locale a user has actually requested, not just their
+    # stored preferred_language — grpc/server.py's GetHomePage records one on
+    # every real request. Without this, switching UI locale writes a cache
+    # key the cron never rebuilds, so it stays empty forever instead of for
+    # a day.
+    for user_id, _ in list(pairs):
+        seen = await app.cache.get_seen_locales(user_id)
+        for language in seen:
+            pairs.add((user_id, language))
+
+    return list(pairs)
 
 
 async def refresh_user_personal(
@@ -75,6 +98,22 @@ async def refresh_all_personal(session_maker: typing.Any) -> None:
 
     await asyncio.gather(*[refresh_with_limit(uid, language) for uid, language in users])
 
-    logger.info(
-        f"[rec:personal] Refresh complete: {success_count} succeeded, {error_count} failed"
+    summary = (
+        f"[rec:personal] Refresh complete: {success_count} succeeded, "
+        f"{error_count} failed"
+    )
+    if error_count > 0:
+        logger.warning(summary)
+    else:
+        logger.info(summary)
+
+    await app.cache.set_cached(
+        REFRESH_STATUS_KEY,
+        {
+            "completed_at": datetime.datetime.now(datetime.timezone.utc).isoformat(),
+            "total_users": len(users),
+            "success_count": success_count,
+            "error_count": error_count,
+        },
+        REFRESH_STATUS_TTL,
     )

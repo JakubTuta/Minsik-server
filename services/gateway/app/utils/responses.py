@@ -26,15 +26,21 @@ def log_grpc_error(logger: logging.Logger, context: str, e: grpc.RpcError) -> No
         logger.error(msg)
 
 
-def success_response(data: typing.Any, status_code: int = 200) -> fastapi.responses.JSONResponse:
+def success_response(
+    data: typing.Any,
+    status_code: int = 200,
+    cache_control: typing.Optional[str] = None,
+) -> fastapi.responses.JSONResponse:
     response = app.models.responses.APIResponse(
         success=True,
         data=data,
         error=None
     )
+    headers = {"Cache-Control": cache_control} if cache_control else None
     return fastapi.responses.JSONResponse(
         status_code=status_code,
-        content=response.model_dump()
+        content=response.model_dump(),
+        headers=headers,
     )
 
 

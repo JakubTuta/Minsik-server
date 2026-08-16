@@ -96,7 +96,26 @@ async def _get_personal_home_page(
         force_refresh=force_refresh,
         language=language,
     )
-    return sections or []
+    if not sections:
+        return []
+
+    # The cache entry is warmed at list_default_size (50) regardless of what
+    # a given request asks for, since the cache key carries no size — a cron
+    # rebuild must serve every possible page size from one entry. Slice to
+    # what was actually requested here, on every read, instead of shipping
+    # the full cached size to the client.
+    return [_sliced_section(section, items_per_section) for section in sections]
+
+
+def _sliced_section(
+    section: typing.Dict[str, typing.Any], limit: int
+) -> typing.Dict[str, typing.Any]:
+    sliced = dict(section)
+    for items_key in ("book_items", "author_items"):
+        items = sliced.get(items_key)
+        if items:
+            sliced[items_key] = items[:limit]
+    return sliced
 
 
 def get_available_categories() -> typing.List[typing.Dict[str, str]]:

@@ -28,9 +28,18 @@ class Settings(pydantic_settings.BaseSettings):
     cache_recommendation_ttl: int = pydantic.Field(default=86400)
     cache_contextual_ttl: int = pydantic.Field(default=21600)
     cache_profile_ttl: int = pydantic.Field(default=86400)
-    cache_personal_ttl: int = pydantic.Field(default=86400)
+    # 3 days, not 1 — `personal_refresh_cron` runs daily, and a TTL exactly
+    # equal to the cron interval means one slow, failed, or restart-skipped
+    # run blanks every user's personalized rows for a full day with no
+    # fallback. The cache must always outlive several missed cycles.
+    cache_personal_ttl: int = pydantic.Field(default=259200)
     cache_personal_contextual_ttl: int = pydantic.Field(default=1800)
     personal_cold_start_threshold: int = pydantic.Field(default=5)
+    # How long a "this user actually requested this locale" marker survives.
+    # Long-lived and refreshed on every request — this is what lets the cron
+    # warm every locale a user switches to, not only their stored
+    # preferred_language.
+    personal_seen_locale_ttl: int = pydantic.Field(default=2592000)
 
     home_book_categories: str = pydantic.Field(
         default="most_read,highest_rated,trending_reads,most_wanted,recently_added,user_favorites,classics,best_writing,funniest,most_emotional"

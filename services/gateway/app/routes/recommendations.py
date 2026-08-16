@@ -59,7 +59,10 @@ async def get_home_page(
             items_per_category=items_per_category, language=lang
         )
         sections = [_to_section_dict(cat.category, cat) for cat in response.categories]
-        return app.utils.responses.success_response({"sections": sections})
+        return app.utils.responses.success_response(
+            {"sections": sections},
+            cache_control="public, max-age=300, stale-while-revalidate=3600",
+        )
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "in get_home_page", e)
         if e.code() == grpc.StatusCode.UNAVAILABLE:
@@ -168,7 +171,10 @@ async def get_book_of_the_week(
                 for c in response.categories
             ],
         }
-        return app.utils.responses.success_response(data)
+        return app.utils.responses.success_response(
+            data,
+            cache_control="public, max-age=3600, stale-while-revalidate=86400",
+        )
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "in get_book_of_the_week", e)
         if e.code() == grpc.StatusCode.UNAVAILABLE:
