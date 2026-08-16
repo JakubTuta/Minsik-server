@@ -38,6 +38,10 @@ message ListSitemapSlugsRequest {
   string entity = 1;
   int32 limit = 2;
   int32 offset = 3;
+  // Edition languages the caller can serve a URL for. Empty returns every
+  // edition, which for a heavily translated work is an order of magnitude more
+  // rows than the caller keeps.
+  repeated string languages = 4;
 }
 
 message SitemapSlugItem {

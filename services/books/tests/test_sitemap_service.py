@@ -2,6 +2,7 @@ import datetime
 import types
 from unittest.mock import AsyncMock, MagicMock
 
+import app.services._language_boost
 import app.services.sitemap_service as sitemap_service
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
@@ -95,12 +96,36 @@ class TestSitemapService:
         assert [item["language"] for item in items] == ["en", "pl"]
         assert total == 1
 
+    @pytest.mark.asyncio
+    async def test_languages_filter_editions_in_sql(self, mock_session):
+        # An edition in a language the caller has no URL for is dropped at the
+        # database, not shipped and discarded.
+        mock_session.execute.side_effect = [
+            make_rows_result([make_book_row("the-witcher", "en", None)]),
+            make_count_result(1),
+        ]
+
+        await sitemap_service.list_sitemap_slugs(
+            mock_session, "books", limit=10, offset=0, languages=["pl", "en"]
+        )
+
+        statement, params = mock_session.execute.await_args_list[0].args
+        assert "b.language IN" in str(statement)
+        assert params["languages"] == ["en", "pl"]
+
     def test_books_paging_counts_works_not_editions(self):
         # Otherwise one heavily translated book eats a whole page of the cap.
-        assert "GROUP BY work_id" in sitemap_service._BOOKS_SITEMAP_QUERY
+        assert "GROUP BY b.work_id" in sitemap_service._BOOKS_SITEMAP_QUERY
         assert "LIMIT :limit OFFSET :offset" in sitemap_service._BOOKS_SITEMAP_QUERY.split(
             "SELECT b.slug"
         )[0]
+
+    def test_books_ranked_by_the_shared_popularity_signal(self):
+        # The crawler should meet the catalogue in the order the app itself
+        # calls popular, not by Open Library read counts alone.
+        ranking = sitemap_service._BOOKS_SITEMAP_QUERY.split("SELECT b.slug")[0]
+        assert app.services._language_boost.work_popularity_sql() in ranking
+        assert app.services._language_boost.work_shelf_counts_join() in ranking
 
     @pytest.mark.asyncio
     async def test_series_entity_supported(self, mock_session):

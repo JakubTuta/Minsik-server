@@ -1052,7 +1052,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
             async with app.db.async_session_maker() as session:
                 items, total_count = (
                     await app.services.sitemap_service.list_sitemap_slugs(
-                        session, entity, limit, offset
+                        session, entity, limit, offset, list(request.languages)
                     )
                 )
 

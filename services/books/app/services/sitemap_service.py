@@ -5,6 +5,7 @@ import app.cache
 import app.models.author
 import app.models.book
 import app.models.series
+import app.services._language_boost
 import sqlalchemy
 import sqlalchemy.ext.asyncio
 
@@ -46,24 +47,45 @@ def _entity_query_config(
 # Paging is over works, not editions, so a heavily translated book cannot push
 # other works past the caller's cap; a page therefore returns more rows than
 # its `limit`, and the caller advances by the page size it asked for.
-_BOOKS_SITEMAP_QUERY = """
+# The sitemap ranks works by the same signal category listings sort by — every
+# shelf status on either side plus every rating — so what the crawler is pointed
+# at first is what the app itself treats as most popular. Taken per edition and
+# reduced with MAX: the shelf rollup is already per work, and a work's Open
+# Library counts sit on whichever edition Open Library recorded them against.
+_BOOKS_SITEMAP_QUERY = f"""
     WITH ranked AS (
         SELECT
-            work_id,
-            MAX(COALESCE(ol_already_read_count, 0)) AS popularity,
-            MIN(book_id) AS anchor_id
-        FROM books.books
-        GROUP BY work_id
+            b.work_id,
+            MAX({app.services._language_boost.work_popularity_sql()}) AS popularity,
+            MIN(b.book_id) AS anchor_id
+        FROM books.books b
+        {app.services._language_boost.work_shelf_counts_join()}
+        GROUP BY b.work_id
         ORDER BY popularity DESC, anchor_id ASC
         LIMIT :limit OFFSET :offset
     )
     SELECT b.slug, b.language, b.work_id, b.updated_at
     FROM books.books b
     JOIN ranked r ON r.work_id = b.work_id
+    {{language_filter}}
     ORDER BY r.popularity DESC, r.anchor_id ASC, (b.language = 'en') DESC, b.book_id ASC
 """
 
+_BOOKS_LANGUAGE_FILTER = "WHERE b.language IS NULL OR b.language IN :languages"
+
 _BOOKS_SITEMAP_COUNT_QUERY = "SELECT COUNT(DISTINCT work_id) FROM books.books"
+
+
+def _books_statement(
+    languages: typing.Sequence[str],
+) -> typing.Tuple[typing.Any, typing.Dict[str, typing.Any]]:
+    if not languages:
+        return sqlalchemy.text(_BOOKS_SITEMAP_QUERY.format(language_filter="")), {}
+
+    statement = sqlalchemy.text(
+        _BOOKS_SITEMAP_QUERY.format(language_filter=_BOOKS_LANGUAGE_FILTER)
+    ).bindparams(sqlalchemy.bindparam("languages", expanding=True))
+    return statement, {"languages": list(languages)}
 
 
 async def list_sitemap_slugs(
@@ -71,18 +93,22 @@ async def list_sitemap_slugs(
     entity: str,
     limit: int = DEFAULT_LIMIT,
     offset: int = 0,
+    languages: typing.Optional[typing.Sequence[str]] = None,
 ) -> typing.Tuple[typing.List[typing.Dict[str, str]], int]:
     if entity not in SITEMAP_ENTITIES:
         raise ValueError(f"Invalid sitemap entity: {entity}")
 
-    cache_key = f"sitemap:slugs:{entity}:{limit}:{offset}"
+    languages = sorted(set(languages or ()))
+    language_key = ",".join(languages) if entity == "books" else ""
+    cache_key = f"sitemap:slugs:{entity}:{limit}:{offset}:{language_key}"
     cached = await app.cache.get_cached(cache_key)
     if cached is not None:
         return cached["items"], cached["total_count"]
 
     if entity == "books":
+        statement, language_params = _books_statement(languages)
         result = await session.execute(
-            sqlalchemy.text(_BOOKS_SITEMAP_QUERY), {"limit": limit, "offset": offset}
+            statement, {"limit": limit, "offset": offset, **language_params}
         )
         rows = result.all()
         items = [

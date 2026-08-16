@@ -43,6 +43,8 @@ class Settings(pydantic_settings.BaseSettings):
     grpc_timeout: float = pydantic.Field(default=10.0)
     grpc_recommendation_timeout: float = pydantic.Field(default=30.0)
     grpc_admin_timeout: float = pydantic.Field(default=60.0)
+    grpc_sitemap_timeout: float = pydantic.Field(default=60.0)
+    grpc_max_message_length: int = pydantic.Field(default=32 * 1024 * 1024)
     recommendation_recompute_on_user_write: bool = pydantic.Field(default=True)
 
     available_languages: str = pydantic.Field(default="en")
@@ -56,7 +58,7 @@ class Settings(pydantic_settings.BaseSettings):
     rate_limit_per_minute: int = pydantic.Field(default=60)
     rate_limit_admin_per_minute: int = pydantic.Field(default=20)
     rate_limit_suggest_per_minute: int = pydantic.Field(default=120)
-    rate_limit_sitemap_per_minute: int = pydantic.Field(default=10)
+    rate_limit_sitemap_per_minute: int = pydantic.Field(default=60)
 
     ledger_api_key: str = pydantic.Field(default="")
 

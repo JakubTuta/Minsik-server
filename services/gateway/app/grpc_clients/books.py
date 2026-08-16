@@ -305,11 +305,16 @@ class BooksClient(base.GrpcClientBase):
         entity: str,
         limit: int = 1000,
         offset: int = 0,
+        languages: typing.Optional[typing.Sequence[str]] = None,
     ) -> app.proto.books_pb2.ListSitemapSlugsResponse:
         request = app.proto.books_pb2.ListSitemapSlugsRequest(
-            entity=entity, limit=limit, offset=offset
+            entity=entity, limit=limit, offset=offset, languages=languages or []
         )
-        return await self._call("ListSitemapSlugs", request)
+        return await self._call(
+            "ListSitemapSlugs",
+            request,
+            timeout=app.config.settings.grpc_sitemap_timeout,
+        )
 
     async def audit_books(
         self,

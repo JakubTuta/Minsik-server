@@ -1,4 +1,5 @@
 import logging
+import typing
 
 import app.grpc_clients
 import app.middleware.rate_limit
@@ -27,8 +28,12 @@ limiter = app.middleware.rate_limit.limiter
 
     `total_count` is populated only when `offset` is 0.
 
+    `languages` restricts book editions to the ones the caller can serve a URL
+    for; it is ignored for authors and series, which share one slug across
+    languages. Omitting it returns every edition of every matched work.
+
     **Examples:**
-    - `/api/v1/sitemap/slugs?entity=books&limit=10000`
+    - `/api/v1/sitemap/slugs?entity=books&limit=10000&languages=en&languages=pl`
     - `/api/v1/sitemap/slugs?entity=authors&limit=10000&offset=10000`
     """,
 )
@@ -38,10 +43,11 @@ async def list_sitemap_slugs(
     entity: str = fastapi.Query("books", regex="^(books|authors|series)$"),
     limit: int = fastapi.Query(1000, ge=1, le=10000),
     offset: int = fastapi.Query(0, ge=0),
+    languages: typing.List[str] = fastapi.Query(default=[]),
 ):
     try:
         response = await app.grpc_clients.books_client.list_sitemap_slugs(
-            entity=entity, limit=limit, offset=offset
+            entity=entity, limit=limit, offset=offset, languages=languages
         )
         items = [
             {

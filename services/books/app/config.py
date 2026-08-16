@@ -23,6 +23,7 @@ class Settings(pydantic_settings.BaseSettings):
 
     books_service_host: str = pydantic.Field(default="0.0.0.0")
     books_grpc_port: int = pydantic.Field(default=50055)
+    grpc_max_message_length: int = pydantic.Field(default=32 * 1024 * 1024)
 
     cache_book_detail_ttl: int = pydantic.Field(default=3600)
     cache_author_detail_ttl: int = pydantic.Field(default=3600)

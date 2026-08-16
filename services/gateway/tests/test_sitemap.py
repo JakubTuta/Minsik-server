@@ -43,7 +43,9 @@ class TestListSitemapSlugs:
     def test_success_returns_items_and_total(self, client, mock_books_client, mocker):
         mock_books_client.list_sitemap_slugs.return_value = make_slugs_response(mocker)
 
-        response = client.get("/api/v1/sitemap/slugs?entity=books&limit=100&offset=0")
+        response = client.get(
+            "/api/v1/sitemap/slugs?entity=books&limit=100&offset=0&languages=en&languages=pl"
+        )
 
         assert response.status_code == 200
         body = response.json()
@@ -51,7 +53,7 @@ class TestListSitemapSlugs:
         assert body["data"]["total_count"] == 2
         assert body["data"]["items"][0]["slug"] == "the-hobbit"
         mock_books_client.list_sitemap_slugs.assert_awaited_once_with(
-            entity="books", limit=100, offset=0
+            entity="books", limit=100, offset=0, languages=["en", "pl"]
         )
 
     def test_defaults_applied(self, client, mock_books_client, mocker):
@@ -61,7 +63,7 @@ class TestListSitemapSlugs:
 
         assert response.status_code == 200
         mock_books_client.list_sitemap_slugs.assert_awaited_once_with(
-            entity="books", limit=1000, offset=0
+            entity="books", limit=1000, offset=0, languages=[]
         )
 
     def test_empty_updated_at_becomes_null(self, client, mock_books_client, mocker):

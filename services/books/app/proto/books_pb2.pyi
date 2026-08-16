@@ -7,14 +7,16 @@ from typing import ClassVar as _ClassVar, Optional as _Optional, Union as _Union
 DESCRIPTOR: _descriptor.FileDescriptor
 
 class ListSitemapSlugsRequest(_message.Message):
-    __slots__ = ("entity", "limit", "offset")
+    __slots__ = ("entity", "limit", "offset", "languages")
     ENTITY_FIELD_NUMBER: _ClassVar[int]
     LIMIT_FIELD_NUMBER: _ClassVar[int]
     OFFSET_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGES_FIELD_NUMBER: _ClassVar[int]
     entity: str
     limit: int
     offset: int
-    def __init__(self, entity: _Optional[str] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ...) -> None: ...
+    languages: _containers.RepeatedScalarFieldContainer[str]
+    def __init__(self, entity: _Optional[str] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., languages: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class SitemapSlugItem(_message.Message):
     __slots__ = ("slug", "updated_at", "language", "work_id")

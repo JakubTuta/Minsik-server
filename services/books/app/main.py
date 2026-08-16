@@ -46,7 +46,15 @@ async def start_server() -> None:
     )
 
     app.tracing.init_ledger()
-    grpc_server = grpc.aio.server(interceptors=app.tracing.get_server_interceptors())
+    grpc_server = grpc.aio.server(
+        interceptors=app.tracing.get_server_interceptors(),
+        options=[
+            (
+                "grpc.max_send_message_length",
+                app.config.settings.grpc_max_message_length,
+            ),
+        ],
+    )
 
     app.proto.books_pb2_grpc.add_BooksServiceServicer_to_server(
         app.grpc.server.BooksServicer(), grpc_server

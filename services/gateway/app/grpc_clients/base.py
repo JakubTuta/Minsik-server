@@ -39,6 +39,10 @@ class GrpcClientBase:
                 ),
                 ("grpc.keepalive_permit_without_calls", 0),
                 ("grpc.http2.max_pings_without_data", 0),
+                (
+                    "grpc.max_receive_message_length",
+                    app.config.settings.grpc_max_message_length,
+                ),
             ],
             interceptors=app.tracing.get_client_interceptors(),
         )
