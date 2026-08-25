@@ -93,6 +93,7 @@ async def get_author_books(
             b.title,
             b.slug,
             b.description,
+            b.first_sentence,
             b.original_publication_year,
             b.primary_cover_url,
             b.rating_count,
@@ -352,6 +353,7 @@ def _book_row_to_dict(row: typing.Any) -> typing.Dict[str, typing.Any]:
         "title": row.title,
         "slug": row.slug,
         "description": row.description or "",
+        "first_sentence": row.first_sentence or "",
         "original_publication_year": int(row.original_publication_year or 0),
         "primary_cover_url": row.primary_cover_url or "",
         "rating_count": row.rating_count or 0,
@@ -446,59 +448,54 @@ async def delete_author(
     sole_book_ids = [row.book_id for row in sole_books]
 
     if sole_book_ids:
-        ids_placeholder = ",".join(str(bid) for bid in sole_book_ids)
+        ids = {"ids": sole_book_ids}
 
         affected_users_result = await session.execute(
             sqlalchemy.text(
-                f"""
-                SELECT DISTINCT user_id FROM user_data.bookshelves WHERE book_id IN ({ids_placeholder})
-                UNION
-                SELECT DISTINCT user_id FROM user_data.ratings WHERE book_id IN ({ids_placeholder})
-                UNION
-                SELECT DISTINCT user_id FROM user_data.comments WHERE book_id IN ({ids_placeholder})
                 """
-            )
+                SELECT DISTINCT user_id FROM user_data.bookshelves WHERE book_id = ANY(:ids)
+                UNION
+                SELECT DISTINCT user_id FROM user_data.ratings WHERE book_id = ANY(:ids)
+                UNION
+                SELECT DISTINCT user_id FROM user_data.comments WHERE book_id = ANY(:ids)
+                """
+            ),
+            ids,
         )
         affected_user_ids = [row.user_id for row in affected_users_result.fetchall()]
 
-        await session.execute(
-            sqlalchemy.text(f"DELETE FROM user_data.comments WHERE book_id IN ({ids_placeholder})")
-        )
-        await session.execute(
-            sqlalchemy.text(f"DELETE FROM user_data.ratings WHERE book_id IN ({ids_placeholder})")
-        )
-        await session.execute(
-            sqlalchemy.text(f"DELETE FROM user_data.bookshelves WHERE book_id IN ({ids_placeholder})")
-        )
+        for table in (
+            "user_data.comments",
+            "user_data.ratings",
+            "user_data.bookshelves",
+        ):
+            await session.execute(
+                sqlalchemy.text(f"DELETE FROM {table} WHERE book_id = ANY(:ids)"), ids
+            )
 
         await app.services._user_stats.recalculate(session, affected_user_ids)
 
-        await session.execute(
-            sqlalchemy.text(f"DELETE FROM books.book_genres WHERE book_id IN ({ids_placeholder})")
-        )
-        await session.execute(
-            sqlalchemy.text(f"DELETE FROM books.book_authors WHERE book_id IN ({ids_placeholder})")
-        )
-        await session.execute(
-            sqlalchemy.text(f"DELETE FROM books.books WHERE book_id IN ({ids_placeholder})")
-        )
+        for table in ("books.book_genres", "books.book_authors", "books.books"):
+            await session.execute(
+                sqlalchemy.text(f"DELETE FROM {table} WHERE book_id = ANY(:ids)"), ids
+            )
 
     await session.delete(author)
     await session.flush()
 
     sole_book_series_ids = list({row.series_id for row in sole_books if row.series_id is not None})
     if sole_book_series_ids:
-        series_placeholder = ",".join(str(sid) for sid in sole_book_series_ids)
         await session.execute(
             sqlalchemy.text(
-                f"""
+                """
                 DELETE FROM books.series
-                WHERE series_id IN ({series_placeholder})
+                WHERE series_id = ANY(:series_ids)
                   AND NOT EXISTS (
                       SELECT 1 FROM books.books b WHERE b.series_id = books.series.series_id
                   )
                 """
-            )
+            ),
+            {"series_ids": sole_book_series_ids},
         )
 
     await session.commit()

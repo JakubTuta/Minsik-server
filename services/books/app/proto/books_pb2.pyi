@@ -501,7 +501,7 @@ class GetAuthorBooksRequest(_message.Message):
     def __init__(self, author_slug: _Optional[str] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., sort_by: _Optional[str] = ..., order: _Optional[str] = ..., language: _Optional[str] = ...) -> None: ...
 
 class BookSummary(_message.Message):
-    __slots__ = ("book_id", "title", "slug", "description", "original_publication_year", "primary_cover_url", "authors", "rating_count", "avg_rating", "ol_rating_count", "ol_avg_rating", "ol_want_to_read_count", "ol_currently_reading_count", "ol_already_read_count", "app_want_to_read_count", "app_reading_count", "app_read_count", "series_position", "rarity", "language", "work_id")
+    __slots__ = ("book_id", "title", "slug", "description", "original_publication_year", "primary_cover_url", "authors", "rating_count", "avg_rating", "ol_rating_count", "ol_avg_rating", "ol_want_to_read_count", "ol_currently_reading_count", "ol_already_read_count", "app_want_to_read_count", "app_reading_count", "app_read_count", "series_position", "rarity", "language", "work_id", "first_sentence")
     BOOK_ID_FIELD_NUMBER: _ClassVar[int]
     TITLE_FIELD_NUMBER: _ClassVar[int]
     SLUG_FIELD_NUMBER: _ClassVar[int]
@@ -523,6 +523,7 @@ class BookSummary(_message.Message):
     RARITY_FIELD_NUMBER: _ClassVar[int]
     LANGUAGE_FIELD_NUMBER: _ClassVar[int]
     WORK_ID_FIELD_NUMBER: _ClassVar[int]
+    FIRST_SENTENCE_FIELD_NUMBER: _ClassVar[int]
     book_id: int
     title: str
     slug: str
@@ -544,7 +545,8 @@ class BookSummary(_message.Message):
     rarity: str
     language: str
     work_id: str
-    def __init__(self, book_id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., description: _Optional[str] = ..., original_publication_year: _Optional[int] = ..., primary_cover_url: _Optional[str] = ..., authors: _Optional[_Iterable[_Union[AuthorInfo, _Mapping]]] = ..., rating_count: _Optional[int] = ..., avg_rating: _Optional[str] = ..., ol_rating_count: _Optional[int] = ..., ol_avg_rating: _Optional[str] = ..., ol_want_to_read_count: _Optional[int] = ..., ol_currently_reading_count: _Optional[int] = ..., ol_already_read_count: _Optional[int] = ..., app_want_to_read_count: _Optional[int] = ..., app_reading_count: _Optional[int] = ..., app_read_count: _Optional[int] = ..., series_position: _Optional[str] = ..., rarity: _Optional[str] = ..., language: _Optional[str] = ..., work_id: _Optional[str] = ...) -> None: ...
+    first_sentence: str
+    def __init__(self, book_id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., description: _Optional[str] = ..., original_publication_year: _Optional[int] = ..., primary_cover_url: _Optional[str] = ..., authors: _Optional[_Iterable[_Union[AuthorInfo, _Mapping]]] = ..., rating_count: _Optional[int] = ..., avg_rating: _Optional[str] = ..., ol_rating_count: _Optional[int] = ..., ol_avg_rating: _Optional[str] = ..., ol_want_to_read_count: _Optional[int] = ..., ol_currently_reading_count: _Optional[int] = ..., ol_already_read_count: _Optional[int] = ..., app_want_to_read_count: _Optional[int] = ..., app_reading_count: _Optional[int] = ..., app_read_count: _Optional[int] = ..., series_position: _Optional[str] = ..., rarity: _Optional[str] = ..., language: _Optional[str] = ..., work_id: _Optional[str] = ..., first_sentence: _Optional[str] = ...) -> None: ...
 
 class BooksListResponse(_message.Message):
     __slots__ = ("books", "total_count")

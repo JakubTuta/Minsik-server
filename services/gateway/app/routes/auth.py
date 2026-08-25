@@ -40,9 +40,15 @@ def _session_data(response) -> typing.Dict[str, typing.Any]:
     }
 
 
-def _auth_success(response, status_code: int) -> fastapi.responses.JSONResponse:
+def _auth_success(
+    response,
+    status_code: int,
+    csrf_token: typing.Optional[str] = None,
+) -> fastapi.responses.JSONResponse:
     json_response = app.utils.responses.success_response(_session_data(response), status_code=status_code)
-    app.utils.cookies.set_auth_cookies(json_response, response.access_token, response.refresh_token)
+    app.utils.cookies.set_auth_cookies(
+        json_response, response.access_token, response.refresh_token, csrf_token
+    )
     return json_response
 
 
@@ -381,7 +387,14 @@ async def refresh_token(
         response = await app.grpc_clients.auth_client.refresh_token(
             refresh_token=refresh_value
         )
-        return _auth_success(response, status_code=200)
+        # The CSRF token survives rotation. Minting a new one here invalidates
+        # the header any in-flight request already read off the old cookie,
+        # which the double-submit check then rejects as a forgery.
+        return _auth_success(
+            response,
+            status_code=200,
+            csrf_token=request.cookies.get(app.utils.cookies.CSRF_COOKIE),
+        )
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "during token refresh", e)
         if e.code() in (grpc.StatusCode.UNAUTHENTICATED, grpc.StatusCode.PERMISSION_DENIED, grpc.StatusCode.NOT_FOUND):

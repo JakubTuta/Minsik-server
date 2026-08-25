@@ -112,7 +112,6 @@ services:
     # NO EXPOSED PORTS - internal network only (security)
     volumes:
       - postgres_data:/var/lib/postgresql/data
-      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 60s
@@ -126,7 +125,7 @@ services:
       -c maintenance_work_mem=64MB
       -c effective_cache_size=768MB
       -c wal_buffers=16MB
-      -c max_connections=50
+      -c max_connections=80
       -c checkpoint_completion_target=0.9
       -c random_page_cost=1.1
       -c dynamic_shared_memory_type=posix
@@ -244,15 +243,15 @@ services:
       redis:
         condition: service_healthy
       ingestion-service:
-        condition: service_started
+        condition: service_healthy
       books-service:
-        condition: service_started
+        condition: service_healthy
       auth-service:
-        condition: service_started
+        condition: service_healthy
       user-data-service:
-        condition: service_started
+        condition: service_healthy
       recommendation-service:
-        condition: service_started
+        condition: service_healthy
     # The frontend gates its own startup on this. Without it, Nuxt can serve —
     # and SWR-cache — a render whose data fetches got ECONNREFUSED, pinning an
     # empty home page for the whole cache lifetime after every deploy.
@@ -289,6 +288,20 @@ services:
   ingestion-service:
     image: container-registry.jtuta.cloud/minsik/ingestion-service:latest
     container_name: minsik-ingestion-service
+    # gRPC services answer grpc.health.v1 rather than an HTTP probe, so the
+    # gateway is only started once each backend can actually serve. Without it
+    # the gateway reports healthy while its dependencies are still opening
+    # database pools, and the first requests after a deploy fail.
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import grpc, grpc_health.v1.health_pb2 as p, grpc_health.v1.health_pb2_grpc as g; s = g.HealthStub(grpc.insecure_channel('localhost:50054')).Check(p.HealthCheckRequest(), timeout=3).status; exit(0 if s == p.HealthCheckResponse.SERVING else 1)\"",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     stop_grace_period: 30s
     environment:
       ENV: ${ENV}
@@ -333,6 +346,20 @@ services:
   books-service:
     image: container-registry.jtuta.cloud/minsik/books-service:latest
     container_name: minsik-books-service
+    # gRPC services answer grpc.health.v1 rather than an HTTP probe, so the
+    # gateway is only started once each backend can actually serve. Without it
+    # the gateway reports healthy while its dependencies are still opening
+    # database pools, and the first requests after a deploy fail.
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import grpc, grpc_health.v1.health_pb2 as p, grpc_health.v1.health_pb2_grpc as g; s = g.HealthStub(grpc.insecure_channel('localhost:50055')).Check(p.HealthCheckRequest(), timeout=3).status; exit(0 if s == p.HealthCheckResponse.SERVING else 1)\"",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     environment:
       ENV: ${ENV}
       DEBUG: ${DEBUG}
@@ -378,6 +405,20 @@ services:
   auth-service:
     image: container-registry.jtuta.cloud/minsik/auth-service:latest
     container_name: minsik-auth-service
+    # gRPC services answer grpc.health.v1 rather than an HTTP probe, so the
+    # gateway is only started once each backend can actually serve. Without it
+    # the gateway reports healthy while its dependencies are still opening
+    # database pools, and the first requests after a deploy fail.
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import grpc, grpc_health.v1.health_pb2 as p, grpc_health.v1.health_pb2_grpc as g; s = g.HealthStub(grpc.insecure_channel('localhost:50051')).Check(p.HealthCheckRequest(), timeout=3).status; exit(0 if s == p.HealthCheckResponse.SERVING else 1)\"",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     environment:
       ENV: ${ENV}
       DEBUG: ${DEBUG}
@@ -419,6 +460,20 @@ services:
   user-data-service:
     image: container-registry.jtuta.cloud/minsik/user-data-service:latest
     container_name: minsik-user-data-service
+    # gRPC services answer grpc.health.v1 rather than an HTTP probe, so the
+    # gateway is only started once each backend can actually serve. Without it
+    # the gateway reports healthy while its dependencies are still opening
+    # database pools, and the first requests after a deploy fail.
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import grpc, grpc_health.v1.health_pb2 as p, grpc_health.v1.health_pb2_grpc as g; s = g.HealthStub(grpc.insecure_channel('localhost:50053')).Check(p.HealthCheckRequest(), timeout=3).status; exit(0 if s == p.HealthCheckResponse.SERVING else 1)\"",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     environment:
       ENV: ${ENV}
       DEBUG: ${DEBUG}
@@ -461,6 +516,20 @@ services:
   recommendation-service:
     image: container-registry.jtuta.cloud/minsik/recommendation-service:latest
     container_name: minsik-recommendation-service
+    # gRPC services answer grpc.health.v1 rather than an HTTP probe, so the
+    # gateway is only started once each backend can actually serve. Without it
+    # the gateway reports healthy while its dependencies are still opening
+    # database pools, and the first requests after a deploy fail.
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import grpc, grpc_health.v1.health_pb2 as p, grpc_health.v1.health_pb2_grpc as g; s = g.HealthStub(grpc.insecure_channel('localhost:50056')).Check(p.HealthCheckRequest(), timeout=3).status; exit(0 if s == p.HealthCheckResponse.SERVING else 1)\"",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     environment:
       ENV: ${ENV}
       DEBUG: ${DEBUG}

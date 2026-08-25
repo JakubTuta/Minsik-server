@@ -9,4 +9,5 @@ basic-app.md
 technical-architecture.md
 scripts/
 htmlcov/
+.coverage
 scripts.private.ps1

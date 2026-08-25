@@ -135,17 +135,28 @@ async def upsert_bookshelf(
 async def delete_bookshelf(
     session: sqlalchemy.ext.asyncio.AsyncSession, user_id: int, book_id: int
 ) -> None:
-    stmt = (
-        sqlalchemy.delete(app.models.bookshelf.Bookshelf)
-        .where(
-            app.models.bookshelf.Bookshelf.user_id == user_id,
-            app.models.bookshelf.Bookshelf.book_id == book_id,
-        )
-        .returning(app.models.bookshelf.Bookshelf.bookshelf_id)
-    )
+    """Take the work the given edition belongs to off this reader's shelf.
 
-    result = await session.execute(stmt)
-    if result.scalar_one_or_none() is None:
+    Shelving is per-edition but every read path resolves it per-work, so a row
+    created against one translation has to be removable from the page of
+    another — otherwise the shelf entry the reader is looking at cannot be
+    deleted from where they are standing.
+    """
+    result = await session.execute(
+        sqlalchemy.text(
+            """
+            DELETE FROM user_data.bookshelves
+            WHERE user_id = :user_id
+              AND book_id IN (
+                  SELECT b.book_id FROM books.books b
+                  WHERE b.work_id = (SELECT work_id FROM books.books WHERE book_id = :book_id)
+              )
+            RETURNING bookshelf_id
+            """
+        ),
+        {"user_id": user_id, "book_id": book_id},
+    )
+    if not result.fetchall():
         raise ValueError("not_found")
     await session.commit()
 

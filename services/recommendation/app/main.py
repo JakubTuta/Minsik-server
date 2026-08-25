@@ -14,6 +14,9 @@ import app.tracing
 import apscheduler
 import apscheduler.triggers.cron
 import grpc
+import grpc_health.v1.health
+import grpc_health.v1.health_pb2
+import grpc_health.v1.health_pb2_grpc
 import grpc_reflection.v1alpha.reflection
 
 logging.basicConfig(
@@ -47,10 +50,14 @@ async def start_server() -> None:
         app.grpc.server.RecommendationServicer(), grpc_server
     )
 
+    health_servicer = grpc_health.v1.health.aio.HealthServicer()
+    grpc_health.v1.health_pb2_grpc.add_HealthServicer_to_server(health_servicer, grpc_server)
+
     SERVICE_NAMES = (
         app.proto.recommendation_pb2.DESCRIPTOR.services_by_name[
             "RecommendationService"
         ].full_name,
+        grpc_health.v1.health.SERVICE_NAME,
         grpc_reflection.v1alpha.reflection.SERVICE_NAME,
     )
     grpc_reflection.v1alpha.reflection.enable_server_reflection(SERVICE_NAMES, grpc_server)
@@ -60,6 +67,10 @@ async def start_server() -> None:
 
     logger.info(f"Starting gRPC server on {listen_addr}")
     await grpc_server.start()
+
+    await health_servicer.set(
+        "", grpc_health.v1.health_pb2.HealthCheckResponse.SERVING
+    )
 
     scheduler = apscheduler.AsyncScheduler()
     await scheduler.__aenter__()

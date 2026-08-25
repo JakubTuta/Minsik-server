@@ -15,7 +15,6 @@ services:
       - "5432:5432"
     volumes:
       - postgres_data_dev:/var/lib/postgresql/data
-      - ./scripts/init-db.sql:/docker-entrypoint-initdb.d/init-db.sql
     healthcheck:
       test: ["CMD-SHELL", "pg_isready -U ${DB_USER} -d ${DB_NAME}"]
       interval: 10s
@@ -156,15 +155,15 @@ services:
       redis:
         condition: service_healthy
       ingestion-service:
-        condition: service_started
+        condition: service_healthy
       books-service:
-        condition: service_started
+        condition: service_healthy
       auth-service:
-        condition: service_started
+        condition: service_healthy
       user-data-service:
-        condition: service_started
+        condition: service_healthy
       recommendation-service:
-        condition: service_started
+        condition: service_healthy
     networks:
       - minsik-network
     restart: unless-stopped
@@ -177,6 +176,20 @@ services:
       context: .
       dockerfile: services/ingestion/Dockerfile
     container_name: minsik-ingestion-service-dev
+    # gRPC services answer grpc.health.v1 rather than an HTTP probe, so the
+    # gateway is only started once each backend can actually serve. Without it
+    # the gateway reports healthy while its dependencies are still opening
+    # database pools, and the first requests after a deploy fail.
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import grpc, grpc_health.v1.health_pb2 as p, grpc_health.v1.health_pb2_grpc as g; s = g.HealthStub(grpc.insecure_channel('localhost:50054')).Check(p.HealthCheckRequest(), timeout=3).status; exit(0 if s == p.HealthCheckResponse.SERVING else 1)\"",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     stop_grace_period: 30s
     command: sh -c "sh /app/scripts/dev-compile-protos.sh ingestion && exec watchfiles 'python -m app.main' /app/app"
     environment:
@@ -218,6 +231,20 @@ services:
       context: .
       dockerfile: services/books/Dockerfile
     container_name: minsik-books-service-dev
+    # gRPC services answer grpc.health.v1 rather than an HTTP probe, so the
+    # gateway is only started once each backend can actually serve. Without it
+    # the gateway reports healthy while its dependencies are still opening
+    # database pools, and the first requests after a deploy fail.
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import grpc, grpc_health.v1.health_pb2 as p, grpc_health.v1.health_pb2_grpc as g; s = g.HealthStub(grpc.insecure_channel('localhost:50055')).Check(p.HealthCheckRequest(), timeout=3).status; exit(0 if s == p.HealthCheckResponse.SERVING else 1)\"",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     command: sh -c "sh /app/scripts/dev-compile-protos.sh books && exec watchfiles 'python -m app.main' /app/app"
     environment:
       ENV: ${ENV}
@@ -260,6 +287,20 @@ services:
       context: .
       dockerfile: services/auth/Dockerfile
     container_name: minsik-auth-service-dev
+    # gRPC services answer grpc.health.v1 rather than an HTTP probe, so the
+    # gateway is only started once each backend can actually serve. Without it
+    # the gateway reports healthy while its dependencies are still opening
+    # database pools, and the first requests after a deploy fail.
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import grpc, grpc_health.v1.health_pb2 as p, grpc_health.v1.health_pb2_grpc as g; s = g.HealthStub(grpc.insecure_channel('localhost:50051')).Check(p.HealthCheckRequest(), timeout=3).status; exit(0 if s == p.HealthCheckResponse.SERVING else 1)\"",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     command: sh -c "sh /app/scripts/dev-compile-protos.sh auth && exec watchfiles 'python -m app.main' /app/app"
     environment:
       ENV: ${ENV}
@@ -298,6 +339,20 @@ services:
       context: .
       dockerfile: services/user_data/Dockerfile
     container_name: minsik-user-data-service-dev
+    # gRPC services answer grpc.health.v1 rather than an HTTP probe, so the
+    # gateway is only started once each backend can actually serve. Without it
+    # the gateway reports healthy while its dependencies are still opening
+    # database pools, and the first requests after a deploy fail.
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import grpc, grpc_health.v1.health_pb2 as p, grpc_health.v1.health_pb2_grpc as g; s = g.HealthStub(grpc.insecure_channel('localhost:50053')).Check(p.HealthCheckRequest(), timeout=3).status; exit(0 if s == p.HealthCheckResponse.SERVING else 1)\"",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     command: sh -c "sh /app/scripts/dev-compile-protos.sh user_data && exec watchfiles 'python -m app.main' /app/app"
     environment:
       ENV: ${ENV}
@@ -337,6 +392,20 @@ services:
       context: .
       dockerfile: services/recommendation/Dockerfile
     container_name: minsik-recommendation-service-dev
+    # gRPC services answer grpc.health.v1 rather than an HTTP probe, so the
+    # gateway is only started once each backend can actually serve. Without it
+    # the gateway reports healthy while its dependencies are still opening
+    # database pools, and the first requests after a deploy fail.
+    healthcheck:
+      test:
+        [
+          "CMD-SHELL",
+          "python -c \"import grpc, grpc_health.v1.health_pb2 as p, grpc_health.v1.health_pb2_grpc as g; s = g.HealthStub(grpc.insecure_channel('localhost:50056')).Check(p.HealthCheckRequest(), timeout=3).status; exit(0 if s == p.HealthCheckResponse.SERVING else 1)\"",
+        ]
+      interval: 30s
+      timeout: 5s
+      retries: 5
+      start_period: 30s
     command: sh -c "sh /app/scripts/dev-compile-protos.sh recommendation && exec watchfiles 'python -m app.main' /app/app"
     environment:
       ENV: ${ENV}

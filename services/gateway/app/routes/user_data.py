@@ -113,6 +113,21 @@ def _comment_proto_to_dict(c) -> typing.Dict[str, typing.Any]:
     }
 
 
+_background_tasks: typing.Set[asyncio.Task] = set()
+
+
+def _spawn_background(coro: typing.Coroutine) -> None:
+    """Run a coroutine past the response without letting it be collected.
+
+    The event loop holds only a weak reference to a task, so a plain
+    fire-and-forget create_task can be garbage collected while it is
+    suspended, and the work silently never finishes.
+    """
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
+
 async def _refresh_personal_recommendations_after_user_write(user_id: int) -> None:
     if not app.config.settings.recommendation_recompute_on_user_write:
         return
@@ -283,7 +298,7 @@ async def upsert_bookshelf(
             status=body.status,
             language=language,
         )
-        asyncio.create_task(
+        _spawn_background(
             _refresh_personal_recommendations_after_user_write(current_user["user_id"])
         )
         return app.utils.responses.success_response(
@@ -330,7 +345,7 @@ async def delete_bookshelf(
             book_slug=book_slug,
             language=language,
         )
-        asyncio.create_task(
+        _spawn_background(
             _refresh_personal_recommendations_after_user_write(current_user["user_id"])
         )
         return fastapi.Response(status_code=204)
@@ -752,7 +767,7 @@ async def add_favourite(
             is_favorite=True,
             language=language,
         )
-        asyncio.create_task(
+        _spawn_background(
             _refresh_personal_recommendations_after_user_write(current_user["user_id"])
         )
         return app.utils.responses.success_response(
@@ -803,7 +818,7 @@ async def remove_favourite(
             is_favorite=False,
             language=language,
         )
-        asyncio.create_task(
+        _spawn_background(
             _refresh_personal_recommendations_after_user_write(current_user["user_id"])
         )
         return app.utils.responses.success_response(
@@ -926,7 +941,7 @@ async def upsert_rating(
             humor=body.humor,
             language=language,
         )
-        asyncio.create_task(
+        _spawn_background(
             _refresh_personal_recommendations_after_user_write(current_user["user_id"])
         )
         return app.utils.responses.success_response(
@@ -974,7 +989,7 @@ async def delete_rating(
             book_slug=book_slug,
             language=language,
         )
-        asyncio.create_task(
+        _spawn_background(
             _refresh_personal_recommendations_after_user_write(current_user["user_id"])
         )
         return fastapi.Response(status_code=204)

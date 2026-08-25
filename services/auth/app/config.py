@@ -13,7 +13,7 @@ class Settings(pydantic_settings.BaseSettings):
     db_user: str = pydantic.Field(default="postgres")
     db_password: str = pydantic.Field(default="postgres")
     db_pool_size: int = pydantic.Field(default=5)
-    db_max_overflow: int = pydantic.Field(default=10)
+    db_max_overflow: int = pydantic.Field(default=5)
 
     auth_service_host: str = pydantic.Field(default="0.0.0.0")
     auth_grpc_port: int = pydantic.Field(default=50051)

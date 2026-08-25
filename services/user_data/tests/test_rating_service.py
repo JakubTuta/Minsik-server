@@ -45,22 +45,43 @@ class TestUpsertRating:
         assert "UPDATE books.books" in statements
 
 
+def _deleted_rows(rows):
+    result = MagicMock()
+    result.fetchall.return_value = rows
+    return result
+
+
 class TestDeleteRating:
     @pytest.mark.asyncio
     async def test_delete_success(self, mock_session):
-        returning_result = MagicMock()
-        returning_result.scalar_one_or_none.return_value = 1
-        mock_session.execute.side_effect = [returning_result, MagicMock(), MagicMock()]
+        mock_session.execute.side_effect = [
+            _deleted_rows([MagicMock(book_id=100)]),
+            MagicMock(),
+            MagicMock(),
+        ]
         await rating_service.delete_rating(mock_session, 10, 100)
         mock_session.commit.assert_called_once()
 
     @pytest.mark.asyncio
     async def test_delete_not_found_raises(self, mock_session):
-        returning_result = MagicMock()
-        returning_result.scalar_one_or_none.return_value = None
-        mock_session.execute.return_value = returning_result
+        mock_session.execute.return_value = _deleted_rows([])
         with pytest.raises(ValueError, match="not_found"):
             await rating_service.delete_rating(mock_session, 10, 999)
+
+    @pytest.mark.asyncio
+    async def test_delete_reaches_sibling_editions_of_the_work(self, mock_session):
+        # The rating may sit on the translation the reader rated rather than on
+        # the edition whose page they are deleting it from.
+        mock_session.execute.side_effect = [
+            _deleted_rows([MagicMock(book_id=205)]),
+            MagicMock(),
+            MagicMock(),
+        ]
+        await rating_service.delete_rating(mock_session, 10, 100)
+
+        delete_statement = str(mock_session.execute.call_args_list[0].args[0])
+        assert "work_id" in delete_statement
+        mock_session.commit.assert_called_once()
 
 
 class TestUpdateBookStatsAggregatesAcrossLanguages:

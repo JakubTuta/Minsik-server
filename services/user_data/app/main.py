@@ -3,6 +3,9 @@ import signal
 import logging
 import sys
 import grpc
+import grpc_health.v1.health
+import grpc_health.v1.health_pb2
+import grpc_health.v1.health_pb2_grpc
 import grpc_reflection.v1alpha.reflection
 import app.config
 import app.database
@@ -24,6 +27,17 @@ grpc_server: grpc.aio.Server = None
 shutdown_event = asyncio.Event()
 
 
+# Held so the shutdown task is not garbage collected mid-flight: the loop
+# keeps only a weak reference to a task.
+_background_tasks: set = set()
+
+
+def _spawn_background(coro) -> None:
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
+
 async def start_server() -> None:
     global grpc_server
 
@@ -41,8 +55,12 @@ async def start_server() -> None:
         grpc_server
     )
 
+    health_servicer = grpc_health.v1.health.aio.HealthServicer()
+    grpc_health.v1.health_pb2_grpc.add_HealthServicer_to_server(health_servicer, grpc_server)
+
     SERVICE_NAMES = (
         app.proto.user_data_pb2.DESCRIPTOR.services_by_name['UserDataService'].full_name,
+        grpc_health.v1.health.SERVICE_NAME,
         grpc_reflection.v1alpha.reflection.SERVICE_NAME,
     )
     grpc_reflection.v1alpha.reflection.enable_server_reflection(SERVICE_NAMES, grpc_server)
@@ -51,6 +69,10 @@ async def start_server() -> None:
 
     logger.info(f"Starting gRPC server on {app.config.settings.listen_address}")
     await grpc_server.start()
+
+    await health_servicer.set(
+        "", grpc_health.v1.health_pb2.HealthCheckResponse.SERVING
+    )
 
     logger.info("User data service is running")
 
@@ -77,7 +99,7 @@ async def shutdown() -> None:
 
 def handle_signal(signum, frame) -> None:
     logger.info(f"Received signal {signum}")
-    asyncio.create_task(shutdown())
+    _spawn_background(shutdown())
 
 
 async def main() -> None:

@@ -1,5 +1,21 @@
 import grpc
 
+_CLIENT_PATHS = (
+    "app.grpc_clients.ingestion_client",
+    "app.grpc_clients.books_client",
+    "app.grpc_clients.auth_client",
+    "app.grpc_clients.user_data_client",
+    "app.grpc_clients.recommendation_client",
+)
+
+_DEPENDENCY_NAMES = (
+    "ingestion_service",
+    "books_service",
+    "auth_service",
+    "user_data_service",
+    "recommendation_service",
+)
+
 
 class MockRpcError(grpc.RpcError):
     def __init__(self, code, details):
@@ -12,6 +28,19 @@ class MockRpcError(grpc.RpcError):
 
     def details(self):
         return self._details
+
+
+def _patch_health(mocker, results):
+    """Point every dependency's health_check at the given per-client result.
+
+    The route reads the module-level clients once at import time, so patching
+    the attribute on the client object is what the route actually sees.
+    """
+    for path, result in zip(_CLIENT_PATHS, results):
+        if isinstance(result, Exception):
+            mocker.patch(f"{path}.health_check", side_effect=result)
+        else:
+            mocker.patch(f"{path}.health_check", return_value=result)
 
 
 def test_health_endpoint(client):
@@ -27,17 +56,7 @@ def test_health_endpoint(client):
 
 
 def test_deep_health_endpoint_when_services_healthy(client, mocker):
-    mock_stub = mocker.MagicMock()
-    mock_stub.GetDataCoverage = mocker.AsyncMock()
-
-    mock_ingestion_client = mocker.MagicMock()
-    mock_ingestion_client.stub = mock_stub
-    mock_ingestion_client.__aenter__ = mocker.AsyncMock(
-        return_value=mock_ingestion_client
-    )
-    mock_ingestion_client.__aexit__ = mocker.AsyncMock()
-
-    mocker.patch("app.grpc_clients.IngestionClient", return_value=mock_ingestion_client)
+    _patch_health(mocker, [True] * len(_CLIENT_PATHS))
 
     response = client.get("/health/deep")
 
@@ -48,29 +67,16 @@ def test_deep_health_endpoint_when_services_healthy(client, mocker):
     assert data["service"] == "gateway"
     assert data["version"] == "1.0.0"
     assert "timestamp" in data
-    assert "dependencies" in data
-    assert data["dependencies"]["ingestion_service"] == "healthy"
+    for name in _DEPENDENCY_NAMES:
+        assert data["dependencies"][name] == "healthy"
 
 
 def test_deep_health_endpoint_when_service_unhealthy(client, mocker):
-    async def mock_get_status(*args, **kwargs):
-        raise MockRpcError(grpc.StatusCode.UNAVAILABLE, "Service unavailable")
-
-    async def mock_aenter(*args):
-        return mock_ingestion_client
-
-    async def mock_aexit(*args):
-        pass
-
-    mock_stub = mocker.MagicMock()
-    mock_stub.GetDataCoverage = mock_get_status
-
-    mock_ingestion_client = mocker.MagicMock()
-    mock_ingestion_client.stub = mock_stub
-    mock_ingestion_client.__aenter__ = mock_aenter
-    mock_ingestion_client.__aexit__ = mock_aexit
-
-    mocker.patch("app.grpc_clients.IngestionClient", return_value=mock_ingestion_client)
+    _patch_health(
+        mocker,
+        [MockRpcError(grpc.StatusCode.UNAVAILABLE, "Service unavailable")]
+        + [True] * (len(_CLIENT_PATHS) - 1),
+    )
 
     response = client.get("/health/deep")
 
@@ -79,3 +85,14 @@ def test_deep_health_endpoint_when_service_unhealthy(client, mocker):
     data = response.json()
     assert data["status"] == "degraded"
     assert data["dependencies"]["ingestion_service"] == "unhealthy"
+    assert data["dependencies"]["books_service"] == "healthy"
+
+
+def test_deep_health_reports_every_backing_service(client, mocker):
+    _patch_health(mocker, [True, True, True, False, True])
+
+    response = client.get("/health/deep")
+
+    data = response.json()
+    assert data["status"] == "degraded"
+    assert data["dependencies"]["user_data_service"] == "unhealthy"

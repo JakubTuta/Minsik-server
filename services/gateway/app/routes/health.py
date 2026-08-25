@@ -1,16 +1,34 @@
+import asyncio
 import datetime
+import typing
 
 import app.config
 import app.grpc_clients
 import app.middleware.rate_limit
 import app.models.responses
-import app.proto.ingestion_pb2
 import fastapi
 import grpc
 
 router = fastapi.APIRouter(prefix="/health", tags=["Health"])
 
 limiter = app.middleware.rate_limit.limiter
+
+_DEPENDENCIES: typing.Tuple[typing.Tuple[str, typing.Any], ...] = (
+    ("ingestion_service", app.grpc_clients.ingestion_client),
+    ("books_service", app.grpc_clients.books_client),
+    ("auth_service", app.grpc_clients.auth_client),
+    ("user_data_service", app.grpc_clients.user_data_client),
+    ("recommendation_service", app.grpc_clients.recommendation_client),
+)
+
+
+async def _probe(client: typing.Any) -> str:
+    try:
+        return "healthy" if await client.health_check() else "unhealthy"
+    except grpc.RpcError:
+        return "unhealthy"
+    except Exception as e:
+        return f"error: {str(e)}"
 
 
 @router.get(
@@ -39,18 +57,14 @@ async def health(request: fastapi.Request):
 )
 @limiter.limit(app.middleware.rate_limit.get_default_limit())
 async def deep_health(request: fastapi.Request):
-    dependencies = {}
-
-    try:
-        async with app.grpc_clients.IngestionClient() as client:
-            await client.stub.GetDataCoverage(
-                app.proto.ingestion_pb2.GetDataCoverageRequest(), timeout=2.0
-            )
-        dependencies["ingestion_service"] = "healthy"
-    except grpc.RpcError:
-        dependencies["ingestion_service"] = "unhealthy"
-    except Exception as e:
-        dependencies["ingestion_service"] = f"error: {str(e)}"
+    # Probed concurrently: serially, five unreachable services would each burn
+    # the full timeout and the check itself would look like the outage.
+    results = await asyncio.gather(
+        *(_probe(client) for _, client in _DEPENDENCIES)
+    )
+    dependencies = {
+        name: result for (name, _), result in zip(_DEPENDENCIES, results)
+    }
 
     overall_status = (
         "healthy" if all(v == "healthy" for v in dependencies.values()) else "degraded"

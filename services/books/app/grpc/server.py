@@ -135,7 +135,23 @@ def _build_book_summary_proto(
         series_position=item.get("series_position", "") or "",
         rarity=item.get("rarity", "") or "",
         language=item.get("language", "") or "",
+        first_sentence=item.get("first_sentence", "") or "",
     )
+
+
+_background_tasks: typing.Set[asyncio.Task] = set()
+
+
+def _spawn_background(coro: typing.Coroutine) -> None:
+    """Run a coroutine past the response without letting it be collected.
+
+    The event loop holds only a weak reference to a task, so a plain
+    fire-and-forget create_task can be garbage collected while it is
+    suspended, and the work silently never finishes.
+    """
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
@@ -1123,7 +1139,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                     message="Reindex is already in progress",
                 )
 
-            asyncio.create_task(app.services.es_sync_service.reindex_all_to_es(full=True))
+            _spawn_background(app.services.es_sync_service.reindex_all_to_es(full=True))
 
             return app.proto.books_pb2.ReindexAllResponse(
                 status="started",

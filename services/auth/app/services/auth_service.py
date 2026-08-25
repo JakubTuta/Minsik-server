@@ -1,6 +1,7 @@
 import typing
 import logging
 import datetime
+import secrets
 import sqlalchemy
 import sqlalchemy.exc
 import sqlalchemy.ext.asyncio
@@ -11,6 +12,11 @@ import app.services.token_service
 import app.config
 
 logger = logging.getLogger(__name__)
+
+# Hashed at import so it carries the configured bcrypt cost. Verified against
+# when the email is unknown, so a miss spends the same time as a wrong
+# password — otherwise response time alone says which addresses have accounts.
+_DUMMY_PASSWORD_HASH = app.utils.hash_password(secrets.token_urlsafe(32))
 
 
 async def register(
@@ -62,6 +68,7 @@ async def login(
     user = result.scalar_one_or_none()
 
     if not user or not user.is_active:
+        app.utils.verify_password(password, _DUMMY_PASSWORD_HASH)
         raise ValueError("invalid_credentials")
 
     if user.locked_until and user.locked_until > app.utils.utcnow():
@@ -115,6 +122,22 @@ async def logout(
         await session.commit()
 
 
+async def revoke_all_refresh_tokens(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    user_id: int
+) -> int:
+    result = await session.execute(
+        sqlalchemy.update(app.models.refresh_token.RefreshToken)
+        .where(
+            app.models.refresh_token.RefreshToken.user_id == user_id,
+            app.models.refresh_token.RefreshToken.is_revoked.is_(False),
+        )
+        .values(is_revoked=True, revoked_at=app.utils.utcnow())
+    )
+    await session.commit()
+    return result.rowcount
+
+
 async def refresh_tokens(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     refresh_token_raw: str
@@ -131,6 +154,16 @@ async def refresh_tokens(
         raise ValueError("token_not_found")
 
     if token_obj.is_revoked:
+        # Rotation means a revoked token is one that was already spent. Seeing
+        # it again is either a replay of a stolen token or the legitimate
+        # holder racing itself; there is no way to tell which, so every live
+        # session for the account goes with it and both parties re-authenticate.
+        revoked = await revoke_all_refresh_tokens(session, token_obj.user_id)
+        logger.warning(
+            "Refresh token reuse detected for user_id=%s, revoked %s live tokens",
+            token_obj.user_id,
+            revoked,
+        )
         raise PermissionError("token_revoked")
 
     if token_obj.expires_at < app.utils.utcnow():

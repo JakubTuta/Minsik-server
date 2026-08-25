@@ -334,6 +334,7 @@ message BookSummary {
   string rarity = 18;
   string language = 20;
   string work_id = 21;
+  string first_sentence = 22;
 }
 
 message BooksListResponse {

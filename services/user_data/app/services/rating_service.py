@@ -196,17 +196,28 @@ async def upsert_rating(
 async def delete_rating(
     session: sqlalchemy.ext.asyncio.AsyncSession, user_id: int, book_id: int
 ) -> None:
-    stmt = (
-        sqlalchemy.delete(app.models.rating.Rating)
-        .where(
-            app.models.rating.Rating.user_id == user_id,
-            app.models.rating.Rating.book_id == book_id,
-        )
-        .returning(app.models.rating.Rating.rating_id)
-    )
+    """Drop this reader's rating of the work the given edition belongs to.
 
-    result = await session.execute(stmt)
-    if result.scalar_one_or_none() is None:
+    The rating is recorded against whichever translation they happened to be
+    reading, while the book page finds it across every edition of the work.
+    Deleting only the edition in the URL therefore answers not_found for a
+    rating the reader can plainly see.
+    """
+    result = await session.execute(
+        sqlalchemy.text(
+            """
+            DELETE FROM user_data.ratings
+            WHERE user_id = :user_id
+              AND book_id IN (
+                  SELECT b.book_id FROM books.books b
+                  WHERE b.work_id = (SELECT work_id FROM books.books WHERE book_id = :book_id)
+              )
+            RETURNING book_id
+            """
+        ),
+        {"user_id": user_id, "book_id": book_id},
+    )
+    if not result.fetchall():
         raise ValueError("not_found")
 
     await _update_book_stats(session, book_id)

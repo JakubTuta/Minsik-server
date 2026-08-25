@@ -1,6 +1,14 @@
+from unittest.mock import MagicMock
+
 import pytest
 import app.services.bookshelf_service as bookshelf_service
 from tests.conftest import make_scalar_result, make_list_result
+
+
+def _deleted_rows(rows):
+    result = MagicMock()
+    result.fetchall.return_value = rows
+    return result
 
 
 class TestUpsertBookshelf:
@@ -36,6 +44,30 @@ class TestGetBookshelf:
         mock_session.execute.return_value = make_scalar_result(None)
         with pytest.raises(ValueError, match="not_found"):
             await bookshelf_service.get_bookshelf(mock_session, 10, 999)
+
+
+class TestDeleteBookshelf:
+    @pytest.mark.asyncio
+    async def test_delete_success(self, mock_session):
+        mock_session.execute.return_value = _deleted_rows([MagicMock(bookshelf_id=1)])
+        await bookshelf_service.delete_bookshelf(mock_session, 10, 100)
+        mock_session.commit.assert_called_once()
+
+    @pytest.mark.asyncio
+    async def test_delete_not_found_raises(self, mock_session):
+        mock_session.execute.return_value = _deleted_rows([])
+        with pytest.raises(ValueError, match="not_found"):
+            await bookshelf_service.delete_bookshelf(mock_session, 10, 999)
+
+    @pytest.mark.asyncio
+    async def test_delete_reaches_sibling_editions_of_the_work(self, mock_session):
+        # The shelf row may sit on the translation the reader shelved rather
+        # than on the edition whose page they are removing it from.
+        mock_session.execute.return_value = _deleted_rows([MagicMock(bookshelf_id=7)])
+        await bookshelf_service.delete_bookshelf(mock_session, 10, 100)
+
+        statement = str(mock_session.execute.call_args.args[0])
+        assert "work_id" in statement
 
 
 class TestGetUserBookshelves:

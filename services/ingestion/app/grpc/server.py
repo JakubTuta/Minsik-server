@@ -2,6 +2,7 @@ import asyncio
 import concurrent.futures
 import json
 import logging
+import typing
 
 import app.config
 import app.models
@@ -12,6 +13,9 @@ import app.tracing
 import app.workers.data_cleaner
 import app.workers.dump
 import grpc
+import grpc_health.v1.health
+import grpc_health.v1.health_pb2
+import grpc_health.v1.health_pb2_grpc
 import redis
 import sqlalchemy
 
@@ -32,6 +36,21 @@ redis_client = redis.Redis(
 _COVERAGE_CACHE_KEY = "coverage_stats"
 _COVERAGE_CACHE_TTL = 3600
 _CLEANUP_RUNNING_KEY = "cleanup_running"
+
+
+_background_tasks: typing.Set[asyncio.Task] = set()
+
+
+def _spawn_background(coro: typing.Coroutine) -> None:
+    """Run a coroutine past the response without letting it be collected.
+
+    The event loop holds only a weak reference to a task, so a plain
+    fire-and-forget create_task can be garbage collected while it is
+    suspended, and the work silently never finishes.
+    """
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 class IngestionService(app.proto.ingestion_pb2_grpc.IngestionServiceServicer):
@@ -117,7 +136,7 @@ class IngestionService(app.proto.ingestion_pb2_grpc.IngestionServiceServicer):
             if saved_state and len(saved_state.get("completed_phases", [])) < 6:
                 job_id = saved_state["job_id"]
                 completed = saved_state["completed_phases"]
-                asyncio.create_task(
+                _spawn_background(
                     app.workers.dump.run_import_dump(job_id, redis_client)
                 )
                 return app.proto.ingestion_pb2.ImportDumpResponse(
@@ -129,7 +148,7 @@ class IngestionService(app.proto.ingestion_pb2_grpc.IngestionServiceServicer):
                 )
 
             job_id = str(uuid.uuid4())
-            asyncio.create_task(app.workers.dump.run_import_dump(job_id, redis_client))
+            _spawn_background(app.workers.dump.run_import_dump(job_id, redis_client))
 
             return app.proto.ingestion_pb2.ImportDumpResponse(
                 status="started",
@@ -151,7 +170,7 @@ class IngestionService(app.proto.ingestion_pb2_grpc.IngestionServiceServicer):
                     message="Cleanup job is already in progress",
                 )
 
-            asyncio.create_task(app.workers.data_cleaner.run_cleanup_job(force=True))
+            _spawn_background(app.workers.data_cleaner.run_cleanup_job(force=True))
 
             return app.proto.ingestion_pb2.RunCleanupResponse(
                 status="started",
@@ -174,9 +193,15 @@ async def serve():
         IngestionService(), server
     )
 
+    health_servicer = grpc_health.v1.health.aio.HealthServicer()
+    grpc_health.v1.health_pb2_grpc.add_HealthServicer_to_server(health_servicer, server)
+
     listen_addr = f"{app.config.settings.ingestion_service_host}:{app.config.settings.ingestion_grpc_port}"
     server.add_insecure_port(listen_addr)
 
     logger.info(f"Starting Ingestion gRPC server on {listen_addr}")
     await server.start()
+    await health_servicer.set(
+        "", grpc_health.v1.health_pb2.HealthCheckResponse.SERVING
+    )
     await server.wait_for_termination()

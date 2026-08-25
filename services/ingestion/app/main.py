@@ -26,6 +26,15 @@ logger = logging.getLogger(__name__)
 
 shutdown_event = asyncio.Event()
 scheduler: apscheduler.AsyncScheduler = None
+# Held so the signal handler and a resumed dump are not garbage collected
+# mid-flight: the loop keeps only a weak reference to a task.
+_background_tasks: set = set()
+
+
+def _spawn_background(coro) -> None:
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
 
 
 def _check_stale_import_flag_sync() -> bool:
@@ -97,11 +106,7 @@ async def main():
 
         loop = asyncio.get_event_loop()
         for sig in (signal.SIGTERM, signal.SIGINT):
-            loop.add_signal_handler(sig, lambda s=sig: asyncio.create_task(shutdown(s)))
-
-        asyncio.create_task(
-            asyncio.sleep(0)  # yield to event loop before serve() blocks
-        )
+            loop.add_signal_handler(sig, lambda s=sig: _spawn_background(shutdown(s)))
 
         scheduler = apscheduler.AsyncScheduler()
         await scheduler.__aenter__()
@@ -161,7 +166,7 @@ async def main():
             )
             state = app.workers.dump.get_job_state(resume_redis)
             if state:
-                asyncio.create_task(app.workers.dump.run_import_dump(state["job_id"], resume_redis))
+                _spawn_background(app.workers.dump.run_import_dump(state["job_id"], resume_redis))
 
         app.tracing.init_ledger()
         await app.grpc.serve()

@@ -4,6 +4,8 @@ import typing
 import app.config
 import app.tracing
 import grpc
+import grpc_health.v1.health_pb2
+import grpc_health.v1.health_pb2_grpc
 
 logger = logging.getLogger(__name__)
 
@@ -53,6 +55,24 @@ class GrpcClientBase:
         if self.channel:
             await self.channel.close()
             logger.info(f"Closed {self.service_label} service connection")
+
+    async def health_check(self, timeout: float = 2.0) -> bool:
+        """Whether the service behind this channel reports itself as serving.
+
+        Uses grpc.health.v1 rather than a business RPC so the probe stays free
+        of database work and cannot be mistaken for real traffic.
+        """
+        if self.channel is None:
+            return False
+
+        stub = grpc_health.v1.health_pb2_grpc.HealthStub(self.channel)
+        response = await stub.Check(
+            grpc_health.v1.health_pb2.HealthCheckRequest(), timeout=timeout
+        )
+        return (
+            response.status
+            == grpc_health.v1.health_pb2.HealthCheckResponse.SERVING
+        )
 
     async def _call(
         self,

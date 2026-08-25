@@ -10,12 +10,38 @@ import app.utils.language
 import app.utils.responses
 import fastapi
 import grpc
+import pydantic
 
 logger = logging.getLogger(__name__)
 
 router = fastapi.APIRouter(prefix="/api/v1", tags=["Books"])
 
 limiter = app.middleware.rate_limit.limiter
+
+# The bound belongs on the element, not on the list: a numeric constraint
+# declared on the Query itself is applied to the list object, which raises
+# TypeError inside dependency resolution and answers 500 for every request
+# that supplies the filter.
+RatingFilterValue = typing.Annotated[float, pydantic.Field(ge=1.0, le=5.0)]
+
+
+def _no_eligible_books(language: str) -> fastapi.responses.JSONResponse:
+    return app.utils.responses.error_response(
+        code="NO_ELIGIBLE_BOOKS",
+        message=f"No eligible books found for language '{language}'",
+        status_code=404,
+    )
+
+
+def _upstream_error(
+    code: str, message: str, e: grpc.RpcError
+) -> fastapi.responses.JSONResponse:
+    return app.utils.responses.error_response(
+        code=code,
+        message=message,
+        details={"grpc_code": e.code().name},
+        status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
+    )
 
 
 @router.get(
@@ -485,29 +511,24 @@ async def get_author_quote(
             language=language,
         )
 
-        for book_summary in books_response.books:
-            try:
-                book_response = await app.grpc_clients.books_client.get_book(
-                    book_summary.slug, language=language
-                )
-                book = book_response.book
-                if book.first_sentence:
-                    return {
-                        "success": True,
-                        "data": {
-                            "first_sentence": book.first_sentence,
-                            "book_title": book.title,
-                            "book_slug": book.slug,
-                            "publication_year": (
-                                book.original_publication_year
-                                if book.original_publication_year
-                                else None
-                            ),
-                        },
-                        "error": None,
-                    }
-            except grpc.RpcError:
-                continue
+        # The summaries already carry the sentence. Fetching each book to read
+        # it cost up to twenty-one sequential round trips per author page.
+        for book in books_response.books:
+            if book.first_sentence:
+                return {
+                    "success": True,
+                    "data": {
+                        "first_sentence": book.first_sentence,
+                        "book_title": book.title,
+                        "book_slug": book.slug,
+                        "publication_year": (
+                            book.original_publication_year
+                            if book.original_publication_year
+                            else None
+                        ),
+                    },
+                    "error": None,
+                }
 
         return {"success": True, "data": None, "error": None}
     except grpc.RpcError as e:
@@ -722,10 +743,8 @@ async def get_book_comments(
         regex="^(created_at|overall_rating|pacing|emotional_impact|intellectual_depth|writing_quality|rereadability|readability|plot_complexity|humor)$",
         description="Sort field",
     ),
-    rating_filter: typing.Optional[typing.List[float]] = fastapi.Query(
+    rating_filter: typing.Optional[typing.List[RatingFilterValue]] = fastapi.Query(
         None,
-        ge=0.0,
-        le=5.0,
         description="Filter by overall rating(s) (e.g. 5.0, 4.5). Repeat param to filter multiple ratings.",
     ),
     user: typing.Optional[typing.Dict[str, typing.Any]] = fastapi.Depends(
@@ -1000,14 +1019,8 @@ async def open_case(
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "opening case", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
-            raise fastapi.HTTPException(
-                status_code=404,
-                detail=f"No eligible books found for language '{language}'",
-            )
-        raise fastapi.HTTPException(
-            status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
-            detail=f"Open case failed: {e.details()}",
-        )
+            return _no_eligible_books(language)
+        return _upstream_error("INTERNAL_ERROR", "Open case failed", e)
 
 
 @router.get(
@@ -1056,14 +1069,8 @@ async def open_pack(
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "opening pack", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
-            raise fastapi.HTTPException(
-                status_code=404,
-                detail=f"No eligible books found for language '{language}'",
-            )
-        raise fastapi.HTTPException(
-            status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
-            detail=f"Open pack failed: {e.details()}",
-        )
+            return _no_eligible_books(language)
+        return _upstream_error("INTERNAL_ERROR", "Open pack failed", e)
 
 
 @router.get(
@@ -1110,14 +1117,8 @@ async def spin_slots(
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "spinning slots", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
-            raise fastapi.HTTPException(
-                status_code=404,
-                detail=f"No eligible books found for language '{language}'",
-            )
-        raise fastapi.HTTPException(
-            status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
-            detail=f"Spin slots failed: {e.details()}",
-        )
+            return _no_eligible_books(language)
+        return _upstream_error("INTERNAL_ERROR", "Spin slots failed", e)
 
 
 @router.post(
@@ -1154,7 +1155,7 @@ async def spin_slots(
     **Combined rating formula:**
     `(avg_rating * rating_count + ol_avg_rating * ol_rating_count) / (rating_count + ol_rating_count)`
 
-    Returns `data: null` with error code `NO_MATCHING_BOOKS` when no books match the filters.
+    Returns `404` with error code `NO_MATCHING_BOOKS` when no books match the filters.
     """,
 )
 @limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
@@ -1187,19 +1188,12 @@ async def discover_book(
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "discovering book", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
-            return {
-                "success": True,
-                "data": None,
-                "error": {
-                    "code": "NO_MATCHING_BOOKS",
-                    "message": "No books match the provided filters. Try relaxing some criteria.",
-                    "details": {},
-                },
-            }
-        raise fastapi.HTTPException(
-            status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
-            detail=f"Discover book failed: {e.details()}",
-        )
+            return app.utils.responses.error_response(
+                code="NO_MATCHING_BOOKS",
+                message="No books match the provided filters. Try relaxing some criteria.",
+                status_code=404,
+            )
+        return _upstream_error("INTERNAL_ERROR", "Discover book failed", e)
 
 
 @router.post(
@@ -1241,10 +1235,7 @@ async def count_matching_books(
         }
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "counting matching books", e)
-        raise fastapi.HTTPException(
-            status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
-            detail=f"Count matching books failed: {e.details()}",
-        )
+        return _upstream_error("INTERNAL_ERROR", "Count matching books failed", e)
 
 
 @router.get(

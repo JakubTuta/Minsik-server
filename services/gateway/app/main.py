@@ -53,6 +53,11 @@ logging.basicConfig(
 
 logger = logging.getLogger(__name__)
 
+# The schema names every admin route, its payload shape and its rate limit.
+# That is a map of the write surface, and it is of no use to a reader of the
+# public API, so it ships only where the API is being developed against.
+_docs_enabled = settings.env != "production"
+
 
 @contextlib.asynccontextmanager
 async def lifespan(app: fastapi.FastAPI):
@@ -109,9 +114,9 @@ app = fastapi.FastAPI(
     - **Cancel Job**: Stop a running ingestion job
     """,
     version="1.0.0",
-    docs_url="/docs",
-    redoc_url="/redoc",
-    openapi_url="/openapi.json",
+    docs_url="/docs" if _docs_enabled else None,
+    redoc_url="/redoc" if _docs_enabled else None,
+    openapi_url="/openapi.json" if _docs_enabled else None,
     contact={
         "name": "Minsik Team",
         "url": "https://github.com/JakubTuta/Minsik-server",
@@ -127,7 +132,7 @@ if ledger_client:
     app.add_middleware(
         ledger.integrations.fastapi.LedgerMiddleware,
         ledger_client=ledger_client,
-        trusted_proxies=[settings.trusted_proxy_ips_list],
+        trusted_proxies=settings.trusted_proxy_ips_list,
     )
 
 if settings.env == "development":

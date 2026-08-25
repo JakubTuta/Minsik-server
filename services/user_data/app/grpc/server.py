@@ -688,6 +688,29 @@ _USER_BOOK_INFO_SQL = f"""
 """
 
 
+# Shelf state for a list of editions, answered per work. A card carries the
+# edition id of the page it was rendered from, but the reader shelved whichever
+# translation they were reading — matching on book_id alone leaves the badge
+# blank on every other edition of a book they have already shelved.
+_BOOK_STATUSES_SQL = """
+    WITH requested AS (
+        SELECT book_id AS requested_id, work_id
+        FROM books.books
+        WHERE book_id = ANY(:ids)
+    )
+    SELECT r.requested_id AS book_id, bs.status, bs.is_favorite
+    FROM requested r
+    JOIN LATERAL (
+        SELECT x.status, x.is_favorite
+        FROM user_data.bookshelves x
+        JOIN books.books xb ON xb.book_id = x.book_id
+        WHERE x.user_id = :uid AND xb.work_id = r.work_id
+        ORDER BY x.updated_at DESC
+        LIMIT 1
+    ) bs ON TRUE
+"""
+
+
 def _iso_or_empty(value: typing.Any) -> str:
     return value.isoformat() if value is not None else ""
 
@@ -782,6 +805,21 @@ def _row_to_user_book_info(
     return app.proto.user_data_pb2.UserBookInfoResponse(**kwargs)
 
 
+_background_tasks: typing.Set[asyncio.Task] = set()
+
+
+def _spawn_background(coro: typing.Coroutine) -> None:
+    """Run a coroutine past the response without letting it be collected.
+
+    The event loop holds only a weak reference to a task, so a plain
+    fire-and-forget create_task can be garbage collected while it is
+    suspended, and the work silently never finishes.
+    """
+    task = asyncio.create_task(coro)
+    _background_tasks.add(task)
+    task.add_done_callback(_background_tasks.discard)
+
+
 async def _recompute_user_stats_bg(user_id: int, kind: str) -> None:
     try:
         async with app.database.async_session_maker() as session:
@@ -864,7 +902,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 await app.cache.delete_profile_overview(request.user_id)
                 await app.cache.delete_year_in_review(request.user_id)
                 await app.cache.delete_bookshelf_list_cache(request.user_id)
-                asyncio.create_task(
+                _spawn_background(
                     _recompute_user_stats_bg(request.user_id, "bookshelf")
                 )
                 return app.proto.user_data_pb2.BookshelfResponse(
@@ -910,7 +948,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 await app.cache.delete_profile_overview(request.user_id)
                 await app.cache.delete_year_in_review(request.user_id)
                 await app.cache.delete_bookshelf_list_cache(request.user_id)
-                asyncio.create_task(
+                _spawn_background(
                     _recompute_user_stats_bg(request.user_id, "bookshelf")
                 )
                 return app.proto.user_data_pb2.EmptyResponse()
@@ -1116,7 +1154,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 await app.cache.delete_profile_stats(request.user_id)
                 await app.cache.delete_profile_overview(request.user_id)
                 await app.cache.delete_year_in_review(request.user_id)
-                asyncio.create_task(
+                _spawn_background(
                     _recompute_user_stats_bg(request.user_id, "rating")
                 )
                 return app.proto.user_data_pb2.RatingResponse(
@@ -1161,7 +1199,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 await app.cache.delete_profile_stats(request.user_id)
                 await app.cache.delete_profile_overview(request.user_id)
                 await app.cache.delete_year_in_review(request.user_id)
-                asyncio.create_task(
+                _spawn_background(
                     _recompute_user_stats_bg(request.user_id, "rating")
                 )
                 return app.proto.user_data_pb2.EmptyResponse()
@@ -1244,7 +1282,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 await app.cache.delete_profile_overview(request.user_id)
                 await app.cache.delete_year_in_review(request.user_id)
                 await app.cache.delete_bookshelf_list_cache(request.user_id)
-                asyncio.create_task(
+                _spawn_background(
                     _recompute_user_stats_bg(request.user_id, "bookshelf")
                 )
                 return app.proto.user_data_pb2.FavouriteResponse(
@@ -1330,7 +1368,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 await app.cache.delete_profile_overview(request.user_id)
                 await app.cache.delete_year_in_review(request.user_id)
                 await app.cache.delete_comment_list_cache(request.user_id)
-                asyncio.create_task(
+                _spawn_background(
                     _recompute_user_stats_bg(request.user_id, "comment")
                 )
                 username = await _resolve_username(session, request.user_id)
@@ -1427,7 +1465,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 await app.cache.delete_profile_overview(request.user_id)
                 await app.cache.delete_year_in_review(request.user_id)
                 await app.cache.delete_comment_list_cache(request.user_id)
-                asyncio.create_task(
+                _spawn_background(
                     _recompute_user_stats_bg(request.user_id, "comment")
                 )
                 return app.proto.user_data_pb2.EmptyResponse()
@@ -1572,11 +1610,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 return app.proto.user_data_pb2.BookStatusesResponse()
             async with app.database.async_session_maker() as session:
                 result = await session.execute(
-                    sqlalchemy.text(
-                        "SELECT book_id, status, is_favorite "
-                        "FROM user_data.bookshelves "
-                        "WHERE user_id = :uid AND book_id = ANY(:ids)"
-                    ),
+                    sqlalchemy.text(_BOOK_STATUSES_SQL),
                     {"uid": request.user_id, "ids": book_ids},
                 )
                 statuses = [

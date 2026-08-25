@@ -86,6 +86,18 @@ class TestLogin:
         assert str(exc_info.value) == "invalid_credentials"
 
     @pytest.mark.asyncio
+    async def test_login_unknown_email_still_verifies_a_password(self, mock_session):
+        mock_session.execute.return_value = make_execute_result(None)
+
+        with patch('app.utils.verify_password', return_value=False) as mock_verify:
+            with pytest.raises(ValueError):
+                await auth_service.login(mock_session, "nobody@example.com", "password")
+
+        mock_verify.assert_called_once_with(
+            "password", auth_service._DUMMY_PASSWORD_HASH
+        )
+
+    @pytest.mark.asyncio
     async def test_login_inactive_user(self, mock_session, mock_user):
         mock_user.is_active = False
         mock_session.execute.return_value = make_execute_result(mock_user)
@@ -222,6 +234,21 @@ class TestRefreshTokens:
                 await auth_service.refresh_tokens(mock_session, "revoked_token")
 
         assert str(exc_info.value) == "token_revoked"
+
+    @pytest.mark.asyncio
+    async def test_refresh_tokens_reuse_revokes_every_live_token(self, mock_session, mock_refresh_token):
+        mock_refresh_token.is_revoked = True
+        mock_session.execute.return_value = make_execute_result(mock_refresh_token)
+
+        with patch('app.services.token_service.hash_token', return_value='hashed'):
+            with patch(
+                'app.services.auth_service.revoke_all_refresh_tokens'
+            ) as mock_revoke:
+                mock_revoke.return_value = 3
+                with pytest.raises(PermissionError):
+                    await auth_service.refresh_tokens(mock_session, "revoked_token")
+
+        mock_revoke.assert_awaited_once_with(mock_session, mock_refresh_token.user_id)
 
     @pytest.mark.asyncio
     async def test_refresh_tokens_expired(self, mock_session, mock_refresh_token):
