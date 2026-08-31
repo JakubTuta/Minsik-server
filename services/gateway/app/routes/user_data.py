@@ -930,7 +930,7 @@ async def upsert_rating(
             user_id=current_user["user_id"],
             book_slug=book_slug,
             overall_rating=body.overall_rating,
-            review_text=body.review_text or "",
+            review_text=body.review_text,
             pacing=body.pacing,
             emotional_impact=body.emotional_impact,
             intellectual_depth=body.intellectual_depth,

@@ -161,7 +161,14 @@ async def upsert_rating(
     overall_rating: float,
     sub_ratings: typing.Dict[str, float],
     review_text: typing.Optional[str],
+    replace_review_text: bool = True,
 ) -> app.models.rating.Rating:
+    """Upsert a rating, updating only what the caller actually sent.
+
+    Sub-ratings already work this way, and the review has to as well: rating
+    from the hero star row sends no review, and overwriting the column on every
+    upsert would silently erase a review the reader had written.
+    """
     await _move_sibling_edition_rating(session, user_id, book_id)
 
     insert_values: typing.Dict[str, typing.Any] = {
@@ -174,9 +181,10 @@ async def upsert_rating(
 
     update_values: typing.Dict[str, typing.Any] = {
         "overall_rating": overall_rating,
-        "review_text": review_text,
         "updated_at": sqlalchemy.func.now(),
     }
+    if replace_review_text:
+        update_values["review_text"] = review_text
     update_values.update(sub_ratings)
 
     stmt = (

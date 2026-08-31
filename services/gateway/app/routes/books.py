@@ -482,6 +482,71 @@ async def get_author_books(
 
 
 @router.get(
+    "/authors/{slug}/stats",
+    summary="Get author catalogue shape",
+    description="""
+    Whole-catalogue aggregates for one author: works published per decade,
+    genre spread with counts, and the span of publication years.
+
+    The books endpoint pages at 100 while a catalogue can run to hundreds of
+    works, so these counts are computed in the database rather than derived
+    from a page of results.
+
+    When the request carries a session, `progress` reports how much of the
+    catalogue the viewer has read and shelved; for a guest it is all zeroes.
+
+    **Examples:**
+    - `/api/v1/authors/j-r-r-tolkien/stats`
+    """,
+)
+@limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
+async def get_author_stats(
+    request: fastapi.Request,
+    slug: str = fastapi.Path(..., description="Author slug"),
+    user: typing.Optional[typing.Dict[str, typing.Any]] = fastapi.Depends(
+        app.middleware.auth.get_current_user_optional
+    ),
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
+):
+    try:
+        response = await app.grpc_clients.books_client.get_author_stats(
+            slug=slug,
+            language=language,
+            user_id=user["user_id"] if user else 0,
+        )
+
+        return {
+            "success": True,
+            "data": {
+                "works_count": response.works_count,
+                "first_publication_year": response.first_publication_year or None,
+                "last_publication_year": response.last_publication_year or None,
+                "decades": [
+                    {"decade": entry.decade, "count": entry.count}
+                    for entry in response.decades
+                ],
+                "genres": [
+                    {"name": genre.name, "slug": genre.slug, "count": genre.count}
+                    for genre in response.genres
+                ],
+                "progress": {
+                    "works_read": response.progress.works_read,
+                    "works_shelved": response.progress.works_shelved,
+                },
+            },
+            "error": None,
+        }
+    except grpc.RpcError as e:
+        if e.code() == grpc.StatusCode.NOT_FOUND:
+            raise fastapi.HTTPException(status_code=404, detail="Author not found")
+        app.utils.responses.log_grpc_error(logger, "getting author stats", e)
+        raise fastapi.HTTPException(
+            status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
+            detail=f"Get author stats failed: {e.details()}",
+        )
+
+
+@router.get(
     "/authors/{slug}/quote",
     response_model=app.models.books_responses.AuthorQuoteResponse,
     summary="Get author quote",
@@ -640,6 +705,10 @@ async def get_series(
                 "ol_currently_reading_count": series.ol_currently_reading_count,
                 "ol_already_read_count": series.ol_already_read_count,
                 "total_pages": series.total_pages,
+                "genres": [
+                    {"name": genre.name, "slug": genre.slug, "count": genre.count}
+                    for genre in series.genres
+                ],
                 "author": {
                     "author_id": series.primary_author.author_id,
                     "name": series.primary_author.name,
@@ -969,6 +1038,16 @@ def _book_summary_proto_to_dict(item) -> typing.Dict[str, typing.Any]:
         "series_position": (
             float(item.series_position) if item.series_position else None
         ),
+        "series": (
+            {
+                "series_id": item.series.series_id,
+                "name": item.series.name,
+                "slug": item.series.slug,
+            }
+            if item.HasField("series")
+            else None
+        ),
+        "number_of_pages": item.number_of_pages or None,
         "rarity": item.rarity or None,
     }
 

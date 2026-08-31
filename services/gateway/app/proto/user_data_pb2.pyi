@@ -135,7 +135,7 @@ class GetRatingRequest(_message.Message):
     def __init__(self, user_id: _Optional[int] = ..., book_slug: _Optional[str] = ..., language: _Optional[str] = ...) -> None: ...
 
 class UpsertRatingRequest(_message.Message):
-    __slots__ = ("user_id", "book_slug", "overall_rating", "review_text", "pacing", "has_pacing", "emotional_impact", "has_emotional_impact", "intellectual_depth", "has_intellectual_depth", "writing_quality", "has_writing_quality", "rereadability", "has_rereadability", "readability", "has_readability", "plot_complexity", "has_plot_complexity", "humor", "has_humor", "language")
+    __slots__ = ("user_id", "book_slug", "overall_rating", "review_text", "pacing", "has_pacing", "emotional_impact", "has_emotional_impact", "intellectual_depth", "has_intellectual_depth", "writing_quality", "has_writing_quality", "rereadability", "has_rereadability", "readability", "has_readability", "plot_complexity", "has_plot_complexity", "humor", "has_humor", "language", "has_review_text")
     USER_ID_FIELD_NUMBER: _ClassVar[int]
     BOOK_SLUG_FIELD_NUMBER: _ClassVar[int]
     OVERALL_RATING_FIELD_NUMBER: _ClassVar[int]
@@ -157,6 +157,7 @@ class UpsertRatingRequest(_message.Message):
     HUMOR_FIELD_NUMBER: _ClassVar[int]
     HAS_HUMOR_FIELD_NUMBER: _ClassVar[int]
     LANGUAGE_FIELD_NUMBER: _ClassVar[int]
+    HAS_REVIEW_TEXT_FIELD_NUMBER: _ClassVar[int]
     user_id: int
     book_slug: str
     overall_rating: float
@@ -178,7 +179,8 @@ class UpsertRatingRequest(_message.Message):
     humor: float
     has_humor: bool
     language: str
-    def __init__(self, user_id: _Optional[int] = ..., book_slug: _Optional[str] = ..., overall_rating: _Optional[float] = ..., review_text: _Optional[str] = ..., pacing: _Optional[float] = ..., has_pacing: bool = ..., emotional_impact: _Optional[float] = ..., has_emotional_impact: bool = ..., intellectual_depth: _Optional[float] = ..., has_intellectual_depth: bool = ..., writing_quality: _Optional[float] = ..., has_writing_quality: bool = ..., rereadability: _Optional[float] = ..., has_rereadability: bool = ..., readability: _Optional[float] = ..., has_readability: bool = ..., plot_complexity: _Optional[float] = ..., has_plot_complexity: bool = ..., humor: _Optional[float] = ..., has_humor: bool = ..., language: _Optional[str] = ...) -> None: ...
+    has_review_text: bool
+    def __init__(self, user_id: _Optional[int] = ..., book_slug: _Optional[str] = ..., overall_rating: _Optional[float] = ..., review_text: _Optional[str] = ..., pacing: _Optional[float] = ..., has_pacing: bool = ..., emotional_impact: _Optional[float] = ..., has_emotional_impact: bool = ..., intellectual_depth: _Optional[float] = ..., has_intellectual_depth: bool = ..., writing_quality: _Optional[float] = ..., has_writing_quality: bool = ..., rereadability: _Optional[float] = ..., has_rereadability: bool = ..., readability: _Optional[float] = ..., has_readability: bool = ..., plot_complexity: _Optional[float] = ..., has_plot_complexity: bool = ..., humor: _Optional[float] = ..., has_humor: bool = ..., language: _Optional[str] = ..., has_review_text: bool = ...) -> None: ...
 
 class DeleteRatingRequest(_message.Message):
     __slots__ = ("user_id", "book_slug", "language")

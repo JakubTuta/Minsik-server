@@ -1,14 +1,10 @@
-import asyncio
 import logging
 import typing
 
 import app.cache
 import app.config
 import app.services._language_boost
-import app.services.author_recommender
 import app.services.book_of_week_builder
-import app.services.book_recommender
-import app.services.series_recommender
 import sqlalchemy
 import sqlalchemy.ext.asyncio
 
@@ -728,52 +724,6 @@ def get_category_item_type(category: str) -> typing.Optional[str]:
     return CATEGORY_ITEM_TYPES.get(category)
 
 
-async def _collect_series_ids(
-    session: sqlalchemy.ext.asyncio.AsyncSession,
-    book_ids: typing.Set[int],
-) -> typing.Set[int]:
-    if not book_ids:
-        return set()
-    result = await session.execute(
-        sqlalchemy.text(
-            "SELECT DISTINCT series_id FROM books.books "
-            "WHERE book_id = ANY(:ids) AND series_id IS NOT NULL"
-        ),
-        {"ids": list(book_ids)},
-    )
-    return {row.series_id for row in result}
-
-
-async def _precache_contextual(
-    session_maker: typing.Any,
-    ids: typing.Set[int],
-    builder_fn: typing.Callable,
-    key_prefix: str,
-    ttl: int,
-    limit: int,
-) -> None:
-    if not ids:
-        return
-
-    sem = asyncio.Semaphore(5)
-
-    async def _one(eid: int) -> bool:
-        async with sem:
-            try:
-                sections = await builder_fn(session_maker, eid, limit)
-                if sections:
-                    await app.cache.set_cached(f"{key_prefix}:{eid}", sections, ttl)
-                    return True
-            except Exception:
-                logger.exception(f"[rec] precache {key_prefix}:{eid} failed")
-            return False
-
-    results = await asyncio.gather(*(_one(i) for i in ids))
-    logger.info(
-        f"[rec] Precached {sum(results)}/{len(ids)} contextual recs for {key_prefix}"
-    )
-
-
 def recommendation_list_cache_key(category: str, item_type: str, language: str) -> str:
     if item_type == "author":
         return f"rec:{category}"
@@ -785,8 +735,6 @@ async def refresh_all(session_maker: sqlalchemy.orm.sessionmaker) -> None:
     logger.info("[rec] Starting recommendation list refresh")
 
     languages = app.services.book_of_week_builder.available_languages()
-    book_ids: typing.Set[int] = set()
-    author_ids: typing.Set[int] = set()
 
     for category in CATEGORIES:
         key = category["key"]
@@ -817,48 +765,7 @@ async def refresh_all(session_maker: sqlalchemy.orm.sessionmaker) -> None:
                     cache_key, payload, settings.cache_recommendation_ttl
                 )
                 logger.info(f"[rec] Cached {len(items)} items for '{cache_key}'")
-                if item_type == "book":
-                    for item in items:
-                        bid = item.get("book_id")
-                        if bid:
-                            book_ids.add(bid)
-                elif item_type == "author":
-                    for item in items:
-                        aid = item.get("author_id")
-                        if aid:
-                            author_ids.add(aid)
             except Exception:
                 logger.exception(f"[rec] Failed to build category '{key}' ({language})")
 
     logger.info("[rec] Recommendation list refresh complete")
-
-    ttl = settings.cache_recommendation_ttl
-    precache_limit = 10
-
-    async with session_maker() as session:
-        series_ids = await _collect_series_ids(session, book_ids)
-
-    await _precache_contextual(
-        session_maker,
-        book_ids,
-        app.services.book_recommender.build_book_recommendations,
-        "rec:book",
-        ttl,
-        precache_limit,
-    )
-    await _precache_contextual(
-        session_maker,
-        author_ids,
-        app.services.author_recommender.build_author_recommendations,
-        "rec:author",
-        ttl,
-        precache_limit,
-    )
-    await _precache_contextual(
-        session_maker,
-        series_ids,
-        app.services.series_recommender.build_series_recommendations,
-        "rec:series",
-        ttl,
-        precache_limit,
-    )

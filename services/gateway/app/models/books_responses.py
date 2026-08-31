@@ -24,6 +24,12 @@ class SeriesMinimalSchema(pydantic.BaseModel):
     total_books: typing.Optional[int] = None
 
 
+class GenreCountSchema(pydantic.BaseModel):
+    name: str
+    slug: str
+    count: int
+
+
 class SuggestionItemSchema(pydantic.BaseModel):
     type: str
     id: int
@@ -214,6 +220,7 @@ class BookSummarySchema(pydantic.BaseModel):
     app_reading_count: int = 0
     app_read_count: int = 0
     series_position: typing.Optional[float] = None
+    series: typing.Optional[SeriesMinimalSchema] = None
     rarity: typing.Optional[str] = None
     number_of_pages: typing.Optional[int] = None
 
@@ -323,6 +330,7 @@ class SeriesDetailData(pydantic.BaseModel):
     ol_currently_reading_count: int = 0
     ol_already_read_count: int = 0
     total_pages: int = 0
+    genres: typing.List[GenreCountSchema] = []
     author: typing.Optional[AuthorMinimalSchema] = None
 
 

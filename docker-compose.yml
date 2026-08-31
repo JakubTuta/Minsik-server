@@ -136,10 +136,13 @@ services:
       REDIS_HOST: ${REDIS_HOST}
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
-      CORS_ORIGINS: ${CORS_ORIGINS}
-      COOKIE_SECURE: ${COOKIE_SECURE}
+      # .env carries the production origin and cookie flags that the prod
+      # compose file reads. Over plain-http localhost a Secure cookie scoped to
+      # the production domain is dropped by the browser, so dev pins its own.
+      CORS_ORIGINS: http://localhost:${FRONTEND_PORT}
+      COOKIE_SECURE: "false"
       COOKIE_SAMESITE: ${COOKIE_SAMESITE}
-      COOKIE_DOMAIN: ${COOKIE_DOMAIN}
+      COOKIE_DOMAIN: ""
       LEDGER_API_KEY: ${LEDGER_API_KEY}
       TRUSTED_PROXY_IPS: ${TRUSTED_PROXY_IPS}
       AVAILABLE_LANGUAGES: ${AVAILABLE_LANGUAGES}
@@ -470,6 +473,33 @@ services:
         condition: service_healthy
       redis:
         condition: service_healthy
+    networks:
+      - minsik-network
+    restart: unless-stopped
+
+  # ============================================================================
+  # Frontend App - Development Configuration
+  # ============================================================================
+  frontend:
+    # Sibling repo, so its own build context rather than the server root.
+    build:
+      context: ../Minsik-web
+      dockerfile: Dockerfile
+    container_name: minsik-frontend-dev
+    environment:
+      # Browser-facing URLs point at this machine's stack, not at the
+      # production hosts .env names for the prod compose file.
+      NUXT_PUBLIC_API_BASE: http://localhost:${GATEWAY_HTTP_PORT}
+      NUXT_PUBLIC_SITE_URL: http://localhost:${FRONTEND_PORT}
+      NUXT_PUBLIC_I18N_BASE_URL: http://localhost:${FRONTEND_PORT}
+      NUXT_PUBLIC_GOOGLE_CLIENT_ID: ${NUXT_PUBLIC_GOOGLE_CLIENT_ID}
+      NUXT_API_BASE_INTERNAL: http://gateway-service:8040
+      PORT: 3000
+    ports:
+      # EXPOSED for client access
+      - "${FRONTEND_PORT}:3000"
+    depends_on:
+      - gateway-service
     networks:
       - minsik-network
     restart: unless-stopped

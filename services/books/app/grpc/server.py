@@ -101,6 +101,17 @@ def _build_book_detail_proto(
     )
 
 
+def _build_genre_counts(
+    entries: typing.List[typing.Dict[str, typing.Any]],
+) -> typing.List[app.proto.books_pb2.GenreCount]:
+    return [
+        app.proto.books_pb2.GenreCount(
+            name=entry["name"], slug=entry["slug"], count=entry["count"]
+        )
+        for entry in entries
+    ]
+
+
 def _build_book_summary_proto(
     item: typing.Dict[str, typing.Any],
 ) -> app.proto.books_pb2.BookSummary:
@@ -113,7 +124,18 @@ def _build_book_summary_proto(
         )
         for a in item.get("authors", [])
     ]
+    series = item.get("series")
     return app.proto.books_pb2.BookSummary(
+        series=(
+            app.proto.books_pb2.SeriesInfo(
+                series_id=series["series_id"],
+                name=series["name"],
+                slug=series["slug"],
+            )
+            if series
+            else None
+        ),
+        number_of_pages=item.get("number_of_pages", 0) or 0,
         book_id=item["book_id"],
         work_id=item.get("work_id", "") or "",
         title=item["title"],
@@ -395,6 +417,46 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                 grpc.StatusCode.INTERNAL, f"Get author books failed: {str(e)}"
             )
 
+    async def GetAuthorStats(
+        self,
+        request: app.proto.books_pb2.GetAuthorStatsRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> app.proto.books_pb2.AuthorStatsResponse:
+        try:
+            async with app.db.async_session_maker() as session:
+                stats = await app.services.author_service.get_author_stats(
+                    session, request.slug, request.user_id or None
+                )
+        except Exception as e:
+            logger.error(f"Error in GetAuthorStats: {str(e)}")
+            await context.abort(
+                grpc.StatusCode.INTERNAL, f"Get author stats failed: {str(e)}"
+            )
+            return
+
+        if stats is None:
+            await context.abort(
+                grpc.StatusCode.NOT_FOUND, f"Author not found: {request.slug}"
+            )
+            return
+
+        return app.proto.books_pb2.AuthorStatsResponse(
+            works_count=stats["works_count"],
+            first_publication_year=stats["first_publication_year"],
+            last_publication_year=stats["last_publication_year"],
+            decades=[
+                app.proto.books_pb2.DecadeCount(
+                    decade=entry["decade"], count=entry["count"]
+                )
+                for entry in stats["decades"]
+            ],
+            genres=_build_genre_counts(stats["genres"]),
+            progress=app.proto.books_pb2.AuthorReadingProgress(
+                works_read=stats["progress"]["works_read"],
+                works_shelved=stats["progress"]["works_shelved"],
+            ),
+        )
+
     async def GetSeries(
         self,
         request: app.proto.books_pb2.GetSeriesRequest,
@@ -450,6 +512,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
             ol_already_read_count=series["ol_already_read_count"],
             total_pages=series.get("total_pages", 0),
             primary_author=primary_author_proto,
+            genres=_build_genre_counts(series.get("genres", [])),
         )
 
         return app.proto.books_pb2.SeriesDetailResponse(series=series_detail)

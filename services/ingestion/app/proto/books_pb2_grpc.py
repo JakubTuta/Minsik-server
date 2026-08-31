@@ -64,6 +64,11 @@ class BooksServiceStub(object):
                 request_serializer=books__pb2.GetAuthorBooksRequest.SerializeToString,
                 response_deserializer=books__pb2.BooksListResponse.FromString,
                 _registered_method=True)
+        self.GetAuthorStats = channel.unary_unary(
+                '/books.v1.BooksService/GetAuthorStats',
+                request_serializer=books__pb2.GetAuthorStatsRequest.SerializeToString,
+                response_deserializer=books__pb2.AuthorStatsResponse.FromString,
+                _registered_method=True)
         self.GetSeries = channel.unary_unary(
                 '/books.v1.BooksService/GetSeries',
                 request_serializer=books__pb2.GetSeriesRequest.SerializeToString,
@@ -215,6 +220,12 @@ class BooksServiceServicer(object):
         raise NotImplementedError('Method not implemented!')
 
     def GetAuthorBooks(self, request, context):
+        """Missing associated documentation comment in .proto file."""
+        context.set_code(grpc.StatusCode.UNIMPLEMENTED)
+        context.set_details('Method not implemented!')
+        raise NotImplementedError('Method not implemented!')
+
+    def GetAuthorStats(self, request, context):
         """Missing associated documentation comment in .proto file."""
         context.set_code(grpc.StatusCode.UNIMPLEMENTED)
         context.set_details('Method not implemented!')
@@ -390,6 +401,11 @@ def add_BooksServiceServicer_to_server(servicer, server):
                     servicer.GetAuthorBooks,
                     request_deserializer=books__pb2.GetAuthorBooksRequest.FromString,
                     response_serializer=books__pb2.BooksListResponse.SerializeToString,
+            ),
+            'GetAuthorStats': grpc.unary_unary_rpc_method_handler(
+                    servicer.GetAuthorStats,
+                    request_deserializer=books__pb2.GetAuthorStatsRequest.FromString,
+                    response_serializer=books__pb2.AuthorStatsResponse.SerializeToString,
             ),
             'GetSeries': grpc.unary_unary_rpc_method_handler(
                     servicer.GetSeries,
@@ -669,6 +685,33 @@ class BooksService(object):
             '/books.v1.BooksService/GetAuthorBooks',
             books__pb2.GetAuthorBooksRequest.SerializeToString,
             books__pb2.BooksListResponse.FromString,
+            options,
+            channel_credentials,
+            insecure,
+            call_credentials,
+            compression,
+            wait_for_ready,
+            timeout,
+            metadata,
+            _registered_method=True)
+
+    @staticmethod
+    def GetAuthorStats(request,
+            target,
+            options=(),
+            channel_credentials=None,
+            call_credentials=None,
+            insecure=False,
+            compression=None,
+            wait_for_ready=None,
+            timeout=None,
+            metadata=None):
+        return grpc.experimental.unary_unary(
+            request,
+            target,
+            '/books.v1.BooksService/GetAuthorStats',
+            books__pb2.GetAuthorStatsRequest.SerializeToString,
+            books__pb2.AuthorStatsResponse.FromString,
             options,
             channel_credentials,
             insecure,

@@ -1147,6 +1147,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                     request.overall_rating,
                     sub_ratings,
                     request.review_text or None,
+                    request.has_review_text,
                 )
                 await app.cache.delete_book_cache(
                     *await _work_edition_slugs(session, request.book_slug)

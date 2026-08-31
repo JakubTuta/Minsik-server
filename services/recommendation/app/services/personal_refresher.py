@@ -21,6 +21,10 @@ logger = logging.getLogger(__name__)
 REFRESH_STATUS_KEY = "rec:personal:refresh:status"
 REFRESH_STATUS_TTL = 3 * 86400
 
+# Postgres is capped at 1.0 CPU; each in-flight user runs several aggregation
+# queries, so more than two at once pins the container for the whole run.
+_REFRESH_CONCURRENCY = 2
+
 
 async def _get_active_users(
     session: sqlalchemy.ext.asyncio.AsyncSession,
@@ -82,7 +86,7 @@ async def refresh_all_personal(session_maker: typing.Any) -> None:
 
     logger.info(f"[rec:personal] Refreshing {len(users)} users")
 
-    semaphore = asyncio.Semaphore(5)
+    semaphore = asyncio.Semaphore(_REFRESH_CONCURRENCY)
     success_count = 0
     error_count = 0
 

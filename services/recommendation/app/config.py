@@ -48,12 +48,15 @@ class Settings(pydantic_settings.BaseSettings):
 
     cache_case_pool_ttl: int = pydantic.Field(default=7200)
 
+    # Crons are evaluated in the container's local zone (TZ=Europe/Warsaw).
+    # Spaced so no two heavy refreshes overlap: postgres is capped at 1.0 CPU
+    # and two concurrent builder pools saturate it for the whole overlap.
     general_refresh_enabled: bool = pydantic.Field(default=True)
     general_refresh_cron: str = pydantic.Field(default="0 0 * * *")
     personal_refresh_enabled: bool = pydantic.Field(default=True)
-    personal_refresh_cron: str = pydantic.Field(default="0 1 * * *")
+    personal_refresh_cron: str = pydantic.Field(default="30 2 * * *")
     contextual_precompute_enabled: bool = pydantic.Field(default=True)
-    contextual_precompute_cron: str = pydantic.Field(default="0 2 * * *")
+    contextual_precompute_cron: str = pydantic.Field(default="0 4 * * *")
     case_pool_refresh_enabled: bool = pydantic.Field(default=True)
     case_pool_refresh_cron: str = pydantic.Field(default="30 * * * *")
     book_of_week_enabled: bool = pydantic.Field(default=True)

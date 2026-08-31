@@ -96,6 +96,11 @@ async def get_author_books(
             b.first_sentence,
             b.original_publication_year,
             b.primary_cover_url,
+            b.number_of_pages,
+            b.series_position,
+            s.series_id,
+            s.name AS series_name,
+            s.slug AS series_slug,
             b.rating_count,
             b.avg_rating,
             b.ol_rating_count,
@@ -133,6 +138,7 @@ async def get_author_books(
             ) AS authors
         FROM books.books b
         JOIN books.book_authors ba ON b.book_id = ba.book_id
+        LEFT JOIN books.series s ON s.series_id = b.series_id
         {app.services._language_boost.work_shelf_counts_join()}
         WHERE ba.author_id = :author_id AND {preferred_edition}
         ORDER BY {sort_col} {order_dir} NULLS LAST
@@ -174,6 +180,139 @@ async def get_author_books(
     )
 
     return books_data, total
+
+
+async def get_author_stats(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    slug: str,
+    user_id: typing.Optional[int] = None,
+) -> typing.Optional[typing.Dict[str, typing.Any]]:
+    """Whole-catalog shape for one author, plus the viewer's progress through it.
+
+    The catalog runs to hundreds of works while the books endpoint pages at 100,
+    so per-decade and per-genre counts can only be honest if the database does
+    the counting. The catalog half is language-agnostic and cached; the viewer
+    half is per-user and never cached.
+    """
+    author_stmt = sqlalchemy.select(app.models.author.Author.author_id).filter(
+        app.models.author.Author.slug == slug
+    )
+    author_result = await session.execute(author_stmt)
+    author_id = author_result.scalar()
+
+    if author_id is None:
+        return None
+
+    cache_key = f"author_stats:{slug}"
+    stats = await app.cache.get_cached(cache_key)
+
+    if not stats:
+        stats = await _load_author_catalog_shape(session, author_id)
+        await app.cache.set_cached(
+            cache_key, stats, app.config.settings.cache_author_detail_ttl
+        )
+
+    return {**stats, "progress": await _author_progress(session, author_id, user_id)}
+
+
+async def _load_author_catalog_shape(
+    session: sqlalchemy.ext.asyncio.AsyncSession, author_id: int
+) -> typing.Dict[str, typing.Any]:
+    shape_query = sqlalchemy.text(
+        """
+        WITH author_works AS (
+            SELECT DISTINCT ON (b.work_id)
+                b.work_id, b.original_publication_year
+            FROM books.books b
+            JOIN books.book_authors ba ON b.book_id = ba.book_id
+            WHERE ba.author_id = :author_id
+            ORDER BY b.work_id, (COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0)) DESC
+        ),
+        dated AS (
+            SELECT original_publication_year AS year
+            FROM author_works
+            WHERE original_publication_year IS NOT NULL AND original_publication_year > 0
+        )
+        SELECT
+            (SELECT COUNT(*) FROM author_works) AS works_count,
+            (SELECT MIN(year) FROM dated) AS first_year,
+            (SELECT MAX(year) FROM dated) AS last_year,
+            COALESCE((
+                SELECT json_agg(json_build_object('decade', decade, 'count', works) ORDER BY decade)
+                FROM (
+                    SELECT (year / 10) * 10 AS decade, COUNT(*) AS works
+                    FROM dated
+                    GROUP BY 1
+                ) per_decade
+            ), '[]'::json) AS decades
+        """
+    )
+
+    genres_query = sqlalchemy.text(
+        """
+        SELECT g.name, g.slug, COUNT(DISTINCT b.work_id) AS works
+        FROM books.book_authors ba
+        JOIN books.books b ON b.book_id = ba.book_id
+        JOIN books.book_genres bg ON bg.book_id = b.book_id
+        JOIN books.genres g ON g.genre_id = bg.genre_id
+        WHERE ba.author_id = :author_id
+        GROUP BY g.name, g.slug
+        ORDER BY works DESC, g.name ASC
+        LIMIT 12
+        """
+    )
+
+    params = {"author_id": author_id}
+    shape_row = (await session.execute(shape_query, params)).first()
+    genre_rows = (await session.execute(genres_query, params)).fetchall()
+
+    return {
+        "works_count": int(shape_row.works_count or 0),
+        "first_publication_year": int(shape_row.first_year or 0),
+        "last_publication_year": int(shape_row.last_year or 0),
+        "decades": [
+            {"decade": int(entry["decade"]), "count": int(entry["count"])}
+            for entry in app.services._row_helpers.json_agg_list(shape_row.decades)
+        ],
+        "genres": [
+            {"name": row.name, "slug": row.slug, "count": int(row.works)}
+            for row in genre_rows
+        ],
+    }
+
+
+async def _author_progress(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    author_id: int,
+    user_id: typing.Optional[int],
+) -> typing.Dict[str, int]:
+    if not user_id:
+        return {"works_read": 0, "works_shelved": 0}
+
+    # Counted by work, not by shelf row: a reader who shelved two translations
+    # of the same book has read it once.
+    progress_query = sqlalchemy.text(
+        """
+        SELECT
+            COUNT(DISTINCT b.work_id) FILTER (WHERE sh.status = 'read') AS works_read,
+            COUNT(DISTINCT b.work_id) AS works_shelved
+        FROM user_data.bookshelves sh
+        JOIN books.books b ON b.book_id = sh.book_id
+        JOIN books.book_authors ba ON ba.book_id = b.book_id
+        WHERE sh.user_id = :user_id AND ba.author_id = :author_id
+        """
+    )
+
+    row = (
+        await session.execute(
+            progress_query, {"author_id": author_id, "user_id": user_id}
+        )
+    ).first()
+
+    return {
+        "works_read": int(row.works_read or 0),
+        "works_shelved": int(row.works_shelved or 0),
+    }
 
 
 async def _track_author_view(author_id: int) -> None:
@@ -366,6 +505,17 @@ def _book_row_to_dict(row: typing.Any) -> typing.Dict[str, typing.Any]:
         "app_want_to_read_count": row.app_want_to_read_count or 0,
         "app_reading_count": row.app_reading_count or 0,
         "app_read_count": row.app_read_count or 0,
+        "number_of_pages": row.number_of_pages or 0,
+        "series_position": str(row.series_position) if row.series_position else None,
+        "series": (
+            {
+                "series_id": row.series_id,
+                "name": row.series_name,
+                "slug": row.series_slug,
+            }
+            if row.series_id
+            else None
+        ),
         "authors": authors_list,
     }
 

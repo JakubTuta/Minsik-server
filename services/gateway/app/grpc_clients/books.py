@@ -80,6 +80,15 @@ class BooksClient(base.GrpcClientBase):
 
         return await self._call("GetAuthorBooks", request)
 
+    async def get_author_stats(
+        self, slug: str, language: str = "en", user_id: int = 0
+    ) -> app.proto.books_pb2.AuthorStatsResponse:
+        request = app.proto.books_pb2.GetAuthorStatsRequest(
+            slug=slug, language=language, user_id=user_id
+        )
+
+        return await self._call("GetAuthorStats", request)
+
     async def get_series(
         self, slug: str, language: str = "en"
     ) -> app.proto.books_pb2.SeriesDetailResponse:

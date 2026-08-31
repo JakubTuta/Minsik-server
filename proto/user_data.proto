@@ -96,6 +96,7 @@ message UpsertRatingRequest {
   float humor = 19;
   bool has_humor = 20;
   string language = 21;
+  bool has_review_text = 22;
 }
 message DeleteRatingRequest  { int64 user_id = 1; string book_slug = 2; string language = 3; }
 message GetUserRatingsRequest {

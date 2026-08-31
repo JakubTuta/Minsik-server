@@ -124,7 +124,9 @@ async def get_series_by_slug(
     )
     primary_author = primary_author_result.first()
 
-    series_data = _series_to_dict(series, stats, primary_author)
+    genres = await _get_series_genres(session, series.series_id)
+
+    series_data = _series_to_dict(series, stats, primary_author, genres)
 
     # Cache under the requested language too, so a fallback isn't
     # recomputed on every request for a language this series has no
@@ -187,6 +189,7 @@ async def get_series_books(
             b.title,
             b.slug,
             b.description,
+            b.original_publication_year,
             b.primary_cover_url,
             b.rating_count,
             b.avg_rating,
@@ -267,10 +270,43 @@ async def get_series_books(
     return books_list, total_count
 
 
+async def _get_series_genres(
+    session: sqlalchemy.ext.asyncio.AsyncSession, series_id: int
+) -> typing.List[typing.Dict[str, typing.Any]]:
+    """Genres across every volume, counted by work.
+
+    Matched through work_id rather than the series' own book rows: genres are
+    attached per edition and a non-English series row would otherwise come back
+    with nothing to show.
+    """
+    stmt = sqlalchemy.text(
+        """
+        WITH series_works AS (
+            SELECT DISTINCT b.work_id FROM books.books b WHERE b.series_id = :series_id
+        )
+        SELECT g.name, g.slug, COUNT(DISTINCT b.work_id) AS works
+        FROM books.books b
+        JOIN books.book_genres bg ON bg.book_id = b.book_id
+        JOIN books.genres g ON g.genre_id = bg.genre_id
+        WHERE b.work_id IN (SELECT work_id FROM series_works)
+        GROUP BY g.name, g.slug
+        ORDER BY works DESC, g.name ASC
+        LIMIT 8
+        """
+    )
+
+    rows = (await session.execute(stmt, {"series_id": series_id})).fetchall()
+
+    return [
+        {"name": row.name, "slug": row.slug, "count": int(row.works)} for row in rows
+    ]
+
+
 def _series_to_dict(
     series: app.models.series.Series,
     stats: typing.Any,
     primary_author: typing.Any = None,
+    genres: typing.Optional[typing.List[typing.Dict[str, typing.Any]]] = None,
 ) -> typing.Dict[str, typing.Any]:
     return {
         "series_id": series.series_id,
@@ -307,6 +343,7 @@ def _series_to_dict(
         ),
         "app_read_count": int(stats.app_read_count) if stats.app_read_count else 0,
         "total_pages": int(stats.total_pages) if stats.total_pages else 0,
+        "genres": genres or [],
         "primary_author": {
             "author_id": primary_author.author_id,
             "name": primary_author.name,
@@ -323,6 +360,7 @@ def _series_book_row_to_dict(row: typing.Any) -> typing.Dict[str, typing.Any]:
         "title": row.title,
         "slug": row.slug,
         "description": row.description or "",
+        "original_publication_year": int(row.original_publication_year or 0),
         "primary_cover_url": row.primary_cover_url or "",
         "rating_count": row.rating_count or 0,
         "avg_rating": str(row.avg_rating) if row.avg_rating else "0.00",
@@ -375,7 +413,9 @@ async def update_series(
     )
     stats = stats_result.first()
 
-    return _series_to_dict(series, stats)
+    genres = await _get_series_genres(session, series.series_id)
+
+    return _series_to_dict(series, stats, None, genres)
 
 
 async def remove_series_author(
