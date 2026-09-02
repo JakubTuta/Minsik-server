@@ -117,10 +117,14 @@ class TestSeriesService:
         mock_primary_author_result = MagicMock()
         mock_primary_author_result.first.return_value = None
 
+        mock_genres_result = MagicMock()
+        mock_genres_result.fetchall.return_value = []
+
         mock_session.execute.side_effect = [
             mock_result,
             mock_stats_result,
             mock_primary_author_result,
+            mock_genres_result,
         ]
 
         with patch("app.cache.get_cached", return_value=None), patch(
@@ -314,10 +318,14 @@ class TestSeriesService:
         mock_primary_author_result = MagicMock()
         mock_primary_author_result.first.return_value = None
 
+        mock_genres_result = MagicMock()
+        mock_genres_result.fetchall.return_value = []
+
         mock_session.execute.side_effect = [
             mock_result,
             mock_stats_result,
             mock_primary_author_result,
+            mock_genres_result,
         ]
 
         with patch("app.cache.get_cached", return_value=None), patch(

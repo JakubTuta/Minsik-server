@@ -195,8 +195,8 @@ async def _query_ratings(
         "humor",
         "pacing",
     ]
-    totals: typing.Dict[str, float] = {d: 0.0 for d in _dimensions}
-    counts: typing.Dict[str, int] = {d: 0 for d in _dimensions}
+    totals: typing.Dict[str, float] = dict.fromkeys(_dimensions, 0.0)
+    counts: typing.Dict[str, int] = dict.fromkeys(_dimensions, 0)
 
     for row in rows:
         for dim in _dimensions:

@@ -10,4 +10,7 @@ technical-architecture.md
 scripts/
 htmlcov/
 .coverage
+coverage.xml
+junit.xml
+.ruff_cache/
 scripts.private.ps1

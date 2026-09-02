@@ -1,0 +1,38 @@
+version: 2
+
+updates:
+  - package-ecosystem: github-actions
+    directory: /
+    schedule:
+      interval: weekly
+    groups:
+      actions:
+        patterns: ['*']
+
+  - package-ecosystem: pip
+    directories:
+      - /services/auth
+      - /services/books
+      - /services/db_migrator
+      - /services/gateway
+      - /services/ingestion
+      - /services/recommendation
+      - /services/user_data
+    schedule:
+      interval: weekly
+    open-pull-requests-limit: 10
+    groups:
+      python-minor-and-patch:
+        update-types: [minor, patch]
+
+  - package-ecosystem: docker
+    directories:
+      - /services/auth
+      - /services/books
+      - /services/db_migrator
+      - /services/gateway
+      - /services/ingestion
+      - /services/recommendation
+      - /services/user_data
+    schedule:
+      interval: weekly

@@ -194,7 +194,7 @@ async def get_user_bookshelves(
     if status_filter:
         base_conditions.append(app.models.bookshelf.Bookshelf.status == status_filter)
     if favourites_only:
-        base_conditions.append(app.models.bookshelf.Bookshelf.is_favorite == True)
+        base_conditions.append(app.models.bookshelf.Bookshelf.is_favorite.is_(True))
 
     count_stmt = (
         sqlalchemy.select(sqlalchemy.func.count())
