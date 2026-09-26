@@ -80,9 +80,11 @@ async def test_cleanup_keeps_high_quality_book(commit_session, session_factory_f
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_cleanup_keeps_book_with_views(commit_session, session_factory_for_testing):
+async def test_cleanup_deletes_low_quality_book_despite_views(
+    commit_session, session_factory_for_testing
+):
     book = Book(
-        title="Viewed Book",
+        title="Crawler Viewed Book",
         language="en",
         work_id="ol-viewed-book", slug="viewed-book",
         view_count=5,
@@ -104,8 +106,8 @@ async def test_cleanup_keeps_book_with_views(commit_session, session_factory_for
     )
 
     result = await commit_session.execute(select(func.count()).select_from(Book))
-    assert result.scalar_one() == 1
-    assert stats["deleted"] == 0
+    assert result.scalar_one() == 0
+    assert stats["deleted"] == 1
 
 
 @pytest.mark.asyncio
@@ -668,7 +670,7 @@ async def test_cleanup_orphan_authors_removes_junk_publisher_name(
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_cleanup_orphan_authors_removes_engaged_sole_book(
+async def test_cleanup_orphan_authors_keeps_engaged_sole_book(
     commit_session, session_factory_for_testing
 ):
     author = Author(name="Solo Author", slug="solo-author", created_at=OLD_DATE)
@@ -705,10 +707,10 @@ async def test_cleanup_orphan_authors_removes_engaged_sole_book(
     assert stats["deleted"] == 1
 
     book_result = await commit_session.execute(select(func.count()).select_from(Book))
-    assert book_result.scalar_one() == 0
+    assert book_result.scalar_one() == 1
 
     shelf_result = await commit_session.execute(
         text("SELECT COUNT(*) FROM user_data.bookshelves WHERE book_id = :book_id"),
         {"book_id": book.book_id},
     )
-    assert shelf_result.scalar_one() == 0
+    assert shelf_result.scalar_one() == 1

@@ -130,7 +130,11 @@ async def process_works_dump(file_path: str) -> int:
                     cover_url = app.workers.dump.parsers.extract_cover_url(work_data.get("covers"))
                     work_ol_id = work_data.get("key", "").replace("/works/", "")
 
-                    if not authors_list:
+                    if (
+                        not authors_list
+                        or len(authors_list)
+                        >= app.config.settings.cleanup_book_max_authors
+                    ):
                         failed += 1
                         continue
 

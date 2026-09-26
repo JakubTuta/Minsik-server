@@ -26,7 +26,9 @@ class Settings(pydantic_settings.BaseSettings):
     open_library_api_url: str = pydantic.Field(default="https://openlibrary.org")
     open_library_rate_limit: int = pydantic.Field(default=50)
 
-    google_books_api_url: str = pydantic.Field(default="https://www.googleapis.com/books/v1")
+    google_books_api_url: str = pydantic.Field(
+        default="https://www.googleapis.com/books/v1"
+    )
     google_books_api_key: str = pydantic.Field(default="")
 
     request_timeout: float = pydantic.Field(default=30.0)
@@ -61,7 +63,7 @@ class Settings(pydantic_settings.BaseSettings):
 
     cleanup_enabled: bool = pydantic.Field(default=True)
     cleanup_cron: str = pydantic.Field(default="15 3,15 * * *")
-    cleanup_book_batch_size: int = pydantic.Field(default=100)
+    cleanup_book_batch_size: int = pydantic.Field(default=200)
     cleanup_author_batch_size: int = pydantic.Field(default=50)
     cleanup_series_batch_size: int = pydantic.Field(default=500)
     cleanup_genre_batch_size: int = pydantic.Field(default=1000)
@@ -69,7 +71,7 @@ class Settings(pydantic_settings.BaseSettings):
     cleanup_book_engagement_threshold: int = pydantic.Field(default=10)
     cleanup_book_min_publication_year: int = pydantic.Field(default=1450)
     cleanup_genre_min_book_count: int = pydantic.Field(default=10)
-    cleanup_author_min_books: int = pydantic.Field(default=5)
+    cleanup_author_min_books: int = pydantic.Field(default=1)
     cleanup_author_max_books: int = pydantic.Field(default=500)
     cleanup_series_min_books: int = pydantic.Field(default=2)
     cleanup_series_max_books: int = pydantic.Field(default=50)
@@ -78,6 +80,10 @@ class Settings(pydantic_settings.BaseSettings):
     cleanup_book_ol_min_rating_count: int = pydantic.Field(default=20)
     cleanup_book_ol_min_avg_rating: float = pydantic.Field(default=1.5)
     cleanup_author_junk_publisher_names: bool = pydantic.Field(default=True)
+
+    cleanup_ol_min_engagement: int = pydantic.Field(default=1)
+    cleanup_book_max_authors: int = pydantic.Field(default=10)
+    cleanup_collection_entries: bool = pydantic.Field(default=True)
 
     description_enrich_cooldown_days: int = pydantic.Field(default=30)
     description_enrich_request_delay: float = pydantic.Field(default=1.0)
