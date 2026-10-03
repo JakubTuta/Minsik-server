@@ -6,6 +6,7 @@ import typing
 
 import app.cache
 import app.database
+import app.metrics
 import app.proto.user_data_pb2
 import app.proto.user_data_pb2_grpc
 import app.services.bookshelf_service
@@ -905,6 +906,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 _spawn_background(
                     _recompute_user_stats_bg(request.user_id, "bookshelf")
                 )
+                app.metrics.record_bookshelf(request.status)
                 return app.proto.user_data_pb2.BookshelfResponse(
                     bookshelf=_bookshelf_to_proto(
                         bookshelf,
@@ -1158,6 +1160,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 _spawn_background(
                     _recompute_user_stats_bg(request.user_id, "rating")
                 )
+                app.metrics.record_rating(has_review=bool(request.review_text))
                 return app.proto.user_data_pb2.RatingResponse(
                     rating=_rating_to_proto(
                         rating,
@@ -1372,6 +1375,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 _spawn_background(
                     _recompute_user_stats_bg(request.user_id, "comment")
                 )
+                app.metrics.record_comment(is_spoiler=request.is_spoiler)
                 username = await _resolve_username(session, request.user_id)
                 return app.proto.user_data_pb2.CommentResponse(
                     comment=_comment_to_proto(

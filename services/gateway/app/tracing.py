@@ -1,13 +1,36 @@
+import asyncio
+import time
 import typing
 
 import app.config
 import grpc
 import ledger
+import opentelemetry.metrics as metrics_api
 import opentelemetry.trace as trace_api
 from opentelemetry import propagate
 
+_TRACE_SAMPLE_RATE = 0.05
+
 _ledger: typing.Optional[ledger.LedgerClient] = None
 _client_interceptor: typing.Optional["TracingClientInterceptor"] = None
+
+_meter = metrics_api.get_meter(__name__)
+_client_duration = _meter.create_histogram(
+    "grpc_client_duration_ms",
+    unit="ms",
+    description="Gateway-side gRPC call duration by method and status code",
+)
+_client_errors = _meter.create_counter(
+    "grpc_client_errors",
+    description="Gateway-side gRPC calls that finished with a non-OK status",
+)
+
+
+def _record_call(method: str, status: str, started: float) -> None:
+    attributes = {"method": method, "status": status}
+    _client_duration.record((time.perf_counter() - started) * 1000, attributes)
+    if status != "OK":
+        _client_errors.add(1, attributes)
 
 
 class _MutableClientCallDetails:
@@ -32,16 +55,30 @@ class TracingClientInterceptor(grpc.aio.UnaryUnaryClientInterceptor):
         if isinstance(method, bytes):
             method = method.decode()
 
-        with tracer.start_as_current_span(f"grpc.client{method}", kind=trace_api.SpanKind.CLIENT):
-            carrier: dict[str, str] = {}
-            propagate.inject(carrier)
+        started = time.perf_counter()
+        status = "UNKNOWN"
+        try:
+            with tracer.start_as_current_span(f"grpc.client{method}", kind=trace_api.SpanKind.CLIENT):
+                carrier: dict[str, str] = {}
+                propagate.inject(carrier)
 
-            metadata = list(client_call_details.metadata or [])
-            for k, v in carrier.items():
-                metadata.append((k, v))
+                metadata = list(client_call_details.metadata or [])
+                for k, v in carrier.items():
+                    metadata.append((k, v))
 
-            new_details = _MutableClientCallDetails(client_call_details, metadata)
-            return await continuation(new_details, request)
+                new_details = _MutableClientCallDetails(client_call_details, metadata)
+                call = await continuation(new_details, request)
+                response = await call
+            status = "OK"
+            return response
+        except grpc.aio.AioRpcError as error:
+            status = error.code().name
+            raise
+        except asyncio.CancelledError:
+            status = "CANCELLED"
+            raise
+        finally:
+            _record_call(method, status, started)
 
 
 def init_ledger() -> typing.Optional[ledger.LedgerClient]:
@@ -51,7 +88,10 @@ def init_ledger() -> typing.Optional[ledger.LedgerClient]:
             api_key=app.config.settings.ledger_api_key,
             base_url="https://ledger-server.jtuta.cloud",
             service_name="gateway",
+            environment=app.config.settings.env,
+            trace_sample_rate=_TRACE_SAMPLE_RATE,
         )
+        _ledger.instrument_logging()
         _client_interceptor = TracingClientInterceptor()
     return _ledger
 

@@ -102,6 +102,7 @@ async def shutdown(signal_received=None):
 async def main():
     global scheduler
     try:
+        app.tracing.init_ledger()
         should_resume = await clear_stale_import_flag()
 
         loop = asyncio.get_event_loop()
@@ -168,7 +169,6 @@ async def main():
             if state:
                 _spawn_background(app.workers.dump.run_import_dump(state["job_id"], resume_redis))
 
-        app.tracing.init_ledger()
         await app.grpc.serve()
 
     except KeyboardInterrupt:

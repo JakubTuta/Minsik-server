@@ -6,6 +6,7 @@ import typing
 
 import app.cache
 import app.db
+import app.metrics
 import app.proto.books_pb2
 import app.proto.books_pb2_grpc
 import app.services.author_service
@@ -227,6 +228,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                         )
                     )
 
+                app.metrics.record_search("search", has_results=total > 0)
                 return app.proto.books_pb2.SearchResponse(
                     results=search_results, total_count=total
                 )
@@ -274,6 +276,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                 for result in results
             ]
 
+            app.metrics.record_search("suggest", has_results=bool(items))
             return app.proto.books_pb2.SuggestSearchResponse(items=items)
         except Exception as e:
             logger.error(f"Error in SuggestSearch: {str(e)}")

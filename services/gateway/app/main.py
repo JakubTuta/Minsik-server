@@ -128,13 +128,6 @@ app = fastapi.FastAPI(
 
 ledger_client = tracing_module.init_ledger()
 
-if ledger_client:
-    app.add_middleware(
-        ledger.integrations.fastapi.LedgerMiddleware,
-        ledger_client=ledger_client,
-        trusted_proxies=settings.trusted_proxy_ips_list,
-    )
-
 if settings.env == "development":
     _setup_cors(app)
 
@@ -147,6 +140,14 @@ if settings.rate_limit_enabled:
         slowapi.errors.RateLimitExceeded, slowapi._rate_limit_exceeded_handler
     )
     app.add_middleware(slowapi.middleware.SlowAPIMiddleware)
+
+if ledger_client:
+    app.add_middleware(
+        ledger.integrations.fastapi.LedgerMiddleware,
+        ledger_client=ledger_client,
+        exclude_paths=["/health", "/health/deep"],
+        trusted_proxies=settings.trusted_proxy_ips_list,
+    )
 
 app.include_router(health_router)
 app.include_router(admin_router)
