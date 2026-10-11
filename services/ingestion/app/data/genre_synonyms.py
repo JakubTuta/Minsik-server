@@ -99,16 +99,18 @@ GENRE_SYNONYMS: dict[str, str] = {
     "post-apocalyptic-fiction": "dystopia",
 }
 
+# Prefix qualifiers come first: removing a suffix first would leave a bare "English" that
+# the prefix rules (which want a trailing space) can no longer match.
 GENRE_NOISE_PATTERNS: list[str] = [
-    r"\s*--\s*fiction$",
-    r"\s*\(genre\)$",
     r"^fiction,\s*",
-    r"\s+in\s+english$",
-    r"\s+literature$",
-    r"\s*-\s*fiction$",
     r"^american\s+",
     r"^english\s+",
     r"^british\s+",
+    r"\s*--\s*fiction$",
+    r"\s*\(genre\)$",
+    r"\s+in\s+english$",
+    r"\s+literature$",
+    r"\s*-\s*fiction$",
     r"\s+novels?$",
     r"\s+stories?$",
     r"\s+books?$",
@@ -120,6 +122,17 @@ _COMPILED_NOISE: list[re.Pattern[str]] = [
 
 
 def strip_genre_noise(name: str) -> str:
-    for pattern in _COMPILED_NOISE:
-        name = pattern.sub("", name)
-    return name.strip()
+    """Remove qualifiers until none apply, so "English literature" and "American novels" end up empty-proof.
+
+    One pass in list order misses chains: stripping "literature" exposes a bare "English" that the
+    prefix rule (which wants a trailing space) can no longer see. A name that would be stripped to
+    nothing keeps its last non-empty form.
+    """
+    current = name.strip()
+    while True:
+        reduced = current
+        for pattern in _COMPILED_NOISE:
+            reduced = pattern.sub("", reduced).strip()
+        if not reduced or reduced == current:
+            return current
+        current = reduced

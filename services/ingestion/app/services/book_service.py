@@ -8,6 +8,7 @@ import app.models.book
 import app.models.book_author
 import app.models.book_genre
 import app.models.genre
+import app.services.author_store
 import app.utils
 import sqlalchemy
 import sqlalchemy.dialects.postgresql
@@ -20,7 +21,6 @@ async def insert_books_batch(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     books_data: typing.List[typing.Dict[str, typing.Any]],
     commit: bool = True,
-    author_id_map: typing.Optional[typing.Dict[str, int]] = None,
     genre_id_cache: typing.Optional[typing.Dict[str, int]] = None,
 ) -> typing.Dict[str, int]:
     if not books_data:
@@ -48,19 +48,15 @@ async def insert_books_batch(
                 await session.commit()
             return {"successful": 0, "failed": failed, "updated": 0}
 
+        await _adopt_existing_works(session, cleaned_books)
         dedup_cache = _build_dedup_cache(cleaned_books)
 
-        if author_id_map is None:
-            author_id_map = await _bulk_insert_authors(
-                session, cleaned_books, dedup_cache
-            )
+        author_id_map = await _bulk_insert_authors(session, dedup_cache)
         genre_id_map = await _bulk_insert_genres(
             session, cleaned_books, dedup_cache, genre_id_cache
         )
 
-        book_results = await _bulk_insert_books(
-            session, cleaned_books, dedup_cache
-        )
+        book_results = await _bulk_insert_books(session, cleaned_books)
         successful = book_results["inserted"]
         updated = book_results["updated"]
 
@@ -144,7 +140,7 @@ def _validate_and_clean_book(book_data: typing.Dict[str, typing.Any]) -> typing.
         external_ids = {}
 
     work_id = app.utils.resolve_work_id(
-        external_ids, book_data.get("open_library_id"), slug
+        external_ids, book_data.get("open_library_id"), slug, book_data.get("google_books_id")
     )
 
     return {
@@ -176,9 +172,9 @@ def _build_dedup_cache(cleaned_books: typing.List[typing.Dict[str, typing.Any]])
 
     for book in cleaned_books:
         for author_data in book.get("authors", []):
-            author_slug = app.utils.slugify(author_data.get("name", ""))
-            if author_slug and author_slug not in cache["authors"]:
-                cache["authors"][author_slug] = author_data
+            key = app.services.author_store.author_key(author_data)
+            if key and key not in cache["authors"]:
+                cache["authors"][key] = author_data
 
         for genre_data in book.get("genres", []):
             genre_name = genre_data.get("name", "")
@@ -191,21 +187,48 @@ def _build_dedup_cache(cleaned_books: typing.List[typing.Dict[str, typing.Any]])
     return cache
 
 
-async def _bulk_insert_authors(
+_FIND_WORKS_BY_ISBN_SQL = sqlalchemy.text(
+    "SELECT isbn_value, work_id FROM ("
+    "  SELECT jsonb_array_elements_text(isbn) AS isbn_value, work_id FROM books.books WHERE isbn ?| CAST(:isbns AS text[])"
+    ") matched WHERE isbn_value = ANY(CAST(:isbns AS text[]))"
+)
+
+
+async def _adopt_existing_works(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     cleaned_books: typing.List[typing.Dict[str, typing.Any]],
+) -> None:
+    """A book with no OpenLibrary work id joins the work that already owns one of its ISBNs.
+
+    Without this a Google Books record would become a second, separate work for a
+    book the catalogue already has, and split its ratings, shelves and comments.
+    """
+    anonymous = [
+        book for book in cleaned_books
+        if book["isbn"] and not (book["external_ids"].get("work_ol_id") or book.get("open_library_id"))
+    ]
+    if not anonymous:
+        return
+    isbns = sorted({isbn for book in anonymous for isbn in book["isbn"] if isinstance(isbn, str)})
+    work_by_isbn = {
+        row.isbn_value: row.work_id
+        for row in await session.execute(_FIND_WORKS_BY_ISBN_SQL, {"isbns": isbns})
+    }
+    for book in anonymous:
+        known = next((work_by_isbn[isbn] for isbn in book["isbn"] if isbn in work_by_isbn), None)
+        if known:
+            book["work_id"] = known
+
+
+async def _bulk_insert_authors(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
     dedup_cache: typing.Dict[str, typing.Any],
 ) -> typing.Dict[str, int]:
-    if not dedup_cache["authors"]:
-        return {}
-
-    insert_data = []
-    for author_slug, author_data in dedup_cache["authors"].items():
-        name = app.utils.clean_name(author_data.get("name")) or author_data.get("name")
-        insert_data.append(
+    authors = []
+    for author_data in dedup_cache["authors"].values():
+        authors.append(
             {
-                "name": name,
-                "slug": author_slug,
+                "name": app.utils.clean_name(author_data.get("name")) or author_data.get("name"),
                 "bio": app.utils.clean_description(author_data.get("bio")),
                 "birth_date": app.utils.parse_date(author_data.get("birth_date")),
                 "death_date": app.utils.parse_date(author_data.get("death_date")),
@@ -217,82 +240,9 @@ async def _bulk_insert_authors(
                 "alternate_names": author_data.get("alternate_names", []),
             }
         )
-
-    insert_data.sort(key=lambda r: r["slug"])
-
-    stmt = sqlalchemy.dialects.postgresql.insert(app.models.author.Author).values(insert_data)
-    stmt = stmt.on_conflict_do_update(
-        index_elements=["slug"],
-        set_={
-            "bio": sqlalchemy.case(
-                (
-                    app.models.author.Author.bio.is_(None),
-                    stmt.excluded.bio,
-                ),
-                else_=app.models.author.Author.bio,
-            ),
-            "birth_date": sqlalchemy.case(
-                (
-                    app.models.author.Author.birth_date.is_(None),
-                    stmt.excluded.birth_date,
-                ),
-                else_=app.models.author.Author.birth_date,
-            ),
-            "death_date": sqlalchemy.case(
-                (
-                    app.models.author.Author.death_date.is_(None),
-                    stmt.excluded.death_date,
-                ),
-                else_=app.models.author.Author.death_date,
-            ),
-            "photo_url": sqlalchemy.case(
-                (
-                    app.models.author.Author.photo_url.is_(None),
-                    stmt.excluded.photo_url,
-                ),
-                else_=app.models.author.Author.photo_url,
-            ),
-            "open_library_id": sqlalchemy.case(
-                (
-                    app.models.author.Author.open_library_id.is_(None),
-                    stmt.excluded.open_library_id,
-                ),
-                else_=app.models.author.Author.open_library_id,
-            ),
-            "wikidata_id": sqlalchemy.case(
-                (
-                    app.models.author.Author.wikidata_id.is_(None),
-                    stmt.excluded.wikidata_id,
-                ),
-                else_=app.models.author.Author.wikidata_id,
-            ),
-            "wikipedia_url": sqlalchemy.case(
-                (
-                    app.models.author.Author.wikipedia_url.is_(None),
-                    stmt.excluded.wikipedia_url,
-                ),
-                else_=app.models.author.Author.wikipedia_url,
-            ),
-            "remote_ids": stmt.excluded.remote_ids.op("||")(app.models.author.Author.remote_ids),
-            "alternate_names": sqlalchemy.case(
-                (
-                    sqlalchemy.or_(
-                        app.models.author.Author.alternate_names.is_(None),
-                        app.models.author.Author.alternate_names == sqlalchemy.text("'[]'::jsonb"),
-                    ),
-                    stmt.excluded.alternate_names,
-                ),
-                else_=app.models.author.Author.alternate_names,
-            ),
-        },
-    )
-
-    stmt = stmt.returning(
-        app.models.author.Author.slug,
-        app.models.author.Author.author_id,
-    )
-    result = await session.execute(stmt)
-    return {row.slug: row.author_id for row in result}
+    if not authors:
+        return {}
+    return await app.services.author_store.upsert_authors(session, authors)
 
 
 async def _bulk_insert_genres(
@@ -327,170 +277,107 @@ async def _bulk_insert_genres(
     return {s: genre_id_cache[s] for s in dedup_cache["genres"] if s in genre_id_cache}
 
 
+_FIND_TAKEN_SLUGS_SQL = sqlalchemy.text("SELECT work_id, language, slug FROM books.books WHERE slug = ANY(:slugs)")
+
+_FILL_IF_NULL_COLUMNS = (
+    "first_sentence", "open_library_id", "google_books_id", "publisher",
+    "series_slug", "series_name", "series_position",
+)
+_FILL_IF_EMPTY_COLUMNS = (("isbn", "'[]'::jsonb"), ("external_ids", "'{}'::jsonb"), ("formats", "'[]'::jsonb"))
+
+
 async def _bulk_insert_books(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     cleaned_books: typing.List[typing.Dict[str, typing.Any]],
-    dedup_cache: typing.Dict[str, typing.Any],
 ) -> typing.Dict[str, typing.Any]:
-    seen_slugs: dict[str, int] = {}
-    for idx, book in enumerate(cleaned_books):
-        key = (book["language"], book["slug"])
-        seen_slugs[key] = idx
-    cleaned_books = [cleaned_books[i] for i in sorted(seen_slugs.values())]
+    """Upsert on (work_id, language): one row per edition language of a work.
 
-    insert_data = []
-
+    An existing row only has gaps filled. A new row keeps its title slug unless
+    another work already holds it in that language, in which case the work id is
+    appended, so two different books with the same title never overwrite each other.
+    """
+    latest: dict[tuple[str, str], dict] = {}
     for book in cleaned_books:
-        book_entry = {
-            "title": book["title"],
-            "language": book["language"],
-            "slug": book["slug"],
-            "work_id": book["work_id"],
-            "description": book["description"],
-            "first_sentence": book.get("first_sentence"),
-            "original_publication_year": book["original_publication_year"],
-            "primary_cover_url": book["primary_cover_url"],
-            "open_library_id": book["open_library_id"],
-            "google_books_id": book["google_books_id"],
-            "series_slug": book.get("series_slug"),
-            "series_name": book.get("series_name"),
-            "series_position": book.get("series_position"),
-            "formats": book["formats"],
-            "isbn": book.get("isbn", []),
-            "publisher": book.get("publisher"),
-            "number_of_pages": book.get("number_of_pages"),
-            "external_ids": book.get("external_ids", {}),
-        }
+        latest[(book["work_id"], book["language"])] = book
+    cleaned_books = list(latest.values())
 
-        insert_data.append(book_entry)
+    held_by = {
+        (row.language, row.slug): row.work_id
+        for row in await session.execute(_FIND_TAKEN_SLUGS_SQL, {"slugs": sorted({b["slug"] for b in cleaned_books})})
+    }
+    insert_data = []
+    for book in cleaned_books:
+        slug = book["slug"]
+        holder = held_by.get((book["language"], slug))
+        if holder is not None and holder != book["work_id"]:
+            slug = f"{slug}-{app.utils.slugify(book['work_id'])}"[:600]
+        held_by[(book["language"], slug)] = book["work_id"]
+        insert_data.append(
+            {
+                "title": book["title"],
+                "language": book["language"],
+                "slug": slug,
+                "work_id": book["work_id"],
+                "description": book["description"],
+                "first_sentence": book.get("first_sentence"),
+                "original_publication_year": book["original_publication_year"],
+                "primary_cover_url": book["primary_cover_url"],
+                "open_library_id": book["open_library_id"],
+                "google_books_id": book["google_books_id"],
+                "series_slug": book.get("series_slug"),
+                "series_name": book.get("series_name"),
+                "series_position": book.get("series_position"),
+                "formats": book["formats"],
+                "isbn": book.get("isbn", []),
+                "publisher": book.get("publisher"),
+                "number_of_pages": book.get("number_of_pages"),
+                "external_ids": book.get("external_ids", {}),
+                "edition_source": "edition",
+            }
+        )
 
+    books = app.models.book.Book.__table__.c
     stmt = sqlalchemy.dialects.postgresql.insert(app.models.book.Book).values(insert_data)
     stmt = stmt.on_conflict_do_update(
-        index_elements=["language", "slug"],
+        index_elements=["work_id", "language"],
         set_={
             "description": sqlalchemy.case(
-                (
-                    stmt.excluded.description.is_(None),
-                    app.models.book.Book.description,
-                ),
-                (
-                    app.models.book.Book.description.is_(None),
-                    stmt.excluded.description,
-                ),
-                (
-                    sqlalchemy.func.length(stmt.excluded.description)
-                    > sqlalchemy.func.length(app.models.book.Book.description),
-                    stmt.excluded.description,
-                ),
-                else_=app.models.book.Book.description,
+                (sqlalchemy.literal("description") == sqlalchemy.any_(books.manually_edited_fields), books.description),
+                (stmt.excluded.description.is_(None), books.description),
+                (books.description.is_(None), stmt.excluded.description),
+                (sqlalchemy.func.length(stmt.excluded.description) > sqlalchemy.func.length(books.description), stmt.excluded.description),
+                else_=books.description,
             ),
-            "first_sentence": sqlalchemy.case(
-                (
-                    app.models.book.Book.first_sentence.is_(None),
-                    stmt.excluded.first_sentence,
-                ),
-                else_=app.models.book.Book.first_sentence,
-            ),
-            "open_library_id": sqlalchemy.case(
-                (
-                    app.models.book.Book.open_library_id.is_(None),
-                    stmt.excluded.open_library_id,
-                ),
-                else_=app.models.book.Book.open_library_id,
-            ),
-            "google_books_id": sqlalchemy.case(
-                (
-                    app.models.book.Book.google_books_id.is_(None),
-                    stmt.excluded.google_books_id,
-                ),
-                else_=app.models.book.Book.google_books_id,
-            ),
-            "isbn": sqlalchemy.case(
-                (
-                    sqlalchemy.or_(
-                        app.models.book.Book.isbn.is_(None),
-                        app.models.book.Book.isbn == sqlalchemy.text("'[]'::jsonb"),
-                    ),
-                    stmt.excluded.isbn,
-                ),
-                else_=app.models.book.Book.isbn,
-            ),
-            "publisher": sqlalchemy.case(
-                (
-                    app.models.book.Book.publisher.is_(None),
-                    stmt.excluded.publisher,
-                ),
-                else_=app.models.book.Book.publisher,
-            ),
+            **{
+                column: sqlalchemy.case((books[column].is_(None), stmt.excluded[column]), else_=books[column])
+                for column in _FILL_IF_NULL_COLUMNS
+            },
+            **{
+                column: sqlalchemy.case(
+                    (sqlalchemy.or_(books[column].is_(None), books[column] == sqlalchemy.text(empty)), stmt.excluded[column]),
+                    else_=books[column],
+                )
+                for column, empty in _FILL_IF_EMPTY_COLUMNS
+            },
             "number_of_pages": sqlalchemy.case(
-                (
-                    sqlalchemy.or_(
-                        app.models.book.Book.number_of_pages.is_(None),
-                        app.models.book.Book.number_of_pages <= 0,
-                    ),
-                    stmt.excluded.number_of_pages,
-                ),
-                else_=app.models.book.Book.number_of_pages,
-            ),
-            "external_ids": sqlalchemy.case(
-                (
-                    sqlalchemy.or_(
-                        app.models.book.Book.external_ids.is_(None),
-                        app.models.book.Book.external_ids == sqlalchemy.text("'{}'::jsonb"),
-                    ),
-                    stmt.excluded.external_ids,
-                ),
-                else_=app.models.book.Book.external_ids,
-            ),
-            "formats": sqlalchemy.case(
-                (
-                    sqlalchemy.or_(
-                        app.models.book.Book.formats.is_(None),
-                        app.models.book.Book.formats == sqlalchemy.text("'[]'::jsonb"),
-                    ),
-                    stmt.excluded.formats,
-                ),
-                else_=app.models.book.Book.formats,
-            ),
-            "series_slug": sqlalchemy.case(
-                (
-                    app.models.book.Book.series_slug.is_(None),
-                    stmt.excluded.series_slug,
-                ),
-                else_=app.models.book.Book.series_slug,
-            ),
-            "series_name": sqlalchemy.case(
-                (
-                    app.models.book.Book.series_name.is_(None),
-                    stmt.excluded.series_name,
-                ),
-                else_=app.models.book.Book.series_name,
-            ),
-            "series_position": sqlalchemy.case(
-                (
-                    app.models.book.Book.series_position.is_(None),
-                    stmt.excluded.series_position,
-                ),
-                else_=app.models.book.Book.series_position,
+                (sqlalchemy.or_(books.number_of_pages.is_(None), books.number_of_pages <= 0), stmt.excluded.number_of_pages),
+                else_=books.number_of_pages,
             ),
         },
     )
 
     stmt = stmt.returning(
-        app.models.book.Book.slug,
-        app.models.book.Book.book_id,
+        books.work_id,
+        books.language,
+        books.book_id,
+        sqlalchemy.literal_column("(xmax = 0)").label("inserted"),
     )
-    result = await session.execute(stmt)
-    rows = result.all()
-
-    book_id_map = {row.slug: row.book_id for row in rows}
-    inserted_count = len(rows)
-    updated_count = len(cleaned_books) - inserted_count
+    rows = (await session.execute(stmt)).all()
 
     return {
-        "book_id_map": book_id_map,
-        "inserted": inserted_count,
-        "updated": updated_count,
+        "book_id_map": {(row.work_id, row.language): row.book_id for row in rows},
+        "inserted": sum(1 for row in rows if row.inserted),
+        "updated": sum(1 for row in rows if not row.inserted),
     }
 
 
@@ -498,7 +385,7 @@ async def _bulk_insert_relationships(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     cleaned_books: typing.List[typing.Dict[str, typing.Any]],
     dedup_cache: typing.Dict[str, typing.Any],
-    book_id_map: typing.Dict[str, int],
+    book_id_map: typing.Dict[typing.Tuple[str, str], int],
     author_id_map: typing.Dict[str, int],
     genre_id_map: typing.Dict[str, int],
 ) -> None:
@@ -506,13 +393,12 @@ async def _bulk_insert_relationships(
     book_genres_data = []
 
     for book in cleaned_books:
-        book_id = book_id_map.get(book["slug"])
+        book_id = book_id_map.get((book["work_id"], book["language"]))
         if not book_id:
             continue
 
         for author_data in book.get("authors", []):
-            author_slug = app.utils.slugify(author_data.get("name", ""))
-            author_id = author_id_map.get(author_slug)
+            author_id = author_id_map.get(app.services.author_store.author_key(author_data))
             if author_id:
                 book_authors_data.append({"book_id": book_id, "author_id": author_id})
 

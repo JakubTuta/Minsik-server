@@ -93,8 +93,7 @@ async def test_google_books_extract_formats():
 
         formats = fetcher._extract_formats(raw_data)
 
-        assert "ebook" in formats
-        assert "paperback" in formats
+        assert formats == ["ebook"]
 
 
 @pytest.mark.asyncio

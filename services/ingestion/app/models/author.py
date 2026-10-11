@@ -14,7 +14,12 @@ class Author(app.db_base.Base):
             "view_count",
             postgresql_ops={"view_count": "DESC"},
         ),
-        sqlalchemy.Index("idx_authors_open_library_id", "open_library_id"),
+        sqlalchemy.Index(
+            "uq_authors_open_library_id",
+            "open_library_id",
+            unique=True,
+            postgresql_where=sqlalchemy.text("open_library_id IS NOT NULL"),
+        ),
         sqlalchemy.Index("idx_authors_wikidata_id", "wikidata_id"),
         {"schema": "books"},
     )
@@ -43,6 +48,9 @@ class Author(app.db_base.Base):
     open_library_id = sqlalchemy.Column(sqlalchemy.String(100))
 
     enrichment_attempted_at = sqlalchemy.Column(sqlalchemy.TIMESTAMP(timezone=True))
+    manually_edited_fields = sqlalchemy.Column(
+        sqlalchemy.dialects.postgresql.ARRAY(sqlalchemy.Text), nullable=False, server_default=sqlalchemy.text("'{}'")
+    )
 
     books = sqlalchemy.orm.relationship(
         "Book", secondary="books.book_authors", back_populates="authors"

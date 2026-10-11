@@ -36,50 +36,6 @@ async def delete_book_user_data(
     return affected_user_ids
 
 
-async def remap_book_user_data(
-    session: sqlalchemy.ext.asyncio.AsyncSession,
-    loser_book_id: int,
-    winner_book_id: int,
-) -> typing.List[int]:
-    affected_users_result = await session.execute(
-        sqlalchemy.text(
-            """
-            SELECT DISTINCT user_id FROM user_data.bookshelves WHERE book_id = :loser_id
-            UNION
-            SELECT DISTINCT user_id FROM user_data.ratings WHERE book_id = :loser_id
-            UNION
-            SELECT DISTINCT user_id FROM user_data.comments WHERE book_id = :loser_id
-            """
-        ),
-        {"loser_id": loser_book_id},
-    )
-    affected_user_ids = [row[0] for row in affected_users_result.fetchall()]
-
-    for table in ("bookshelves", "ratings", "comments"):
-        await session.execute(
-            sqlalchemy.text(
-                f"""
-                DELETE FROM user_data.{table} loser
-                WHERE loser.book_id = :loser_id
-                  AND EXISTS (
-                      SELECT 1 FROM user_data.{table} winner
-                      WHERE winner.user_id = loser.user_id
-                        AND winner.book_id = :winner_id
-                  )
-                """
-            ),
-            {"loser_id": loser_book_id, "winner_id": winner_book_id},
-        )
-        await session.execute(
-            sqlalchemy.text(
-                f"UPDATE user_data.{table} SET book_id = :winner_id WHERE book_id = :loser_id"
-            ),
-            {"loser_id": loser_book_id, "winner_id": winner_book_id},
-        )
-
-    return affected_user_ids
-
-
 async def recompute_user_stats(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     user_ids: typing.List[int],

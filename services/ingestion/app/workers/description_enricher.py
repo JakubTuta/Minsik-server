@@ -4,274 +4,228 @@ import typing
 
 import app.config
 import app.models
-import app.utils
+import app.workers.dump.language_detect
+import app.workers.wikipedia
 import httpx
 import redis
 import sqlalchemy
-import sqlalchemy.engine
 import sqlalchemy.ext.asyncio
 
 logger = logging.getLogger(__name__)
 
-_WIKIPEDIA_API_URL = "https://en.wikipedia.org/w/api.php"
+_USER_AGENT = "Minsik/1.0 (contact@minsik.app)"
+
+# One candidate query per entity kind. Every one is limited to the languages the
+# site serves, skips what an admin edited, and returns the language of the row so the
+# description is fetched from that language's Wikipedia and checked to be in it.
+_BOOK_CANDIDATES_SQL = sqlalchemy.text(
+    """
+    SELECT b.book_id AS entity_id, b.title AS name, b.language, first_author.name AS author_name
+    FROM books.books b
+    LEFT JOIN LATERAL (
+        SELECT a.name FROM books.book_authors ba
+        JOIN books.authors a ON a.author_id = ba.author_id
+        WHERE ba.book_id = b.book_id ORDER BY a.author_id LIMIT 1
+    ) first_author ON TRUE
+    WHERE b.language = ANY(:languages)
+      AND (b.description IS NULL OR LENGTH(b.description) < :min_len)
+      AND NOT ('description' = ANY(b.manually_edited_fields))
+      AND (b.enrichment_attempted_at IS NULL
+           OR b.enrichment_attempted_at < NOW() - make_interval(days => :cooldown))
+    ORDER BY COALESCE(b.ol_already_read_count, 0) + COALESCE(b.ol_want_to_read_count, 0)
+             + b.view_count + b.rating_count DESC
+    LIMIT :limit
+    """
+)
+_SERIES_CANDIDATES_SQL = sqlalchemy.text(
+    """
+    SELECT s.series_id AS entity_id, s.name, s.language, NULL AS author_name
+    FROM books.series s
+    WHERE s.language = ANY(:languages)
+      AND (s.description IS NULL OR LENGTH(s.description) < :min_len)
+      AND NOT ('description' = ANY(s.manually_edited_fields))
+      AND (s.enrichment_attempted_at IS NULL
+           OR s.enrichment_attempted_at < NOW() - make_interval(days => :cooldown))
+    ORDER BY s.view_count DESC
+    LIMIT :limit
+    """
+)
+_AUTHOR_CANDIDATES_SQL = sqlalchemy.text(
+    """
+    SELECT a.author_id, a.name, a.wikidata_id
+    FROM books.authors a
+    WHERE NOT ('bio' = ANY(a.manually_edited_fields))
+      AND NOT EXISTS (
+          SELECT 1 FROM books.author_localizations al
+          WHERE al.author_id = a.author_id AND al.language = :language
+            AND (al.bio IS NOT NULL OR al.updated_at > NOW() - make_interval(days => :cooldown))
+      )
+    ORDER BY a.view_count DESC
+    LIMIT :limit
+    """
+)
+_UPDATE_BOOK_SQL = sqlalchemy.text(
+    "UPDATE books.books SET description = :description WHERE book_id = :entity_id "
+    "AND (description IS NULL OR LENGTH(description) < :min_len)"
+)
+_UPDATE_SERIES_SQL = sqlalchemy.text(
+    "UPDATE books.series SET description = :description WHERE series_id = :entity_id "
+    "AND (description IS NULL OR LENGTH(description) < :min_len)"
+)
+_MARK_BOOKS_SQL = sqlalchemy.text("UPDATE books.books SET enrichment_attempted_at = NOW() WHERE book_id = ANY(:ids)")
+_MARK_SERIES_SQL = sqlalchemy.text("UPDATE books.series SET enrichment_attempted_at = NOW() WHERE series_id = ANY(:ids)")
+_UPSERT_LOCALIZATION_SQL = sqlalchemy.text(
+    """
+    INSERT INTO books.author_localizations AS al (author_id, language, name, bio, wikipedia_url, source, updated_at)
+    VALUES (:author_id, :language, :name, :bio, :wikipedia_url, 'wikipedia', NOW())
+    ON CONFLICT (author_id, language) DO UPDATE SET
+        name = COALESCE(EXCLUDED.name, al.name),
+        bio = COALESCE(EXCLUDED.bio, al.bio),
+        wikipedia_url = COALESCE(EXCLUDED.wikipedia_url, al.wikipedia_url),
+        updated_at = NOW()
+    """
+)
+_FILL_CANONICAL_BIO_SQL = sqlalchemy.text(
+    "UPDATE books.authors SET bio = :bio WHERE author_id = :author_id "
+    "AND (bio IS NULL OR LENGTH(bio) < :min_len) AND NOT ('bio' = ANY(manually_edited_fields))"
+)
 
 
-async def fetch_wikipedia_description(
-    search_term: str, client: httpx.AsyncClient
-) -> typing.Optional[str]:
-    try:
-        search_response = await client.get(
-            _WIKIPEDIA_API_URL,
-            params={
-                "action": "query",
-                "list": "search",
-                "srsearch": search_term,
-                "srlimit": 1,
-                "format": "json",
-            },
-        )
-        search_response.raise_for_status()
-        search_data = search_response.json()
-
-        results = search_data.get("query", {}).get("search", [])
-        if not results:
-            return None
-
-        page_title = results[0]["title"]
-
-        extract_response = await client.get(
-            _WIKIPEDIA_API_URL,
-            params={
-                "action": "query",
-                "titles": page_title,
-                "prop": "extracts",
-                "exintro": True,
-                "exsentences": 5,
-                "explaintext": True,
-                "format": "json",
-            },
-        )
-        extract_response.raise_for_status()
-        extract_data = extract_response.json()
-
-        pages = extract_data.get("query", {}).get("pages", {})
-        for page in pages.values():
-            extract = page.get("extract", "").strip()
-            if extract:
-                extract = app.utils.clean_description(extract)
-                return extract
-
-        return None
-
-    except Exception as e:
-        logger.debug(f"Wikipedia lookup failed for '{search_term}': {str(e)}")
-        return None
+def _accept(extract: typing.Optional[str], language: str, min_length: int) -> typing.Optional[str]:
+    """The extract if it is long enough and written in `language`; a page in another language is dropped."""
+    if extract and len(extract) >= min_length and app.workers.dump.language_detect.fits_language(extract, language):
+        return extract
+    return None
 
 
-async def _run_wikipedia_enrichment(
+async def _enrich_described(
     session: sqlalchemy.ext.asyncio.AsyncSession,
-    entity_ids: list,
-    search_terms: list[str],
-    update_sql: str,
-    mark_attempted_sql: str,
-    id_param: str,
+    wikipedia: app.workers.wikipedia.WikipediaClient,
+    candidates_sql: sqlalchemy.TextClause,
+    update_sql: sqlalchemy.TextClause,
+    mark_sql: sqlalchemy.TextClause,
+    batch_size: int,
     min_length: int,
+    cooldown_days: int,
     request_delay: float,
+    languages: list[str],
 ) -> int:
-    await session.execute(
-        sqlalchemy.text(mark_attempted_sql),
-        {"ids": entity_ids},
-    )
+    rows = (await session.execute(
+        candidates_sql,
+        {"languages": languages, "min_len": min_length, "cooldown": cooldown_days, "limit": batch_size},
+    )).fetchall()
+    if not rows:
+        return 0
+
+    # The lookups below take minutes; do not sit in an open transaction meanwhile.
     await session.commit()
 
     updated = 0
-    async with httpx.AsyncClient(
-        timeout=10.0, headers={"User-Agent": "Minsik/1.0 (contact@minsik.app)"}
-    ) as client:
-        for entity_id, search_term in zip(entity_ids, search_terms):
-            description = await fetch_wikipedia_description(search_term, client)
-            if description and len(description) >= min_length:
+    try:
+        for row in rows:
+            term = f"{row.name} {row.author_name}" if row.author_name else row.name
+            extract = _accept(
+                await wikipedia.verified_extract(row.language, row.name, term, row.author_name), row.language, min_length
+            )
+            if extract:
                 result = await session.execute(
-                    sqlalchemy.text(update_sql),
-                    {"desc": description, id_param: entity_id},
+                    update_sql, {"description": extract, "entity_id": row.entity_id, "min_len": min_length}
                 )
-                if typing.cast(sqlalchemy.engine.CursorResult, result).rowcount:
-                    updated += 1
+                updated += result.rowcount or 0
             await asyncio.sleep(request_delay)
-    if updated > 0:
+    finally:
+        await session.execute(mark_sql, {"ids": [row.entity_id for row in rows]})
         await session.commit()
     return updated
 
 
-async def enrich_books(
-    session: sqlalchemy.ext.asyncio.AsyncSession,
-    batch_size: int,
-    min_length: int,
-    cooldown_days: int,
-    request_delay: float,
-) -> int:
-    result = await session.execute(
-        sqlalchemy.text(
-            "SELECT b.book_id, b.title, a.name as author_name "
-            "FROM books.books b "
-            "LEFT JOIN books.book_authors ba ON b.book_id = ba.book_id "
-            "LEFT JOIN books.authors a ON ba.author_id = a.author_id "
-            "WHERE (b.description IS NULL OR LENGTH(b.description) < :min_len) "
-            "AND (b.enrichment_attempted_at IS NULL "
-            "OR b.enrichment_attempted_at < NOW() - make_interval(days => :cooldown)) "
-            "ORDER BY COALESCE(b.ol_already_read_count, 0) + COALESCE(b.ol_want_to_read_count, 0) "
-            "+ b.view_count + b.rating_count DESC "
-            "LIMIT :limit"
-        ),
-        {"min_len": min_length, "cooldown": cooldown_days, "limit": batch_size},
-    )
-    rows = result.fetchall()
-    if not rows:
-        return 0
-
-    entity_ids = [row.book_id for row in rows]
-    search_terms = [
-        (
-            f"{row.title} {row.author_name} novel"
-            if row.author_name
-            else f"{row.title} novel"
-        )
-        for row in rows
-    ]
-    return await _run_wikipedia_enrichment(
-        session,
-        entity_ids,
-        search_terms,
-        "UPDATE books.books SET description = :desc, updated_at = NOW() "
-        "WHERE book_id = :book_id "
-        "AND (description IS NULL OR LENGTH(description) < LENGTH(:desc))",
-        "UPDATE books.books SET enrichment_attempted_at = NOW() WHERE book_id = ANY(:ids)",
-        "book_id",
-        min_length,
-        request_delay,
+async def enrich_books(session, wikipedia, languages, batch_size, min_length, cooldown_days, request_delay) -> int:
+    return await _enrich_described(
+        session, wikipedia, _BOOK_CANDIDATES_SQL, _UPDATE_BOOK_SQL, _MARK_BOOKS_SQL,
+        batch_size, min_length, cooldown_days, request_delay, languages,
     )
 
 
-async def enrich_authors(
-    session: sqlalchemy.ext.asyncio.AsyncSession,
-    batch_size: int,
-    min_length: int,
-    cooldown_days: int,
-    request_delay: float,
-) -> int:
-    result = await session.execute(
-        sqlalchemy.text(
-            "SELECT author_id, name FROM books.authors "
-            "WHERE (bio IS NULL OR LENGTH(bio) < :min_len) "
-            "AND (enrichment_attempted_at IS NULL "
-            "OR enrichment_attempted_at < NOW() - make_interval(days => :cooldown)) "
-            "ORDER BY view_count DESC "
-            "LIMIT :limit"
-        ),
-        {"min_len": min_length, "cooldown": cooldown_days, "limit": batch_size},
-    )
-    rows = result.fetchall()
-    if not rows:
-        return 0
-
-    entity_ids = [row.author_id for row in rows]
-    search_terms = [f"{row.name} author" for row in rows]
-    return await _run_wikipedia_enrichment(
-        session,
-        entity_ids,
-        search_terms,
-        "UPDATE books.authors SET bio = :desc, updated_at = NOW() "
-        "WHERE author_id = :author_id "
-        "AND (bio IS NULL OR LENGTH(bio) < LENGTH(:desc))",
-        "UPDATE books.authors SET enrichment_attempted_at = NOW() WHERE author_id = ANY(:ids)",
-        "author_id",
-        min_length,
-        request_delay,
+async def enrich_series(session, wikipedia, languages, batch_size, min_length, cooldown_days, request_delay) -> int:
+    return await _enrich_described(
+        session, wikipedia, _SERIES_CANDIDATES_SQL, _UPDATE_SERIES_SQL, _MARK_SERIES_SQL,
+        batch_size, min_length, cooldown_days, request_delay, languages,
     )
 
 
-async def enrich_series(
-    session: sqlalchemy.ext.asyncio.AsyncSession,
-    batch_size: int,
-    min_length: int,
-    cooldown_days: int,
-    request_delay: float,
-) -> int:
-    result = await session.execute(
-        sqlalchemy.text(
-            "SELECT s.series_id, s.name FROM books.series s "
-            "WHERE (s.description IS NULL OR LENGTH(s.description) < :min_len) "
-            "AND (s.enrichment_attempted_at IS NULL "
-            "OR s.enrichment_attempted_at < NOW() - make_interval(days => :cooldown)) "
-            "ORDER BY s.view_count DESC "
-            "LIMIT :limit"
-        ),
-        {"min_len": min_length, "cooldown": cooldown_days, "limit": batch_size},
-    )
-    rows = result.fetchall()
-    if not rows:
-        return 0
+async def enrich_authors(session, wikipedia, languages, batch_size, min_length, cooldown_days, request_delay) -> int:
+    """Per-language author names and bios from Wikidata sitelinks, falling back to a verified search."""
+    updated = 0
+    for language in languages:
+        rows = (await session.execute(
+            _AUTHOR_CANDIDATES_SQL, {"language": language, "cooldown": cooldown_days, "limit": batch_size}
+        )).fetchall()
+        if not rows:
+            continue
+        await session.commit()
 
-    entity_ids = [row.series_id for row in rows]
-    search_terms = [f"{row.name} book series" for row in rows]
-    return await _run_wikipedia_enrichment(
-        session,
-        entity_ids,
-        search_terms,
-        "UPDATE books.series SET description = :desc, updated_at = NOW() "
-        "WHERE series_id = :series_id "
-        "AND (description IS NULL OR LENGTH(description) < LENGTH(:desc))",
-        "UPDATE books.series SET enrichment_attempted_at = NOW() WHERE series_id = ANY(:ids)",
-        "series_id",
-        min_length,
-        request_delay,
-    )
+        try:
+            entities = await wikipedia.wikidata_entities(
+                [row.wikidata_id for row in rows if row.wikidata_id], [language]
+            )
+        except (httpx.HTTPError, ValueError) as error:
+            logger.debug(f"Wikidata lookup failed ({language}): {error}")
+            entities = {}
+
+        for row in rows:
+            entity = entities.get(row.wikidata_id) or {"titles": {}, "labels": {}}
+            title = entity["titles"].get(language)
+            bio = _accept(
+                await wikipedia.verified_extract(language, row.name, row.name, known_title=title), language, min_length
+            )
+            await session.execute(
+                _UPSERT_LOCALIZATION_SQL,
+                {
+                    "author_id": row.author_id,
+                    "language": language,
+                    "name": entity["labels"].get(language),
+                    "bio": bio,
+                    "wikipedia_url": f"https://{language}.wikipedia.org/wiki/{title.replace(' ', '_')}" if title else None,
+                },
+            )
+            if bio and language == "en":
+                await session.execute(_FILL_CANONICAL_BIO_SQL, {"bio": bio, "author_id": row.author_id, "min_len": min_length})
+            updated += 1 if bio else 0
+            await asyncio.sleep(request_delay)
+        await session.commit()
+    return updated
 
 
 async def run_description_enrichment() -> None:
-    if not app.config.settings.description_enrich_enabled:
+    settings = app.config.settings
+    if not settings.description_enrich_enabled:
         return
 
     try:
-        _rc = redis.Redis(
-            host=app.config.settings.redis_host,
-            port=app.config.settings.redis_port,
-            db=app.config.settings.redis_db,
-            password=(
-                app.config.settings.redis_password
-                if app.config.settings.redis_password
-                else None
-            ),
+        redis_client = redis.Redis(
+            host=settings.redis_host, port=settings.redis_port, db=settings.redis_db,
+            password=settings.redis_password or None,
         )
-        dump_running = bool(_rc.get("dump_import_running"))
-        _rc.close()
+        dump_running = bool(redis_client.get("dump_import_running"))
+        redis_client.close()
         if dump_running:
             logger.info("Skipping description enrichment: dump import in progress")
             return
-    except Exception:
+    except redis.RedisError:
         pass
 
+    languages = [language.strip() for language in settings.description_enrich_languages.split(",") if language.strip()]
+    arguments = (
+        languages, settings.description_enrich_batch_size, settings.description_min_length,
+        settings.description_enrich_cooldown_days, settings.description_enrich_request_delay,
+    )
     try:
-        batch_size = app.config.settings.description_enrich_batch_size
-        min_length = app.config.settings.description_min_length
-        cooldown_days = app.config.settings.description_enrich_cooldown_days
-        request_delay = app.config.settings.description_enrich_request_delay
-
-        async with app.models.AsyncSessionLocal() as session:
-            books_updated = await enrich_books(
-                session, batch_size, min_length, cooldown_days, request_delay
-            )
-            authors_updated = await enrich_authors(
-                session, batch_size, min_length, cooldown_days, request_delay
-            )
-            series_updated = await enrich_series(
-                session, batch_size, min_length, cooldown_days, request_delay
-            )
-
-        logger.info(
-            f"Description enrichment done: {books_updated} books, "
-            f"{authors_updated} authors, {series_updated} series updated"
-        )
-
-    except Exception as e:
-        logger.error(f"Description enrichment failed: {str(e)}")
+        async with httpx.AsyncClient(timeout=10.0, headers={"User-Agent": _USER_AGENT}) as client:
+            wikipedia = app.workers.wikipedia.WikipediaClient(client)
+            async with app.models.AsyncSessionLocal() as session:
+                books = await enrich_books(session, wikipedia, *arguments)
+                authors = await enrich_authors(session, wikipedia, *arguments)
+                series = await enrich_series(session, wikipedia, *arguments)
+        logger.info(f"Description enrichment done: {books} books, {authors} author bios, {series} series updated")
+    except Exception as error:
+        logger.error(f"Description enrichment failed: {error}")

@@ -164,7 +164,8 @@ def parse_series_string(series_strs: typing.Optional[list]) -> typing.Optional[d
 
 
 def ol_id_to_int(ol_id: str) -> typing.Optional[int]:
-    if len(ol_id) >= 3 and ol_id[:2] == "OL" and ol_id[-1].isalpha():
+    """Numeric part of an OpenLibrary work id (`OL45804W`); None for any other kind of id."""
+    if len(ol_id) >= 4 and ol_id[:2] == "OL" and ol_id[-1] == "W":
         try:
             return int(ol_id[2:-1])
         except ValueError:
@@ -236,8 +237,8 @@ async def build_known_works_filter(
     count = 0
     result = await session.stream(
         sqlalchemy.text(
-            "SELECT COALESCE(external_ids->>'work_ol_id', open_library_id) as open_library_id FROM books.books "
-            "WHERE open_library_id IS NOT NULL OR external_ids ? 'work_ol_id'"
+            "SELECT work_ol_id AS open_library_id FROM books.work_staging "
+            "UNION SELECT work_id FROM books.books WHERE work_id ~ '^OL[0-9]+W$'"
         )
     )
     async for row in result:
@@ -290,8 +291,8 @@ async def batch_lookup_books(
         params = {f"id_{j}": v for j, v in enumerate(chunk)}
         result = await session.execute(
             sqlalchemy.text(
-                "SELECT book_id, language, COALESCE(external_ids->>'work_ol_id', open_library_id) as requested_id "
-                f"FROM books.books WHERE open_library_id IN ({placeholders}) "
+                "SELECT book_id, language, COALESCE(external_ids->>'work_ol_id', work_id) as requested_id "
+                f"FROM books.books WHERE work_id IN ({placeholders}) "
                 f"OR external_ids->>'work_ol_id' IN ({placeholders})"
             ),
             params,

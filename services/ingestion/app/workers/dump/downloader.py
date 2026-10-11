@@ -17,16 +17,40 @@ _DOWNLOAD_CONNECT_TIMEOUT = 60
 _DOWNLOAD_LOG_EVERY_MB = 100
 
 
-async def _get_remote_size(url: str, timeout: httpx.Timeout) -> typing.Optional[int]:
+async def _head(url: str, timeout: httpx.Timeout) -> typing.Optional[httpx.Response]:
     try:
         async with httpx.AsyncClient(timeout=timeout, follow_redirects=True) as client:
-            response = await client.head(url)
-            content_length = response.headers.get("content-length")
-            if content_length:
-                return int(content_length)
-    except Exception:
-        pass
-    return None
+            return await client.head(url)
+    except httpx.HTTPError:
+        return None
+
+
+def _validator(response: typing.Optional[httpx.Response]) -> typing.Optional[str]:
+    """Identity of the remote file. `latest` URLs are replaced monthly, so a partial
+    download is only worth resuming while the file behind the URL is still the same."""
+    if response is None:
+        return None
+    return response.headers.get("etag") or response.headers.get("last-modified")
+
+
+def _read_validator(dest_path: str) -> typing.Optional[str]:
+    try:
+        with open(f"{dest_path}.validator", encoding="utf-8") as f:
+            return f.read().strip() or None
+    except OSError:
+        return None
+
+
+def _write_validator(dest_path: str, validator: typing.Optional[str]) -> None:
+    if validator:
+        with open(f"{dest_path}.validator", "w", encoding="utf-8") as f:
+            f.write(validator)
+
+
+def _discard(dest_path: str) -> None:
+    for path in (dest_path, f"{dest_path}.validator"):
+        if os.path.exists(path):
+            os.remove(path)
 
 
 async def download_file(url: str, dest_path: str) -> None:
@@ -39,35 +63,40 @@ async def download_file(url: str, dest_path: str) -> None:
 
     local_size = os.path.getsize(dest_path) if os.path.exists(dest_path) else 0
 
-    if local_size > 0:
-        remote_size = await _get_remote_size(url, timeout)
-        if remote_size is not None:
-            if local_size == remote_size:
-                logger.info(
-                    f"[dump] Skipping download, file already complete: {dest_path} "
-                    f"({local_size / (1024 * 1024):.0f} MB)"
-                )
-                return
-            elif local_size > remote_size:
-                logger.warning(
-                    f"[dump] Local file larger than remote ({local_size} > {remote_size}), "
-                    f"deleting and re-downloading: {dest_path}"
-                )
-                os.remove(dest_path)
-                local_size = 0
-            else:
-                logger.info(
-                    f"[dump] Resuming download from {local_size / (1024 * 1024):.0f} MB "
-                    f"of {remote_size / (1024 * 1024):.0f} MB total: {url}"
-                )
-        else:
-            logger.warning(
-                f"[dump] Cannot verify remote size for {url}, "
-                f"re-downloading to be safe"
-            )
-            os.remove(dest_path)
-            local_size = 0
+    head = await _head(url, timeout)
+    remote_validator = _validator(head)
+    remote_length = head.headers.get("content-length") if head is not None else None
+    remote_size = int(remote_length) if remote_length else None
 
+    if local_size > 0:
+        if remote_validator and _read_validator(dest_path) != remote_validator:
+            logger.warning(f"[dump] {dest_path} is from a different dump than the one at {url}; discarding it")
+            _discard(dest_path)
+            local_size = 0
+        elif remote_size is None:
+            logger.warning(f"[dump] Cannot verify remote size for {url}, re-downloading to be safe")
+            _discard(dest_path)
+            local_size = 0
+        elif local_size == remote_size:
+            logger.info(
+                f"[dump] Skipping download, file already complete: {dest_path} "
+                f"({local_size / (1024 * 1024):.0f} MB)"
+            )
+            return
+        elif local_size > remote_size:
+            logger.warning(
+                f"[dump] Local file larger than remote ({local_size} > {remote_size}), "
+                f"deleting and re-downloading: {dest_path}"
+            )
+            _discard(dest_path)
+            local_size = 0
+        else:
+            logger.info(
+                f"[dump] Resuming download from {local_size / (1024 * 1024):.0f} MB "
+                f"of {remote_size / (1024 * 1024):.0f} MB total: {url}"
+            )
+
+    _write_validator(dest_path, remote_validator)
     logger.info(f"[dump] Downloading {url}")
 
     downloaded = local_size
@@ -196,36 +225,31 @@ async def stream_parse_dump(
 
     def _sync_reader() -> None:
         skipped_so_far = 0
-        with gzip.open(file_path, "rt", encoding="utf-8") as f:
-            batch: list[dict] = []
-            for line in f:
-                try:
+        try:
+            with gzip.open(file_path, "rt", encoding="utf-8") as f:
+                batch: list[dict] = []
+                for line in f:
                     parts = line.rstrip("\n").split("\t", 4)
-                    if len(parts) != 5:
-                        continue
-                    if parts[0] != record_type:
+                    if len(parts) != 5 or parts[0] != record_type:
                         continue
                     if is_dev and random.random() >= 0.1:
                         continue
                     if skipped_so_far < skip_records:
                         skipped_so_far += 1
                         continue
-
-                    data = json.loads(parts[4])
-                    batch.append(data)
+                    try:
+                        batch.append(json.loads(parts[4]))
+                    except json.JSONDecodeError:
+                        continue
                     if len(batch) >= batch_size:
-                        asyncio.run_coroutine_threadsafe(
-                            queue.put(batch[:]), loop
-                        ).result()
+                        asyncio.run_coroutine_threadsafe(queue.put(batch), loop).result()
                         batch = []
-                except json.JSONDecodeError:
-                    continue
-                except Exception:
-                    continue
 
-            if batch:
-                asyncio.run_coroutine_threadsafe(queue.put(batch), loop).result()
-
-        asyncio.run_coroutine_threadsafe(queue.put(None), loop).result()
+                if batch:
+                    asyncio.run_coroutine_threadsafe(queue.put(batch), loop).result()
+        finally:
+            # Always release the consumer. A truncated or corrupt file raises out of
+            # the loop above; without the sentinel the consumer would wait forever.
+            asyncio.run_coroutine_threadsafe(queue.put(None), loop).result()
 
     await asyncio.to_thread(_sync_reader)

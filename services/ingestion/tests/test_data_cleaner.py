@@ -189,61 +189,6 @@ async def test_cleanup_never_deletes_user_engaged_low_quality_book(
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_cleanup_duplicate_books_remaps_user_data_to_winner(
-    commit_session, session_factory_for_testing
-):
-    author = Author(name="Same Author", slug="same-author")
-    commit_session.add(author)
-    await commit_session.flush()
-
-    winner = Book(
-        title="Duplicate Title",
-        language="en",
-        work_id="ol-duplicate-title", slug="duplicate-title",
-        view_count=10,
-        formats=[],
-    )
-    loser = Book(
-        title="Duplicate Title",
-        language="en",
-        work_id="ol-duplicate-title-2", slug="duplicate-title-2",
-        view_count=0,
-        formats=[],
-    )
-    commit_session.add_all([winner, loser])
-    await commit_session.flush()
-
-    commit_session.add_all(
-        [
-            BookAuthor(book_id=winner.book_id, author_id=author.author_id),
-            BookAuthor(book_id=loser.book_id, author_id=author.author_id),
-        ]
-    )
-    await commit_session.execute(
-        text(
-            "INSERT INTO user_data.bookshelves (user_id, book_id) VALUES (1, :book_id)"
-        ),
-        {"book_id": loser.book_id},
-    )
-    await commit_session.commit()
-
-    stats = await data_cleaner.cleanup_duplicate_books(
-        session_factory_for_testing, batch_size=100
-    )
-    assert stats["deleted"] == 1
-
-    remaining_books = await commit_session.execute(select(Book.book_id))
-    remaining_ids = {row[0] for row in remaining_books.fetchall()}
-    assert remaining_ids == {winner.book_id}
-
-    shelf_result = await commit_session.execute(
-        text("SELECT book_id FROM user_data.bookshelves WHERE user_id = 1")
-    )
-    assert shelf_result.scalar_one() == winner.book_id
-
-
-@pytest.mark.asyncio
-@pytest.mark.integration
 async def test_cleanup_orphan_authors(commit_session, session_factory_for_testing):
     orphan = Author(name="Nobody", slug="nobody", created_at=OLD_DATE)
     commit_session.add(orphan)
@@ -260,6 +205,40 @@ async def test_cleanup_orphan_authors(commit_session, session_factory_for_testin
     result = await commit_session.execute(select(func.count()).select_from(Author))
     assert result.scalar_one() == 0
     assert stats["deleted"] == 1
+
+
+@pytest.mark.asyncio
+@pytest.mark.integration
+async def test_cleanup_keeps_non_latin_authors_and_counts_works_not_translations(
+    commit_session, session_factory_for_testing
+):
+    author = Author(name="村上春樹", slug="haruki-murakami", created_at=OLD_DATE)
+    commit_session.add(author)
+    await commit_session.flush()
+
+    for work in range(2):
+        for language in ("ja", "en", "pl"):
+            book = Book(
+                title=f"Book {work} {language}", language=language,
+                work_id=f"ol-work-{work}", slug=f"book-{work}-{language}", formats=[],
+            )
+            commit_session.add(book)
+            await commit_session.flush()
+            commit_session.add(BookAuthor(book_id=book.book_id, author_id=author.author_id))
+    await commit_session.commit()
+
+    # Six rows but two works: a ceiling of three must not remove an author with two.
+    stats = await data_cleaner.cleanup_orphan_authors(
+        session_factory_for_testing,
+        min_books=2,
+        max_books=3,
+        batch_size=100,
+        junk_publisher_names=True,
+    )
+
+    result = await commit_session.execute(select(func.count()).select_from(Author))
+    assert result.scalar_one() == 1
+    assert stats["deleted"] == 0
 
 
 @pytest.mark.asyncio

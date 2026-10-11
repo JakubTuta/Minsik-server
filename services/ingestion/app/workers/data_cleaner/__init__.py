@@ -5,7 +5,6 @@ from app.workers.data_cleaner.authors import (
 )
 from app.workers.data_cleaner.books import (
     cleanup_collection_books,
-    cleanup_duplicate_books,
     cleanup_low_engagement_books,
     cleanup_low_quality_books,
     cleanup_multi_author_books,
@@ -24,7 +23,6 @@ from app.workers.data_cleaner.series import consolidate_series
 __all__ = [
     "cleanup_collection_authors",
     "cleanup_collection_books",
-    "cleanup_duplicate_books",
     "cleanup_invalid_genre_names",
     "cleanup_junk_genres",
     "cleanup_low_engagement_authors",

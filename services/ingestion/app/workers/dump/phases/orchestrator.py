@@ -1,4 +1,3 @@
-import ctypes
 import datetime
 import gc
 import logging
@@ -10,24 +9,51 @@ import app.workers.dump.downloader
 import app.workers.dump.parsers
 import app.workers.dump.phases.authors
 import app.workers.dump.phases.editions
+import app.workers.dump.phases.merge
 import app.workers.dump.phases.ratings
 import app.workers.dump.phases.reading_log
 import app.workers.dump.phases.wikidata
 import app.workers.dump.phases.works
+import app.workers.dump.runtime
 import app.workers.dump.state
 import redis
+import sqlalchemy
 
 logger = logging.getLogger(__name__)
 
 
-def _trim_heap() -> None:
-    try:
-        ctypes.cdll.LoadLibrary("libc.so.6").malloc_trim(0)
-    except Exception:
-        pass
+async def _staged_work_count() -> int:
+    async with app.models.AsyncSessionLocal() as session:
+        return (await session.execute(sqlalchemy.text("SELECT COUNT(*) FROM books.work_staging"))).scalar_one()
+
+
+_DUMP_RUNNING_KEY = "dump_import_running"
+_DUMP_LOCK_TTL_SECONDS = 24 * 3600
 
 
 async def run_import_dump(job_id: str, redis_client: redis.Redis) -> None:
+    """Run the import unless another one holds the lock; the check and the claim are one atomic SET NX."""
+    try:
+        acquired = bool(
+            redis_client.set(_DUMP_RUNNING_KEY, job_id, nx=True, ex=_DUMP_LOCK_TTL_SECONDS)
+        )
+    except redis.RedisError:
+        acquired = True
+
+    if not acquired:
+        logger.warning(f"[dump] Import {job_id} not started: another import is already running")
+        return
+
+    try:
+        await _run_import_dump_locked(job_id, redis_client)
+    finally:
+        try:
+            redis_client.delete(_DUMP_RUNNING_KEY)
+        except redis.RedisError:
+            pass
+
+
+async def _run_import_dump_locked(job_id: str, redis_client: redis.Redis) -> None:
     tmp_dir = pathlib.Path(app.config.settings.dump_tmp_dir)
     tmp_dir.mkdir(parents=True, exist_ok=True)
     base_url = app.config.settings.ol_dump_base_url
@@ -77,7 +103,7 @@ async def run_import_dump(job_id: str, redis_client: redis.Redis) -> None:
         saved_state["resume_attempts"] = 0
         app.workers.dump.state.save_job_state(redis_client, saved_state)
         gc.collect()
-        _trim_heap()
+        app.workers.dump.runtime.trim_heap()
 
     if completed:
         logger.info(
@@ -88,11 +114,6 @@ async def run_import_dump(job_id: str, redis_client: redis.Redis) -> None:
         logger.info(f"[dump] Starting dump import (job_id: {job_id})")
 
     try:
-        try:
-            redis_client.set("dump_import_running", 1)
-        except Exception:
-            pass
-
         if 1 not in completed:
             _set_status("Phase 1/6: downloading authors dump")
             await app.workers.dump.downloader.download_file(
@@ -116,6 +137,13 @@ async def run_import_dump(job_id: str, redis_client: redis.Redis) -> None:
         else:
             logger.info("[dump] Phase 2 (wikidata) already completed, skipping")
 
+        # The staging tables are unlogged, so a database crash empties them. A run
+        # that resumes after one must redo the works phase rather than merge nothing.
+        if 3 in completed and await _staged_work_count() == 0:
+            logger.warning("[dump] Work staging is empty although phase 3 completed; re-running phase 3")
+            completed.discard(3)
+            completed.discard(4)
+
         if 3 not in completed:
             _set_status("Phase 3/6: downloading works dump")
             await app.workers.dump.downloader.download_file(
@@ -129,13 +157,14 @@ async def run_import_dump(job_id: str, redis_client: redis.Redis) -> None:
             logger.info("[dump] Phase 3 (works) already completed, skipping")
 
         if 4 not in completed:
+            editions_stats: dict = {"skipped": True}
             if app.config.settings.dump_editions_enabled:
                 _set_status("Phase 4/6: building known-works filter")
                 async with app.models.AsyncSessionLocal() as session:
                     known_works_filter = await app.workers.dump.parsers.build_known_works_filter(session)
 
                 gc.collect()
-                _trim_heap()
+                app.workers.dump.runtime.trim_heap()
 
                 _set_status("Phase 4/6: downloading editions dump")
                 await app.workers.dump.downloader.download_file(
@@ -143,17 +172,19 @@ async def run_import_dump(job_id: str, redis_client: redis.Redis) -> None:
                     str(phase_files[4]),
                 )
                 gc.collect()
-                _trim_heap()
+                app.workers.dump.runtime.trim_heap()
 
-                _set_status("Phase 4/6: processing editions")
+                _set_status("Phase 4/6: scanning editions")
                 editions_stats = await app.workers.dump.phases.editions.process_editions_dump(
                     str(phase_files[4]), known_works_filter, job_id, redis_client
                 )
                 del known_works_filter
-                _finish_phase(4, editions_stats)
             else:
-                logger.info("[dump] Phase 4 skipped (editions disabled)")
-                _finish_phase(4, {"skipped": True})
+                logger.info("[dump] Edition scan skipped (editions disabled)")
+
+            _set_status("Phase 4/6: merging works and editions into language rows")
+            merge_stats = await app.workers.dump.phases.merge.merge_staging_into_books()
+            _finish_phase(4, {**editions_stats, **merge_stats})
         else:
             logger.info("[dump] Phase 4 (editions) already completed, skipping")
 
@@ -197,8 +228,8 @@ async def run_import_dump(job_id: str, redis_client: redis.Redis) -> None:
             f"{p.get('1', {}).get('count', 0)} authors, "
             f"{p.get('2', {}).get('count', 0)} wikidata enriched, "
             f"{p.get('3', {}).get('count', 0)} works, "
-            f"{p.get('4', {}).get('enriched', 0)} editions enriched, "
-            f"{p.get('4', {}).get('new_lang_rows', 0)} new language rows, "
+            f"{p.get('4', {}).get('updated', 0)} rows updated, "
+            f"{p.get('4', {}).get('inserted', 0)} rows created, "
             f"{p.get('5', {}).get('count', 0)} ratings applied, "
             f"{p.get('6', {}).get('count', 0)} reading log applied"
         )
@@ -214,7 +245,6 @@ async def run_import_dump(job_id: str, redis_client: redis.Redis) -> None:
         for f in phase_files.values():
             f.unlink(missing_ok=True)
         try:
-            redis_client.delete("dump_import_running")
             if completed == {1, 2, 3, 4, 5, 6}:
                 app.workers.dump.state.clear_job_state(redis_client)
         except Exception:

@@ -119,7 +119,9 @@ class OpenLibraryFetcher(app.fetcher_base.BaseFetcher):
                             }
                         )
 
-            cover_id = raw_data.get("cover_id") or work_data.get("covers", [None])[0]
+            cover_id = self._first_cover_id([raw_data.get("cover_id")]) or self._first_cover_id(
+                work_data.get("covers")
+            )
             primary_cover_url = self._get_cover_url(cover_id) if cover_id else None
 
             genres = []
@@ -167,6 +169,16 @@ class OpenLibraryFetcher(app.fetcher_base.BaseFetcher):
         url = f"{self.api_url}{author_key}.json"
         return await self._fetch_with_retry(url)
 
+    @staticmethod
+    def _first_cover_id(covers: typing.Any) -> typing.Optional[int]:
+        """First usable cover id. Open Library lists -1 (and 0) for "no cover"."""
+        if not isinstance(covers, list):
+            return None
+        for cover_id in covers:
+            if isinstance(cover_id, int) and not isinstance(cover_id, bool) and cover_id > 0:
+                return cover_id
+        return None
+
     def _get_cover_url(self, cover_id: int, size: str = "L") -> str:
         return f"https://covers.openlibrary.org/b/id/{cover_id}-{size}.jpg"
 
@@ -207,7 +219,7 @@ class OpenLibraryFetcher(app.fetcher_base.BaseFetcher):
 
         editions = work_data.get("editions", {}).get("entries", [])
         for edition in editions[:10]:
-            format_type = edition.get("physical_format", "").lower()
+            format_type = (edition.get("physical_format") or "").lower()
             if "hardcover" in format_type:
                 formats.add("hardcover")
             elif "paperback" in format_type or "softcover" in format_type:
@@ -217,10 +229,7 @@ class OpenLibraryFetcher(app.fetcher_base.BaseFetcher):
             elif "audiobook" in format_type or "audio" in format_type:
                 formats.add("audiobook")
 
-        if not formats:
-            formats.add("paperback")
-
-        return list(formats)
+        return sorted(formats)
 
     async def _fetch_editions(
         self, work_key: str
@@ -266,20 +275,18 @@ class OpenLibraryFetcher(app.fetcher_base.BaseFetcher):
 
         for edition in editions_data["entries"]:
             score = 0
-            for isbn10 in edition.get("isbn_10") or []:
-                if isinstance(isbn10, str) and isbn10:
-                    all_isbns.append(isbn10)
-                    score += 1
-            for isbn13 in edition.get("isbn_13") or []:
-                if isinstance(isbn13, str) and isbn13:
-                    all_isbns.append(isbn13)
-                    score += 1
+            for field in ("isbn_10", "isbn_13"):
+                for raw_isbn in edition.get(field) or []:
+                    isbn = app.utils.normalize_isbn(raw_isbn)
+                    if isbn:
+                        all_isbns.append(isbn)
+                        score += 1
             pages = edition.get("number_of_pages")
             if isinstance(pages, int) and pages > 0:
                 score += 1
             if edition.get("publishers"):
                 score += 1
-            if edition.get("covers"):
+            if self._first_cover_id(edition.get("covers")):
                 score += 1
 
             if score > best_score:

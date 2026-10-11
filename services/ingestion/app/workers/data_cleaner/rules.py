@@ -147,7 +147,7 @@ AUTHOR_DELETABLE_SQL = """(
 )"""
 
 AUTHOR_JUNK_NAME_SQL = r"""(
-    a.name !~ '[A-Za-z]'
+    a.name !~ '[[:alpha:]]'
     OR char_length(btrim(a.name)) < 2
     OR char_length(a.name) > 120
     OR array_length(regexp_split_to_array(btrim(a.name), '\s+'), 1) > 8

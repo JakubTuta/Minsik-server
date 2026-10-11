@@ -112,12 +112,11 @@ class GoogleBooksFetcher(app.fetcher_base.BaseFetcher):
                 except (ValueError, TypeError):
                     pass
 
-            isbn_list: list[str] = []
-            for identifier in volume_info.get("industryIdentifiers", []):
-                if identifier.get("type") in ("ISBN_10", "ISBN_13"):
-                    isbn_val = identifier.get("identifier")
-                    if isinstance(isbn_val, str) and isbn_val:
-                        isbn_list.append(isbn_val)
+            isbn_list = app.utils.normalize_isbns(
+                identifier.get("identifier")
+                for identifier in volume_info.get("industryIdentifiers", [])
+                if identifier.get("type") in ("ISBN_10", "ISBN_13")
+            )
 
             publisher = volume_info.get("publisher")
             if isinstance(publisher, str):
@@ -167,14 +166,5 @@ class GoogleBooksFetcher(app.fetcher_base.BaseFetcher):
         if epub_available or pdf_available:
             formats.add("ebook")
 
-        volume_info = raw_data.get("volumeInfo", {})
-        print_type = volume_info.get("printType", "").lower()
-
-        if print_type == "book":
-            formats.add("paperback")
-
-        if not formats:
-            formats.add("paperback")
-
-        return list(formats)
+        return sorted(formats)
 

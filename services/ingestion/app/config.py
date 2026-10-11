@@ -85,6 +85,7 @@ class Settings(pydantic_settings.BaseSettings):
     cleanup_book_max_authors: int = pydantic.Field(default=10)
     cleanup_collection_entries: bool = pydantic.Field(default=True)
 
+    description_enrich_languages: str = pydantic.Field(default="en,pl,de,es,fr")
     description_enrich_cooldown_days: int = pydantic.Field(default=30)
     description_enrich_request_delay: float = pydantic.Field(default=1.0)
 

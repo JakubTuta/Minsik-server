@@ -70,10 +70,6 @@ async def run_cleanup_cycle(
             )
         )
 
-    stats["duplicates"] = await books.cleanup_duplicate_books(
-        session_factory, book_batch, stop_check
-    )
-
     stats["authors"] = await authors.cleanup_orphan_authors(
         session_factory,
         settings.cleanup_author_min_books,
@@ -136,14 +132,17 @@ async def run_cleanup_job(force: bool = False) -> None:
         logger.warning(f"[cleanup] Failed to connect to Redis: {e}")
 
     try:
-        if redis_client is not None and redis_client.get(_CLEANUP_RUNNING_KEY):
-            logger.info(
-                "Skipping cleanup cycle: another cleanup cycle is already running"
-            )
-            return
-
         if redis_client is not None:
-            redis_client.set(_CLEANUP_RUNNING_KEY, "1", ex=_CLEANUP_RUNNING_TTL)
+            claimed = redis_client.set(
+                _CLEANUP_RUNNING_KEY, "1", nx=True, ex=_CLEANUP_RUNNING_TTL
+            )
+            if not claimed:
+                logger.info(
+                    "Skipping cleanup cycle: another cleanup cycle is already running"
+                )
+                redis_client.close()
+                redis_client = None
+                return
 
         def stop_check() -> bool:
             if redis_client is None:

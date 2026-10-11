@@ -1,5 +1,4 @@
 import asyncio
-import ctypes
 import gc
 import gzip
 import logging
@@ -7,16 +6,10 @@ import typing
 
 import app.models
 import app.workers.dump.parsers
+import app.workers.dump.runtime
 import sqlalchemy
 
 logger = logging.getLogger(__name__)
-
-
-def _trim_heap() -> None:
-    try:
-        ctypes.cdll.LoadLibrary("libc.so.6").malloc_trim(0)
-    except Exception:
-        pass
 
 
 async def process_ratings_dump(file_path: str) -> int:
@@ -46,7 +39,7 @@ async def process_ratings_dump(file_path: str) -> int:
     rating_agg = await asyncio.to_thread(_parse_ratings_file)
     logger.info(f"[dump] Parsed {len(rating_agg)} works with ratings")
     gc.collect()
-    _trim_heap()
+    app.workers.dump.runtime.trim_heap()
 
     updated = 0
     outer_batch_size = 50_000
@@ -107,7 +100,7 @@ async def process_ratings_dump(file_path: str) -> int:
                 for wid in outer_chunk:
                     del rating_agg[wid]
                 gc.collect()
-                _trim_heap()
+                app.workers.dump.runtime.trim_heap()
 
             logger.info(f"[dump] Phase 5: parse complete, {updated} staged rows, applying to books.books")
             applied = await _apply_staged_ratings(session)

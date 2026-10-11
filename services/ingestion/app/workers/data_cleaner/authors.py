@@ -9,8 +9,11 @@ import sqlalchemy.ext.asyncio
 
 _SOLE_BOOK_SUB_BATCH = 100
 
+# Works, not rows: every translation of a book is another row, and counting them
+# would make a much-translated author look like a merged junk entry.
 _AUTHOR_BOOK_COUNT_SQL = (
-    "(SELECT COUNT(*) FROM books.book_authors ba WHERE ba.author_id = a.author_id)"
+    "(SELECT COUNT(DISTINCT b.work_id) FROM books.book_authors ba "
+    "JOIN books.books b ON b.book_id = ba.book_id WHERE ba.author_id = a.author_id)"
 )
 
 

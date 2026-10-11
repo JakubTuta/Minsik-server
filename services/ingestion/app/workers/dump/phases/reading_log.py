@@ -1,5 +1,4 @@
 import asyncio
-import ctypes
 import gc
 import gzip
 import logging
@@ -7,18 +6,12 @@ import typing
 
 import app.models
 import app.workers.dump.parsers
+import app.workers.dump.runtime
 import sqlalchemy
 
 logger = logging.getLogger(__name__)
 
 _STREAM_BATCH_WORKS = 50_000
-
-
-def _trim_heap() -> None:
-    try:
-        ctypes.cdll.LoadLibrary("libc.so.6").malloc_trim(0)
-    except Exception:
-        pass
 
 
 async def process_reading_log_dump(file_path: str) -> int:
@@ -84,7 +77,7 @@ async def process_reading_log_dump(file_path: str) -> int:
                 updated += await _flush_reading_log_batch(session, batch)
                 batches_done += 1
                 gc.collect()
-                _trim_heap()
+                app.workers.dump.runtime.trim_heap()
                 logger.info(
                     f"[dump] Phase 6: batch {batches_done} done "
                     f"({batches_done * _STREAM_BATCH_WORKS:,} works processed), "
@@ -192,7 +185,8 @@ async def _apply_staged_counts(session: sqlalchemy.ext.asyncio.AsyncSession) -> 
             "UPDATE books.books SET "
             "ol_want_to_read_count = 0, ol_currently_reading_count = 0, ol_already_read_count = 0 "
             "WHERE open_library_id IS NOT NULL "
-            "AND book_id NOT IN (SELECT book_id FROM books.reading_log_staging)"
+            "AND (ol_want_to_read_count <> 0 OR ol_currently_reading_count <> 0 OR ol_already_read_count <> 0) "
+            "AND NOT EXISTS (SELECT 1 FROM books.reading_log_staging s WHERE s.book_id = books.books.book_id)"
         )
     )
 

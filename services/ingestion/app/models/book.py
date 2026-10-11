@@ -9,8 +9,12 @@ class Book(app.db_base.Base):
     __table_args__ = (
         sqlalchemy.Index("idx_books_language", "language"),
         sqlalchemy.Index("idx_books_language_slug", "language", "slug", unique=True),
-        sqlalchemy.Index("idx_books_work_id", "work_id"),
-        sqlalchemy.Index("idx_books_work_lang", "work_id", "language"),
+        sqlalchemy.Index(
+            "idx_books_work_id_cover",
+            "work_id",
+            postgresql_where=sqlalchemy.text("primary_cover_url IS NOT NULL AND primary_cover_url != ''"),
+        ),
+        sqlalchemy.Index("uq_books_work_language", "work_id", "language", unique=True),
         sqlalchemy.Index(
             "idx_books_rating_count",
             "rating_count",
@@ -73,6 +77,13 @@ class Book(app.db_base.Base):
     google_books_id = sqlalchemy.Column(sqlalchemy.String(100))
 
     enrichment_attempted_at = sqlalchemy.Column(sqlalchemy.TIMESTAMP(timezone=True))
+
+    # 'legacy' rows predate the per-language import; 'manual' rows were edited by
+    # an admin. manually_edited_fields lists the columns a re-import must not touch.
+    edition_source = sqlalchemy.Column(sqlalchemy.String(10), nullable=False, server_default=sqlalchemy.text("'legacy'"))
+    manually_edited_fields = sqlalchemy.Column(
+        sqlalchemy.dialects.postgresql.ARRAY(sqlalchemy.Text), nullable=False, server_default=sqlalchemy.text("'{}'")
+    )
 
     series_id = sqlalchemy.Column(sqlalchemy.BigInteger, sqlalchemy.ForeignKey("books.series.series_id"))
     series_position = sqlalchemy.Column(sqlalchemy.DECIMAL(5, 2))

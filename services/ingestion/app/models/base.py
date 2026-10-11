@@ -7,6 +7,7 @@ Base = app.db_base.Base
 
 engine = sqlalchemy.ext.asyncio.create_async_engine(
     app.config.settings.database_url,
+    connect_args={"server_settings": {"application_name": "minsik-ingestion", "idle_in_transaction_session_timeout": "300000"}},
     pool_size=app.config.settings.db_pool_size,
     max_overflow=app.config.settings.db_max_overflow,
     echo=app.config.settings.debug,

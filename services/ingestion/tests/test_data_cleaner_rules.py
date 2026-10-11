@@ -237,38 +237,6 @@ async def test_cleanup_low_engagement_authors(
 
 @pytest.mark.asyncio
 @pytest.mark.integration
-async def test_cleanup_duplicate_books_by_work_id(
-    commit_session, session_factory_for_testing
-):
-    winner = Book(
-        title="Same Work Preferred Edition",
-        language="en",
-        work_id="ol-same-work",
-        slug="same-work-a",
-        ol_rating_count=30,
-        formats=[],
-    )
-    loser = Book(
-        title="Same Work Other Edition",
-        language="en",
-        work_id="ol-same-work",
-        slug="same-work-b",
-        formats=[],
-    )
-    commit_session.add_all([winner, loser])
-    await commit_session.commit()
-
-    stats = await data_cleaner.cleanup_duplicate_books(
-        session_factory_for_testing, batch_size=100
-    )
-
-    remaining = await commit_session.execute(select(Book.slug))
-    assert {row[0] for row in remaining.fetchall()} == {"same-work-a"}
-    assert stats["deleted"] == 1
-
-
-@pytest.mark.asyncio
-@pytest.mark.integration
 async def test_cleanup_junk_genres(commit_session, session_factory_for_testing):
     commit_session.add_all(
         [

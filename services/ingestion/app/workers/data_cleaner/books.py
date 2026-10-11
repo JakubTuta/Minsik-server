@@ -7,17 +7,6 @@ import sqlalchemy
 import sqlalchemy.engine
 import sqlalchemy.ext.asyncio
 
-_DUPLICATE_PARTITIONS: typing.Dict[str, typing.Tuple[str, str]] = {
-    "title": (
-        """lower(btrim(b.title)),
-           b.language,
-           (SELECT MIN(ba.author_id) FROM books.book_authors ba WHERE ba.book_id = b.book_id)""",
-        "WHERE EXISTS (SELECT 1 FROM books.book_authors ba WHERE ba.book_id = b.book_id)",
-    ),
-    "work": ("b.work_id, b.language", ""),
-}
-
-
 async def delete_books(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     book_ids: typing.List[int],
@@ -147,71 +136,3 @@ async def cleanup_multi_author_books(
         session_factory, "multi-author books deleted", step, stop_check
     )
     return {"deleted": deleted}
-
-
-def _duplicate_step(
-    partition_sql: str,
-    extra_where: str,
-    batch_size: int,
-) -> runtime.BatchStep:
-    query = sqlalchemy.text(
-        f"""
-        WITH ranked AS (
-            SELECT
-                b.book_id,
-                FIRST_VALUE(b.book_id) OVER duplicates AS winner_book_id,
-                ROW_NUMBER() OVER duplicates AS rn
-            FROM books.books b
-            {extra_where}
-            WINDOW duplicates AS (
-                PARTITION BY {partition_sql}
-                ORDER BY
-                    (b.view_count + b.rating_count + COALESCE(b.ol_rating_count, 0)) DESC,
-                    b.book_id ASC
-            )
-        )
-        SELECT book_id, winner_book_id FROM ranked WHERE rn > 1 LIMIT :batch_size
-        """
-    )
-
-    async def step(
-        session: sqlalchemy.ext.asyncio.AsyncSession,
-    ) -> typing.Tuple[int, bool]:
-        result = await session.execute(query, {"batch_size": batch_size})
-        pairs = [(row[0], row[1]) for row in result.fetchall()]
-        if not pairs:
-            return 0, False
-
-        affected_user_ids: typing.Set[int] = set()
-        for loser_id, winner_id in pairs:
-            remapped = await user_data.remap_book_user_data(
-                session, loser_id, winner_id
-            )
-            affected_user_ids.update(remapped)
-
-        delete_result = await session.execute(
-            sqlalchemy.text("DELETE FROM books.books WHERE book_id = ANY(:book_ids)"),
-            {"book_ids": [loser_id for loser_id, _ in pairs]},
-        )
-        await user_data.recompute_user_stats(
-            session, list(affected_user_ids)
-        )
-        return typing.cast(sqlalchemy.engine.CursorResult, delete_result).rowcount, True
-
-    return step
-
-
-async def cleanup_duplicate_books(
-    session_factory: runtime.SessionFactory,
-    batch_size: int,
-    stop_check: runtime.StopCheck = runtime.never_stop,
-) -> typing.Dict[str, int]:
-    total_deleted = 0
-    for label, (partition_sql, extra_where) in _DUPLICATE_PARTITIONS.items():
-        total_deleted += await runtime.run_batches(
-            session_factory,
-            f"duplicate books deleted ({label})",
-            _duplicate_step(partition_sql, extra_where, batch_size),
-            stop_check,
-        )
-    return {"deleted": total_deleted}

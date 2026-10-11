@@ -1,27 +1,46 @@
 import asyncio
-import ctypes
 import gc
 import json
 import logging
 import typing
 
 import app.config
-import app.models
 import app.utils
+import app.workers.dump.language_detect
 import app.workers.dump.parsers
+import app.workers.dump.runtime
 import redis
 import sqlalchemy
-import sqlalchemy.dialects.postgresql
-import sqlalchemy.ext.asyncio
-import sqlalchemy.pool
 
 logger = logging.getLogger(__name__)
 
-_dump_engine: sqlalchemy.ext.asyncio.AsyncEngine | None = None
-_dump_sessionmaker: sqlalchemy.ext.asyncio.async_sessionmaker | None = None
-
 _CHECKPOINT_TTL_SECONDS = 86400 * 2
+_STAGE_BATCH = 1000
+UNKNOWN_LANGUAGE = ""
+_MAX_ISBNS = 20
 
+# The best edition per (work, language) is decided by the database across the
+# whole dump, not per chunk: a later chunk's better edition replaces an earlier
+# chunk's, and a worse one is ignored.
+_STAGE_SQL = sqlalchemy.text(
+    """
+    INSERT INTO books.edition_staging (work_ol_id, language, score, payload)
+    VALUES (:work_ol_id, :language, :score, CAST(:payload AS jsonb))
+    ON CONFLICT (work_ol_id, language) DO UPDATE SET
+        score = EXCLUDED.score,
+        payload = jsonb_set(
+            EXCLUDED.payload, '{isbns}',
+            (
+                SELECT COALESCE(jsonb_agg(isbn), '[]'::jsonb) FROM (
+                    SELECT DISTINCT isbn FROM jsonb_array_elements_text(
+                        books.edition_staging.payload->'isbns' || EXCLUDED.payload->'isbns'
+                    ) AS t(isbn) LIMIT 20
+                ) merged
+            )
+        )
+    WHERE EXCLUDED.score > books.edition_staging.score
+    """
+)
 
 def _checkpoint_key(job_id: str) -> str:
     return f"dump_phase4_checkpoint:{job_id}"
@@ -30,60 +49,158 @@ def _checkpoint_key(job_id: str) -> str:
 def _load_checkpoint(redis_client: redis.Redis, job_id: str) -> dict:
     try:
         raw = redis_client.get(_checkpoint_key(job_id))
-        if raw:
-            return json.loads(raw)
-    except Exception:
-        pass
-    return {}
+        return json.loads(raw) if raw else {}
+    except (redis.RedisError, ValueError):
+        return {}
 
 
 def _save_checkpoint(redis_client: redis.Redis, job_id: str, data: dict) -> None:
     try:
-        redis_client.set(
-            _checkpoint_key(job_id),
-            json.dumps(data),
-            ex=_CHECKPOINT_TTL_SECONDS,
-        )
-    except Exception:
-        pass
+        redis_client.set(_checkpoint_key(job_id), json.dumps(data), ex=_CHECKPOINT_TTL_SECONDS)
+    except redis.RedisError:
+        logger.warning("[dump] Could not save the phase 4 checkpoint")
 
 
 def _clear_checkpoint(redis_client: redis.Redis, job_id: str) -> None:
     try:
         redis_client.delete(_checkpoint_key(job_id))
-    except Exception:
+    except redis.RedisError:
         pass
 
 
-def _get_dump_sessionmaker() -> sqlalchemy.ext.asyncio.async_sessionmaker:
-    global _dump_engine, _dump_sessionmaker
-    if _dump_sessionmaker is None:
-        _dump_engine = sqlalchemy.ext.asyncio.create_async_engine(
-            app.config.settings.database_url,
-            poolclass=sqlalchemy.pool.NullPool,
-            echo=False,
-        )
-        _dump_sessionmaker = sqlalchemy.ext.asyncio.async_sessionmaker(
-            _dump_engine,
-            class_=sqlalchemy.ext.asyncio.AsyncSession,
-            expire_on_commit=False,
-            autocommit=False,
-            autoflush=False,
-        )
-    return _dump_sessionmaker
+def _first_str(values: typing.Any) -> typing.Optional[str]:
+    if isinstance(values, list) and values and isinstance(values[0], str):
+        return values[0]
+    return None
 
 
-def _trim_heap() -> None:
-    try:
-        ctypes.cdll.LoadLibrary("libc.so.6").malloc_trim(0)
-    except Exception:
-        pass
+def _isbns(edition_data: dict) -> list[str]:
+    raw = [
+        isbn
+        for field in ("isbn_10", "isbn_13")
+        for isbn in edition_data.get(field) or []
+    ]
+    return app.utils.normalize_isbns(raw, _MAX_ISBNS)
 
 
-async def _open_session() -> sqlalchemy.ext.asyncio.AsyncSession:
-    session = _get_dump_sessionmaker()()
-    await session.execute(sqlalchemy.text("SET synchronous_commit = off"))
-    return session
+def _title(edition_data: dict) -> typing.Optional[str]:
+    title = edition_data.get("title")
+    if not isinstance(title, str) or not title.strip():
+        return None
+    title = title.strip()
+    subtitle = edition_data.get("subtitle")
+    if isinstance(subtitle, str) and subtitle.strip() and subtitle.strip().lower() not in title.lower():
+        title = f"{title}: {subtitle.strip()}"
+    return title[:500]
+
+
+def resolve_language(tag: typing.Optional[str], title: typing.Optional[str], description: typing.Optional[str]) -> str:
+    """The edition's language: its OpenLibrary tag, else what its own text says, else unknown.
+
+    An untagged edition is never assumed to be English: that assumption is how
+    foreign-language text used to land on the English row.
+    """
+    if tag:
+        return tag
+    detected = app.workers.dump.language_detect.detect(" ".join(part for part in (title, description) if part))
+    return detected or UNKNOWN_LANGUAGE
+
+
+def parse_edition(edition_data: dict, known_works_filter: bytearray) -> typing.Optional[dict]:
+    """One OpenLibrary edition as a staging candidate, or None when its work is not being imported."""
+    works_ref = edition_data.get("works", [])
+    if not works_ref or not isinstance(works_ref, list):
+        return None
+    first_work = works_ref[0]
+    work_key = first_work.get("key", "") if isinstance(first_work, dict) else ""
+    work_ol_id = work_key.replace("/works/", "")
+    if not work_ol_id or not app.workers.dump.parsers.is_known_work(known_works_filter, work_ol_id):
+        return None
+
+    languages = edition_data.get("languages", [])
+    tag = app.workers.dump.parsers.extract_ol_lang(languages[0]) if languages and isinstance(languages, list) else None
+
+    title = _title(edition_data)
+    description = app.workers.dump.parsers.extract_description(edition_data.get("description"))
+    language = resolve_language(tag, title, description)
+
+    # Text only goes to a row whose language it is written in; a recognisable
+    # mismatch (an English blurb on a Polish edition) is dropped, not moved.
+    if language == UNKNOWN_LANGUAGE or not app.workers.dump.language_detect.fits_language(title, language):
+        title = None
+    if language == UNKNOWN_LANGUAGE or not app.workers.dump.language_detect.fits_language(description, language):
+        description = None
+    first_sentence = app.workers.dump.parsers.extract_description(edition_data.get("first_sentence"))
+    if language == UNKNOWN_LANGUAGE or not app.workers.dump.language_detect.fits_language(first_sentence, language):
+        first_sentence = None
+
+    page_count = edition_data.get("number_of_pages")
+    if not isinstance(page_count, int) or page_count <= 0:
+        page_count = None
+
+    physical_format = edition_data.get("physical_format")
+    physical_format = physical_format.lower().strip() if isinstance(physical_format, str) else None
+
+    external_ids: dict[str, str] = {}
+    identifiers = edition_data.get("identifiers", {})
+    if isinstance(identifiers, dict):
+        for id_key, id_values in identifiers.items():
+            first = _first_str(id_values)
+            if first:
+                external_ids[id_key] = first
+    google_books_id = external_ids.pop("google", None)
+    external_ids["work_ol_id"] = work_ol_id
+
+    publisher = _first_str(edition_data.get("publishers"))
+
+    series = app.workers.dump.parsers.parse_series_string(edition_data.get("series"))
+    score = app.workers.dump.parsers.score_edition(edition_data) + (2 if title else 0)
+
+    return {
+        "work_ol_id": work_ol_id,
+        "language": language,
+        "score": score,
+        "payload": {
+            "title": title,
+            "description": description,
+            "first_sentence": first_sentence,
+            "isbns": _isbns(edition_data),
+            "number_of_pages": page_count,
+            "publisher": publisher[:500] if publisher else None,
+            "physical_format": physical_format,
+            "external_ids": external_ids,
+            "open_library_id": edition_data.get("key", "").replace("/books/", "") or None,
+            "google_books_id": google_books_id,
+            "cover_url": app.workers.dump.parsers.extract_cover_url(edition_data.get("covers")),
+            "series": series,
+        },
+    }
+
+
+def _keep_best(best: dict[tuple[str, str], dict], candidate: dict) -> None:
+    key = (candidate["work_ol_id"], candidate["language"])
+    existing = best.get(key)
+    if existing is None:
+        best[key] = candidate
+        return
+    merged_isbns = list(dict.fromkeys(existing["payload"]["isbns"] + candidate["payload"]["isbns"]))[:_MAX_ISBNS]
+    if candidate["score"] > existing["score"]:
+        best[key] = candidate
+    best[key]["payload"]["isbns"] = merged_isbns
+
+
+async def _stage(session, best: dict[tuple[str, str], dict]) -> None:
+    rows = [
+        {
+            "work_ol_id": candidate["work_ol_id"],
+            "language": candidate["language"],
+            "score": candidate["score"],
+            "payload": json.dumps(candidate["payload"]),
+        }
+        for candidate in best.values()
+    ]
+    for start in range(0, len(rows), _STAGE_BATCH):
+        await app.workers.dump.runtime.execute_batch(session, _STAGE_SQL, rows[start:start + _STAGE_BATCH])
 
 
 async def process_editions_dump(
@@ -95,500 +212,67 @@ async def process_editions_dump(
     from app.workers.dump import downloader
 
     checkpoint = _load_checkpoint(redis_client, job_id)
-    checkpoint_processed = checkpoint.get("processed", 0)
-    if checkpoint_processed > 0:
-        logger.info(
-            f"[dump] Phase 4 resuming from checkpoint: "
-            f"{checkpoint_processed} editions already processed, skipping ahead"
-        )
+    total_processed = checkpoint.get("processed", 0)
+    staged = checkpoint.get("staged", 0)
+    skipped = checkpoint.get("skipped", 0)
+    if total_processed:
+        logger.info(f"[dump] Phase 4 resuming from checkpoint: {total_processed} editions already scanned")
 
     queue: asyncio.Queue = asyncio.Queue(maxsize=5)
     parse_task = asyncio.create_task(
         downloader.stream_parse_dump(
-            file_path,
-            "/type/edition",
-            queue,
-            app.config.settings.dump_edition_batch_size,
-            skip_records=checkpoint_processed,
+            file_path, "/type/edition", queue, app.config.settings.dump_edition_batch_size,
+            skip_records=total_processed,
         )
     )
 
-    total_processed = checkpoint_processed
-    enriched = checkpoint.get("enriched", 0)
-    new_lang_rows = checkpoint.get("new_lang_rows", 0)
-    skipped = checkpoint.get("skipped", 0)
-    last_logged = total_processed
-    last_flushed = total_processed
-    commit_interval = app.config.settings.dump_commit_interval
     flush_interval = app.config.settings.dump_edition_flush_interval
+    last_flushed = total_processed
+    best: dict[tuple[str, str], dict] = {}
 
-    best_editions: dict[str, dict] = {}
-
-    session = await _open_session()
+    session = await app.workers.dump.runtime.open_session()
     try:
-        try:
-            while True:
-                batch = await queue.get()
-                if batch is None:
-                    break
+        while True:
+            batch = await queue.get()
+            if batch is None:
+                break
 
-                for edition_data in batch:
-                    total_processed += 1
-                    try:
-                        works_ref = edition_data.get("works", [])
-                        if not works_ref or not isinstance(works_ref, list):
-                            skipped += 1
-                            continue
-                        first_work = works_ref[0]
-                        work_key = (
-                            first_work.get("key", "")
-                            if isinstance(first_work, dict)
-                            else ""
-                        )
-                        work_ol_id = work_key.replace("/works/", "")
-                        if not work_ol_id or not app.workers.dump.parsers.is_known_work(
-                            known_works_filter, work_ol_id
-                        ):
-                            skipped += 1
-                            continue
+            for edition_data in batch:
+                total_processed += 1
+                try:
+                    candidate = parse_edition(edition_data, known_works_filter)
+                except Exception as e:
+                    logger.debug(f"Error parsing edition: {e}")
+                    candidate = None
+                if candidate is None:
+                    skipped += 1
+                    continue
+                _keep_best(best, candidate)
 
-                        languages = edition_data.get("languages", [])
-                        lang_code = "en"
-                        if languages and isinstance(languages, list):
-                            detected = app.workers.dump.parsers.extract_ol_lang(languages[0])
-                            if detected:
-                                lang_code = detected
+            if total_processed - last_flushed >= flush_interval:
+                await _stage(session, best)
+                staged += len(best)
+                best.clear()
+                last_flushed = total_processed
+                _save_checkpoint(
+                    redis_client, job_id,
+                    {"processed": total_processed, "staged": staged, "skipped": skipped},
+                )
+                gc.collect()
+                app.workers.dump.runtime.trim_heap()
+                logger.info(f"[dump] Editions scanned: {total_processed}, staged candidates: {staged}, skipped: {skipped}")
 
-                        isbns: list[str] = []
-                        for isbn10 in edition_data.get("isbn_10") or []:
-                            if isinstance(isbn10, str) and isbn10:
-                                isbns.append(isbn10)
-                        for isbn13 in edition_data.get("isbn_13") or []:
-                            if isinstance(isbn13, str) and isbn13:
-                                isbns.append(isbn13)
+        await _stage(session, best)
+        staged += len(best)
+        best.clear()
+        _clear_checkpoint(redis_client, job_id)
+        logger.info(f"[dump] Phase 4 scan complete: {total_processed} editions, {staged} staged, {skipped} skipped")
+        return {"processed": total_processed, "staged": staged, "skipped": skipped}
 
-                        page_count = edition_data.get("number_of_pages")
-                        if not isinstance(page_count, int) or page_count <= 0:
-                            page_count = None
-
-                        publishers = edition_data.get("publishers", [])
-                        publisher = None
-                        if (
-                            publishers
-                            and isinstance(publishers, list)
-                            and isinstance(publishers[0], str)
-                        ):
-                            publisher = publishers[0][:500]
-
-                        physical_format = edition_data.get("physical_format")
-                        if isinstance(physical_format, str):
-                            physical_format = physical_format.lower().strip()
-                        else:
-                            physical_format = None
-
-                        ext_ids: dict[str, str] = {}
-                        identifiers = edition_data.get("identifiers", {})
-                        if isinstance(identifiers, dict):
-                            for id_key, id_vals in identifiers.items():
-                                if (
-                                    isinstance(id_vals, list)
-                                    and id_vals
-                                    and isinstance(id_vals[0], str)
-                                ):
-                                    ext_ids[id_key] = id_vals[0]
-
-                        ext_ids["work_ol_id"] = work_ol_id
-                        edition_ol_id = edition_data.get("key", "").replace(
-                            "/books/", ""
-                        )
-                        google_books_id = ext_ids.pop("google", None)
-
-                        cover_url = app.workers.dump.parsers.extract_cover_url(
-                            edition_data.get("covers")
-                        )
-                        description = app.workers.dump.parsers.extract_description(
-                            edition_data.get("description")
-                        )
-
-                        series_data = app.workers.dump.parsers.parse_series_string(
-                            edition_data.get("series")
-                        )
-                        first_sentence = app.workers.dump.parsers.extract_description(
-                            edition_data.get("first_sentence")
-                        )
-
-                        score = app.workers.dump.parsers.score_edition(edition_data)
-
-                        edition_key = f"{work_ol_id}:{lang_code}"
-                        existing = best_editions.get(edition_key)
-                        if existing is None or score > existing.get("_score", 0):
-                            best_editions[edition_key] = {
-                                "work_ol_id": work_ol_id,
-                                "lang_code": lang_code,
-                                "isbns": isbns,
-                                "page_count": page_count,
-                                "publisher": publisher,
-                                "physical_format": physical_format,
-                                "external_ids": ext_ids,
-                                "edition_ol_id": edition_ol_id,
-                                "google_books_id": google_books_id,
-                                "cover_url": cover_url,
-                                "description": description,
-                                "first_sentence": first_sentence,
-                                "series": series_data,
-                                "_score": score,
-                            }
-                        else:
-                            if existing and isbns:
-                                existing_isbns = set(existing.get("isbns", []))
-                                for isbn in isbns:
-                                    if isbn not in existing_isbns:
-                                        existing["isbns"].append(isbn)
-
-                    except Exception as e:
-                        logger.debug(f"Error parsing edition: {e}")
-                        skipped += 1
-
-                if total_processed - last_flushed >= flush_interval:
-                    e, n = await _flush_best_editions_chunk(session, best_editions)
-                    enriched += e
-                    new_lang_rows += n
-                    best_editions.clear()
-                    last_flushed = total_processed
-                    _save_checkpoint(
-                        redis_client,
-                        job_id,
-                        {
-                            "processed": total_processed,
-                            "enriched": enriched,
-                            "new_lang_rows": new_lang_rows,
-                            "skipped": skipped,
-                        },
-                    )
-                    gc.collect()
-                    await session.close()
-                    session = await _open_session()
-                    _trim_heap()
-                    logger.info(
-                        f"[dump] Editions chunk flushed at {total_processed}, "
-                        f"enriched so far: {enriched}, "
-                        f"new lang rows: {new_lang_rows}"
-                    )
-
-                if total_processed - last_logged >= commit_interval * 4:
-                    last_logged = total_processed
-                    logger.info(
-                        f"[dump] Editions scanned: {total_processed}, "
-                        f"best-of candidates: {len(best_editions)}, "
-                        f"skipped: {skipped}"
-                    )
-
-            logger.info(
-                f"[dump] Edition scanning complete: {total_processed} scanned, "
-                f"{len(best_editions)} remaining best-of candidates"
-            )
-
-            del known_works_filter
-            gc.collect()
-            _trim_heap()
-
-            e, n = await _flush_best_editions_chunk(session, best_editions)
-            enriched += e
-            new_lang_rows += n
-            best_editions.clear()
-
-            _clear_checkpoint(redis_client, job_id)
-            logger.info(
-                f"[dump] Phase 4 complete: {total_processed} editions scanned, "
-                f"{enriched} books enriched, {new_lang_rows} new language rows"
-            )
-            return {
-                "processed": total_processed,
-                "enriched": enriched,
-                "new_lang_rows": new_lang_rows,
-                "skipped": skipped,
-            }
-
-        except Exception as e:
-            await session.rollback()
-            logger.error(f"[dump] Error in process_editions_dump: {e}")
-            raise
-        finally:
-            await parse_task
+    except Exception as e:
+        await session.rollback()
+        logger.error(f"[dump] Error in process_editions_dump: {e}")
+        raise
     finally:
         await session.close()
-        global _dump_engine, _dump_sessionmaker
-        if _dump_engine is not None:
-            await _dump_engine.dispose()
-            _dump_engine = None
-            _dump_sessionmaker = None
-
-
-async def _flush_best_editions_chunk(
-    session: sqlalchemy.ext.asyncio.AsyncSession,
-    best_editions: dict[str, dict],
-) -> tuple[int, int]:
-    if not best_editions:
-        return 0, 0
-
-    work_ol_ids = list({ed["work_ol_id"] for ed in best_editions.values()})
-    book_lookup = await app.workers.dump.parsers.batch_lookup_books(session, work_ol_ids)
-
-    enriched = 0
-    new_lang_rows = 0
-    batch_updates: list[dict] = []
-
-    for ed in best_editions.values():
-        work_ol_id = ed["work_ol_id"]
-        lang_code = ed["lang_code"]
-        book_rows = book_lookup.get(work_ol_id, [])
-
-        matching_book_id = None
-        en_book_id = None
-        for book_id, language in book_rows:
-            if language == lang_code:
-                matching_book_id = book_id
-                break
-            if language == "en":
-                en_book_id = book_id
-
-        if matching_book_id is not None:
-            batch_updates.append(
-                {
-                    "book_id": matching_book_id,
-                    "isbn": ed["isbns"][:20],
-                    "number_of_pages": ed["page_count"],
-                    "publisher": ed["publisher"],
-                    "external_ids": ed["external_ids"],
-                    "open_library_id": ed["edition_ol_id"],
-                    "google_books_id": ed["google_books_id"],
-                    "cover_url": ed["cover_url"],
-                    "description": ed["description"],
-                    "first_sentence": ed.get("first_sentence"),
-                    "physical_format": ed["physical_format"],
-                    "series": ed["series"],
-                }
-            )
-            enriched += 1
-        elif lang_code != "en" and en_book_id is not None:
-            batch_updates.append(
-                {
-                    "book_id": None,
-                    "source_book_id": en_book_id,
-                    "work_ol_id": work_ol_id,
-                    "lang_code": lang_code,
-                    "isbn": ed["isbns"][:20],
-                    "number_of_pages": ed["page_count"],
-                    "publisher": ed["publisher"],
-                    "external_ids": ed["external_ids"],
-                    "open_library_id": ed["edition_ol_id"],
-                    "google_books_id": ed["google_books_id"],
-                    "cover_url": ed["cover_url"],
-                    "description": ed["description"],
-                    "first_sentence": ed.get("first_sentence"),
-                    "physical_format": ed["physical_format"],
-                    "series": ed["series"],
-                }
-            )
-            new_lang_rows += 1
-
-        if len(batch_updates) >= 500:
-            await _flush_edition_updates(session, batch_updates)
-            batch_updates = []
-            await session.commit()
-
-    if batch_updates:
-        await _flush_edition_updates(session, batch_updates)
-    await session.commit()
-
-    return enriched, new_lang_rows
-
-
-async def _flush_edition_updates(
-    session: sqlalchemy.ext.asyncio.AsyncSession,
-    updates: list[dict],
-) -> None:
-    existing_updates: list[dict] = []
-    new_lang_updates: list[dict] = []
-    for update in updates:
-        if update.get("book_id") is not None:
-            existing_updates.append(update)
-        else:
-            new_lang_updates.append(update)
-
-    existing_updates.sort(key=lambda x: x["book_id"])
-    batch_size = 500
-    for i in range(0, len(existing_updates), batch_size):
-        sub = existing_updates[i : i + batch_size]
-        values_parts: list[str] = []
-        params: dict[str, typing.Any] = {}
-        for k, u in enumerate(sub):
-            series = u.get("series")
-            s_slug = None
-            s_name = None
-            s_pos = None
-            if series and series.get("name"):
-                s_slug = app.utils.slugify(series["name"])[:550]
-                s_name = (app.utils.clean_name(series["name"]) or series["name"])[:500]
-                s_pos = app.utils.clamp_series_position(series.get("position"))
-
-            values_parts.append(
-                f"(CAST(:bid_{k} AS bigint), CAST(:isbn_{k} AS jsonb), CAST(:pages_{k} AS int), "
-                f":pub_{k}, CAST(:ext_{k} AS jsonb), :cover_{k}, :desc_{k}, :fsen_{k}, CAST(:fmt_{k} AS jsonb), "
-                f":sslug_{k}, :sname_{k}, CAST(:spos_{k} AS numeric), :olid_{k}, :gbid_{k})"
-            )
-            params[f"bid_{k}"] = u["book_id"]
-            params[f"isbn_{k}"] = json.dumps(u["isbn"]) if u["isbn"] else None
-            params[f"pages_{k}"] = u["number_of_pages"]
-            params[f"pub_{k}"] = u["publisher"][:500] if u["publisher"] else None
-            params[f"ext_{k}"] = (
-                json.dumps(u["external_ids"]) if u["external_ids"] else "{}"
-            )
-            params[f"cover_{k}"] = u["cover_url"][:1000] if u["cover_url"] else None
-            params[f"desc_{k}"] = u["description"]
-            params[f"fsen_{k}"] = u.get("first_sentence")
-            params[f"fmt_{k}"] = (
-                json.dumps([u["physical_format"]]) if u["physical_format"] else None
-            )
-            params[f"sslug_{k}"] = s_slug
-            params[f"sname_{k}"] = s_name
-            params[f"spos_{k}"] = s_pos
-            params[f"olid_{k}"] = (
-                u.get("open_library_id")[:100] if u.get("open_library_id") else None
-            )
-            params[f"gbid_{k}"] = (
-                u.get("google_books_id")[:100] if u.get("google_books_id") else None
-            )
-
-        await session.execute(
-            sqlalchemy.text(
-                "UPDATE books.books AS b SET "
-                "isbn = CASE WHEN (b.isbn IS NULL OR b.isbn = '[]'::jsonb) "
-                "AND v.isbn IS NOT NULL THEN v.isbn ELSE b.isbn END, "
-                "number_of_pages = COALESCE(b.number_of_pages, v.pages), "
-                "publisher = COALESCE(b.publisher, v.pub), "
-                "external_ids = b.external_ids || v.ext, "
-                "open_library_id = COALESCE(b.open_library_id, v.olid), "
-                "google_books_id = COALESCE(b.google_books_id, v.gbid), "
-                "primary_cover_url = COALESCE(b.primary_cover_url, v.cover), "
-                "description = COALESCE(b.description, v.descr), "
-                "first_sentence = COALESCE(b.first_sentence, v.fsen), "
-                "formats = CASE "
-                "WHEN v.fmt IS NOT NULL AND NOT b.formats @> v.fmt "
-                "THEN b.formats || v.fmt ELSE b.formats END, "
-                "series_slug = CASE WHEN v.sslug IS NOT NULL THEN v.sslug ELSE b.series_slug END, "
-                "series_name = CASE WHEN v.sname IS NOT NULL THEN v.sname ELSE b.series_name END, "
-                "series_position = CASE WHEN b.series_position IS NULL "
-                "AND v.spos IS NOT NULL THEN v.spos ELSE b.series_position END "
-                f"FROM (VALUES {', '.join(values_parts)}) "
-                "AS v(bid, isbn, pages, pub, ext, cover, descr, fsen, fmt, sslug, sname, spos, olid, gbid) "
-                "WHERE b.book_id = v.bid"
-            ),
-            params,
-        )
-
-    for update in new_lang_updates:
-        try:
-            await _insert_new_language_row(session, update)
-        except Exception as e:
-            logger.debug(f"Error inserting new language row: {e}")
-
-
-async def _insert_new_language_row(
-    session: sqlalchemy.ext.asyncio.AsyncSession,
-    update: dict,
-) -> None:
-    source_id = update["source_book_id"]
-    lang = update["lang_code"]
-    work_ol_id = update["work_ol_id"]
-
-    source_result = await session.execute(
-        sqlalchemy.text(
-            "SELECT title, slug, description, original_publication_year, "
-            "primary_cover_url, open_library_id, series_slug, series_name, series_position "
-            "FROM books.books WHERE book_id = :sid"
-        ),
-        {"sid": source_id},
-    )
-    source = source_result.first()
-    if not source:
-        return
-
-    slug = app.utils.slugify(source.title)
-
-    title = source.title[:500] if source.title else source.title
-    cover_url = update["cover_url"] or source.primary_cover_url
-    if isinstance(cover_url, str):
-        cover_url = cover_url[:1000]
-    publisher = update["publisher"]
-    if isinstance(publisher, str):
-        publisher = publisher[:500]
-
-    edition_series = update.get("series")
-    if edition_series and edition_series.get("name"):
-        s_slug = app.utils.slugify(edition_series["name"])[:550]
-        s_name = (app.utils.clean_name(edition_series["name"]) or edition_series["name"])[:500]
-        s_pos = app.utils.clamp_series_position(edition_series.get("position"))
-    else:
-        s_slug = source.series_slug
-        s_name = source.series_name
-        s_pos = app.utils.clamp_series_position(source.series_position)
-
-    insert_data = {
-        "title": title,
-        "language": lang,
-        "slug": slug,
-        "work_id": work_ol_id,
-        "description": update["description"] or source.description,
-        "first_sentence": update.get("first_sentence"),
-        "original_publication_year": source.original_publication_year,
-        "primary_cover_url": cover_url,
-        "open_library_id": update.get("open_library_id") or work_ol_id,
-        "google_books_id": update.get("google_books_id"),
-        "isbn": update["isbn"] or [],
-        "publisher": publisher,
-        "number_of_pages": update["number_of_pages"],
-        "external_ids": update["external_ids"] or {},
-        "formats": ([update["physical_format"]] if update["physical_format"] else []),
-        "series_slug": s_slug,
-        "series_name": s_name,
-        "series_position": s_pos,
-    }
-
-    stmt = sqlalchemy.dialects.postgresql.insert(app.models.Book).values(insert_data)
-    stmt = stmt.on_conflict_do_update(
-        index_elements=["language", "slug"],
-        set_={
-            "isbn": stmt.excluded.isbn,
-            "publisher": stmt.excluded.publisher,
-            "number_of_pages": stmt.excluded.number_of_pages,
-            "external_ids": app.models.Book.external_ids.op("||")(
-                stmt.excluded.external_ids
-            ),
-            "open_library_id": stmt.excluded.open_library_id,
-            "google_books_id": stmt.excluded.google_books_id,
-        },
-    )
-    stmt = stmt.returning(app.models.Book.book_id)
-    result = await session.execute(stmt)
-    new_row = result.first()
-    if not new_row:
-        return
-
-    await session.execute(
-        sqlalchemy.text(
-            "INSERT INTO books.book_authors (book_id, author_id) "
-            "SELECT :new_bid, author_id FROM books.book_authors "
-            "WHERE book_id = :sid ON CONFLICT DO NOTHING"
-        ),
-        {"new_bid": new_row.book_id, "sid": source_id},
-    )
-
-    await session.execute(
-        sqlalchemy.text(
-            "INSERT INTO books.book_genres (book_id, genre_id) "
-            "SELECT :new_bid, genre_id FROM books.book_genres "
-            "WHERE book_id = :sid ON CONFLICT DO NOTHING"
-        ),
-        {"new_bid": new_row.book_id, "sid": source_id},
-    )
+        await parse_task
