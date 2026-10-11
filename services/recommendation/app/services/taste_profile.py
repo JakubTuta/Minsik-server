@@ -322,7 +322,13 @@ async def build_taste_profile(
         "series_in_progress": series_in_progress,
         "anchor_book": anchor_book,
         "is_cold_start": is_cold_start,
+        # A failed query leaves its part of the profile empty; such a profile must not
+        # be mistaken for the reader's real taste and kept for a day.
+        "degraded": any(isinstance(result, Exception) for result in results),
     }
+
+
+_DEGRADED_PROFILE_TTL = 60
 
 
 async def get_taste_profile(
@@ -337,7 +343,6 @@ async def get_taste_profile(
 
     profile = await build_taste_profile(app.db.async_session_maker, user_id)
 
-    await app.cache.set_cached(
-        cache_key, profile, app.config.settings.cache_profile_ttl
-    )
+    ttl = _DEGRADED_PROFILE_TTL if profile.get("degraded") else app.config.settings.cache_profile_ttl
+    await app.cache.set_cached(cache_key, profile, ttl)
     return profile

@@ -8,6 +8,10 @@ def get_limiter() -> slowapi.Limiter:
         "key_func": slowapi.util.get_remote_address,
         "default_limits": [f"{app.config.settings.rate_limit_per_minute}/minute"],
         "enabled": app.config.settings.rate_limit_enabled,
+        # A Redis outage must not take every endpoint down with it: count in memory
+        # (per worker, so looser) until the shared store is back.
+        "in_memory_fallback_enabled": True,
+        "swallow_errors": True,
     }
     if app.config.settings.rate_limit_storage_uri:
         kwargs["storage_uri"] = app.config.settings.rate_limit_storage_uri

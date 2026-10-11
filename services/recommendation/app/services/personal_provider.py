@@ -55,7 +55,7 @@ async def get_personal_book_sections(
     limit_per_section: int,
     language: str = "en",
 ) -> typing.List[typing.Dict[str, typing.Any]]:
-    cache_key = f"rec:personal:book:{user_id}:{book_id}:{language}"
+    cache_key = f"rec:personal:book:{user_id}:{book_id}:{language}:{limit_per_section}"
     cached = await app.cache.get_cached(cache_key)
     if cached is not None:
         return cached
@@ -81,7 +81,7 @@ async def get_personal_author_sections(
     limit_per_section: int,
     language: str = "en",
 ) -> typing.List[typing.Dict[str, typing.Any]]:
-    cache_key = f"rec:personal:author:{user_id}:{author_id}:{language}"
+    cache_key = f"rec:personal:author:{user_id}:{author_id}:{language}:{limit_per_section}"
     cached = await app.cache.get_cached(cache_key)
     if cached is not None:
         return cached

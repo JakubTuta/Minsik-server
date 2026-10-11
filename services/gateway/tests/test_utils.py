@@ -65,3 +65,21 @@ def test_error_response_custom_status():
     body = response.body.decode()
     assert '"success":false' in body or '"success": false' in body
     assert '"SERVER_ERROR"' in body
+
+
+def test_success_response_can_vary_on_language():
+    response = app.utils.responses.success_response(
+        {"k": 1},
+        cache_control="public, max-age=60",
+        vary=app.utils.responses.LANGUAGE_VARY,
+    )
+
+    assert response.headers["vary"] == "Accept-Language, Cookie"
+    assert response.headers["cache-control"] == "public, max-age=60"
+
+
+def test_success_response_without_cache_headers_sets_none():
+    response = app.utils.responses.success_response({"k": 1})
+
+    assert "cache-control" not in response.headers
+    assert "vary" not in response.headers

@@ -109,8 +109,9 @@ async def upsert_bookshelf(
                         ),
                         sqlalchemy.func.now(),
                     ),
-                    (insert_stmt.excluded.status == "read", app.models.bookshelf.Bookshelf.finished_at),
-                    else_=None,
+                    # Every statistic that reads finished_at also requires status = 'read', so the
+                    # date of an earlier finish can stay while the book is being read again.
+                    else_=app.models.bookshelf.Bookshelf.finished_at,
                 ),
                 "started_at": sqlalchemy.case(
                     (
@@ -164,9 +165,33 @@ async def delete_bookshelf(
 async def get_bookshelf(
     session: sqlalchemy.ext.asyncio.AsyncSession, user_id: int, book_id: int
 ) -> app.models.bookshelf.Bookshelf:
-    stmt = sqlalchemy.select(app.models.bookshelf.Bookshelf).where(
-        app.models.bookshelf.Bookshelf.user_id == user_id,
-        app.models.bookshelf.Bookshelf.book_id == book_id,
+    """The reader's shelf entry for the work this edition belongs to.
+
+    Shelving is recorded against whichever translation was open, but the entry has to
+    be found from every translation's page, so the lookup spans the work's editions
+    and prefers the exact one.
+    """
+    work_books = sqlalchemy.table(
+        "books", sqlalchemy.column("book_id"), sqlalchemy.column("work_id"), schema="books"
+    )
+    stmt = (
+        sqlalchemy.select(app.models.bookshelf.Bookshelf)
+        .where(
+            app.models.bookshelf.Bookshelf.user_id == user_id,
+            app.models.bookshelf.Bookshelf.book_id.in_(
+                sqlalchemy.select(work_books.c.book_id).where(
+                    work_books.c.work_id
+                    == sqlalchemy.select(work_books.c.work_id)
+                    .where(work_books.c.book_id == book_id)
+                    .scalar_subquery()
+                )
+            ),
+        )
+        .order_by(
+            (app.models.bookshelf.Bookshelf.book_id == book_id).desc(),
+            app.models.bookshelf.Bookshelf.updated_at.desc(),
+        )
+        .limit(1)
     )
     result = await session.execute(stmt)
     row = result.scalar_one_or_none()

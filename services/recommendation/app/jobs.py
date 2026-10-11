@@ -52,6 +52,13 @@ async def case_pool_refresh_job() -> None:
         logger.exception("[rec:case] Case pool refresh error")
 
 
+async def ensure_case_pools_job() -> None:
+    try:
+        await app.services.case_pool_builder.ensure_case_pools(app.db.async_session_maker)
+    except Exception:
+        logger.exception("[rec:case] Case pool ensure error")
+
+
 async def book_of_week_job() -> None:
     logger.info("[rec:bow] Running book of the week refresh")
     try:

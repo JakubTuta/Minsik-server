@@ -1,3 +1,4 @@
+import json
 import logging
 import typing
 
@@ -101,10 +102,16 @@ _POOL_QUERY = sqlalchemy.text(
         COALESCE(wsc.reading_count, 0)      AS app_reading_count,
         COALESCE(wsc.read_count, 0)         AS app_read_count,
         p.rarity_name,
-        ARRAY_AGG(a.author_id) FILTER (WHERE a.author_id IS NOT NULL) AS author_ids,
-        ARRAY_AGG(a.name)      FILTER (WHERE a.name IS NOT NULL)      AS author_names,
-        ARRAY_AGG(a.slug)      FILTER (WHERE a.slug IS NOT NULL)      AS author_slugs,
-        ARRAY_AGG(a.photo_url) FILTER (WHERE a.photo_url IS NOT NULL) AS author_photos
+        -- One object per author: parallel arrays, each skipping its own NULLs, drift out of
+        -- step as soon as one author lacks a photo and attach the wrong face to the wrong name.
+        JSONB_AGG(
+            JSONB_BUILD_OBJECT(
+                'author_id', a.author_id,
+                'name', COALESCE(a.name, ''),
+                'slug', COALESCE(a.slug, ''),
+                'photo_url', COALESCE(a.photo_url, '')
+            ) ORDER BY a.author_id
+        ) FILTER (WHERE a.author_id IS NOT NULL) AS authors
     FROM picked p
     JOIN books.books b ON b.book_id = p.book_id
     LEFT JOIN books.book_authors ba ON b.book_id = ba.book_id
@@ -120,21 +127,9 @@ _POOL_QUERY = sqlalchemy.text(
 
 
 def _row_to_pool_item(row: typing.Any) -> typing.Dict[str, typing.Any]:
-    author_ids = row.author_ids or []
-    author_names = row.author_names or []
-    author_slugs = row.author_slugs or []
-    author_photos = row.author_photos or []
-
-    authors = []
-    for i, author_id in enumerate(author_ids):
-        authors.append(
-            {
-                "author_id": author_id,
-                "name": author_names[i] if i < len(author_names) else "",
-                "slug": author_slugs[i] if i < len(author_slugs) else "",
-                "photo_url": author_photos[i] if i < len(author_photos) else "",
-            }
-        )
+    authors = row.authors or []
+    if isinstance(authors, str):
+        authors = json.loads(authors)
 
     return {
         "book_id": row.book_id,
@@ -144,7 +139,7 @@ def _row_to_pool_item(row: typing.Any) -> typing.Dict[str, typing.Any]:
         "description": row.description or "",
         "primary_cover_url": row.primary_cover_url or "",
         "language": row.language or "",
-        "authors": authors,
+        "authors": list(authors),
         "rarity": row.rarity_name,
         "avg_rating": str(row.avg_rating) if row.avg_rating else "0.00",
         "rating_count": row.rating_count or 0,
@@ -159,6 +154,19 @@ def _row_to_pool_item(row: typing.Any) -> typing.Dict[str, typing.Any]:
         "app_reading_count": int(row.app_reading_count) if row.app_reading_count else 0,
         "app_read_count": int(row.app_read_count) if row.app_read_count else 0,
     }
+
+
+async def ensure_case_pools(session_maker: sqlalchemy.orm.sessionmaker) -> None:
+    """Build the pools when any tier is missing (first boot, eviction), instead of waiting for the hourly run.
+
+    Without them every case, pack and slots request falls back to querying the database for each
+    item, which makes opening a pack take seconds.
+    """
+    keys = [f"{CACHE_KEY_PREFIX}:{tier_name}" for tier_name, *_ in RARITY_TIERS]
+    if await app.cache.redis_client.exists(*keys) == len(keys):
+        return
+
+    await refresh_case_pools(session_maker)
 
 
 async def refresh_case_pools(session_maker: sqlalchemy.orm.sessionmaker) -> None:

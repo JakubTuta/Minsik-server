@@ -322,6 +322,19 @@ class TestLoginEndpoint:
         assert data["data"]["user"]["username"] == "bookworm42"
         assert response.cookies.get("access_token") == "test_access_token"
 
+    def test_login_of_a_locked_account_is_rate_limited_not_a_server_error(self, client, mock_auth_client):
+        mock_auth_client.login.side_effect = MockRpcError(
+            grpc.StatusCode.PERMISSION_DENIED, "Login failed: account_locked"
+        )
+
+        response = client.post(
+            "/api/v1/auth/login",
+            json={"email": "user@example.com", "password": "Secure123"},
+        )
+
+        assert response.status_code == 429
+        assert response.json()["error"]["code"] == "ACCOUNT_LOCKED"
+
     def test_login_wrong_password(self, client, mock_auth_client):
         mock_auth_client.login.side_effect = MockRpcError(
             grpc.StatusCode.UNAUTHENTICATED, "Invalid email or password"
@@ -644,9 +657,26 @@ class TestUpdateProfileEndpoint:
         mock_auth_client.update_profile.assert_called_once_with(
             user_id=1,
             display_name="Only Name",
-            bio="",
-            avatar_url="",
-            preferred_language=""
+            bio=None,
+            avatar_url=None,
+            preferred_language=None
+        )
+
+    def test_updating_only_the_language_leaves_the_rest_alone(self, client, mock_auth_client, mocker):
+        mock_auth_client.update_profile.return_value = make_mock_user_response(mocker)
+
+        client.put(
+            "/api/v1/users/me",
+            json={"preferred_language": "pl"},
+            headers={"Authorization": f"Bearer {make_token()}"}
+        )
+
+        mock_auth_client.update_profile.assert_called_once_with(
+            user_id=1,
+            display_name=None,
+            bio=None,
+            avatar_url=None,
+            preferred_language="pl"
         )
 
     def test_update_profile_requires_auth(self, client):

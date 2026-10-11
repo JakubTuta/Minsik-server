@@ -136,3 +136,22 @@ class TestToggleFavourite:
         result = await bookshelf_service.toggle_favourite(mock_session, 10, 100, False)
         assert result.is_favorite is False
         mock_session.commit.assert_called_once()
+
+
+class TestGetBookshelfAcrossEditions:
+    @pytest.mark.asyncio
+    async def test_lookup_spans_every_edition_of_the_work(self, mock_session, mock_bookshelf):
+        mock_session.execute.return_value = make_scalar_result(mock_bookshelf)
+
+        assert await bookshelf_service.get_bookshelf(mock_session, 10, 100) == mock_bookshelf
+
+        sql = str(mock_session.execute.call_args.args[0].compile(compile_kwargs={"literal_binds": True}))
+        assert "work_id" in sql
+        assert "books.books" in sql
+
+    @pytest.mark.asyncio
+    async def test_no_entry_on_any_edition_is_not_found(self, mock_session):
+        mock_session.execute.return_value = make_scalar_result(None)
+
+        with pytest.raises(ValueError, match="not_found"):
+            await bookshelf_service.get_bookshelf(mock_session, 10, 100)

@@ -115,12 +115,16 @@ async def get_personal_book_recommendations(
     current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
         app.middleware.auth.require_user
     ),
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
     user_id = current_user["user_id"]
     try:
         response = (
             await app.grpc_clients.recommendation_client.get_book_recommendations(
-                book_id=book_id, limit_per_section=limit_per_section, user_id=user_id
+                book_id=book_id,
+                limit_per_section=limit_per_section,
+                user_id=user_id,
+                language=language,
             )
         )
         sections = [_to_section_dict(s.section_key, s) for s in response.sections]
@@ -177,6 +181,7 @@ async def get_personal_author_recommendations(
     current_user: typing.Dict[str, typing.Any] = fastapi.Depends(
         app.middleware.auth.require_user
     ),
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
     user_id = current_user["user_id"]
     try:
@@ -185,6 +190,7 @@ async def get_personal_author_recommendations(
                 author_id=author_id,
                 limit_per_section=limit_per_section,
                 user_id=user_id,
+                language=language,
             )
         )
         sections = [_to_section_dict(s.section_key, s) for s in response.sections]

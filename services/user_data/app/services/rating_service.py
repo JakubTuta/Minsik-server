@@ -24,6 +24,25 @@ async def _update_work_stats(
     if not book_ids:
         return
 
+    # Two readers rating the same work at once would each aggregate without seeing the
+    # other's uncommitted rating and the later commit would drop one from the average.
+    # The lock is taken in a statement of its own, so the aggregate below runs on a
+    # snapshot that already includes whatever the previous holder committed. Work ids are
+    # locked in sorted order to keep concurrent multi-work updates from deadlocking.
+    await session.execute(
+        sqlalchemy.text(
+            """
+            SELECT pg_advisory_xact_lock(hashtext('work_rating_pool:' || w.work_id))
+            FROM (
+                SELECT DISTINCT work_id FROM books.books
+                WHERE book_id = ANY(:book_ids) AND work_id IS NOT NULL
+                ORDER BY work_id
+            ) w
+            """
+        ),
+        {"book_ids": list({int(book_id) for book_id in book_ids})},
+    )
+
     await session.execute(
         sqlalchemy.text(
             """
@@ -235,9 +254,26 @@ async def delete_rating(
 async def get_rating(
     session: sqlalchemy.ext.asyncio.AsyncSession, user_id: int, book_id: int
 ) -> app.models.rating.Rating:
-    stmt = sqlalchemy.select(app.models.rating.Rating).where(
-        app.models.rating.Rating.user_id == user_id,
-        app.models.rating.Rating.book_id == book_id,
+    """The reader's rating of the work this edition belongs to, preferring the exact edition."""
+    work_books = sqlalchemy.table("books", sqlalchemy.column("book_id"), sqlalchemy.column("work_id"), schema="books")
+    stmt = (
+        sqlalchemy.select(app.models.rating.Rating)
+        .where(
+            app.models.rating.Rating.user_id == user_id,
+            app.models.rating.Rating.book_id.in_(
+                sqlalchemy.select(work_books.c.book_id).where(
+                    work_books.c.work_id
+                    == sqlalchemy.select(work_books.c.work_id)
+                    .where(work_books.c.book_id == book_id)
+                    .scalar_subquery()
+                )
+            ),
+        )
+        .order_by(
+            (app.models.rating.Rating.book_id == book_id).desc(),
+            app.models.rating.Rating.updated_at.desc(),
+        )
+        .limit(1)
     )
     result = await session.execute(stmt)
     row = result.scalar_one_or_none()

@@ -25,7 +25,9 @@ class Settings(pydantic_settings.BaseSettings):
     recommendation_grpc_port: int = pydantic.Field(default=50056)
 
     list_default_size: int = pydantic.Field(default=50)
-    cache_recommendation_ttl: int = pydantic.Field(default=86400)
+    # Several cron intervals (`general_refresh_cron` is daily): one slow or skipped run must
+    # leave the previous lists in place instead of blanking every home page row.
+    cache_recommendation_ttl: int = pydantic.Field(default=259200)
     cache_contextual_ttl: int = pydantic.Field(default=21600)
     cache_profile_ttl: int = pydantic.Field(default=86400)
     # 3 days, not 1 — `personal_refresh_cron` runs daily, and a TTL exactly
@@ -46,7 +48,8 @@ class Settings(pydantic_settings.BaseSettings):
     )
     home_author_categories: str = pydantic.Field(default="top_authors,popular_authors")
 
-    cache_case_pool_ttl: int = pydantic.Field(default=7200)
+    # The pools are rebuilt hourly; the TTL covers several failed runs and a restart in between.
+    cache_case_pool_ttl: int = pydantic.Field(default=21600)
 
     # Crons are evaluated in the container's local zone (TZ=Europe/Warsaw).
     # Spaced so no two heavy refreshes overlap: postgres is capped at 1.0 CPU

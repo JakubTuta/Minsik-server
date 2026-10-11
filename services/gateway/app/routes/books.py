@@ -6,6 +6,7 @@ import app.grpc_clients
 import app.middleware.auth
 import app.middleware.rate_limit
 import app.models.books_responses
+import app.utils.grpc_errors
 import app.utils.language
 import app.utils.responses
 import fastapi
@@ -40,7 +41,7 @@ def _upstream_error(
         code=code,
         message=message,
         details={"grpc_code": e.code().name},
-        status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
+        status_code=app.utils.grpc_errors.to_http_error(e)[0],
     )
 
 
@@ -102,10 +103,7 @@ async def suggest_search(
         }
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "in suggest", e)
-        raise fastapi.HTTPException(
-            status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
-            detail=f"Suggest failed: {e.details()}",
-        )
+        raise
 
 
 @router.get(
@@ -200,10 +198,7 @@ async def search_books_and_authors(
         }
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "in search", e)
-        raise fastapi.HTTPException(
-            status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
-            detail=f"Search failed: {e.details()}",
-        )
+        raise
 
 
 @router.get(
@@ -267,10 +262,43 @@ async def get_book(
             raise fastapi.HTTPException(
                 status_code=404, detail=f"Book not found: {slug}"
             )
-        raise fastapi.HTTPException(
-            status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
-            detail=f"Get book failed: {e.details()}",
-        )
+        raise
+
+
+@router.get(
+    "/books/isbn/{isbn}",
+    summary="Find a book by ISBN",
+    description="""
+    Resolves an ISBN-10 or ISBN-13 (hyphens and spaces allowed) to the book it belongs to,
+    answering with the edition in the requested language when there is one. An ISBN with a
+    wrong check digit is rejected rather than matched to a different book.
+    """,
+)
+@limiter.limit(f"{app.config.settings.rate_limit_per_minute}/minute")
+async def lookup_book_by_isbn(
+    request: fastapi.Request,
+    isbn: str = fastapi.Path(..., min_length=10, max_length=20, description="ISBN-10 or ISBN-13"),
+    language: str = fastapi.Depends(app.utils.language.resolve_language),
+):
+    try:
+        response = await app.grpc_clients.books_client.lookup_book_by_isbn(isbn, language=language)
+        return {
+            "success": True,
+            "data": {
+                "slug": response.slug,
+                "language": response.language,
+                "title": response.title,
+                "work_id": response.work_id,
+            },
+            "error": None,
+        }
+    except grpc.RpcError as e:
+        app.utils.responses.log_grpc_error(logger, "looking up an ISBN", e)
+        if e.code() == grpc.StatusCode.NOT_FOUND:
+            return app.utils.responses.error_response(
+                code="NOT_FOUND", message="No book has this ISBN", status_code=404
+            )
+        return _upstream_error("INTERNAL_ERROR", "ISBN lookup failed", e)
 
 
 @router.get(
@@ -299,6 +327,11 @@ async def get_book_language_variants(
                 "language": item.language,
                 "title": item.title,
                 "primary_cover_url": item.primary_cover_url or None,
+                "publisher": item.publisher or None,
+                "number_of_pages": item.number_of_pages or None,
+                "original_publication_year": item.original_publication_year or None,
+                "isbn": item.isbn or None,
+                "has_description": item.has_description,
             }
             for item in response.items
         ]
@@ -310,10 +343,7 @@ async def get_book_language_variants(
         }
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "getting book language variants", e)
-        raise fastapi.HTTPException(
-            status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
-            detail=f"Get language variants failed: {e.details()}",
-        )
+        raise
 
 
 @router.get(
@@ -362,6 +392,8 @@ async def get_author(
                 "name": author.name,
                 "slug": author.slug,
                 "bio": author.bio or None,
+                "fallback_bio": author.fallback_bio or None,
+                "fallback_language": author.fallback_language or None,
                 "birth_date": author.birth_date or None,
                 "death_date": author.death_date or None,
                 "birth_place": author.birth_place or None,
@@ -401,10 +433,7 @@ async def get_author(
             raise fastapi.HTTPException(
                 status_code=404, detail=f"Author not found: {slug}"
             )
-        raise fastapi.HTTPException(
-            status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
-            detail=f"Get author failed: {e.details()}",
-        )
+        raise
 
 
 @router.get(
@@ -475,10 +504,7 @@ async def get_author_books(
         }
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "getting author books", e)
-        raise fastapi.HTTPException(
-            status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
-            detail=f"Get author books failed: {e.details()}",
-        )
+        raise
 
 
 @router.get(
@@ -540,10 +566,7 @@ async def get_author_stats(
         if e.code() == grpc.StatusCode.NOT_FOUND:
             raise fastapi.HTTPException(status_code=404, detail="Author not found")
         app.utils.responses.log_grpc_error(logger, "getting author stats", e)
-        raise fastapi.HTTPException(
-            status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
-            detail=f"Get author stats failed: {e.details()}",
-        )
+        raise
 
 
 @router.get(
@@ -598,10 +621,7 @@ async def get_author_quote(
         return {"success": True, "data": None, "error": None}
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "getting author quote", e)
-        raise fastapi.HTTPException(
-            status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
-            detail=f"Get author quote failed: {e.details()}",
-        )
+        raise
 
 
 @router.get(
@@ -638,10 +658,7 @@ async def get_author_top_books(
         return {"success": True, "data": {"books": books}, "error": None}
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "getting author top books", e)
-        raise fastapi.HTTPException(
-            status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
-            detail=f"Get author top books failed: {e.details()}",
-        )
+        raise
 
 
 @router.get(
@@ -687,6 +704,8 @@ async def get_series(
                 "name": series.name,
                 "slug": series.slug,
                 "description": series.description,
+                "fallback_description": series.fallback_description or None,
+                "fallback_language": series.fallback_language or None,
                 "total_books": series.total_books,
                 "view_count": series.view_count,
                 "last_viewed_at": series.last_viewed_at,
@@ -724,10 +743,7 @@ async def get_series(
             raise fastapi.HTTPException(
                 status_code=404, detail=f"Series not found: {slug}"
             )
-        raise fastapi.HTTPException(
-            status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
-            detail=f"Get series failed: {e.details()}",
-        )
+        raise
 
 
 def _comment_with_rating_to_dict(c) -> typing.Dict[str, typing.Any]:
@@ -856,10 +872,7 @@ async def get_book_comments(
             raise fastapi.HTTPException(
                 status_code=404, detail=f"Book not found: {slug}"
             )
-        raise fastapi.HTTPException(
-            status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
-            detail=f"Get book comments failed: {e.details()}",
-        )
+        raise
 
 
 @router.get(
@@ -929,10 +942,7 @@ async def get_series_books(
         }
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "getting series books", e)
-        raise fastapi.HTTPException(
-            status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
-            detail=f"Get series books failed: {e.details()}",
-        )
+        raise
 
 
 def _book_detail_proto_to_dict(book) -> typing.Dict[str, typing.Any]:
@@ -942,6 +952,8 @@ def _book_detail_proto_to_dict(book) -> typing.Dict[str, typing.Any]:
         "title": book.title,
         "slug": book.slug,
         "description": book.description,
+        "fallback_description": book.fallback_description or None,
+        "fallback_language": book.fallback_language or None,
         "language": book.language,
         "original_publication_year": book.original_publication_year,
         "formats": list(book.formats),
@@ -1008,6 +1020,7 @@ def _book_summary_proto_to_dict(item) -> typing.Dict[str, typing.Any]:
     return {
         "book_id": item.book_id,
         "work_id": item.work_id,
+        "available_in_language": item.available_in_language,
         "language": item.language or None,
         "title": item.title,
         "slug": item.slug,
@@ -1372,7 +1385,4 @@ async def get_genre_bubble(
                 status_code=404,
                 detail=f"Genre '{slug}' not found",
             )
-        raise fastapi.HTTPException(
-            status_code=500 if e.code() == grpc.StatusCode.INTERNAL else 400,
-            detail=f"Genre bubble failed: {e.details()}",
-        )
+        raise

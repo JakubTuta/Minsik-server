@@ -8,6 +8,7 @@ import app.grpc_clients
 import app.middleware.auth
 import app.middleware.rate_limit
 import app.models.user_data_responses
+import app.utils.grpc_errors
 import app.utils.language
 import app.utils.responses
 import fastapi
@@ -21,26 +22,7 @@ limiter = app.middleware.rate_limit.limiter
 
 
 def _grpc_error_response(e: grpc.RpcError) -> fastapi.responses.JSONResponse:
-    code = e.code()
-    if code == grpc.StatusCode.NOT_FOUND:
-        return app.utils.responses.error_response(
-            "NOT_FOUND", e.details(), status_code=404
-        )
-    if code == grpc.StatusCode.PERMISSION_DENIED:
-        return app.utils.responses.error_response(
-            "PERMISSION_DENIED", e.details(), status_code=403
-        )
-    if code == grpc.StatusCode.INVALID_ARGUMENT:
-        return app.utils.responses.error_response(
-            "INVALID_ARGUMENT", e.details(), status_code=400
-        )
-    if code == grpc.StatusCode.ALREADY_EXISTS:
-        return app.utils.responses.error_response(
-            "ALREADY_EXISTS", e.details(), status_code=409
-        )
-    return app.utils.responses.error_response(
-        "INTERNAL_ERROR", "An internal error occurred", status_code=500
-    )
+    return app.utils.grpc_errors.error_response_for(e)
 
 
 def _bookshelf_proto_to_dict(b) -> typing.Dict[str, typing.Any]:
@@ -128,27 +110,51 @@ def _spawn_background(coro: typing.Coroutine) -> None:
     task.add_done_callback(_background_tasks.discard)
 
 
-async def _refresh_personal_recommendations_after_user_write(user_id: int) -> None:
+# (user_id, language) -> a write arrived while a refresh was running
+_personal_refresh_state: typing.Dict[typing.Tuple[int, str], bool] = {}
+
+
+async def _refresh_personal_recommendations_after_user_write(
+    user_id: int, language: str = "en"
+) -> None:
+    """Rebuild the user's personal home for the language they are browsing in.
+
+    Several shelf/rating writes in a row (bulk shelving) collapse into the running
+    refresh plus at most one trailing one, instead of one full personal build each.
+    """
     if not app.config.settings.recommendation_recompute_on_user_write:
         return
 
+    key = (user_id, language)
+    if key in _personal_refresh_state:
+        _personal_refresh_state[key] = True
+        return
+
+    _personal_refresh_state[key] = False
     try:
-        await app.grpc_clients.recommendation_client.refresh_personal_home(
-            user_id=user_id
-        )
-    except grpc.RpcError as e:
-        logger.error(
-            "gRPC error in personal recommendation refresh for user_id=%s: %s - %s",
-            user_id,
-            e.code(),
-            e.details(),
-        )
-    except Exception as e:
-        logger.error(
-            "Unexpected error in personal recommendation refresh for user_id=%s: %s",
-            user_id,
-            e,
-        )
+        while True:
+            _personal_refresh_state[key] = False
+            try:
+                await app.grpc_clients.recommendation_client.refresh_personal_home(
+                    user_id=user_id, language=language
+                )
+            except grpc.RpcError as e:
+                logger.error(
+                    "gRPC error in personal recommendation refresh for user_id=%s: %s - %s",
+                    user_id,
+                    e.code(),
+                    e.details(),
+                )
+            except Exception as e:
+                logger.error(
+                    "Unexpected error in personal recommendation refresh for user_id=%s: %s",
+                    user_id,
+                    e,
+                )
+            if not _personal_refresh_state[key]:
+                break
+    finally:
+        _personal_refresh_state.pop(key, None)
 
 
 @router.get(
@@ -299,7 +305,9 @@ async def upsert_bookshelf(
             language=language,
         )
         _spawn_background(
-            _refresh_personal_recommendations_after_user_write(current_user["user_id"])
+            _refresh_personal_recommendations_after_user_write(
+                current_user["user_id"], language
+            )
         )
         return app.utils.responses.success_response(
             {"bookshelf": _bookshelf_proto_to_dict(response.bookshelf)}, status_code=200
@@ -346,7 +354,9 @@ async def delete_bookshelf(
             language=language,
         )
         _spawn_background(
-            _refresh_personal_recommendations_after_user_write(current_user["user_id"])
+            _refresh_personal_recommendations_after_user_write(
+                current_user["user_id"], language
+            )
         )
         return fastapi.Response(status_code=204)
     except grpc.RpcError as e:
@@ -768,7 +778,9 @@ async def add_favourite(
             language=language,
         )
         _spawn_background(
-            _refresh_personal_recommendations_after_user_write(current_user["user_id"])
+            _refresh_personal_recommendations_after_user_write(
+                current_user["user_id"], language
+            )
         )
         return app.utils.responses.success_response(
             {
@@ -819,7 +831,9 @@ async def remove_favourite(
             language=language,
         )
         _spawn_background(
-            _refresh_personal_recommendations_after_user_write(current_user["user_id"])
+            _refresh_personal_recommendations_after_user_write(
+                current_user["user_id"], language
+            )
         )
         return app.utils.responses.success_response(
             {
@@ -942,7 +956,9 @@ async def upsert_rating(
             language=language,
         )
         _spawn_background(
-            _refresh_personal_recommendations_after_user_write(current_user["user_id"])
+            _refresh_personal_recommendations_after_user_write(
+                current_user["user_id"], language
+            )
         )
         return app.utils.responses.success_response(
             {"rating": _rating_proto_to_dict(response.rating)}, status_code=201
@@ -990,7 +1006,9 @@ async def delete_rating(
             language=language,
         )
         _spawn_background(
-            _refresh_personal_recommendations_after_user_write(current_user["user_id"])
+            _refresh_personal_recommendations_after_user_write(
+                current_user["user_id"], language
+            )
         )
         return fastapi.Response(status_code=204)
     except grpc.RpcError as e:

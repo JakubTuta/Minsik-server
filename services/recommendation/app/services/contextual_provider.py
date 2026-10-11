@@ -288,40 +288,73 @@ async def _build_minimal_series_fallback(
         return []
 
 
+# The precompute stores this many ids per section. Caching the payload at that size lets a request
+# for fewer items be served by trimming, instead of the first caller's limit fixing it for everyone.
+_CACHED_LIMIT = 20
+_EMPTY_TTL = 300
+
+
+def _trim_sections(
+    sections: typing.List[typing.Dict[str, typing.Any]], limit: int
+) -> typing.List[typing.Dict[str, typing.Any]]:
+    if limit <= 0:
+        return sections
+
+    trimmed = []
+    for section in sections:
+        items_key = "author_items" if section.get("item_type") == "author" else "book_items"
+        items = section.get(items_key, [])[:limit]
+        trimmed.append({**section, items_key: items, "total": len(items)})
+    return trimmed
+
+
+async def _cached_sections(
+    entity_type: str,
+    entity_id: int,
+    limit_per_section: int,
+    fallback: typing.Callable[..., typing.Awaitable[typing.List[typing.Dict[str, typing.Any]]]],
+) -> typing.List[typing.Dict[str, typing.Any]]:
+    cache_key = f"rec:{entity_type}:{entity_id}"
+    cached = await app.cache.get_cached(cache_key)
+    if cached is not None:
+        return _trim_sections(cached, limit_per_section)
+
+    build_limit = max(limit_per_section, _CACHED_LIMIT)
+    sections = await _read_precomputed(
+        entity_type, entity_id, app.db.async_session_maker, build_limit
+    )
+    ttl = app.config.settings.cache_contextual_ttl
+
+    if sections is None:
+        sections = await fallback(app.db.async_session_maker, entity_id, build_limit)
+        ttl = app.config.settings.contextual_cold_ttl
+
+    # An entity with nothing to recommend is cached briefly too, or every visit would
+    # repeat the fallback queries just to find that out again.
+    await app.cache.set_cached(cache_key, sections, ttl if sections else _EMPTY_TTL)
+    return _trim_sections(sections, limit_per_section)
+
+
 async def get_book_recommendations(
     book_id: int,
     limit_per_section: int,
     user_id: int = 0,
+    language: str = "en",
 ) -> typing.Optional[typing.List[typing.Dict[str, typing.Any]]]:
     if user_id > 0:
-        return await _get_personal_book_sections(book_id, limit_per_section, user_id)
+        return await _get_personal_book_sections(book_id, limit_per_section, user_id, language)
 
-    cache_key = f"rec:book:{book_id}"
-    cached = await app.cache.get_cached(cache_key)
-    if cached is not None:
-        return cached
-
-    sections = await _read_precomputed("book", book_id, app.db.async_session_maker, limit_per_section)
-    ttl = app.config.settings.cache_contextual_ttl
-
-    if sections is None:
-        sections = await _build_minimal_book_fallback(
-            app.db.async_session_maker, book_id, limit_per_section
-        )
-        ttl = app.config.settings.contextual_cold_ttl
-
-    if sections:
-        await app.cache.set_cached(cache_key, sections, ttl)
-    return sections
+    return await _cached_sections("book", book_id, limit_per_section, _build_minimal_book_fallback)
 
 
 async def _get_personal_book_sections(
     book_id: int,
     limit_per_section: int,
     user_id: int,
+    language: str,
 ) -> typing.Optional[typing.List[typing.Dict[str, typing.Any]]]:
     return await app.services.personal_provider.get_personal_book_sections(
-        user_id, book_id, limit_per_section
+        user_id, book_id, limit_per_section, language
     )
 
 
@@ -329,38 +362,24 @@ async def get_author_recommendations(
     author_id: int,
     limit_per_section: int,
     user_id: int = 0,
+    language: str = "en",
 ) -> typing.Optional[typing.List[typing.Dict[str, typing.Any]]]:
     if user_id > 0:
-        return await _get_personal_author_sections(author_id, limit_per_section, user_id)
+        return await _get_personal_author_sections(author_id, limit_per_section, user_id, language)
 
-    cache_key = f"rec:author:{author_id}"
-    cached = await app.cache.get_cached(cache_key)
-    if cached is not None:
-        return cached
-
-    sections = await _read_precomputed(
-        "author", author_id, app.db.async_session_maker, limit_per_section
+    return await _cached_sections(
+        "author", author_id, limit_per_section, _build_minimal_author_fallback
     )
-    ttl = app.config.settings.cache_contextual_ttl
-
-    if sections is None:
-        sections = await _build_minimal_author_fallback(
-            app.db.async_session_maker, author_id, limit_per_section
-        )
-        ttl = app.config.settings.contextual_cold_ttl
-
-    if sections:
-        await app.cache.set_cached(cache_key, sections, ttl)
-    return sections
 
 
 async def _get_personal_author_sections(
     author_id: int,
     limit_per_section: int,
     user_id: int,
+    language: str,
 ) -> typing.Optional[typing.List[typing.Dict[str, typing.Any]]]:
     return await app.services.personal_provider.get_personal_author_sections(
-        user_id, author_id, limit_per_section
+        user_id, author_id, limit_per_section, language
     )
 
 
@@ -368,22 +387,6 @@ async def get_series_recommendations(
     series_id: int,
     limit_per_section: int,
 ) -> typing.Optional[typing.List[typing.Dict[str, typing.Any]]]:
-    cache_key = f"rec:series:{series_id}"
-    cached = await app.cache.get_cached(cache_key)
-    if cached is not None:
-        return cached
-
-    sections = await _read_precomputed(
-        "series", series_id, app.db.async_session_maker, limit_per_section
+    return await _cached_sections(
+        "series", series_id, limit_per_section, _build_minimal_series_fallback
     )
-    ttl = app.config.settings.cache_contextual_ttl
-
-    if sections is None:
-        sections = await _build_minimal_series_fallback(
-            app.db.async_session_maker, series_id, limit_per_section
-        )
-        ttl = app.config.settings.contextual_cold_ttl
-
-    if sections:
-        await app.cache.set_cached(cache_key, sections, ttl)
-    return sections

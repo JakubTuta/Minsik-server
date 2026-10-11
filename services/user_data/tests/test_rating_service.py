@@ -167,3 +167,22 @@ class TestGetUserRatings:
         )
         assert total == 0
         assert rows == []
+
+
+class TestGetRatingAcrossEditions:
+    @pytest.mark.asyncio
+    async def test_lookup_spans_every_edition_of_the_work(self, mock_session, mock_rating):
+        mock_session.execute.return_value = make_scalar_result(mock_rating)
+
+        assert await rating_service.get_rating(mock_session, 10, 100) == mock_rating
+
+        sql = str(mock_session.execute.call_args.args[0].compile(compile_kwargs={"literal_binds": True}))
+        assert "work_id" in sql
+        assert "books.books" in sql
+
+    @pytest.mark.asyncio
+    async def test_no_rating_on_any_edition_is_not_found(self, mock_session):
+        mock_session.execute.return_value = make_scalar_result(None)
+
+        with pytest.raises(ValueError, match="not_found"):
+            await rating_service.get_rating(mock_session, 10, 100)

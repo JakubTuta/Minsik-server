@@ -20,7 +20,9 @@ import app.routes.sitemap
 import app.routes.user_data
 import app.routes.user_recommendations
 import app.tracing
+import app.utils.grpc_errors
 import fastapi
+import grpc
 import ledger.integrations.fastapi
 import slowapi
 import slowapi.errors
@@ -38,6 +40,7 @@ recommendations_router = app.routes.recommendations.router
 sitemap_router = app.routes.sitemap.router
 recommendations_admin_router = app.routes.recommendations.admin_router
 user_recommendations_router = app.routes.user_recommendations.router
+handle_rpc_error = app.utils.grpc_errors.handle_rpc_error
 grpc_clients_module = app.grpc_clients
 tracing_module = app.tracing
 limiter = app.middleware.rate_limit.limiter
@@ -133,6 +136,7 @@ if settings.env == "development":
 
 _setup_csrf(app)
 _setup_logging(app)
+app.add_exception_handler(grpc.RpcError, handle_rpc_error)
 
 if settings.rate_limit_enabled:
     app.state.limiter = limiter

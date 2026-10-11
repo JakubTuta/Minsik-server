@@ -1154,6 +1154,8 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 await app.cache.delete_book_cache(
                     *await _work_edition_slugs(session, request.book_slug)
                 )
+                # Comment lists are joined to ratings (shown and filterable by them).
+                await _book_comments_cache.invalidate_by_book(book_meta["work_id"])
                 await app.cache.delete_profile_stats(request.user_id)
                 await app.cache.delete_profile_overview(request.user_id)
                 await app.cache.delete_year_in_review(request.user_id)
@@ -1189,17 +1191,16 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
         try:
             language = request.language or "en"
             async with app.database.async_session_maker() as session:
-                book_id = (
-                    await app.services.edition_resolver.resolve_book(
-                        session, request.book_slug, language
-                    )
-                )["book_id"]
+                book_meta = await app.services.edition_resolver.resolve_book(
+                    session, request.book_slug, language
+                )
                 await app.services.rating_service.delete_rating(
-                    session, request.user_id, book_id
+                    session, request.user_id, book_meta["book_id"]
                 )
                 await app.cache.delete_book_cache(
                     *await _work_edition_slugs(session, request.book_slug)
                 )
+                await _book_comments_cache.invalidate_by_book(book_meta["work_id"])
                 await app.cache.delete_profile_stats(request.user_id)
                 await app.cache.delete_profile_overview(request.user_id)
                 await app.cache.delete_year_in_review(request.user_id)
@@ -1710,7 +1711,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                                    ON r.user_id = c.user_id AND r.book_id = c.book_id
                             LEFT JOIN auth.users a ON a.user_id = c.user_id
                             WHERE {where}
-                            ORDER BY {sort_col} {order_dir} NULLS LAST, c.created_at DESC
+                            ORDER BY {sort_col} {order_dir} NULLS LAST, c.created_at DESC, c.comment_id DESC
                             LIMIT :limit OFFSET :offset
                         """
                         ),
@@ -1864,6 +1865,24 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
     ) -> app.proto.user_data_pb2.EmptyResponse:
         try:
             async with app.database.async_session_maker() as session:
+                # Capped: every slug costs a keyspace scan, and the rest expire by TTL.
+                slug_result = await session.execute(
+                    sqlalchemy.text(
+                        """
+                        SELECT DISTINCT e.slug FROM books.books e
+                        WHERE e.work_id IN (
+                            SELECT b.work_id FROM books.books b WHERE b.book_id IN (
+                                SELECT book_id FROM user_data.ratings WHERE user_id = :user_id
+                                UNION SELECT book_id FROM user_data.bookshelves WHERE user_id = :user_id
+                            )
+                        )
+                        LIMIT 200
+                        """
+                    ),
+                    {"user_id": request.user_id},
+                )
+                affected_slugs = [row.slug for row in slug_result.fetchall()]
+
                 comment_book_ids = (
                     await app.services.comment_service.delete_user_comments(
                         session, request.user_id
@@ -1896,9 +1915,13 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
 
             for work_id in work_ids:
                 await _book_comments_cache.invalidate_by_book(work_id)
+            if affected_slugs:
+                await app.cache.delete_book_cache(*affected_slugs)
             await app.cache.delete_profile_stats(request.user_id)
             await app.cache.delete_profile_overview(request.user_id)
             await app.cache.delete_year_in_review(request.user_id)
+            await app.cache.delete_bookshelf_list_cache(request.user_id)
+            await app.cache.delete_comment_list_cache(request.user_id)
 
             return app.proto.user_data_pb2.EmptyResponse()
         except grpc.aio.AbortError:

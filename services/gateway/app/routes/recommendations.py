@@ -62,6 +62,7 @@ async def get_home_page(
         return app.utils.responses.success_response(
             {"sections": sections},
             cache_control="public, max-age=300, stale-while-revalidate=3600",
+            vary=app.utils.responses.LANGUAGE_VARY,
         )
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "in get_home_page", e)
@@ -174,6 +175,7 @@ async def get_book_of_the_week(
         return app.utils.responses.success_response(
             data,
             cache_control="public, max-age=3600, stale-while-revalidate=86400",
+            vary=app.utils.responses.LANGUAGE_VARY,
         )
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "in get_book_of_the_week", e)
@@ -439,16 +441,16 @@ async def get_series_recommendations(
 @admin_router.post(
     "/recommendations/refresh",
     response_model=app.models.recommendation_responses.RefreshRecommendationsResponse,
-    summary="Flush home cache and rebuild home lists",
+    summary="Rebuild home lists in the background",
     description="""
-    Triggers an immediate synchronous rebuild of home recommendation lists:
+    Starts a rebuild of the home recommendation lists and returns at once.
 
-    1. Flushes `rec:{category}` cache keys for each known home category.
-    2. Re-runs the home recommendation list builder (writes lists with 24h TTL).
+    The rebuild overwrites each list as it is built, so readers keep seeing the previous
+    lists until their replacement is ready. `success` is false when a rebuild is already running.
 
     Does not touch personal recs, contextual recs, or the book of the week — each has its own endpoint.
 
-    Requires a valid JWT with `role=admin`. May take several seconds.
+    Requires a valid JWT with `role=admin`.
     """,
     dependencies=[fastapi.Depends(app.middleware.auth.require_admin)],
     responses={
@@ -482,12 +484,11 @@ async def refresh_recommendations(request: fastapi.Request):
 @admin_router.post(
     "/recommendations/personal/refresh",
     response_model=app.models.recommendation_responses.RefreshRecommendationsResponse,
-    summary="Flush personal cache and rebuild personal recommendations",
+    summary="Rebuild personal recommendations in the background",
     description="""
-    Triggers an immediate synchronous rebuild of personal recommendation state:
-
-    1. Deletes all `rec:profile:*` and `rec:personal:*` Redis keys.
-    2. Re-runs the personal refresher for active users.
+    Starts a rebuild of every active user's taste profile and personal sections and returns at once.
+    Each user's entries are overwritten when their rebuild finishes; nothing is deleted first.
+    `success` is false when a rebuild is already running.
 
     Requires a valid JWT with `role=admin`.
     """,
@@ -583,12 +584,11 @@ async def refresh_user_personal_recommendations(
 @admin_router.post(
     "/recommendations/contextual/refresh",
     response_model=app.models.recommendation_responses.RefreshRecommendationsResponse,
-    summary="Flush contextual cache and rebuild contextual recommendations",
+    summary="Rebuild contextual recommendations in the background",
     description="""
-    Triggers an immediate synchronous rebuild of contextual recommendation state:
-
-    1. Deletes all `rec:book:*`, `rec:author:*`, and `rec:series:*` Redis keys.
-    2. Re-runs the contextual precompute job.
+    Starts the contextual precompute and returns at once. Once it has finished, cached
+    `rec:book:*`, `rec:author:*` and `rec:series:*` payloads are dropped so the new rows are served.
+    `success` is false when a rebuild is already running.
 
     Requires a valid JWT with `role=admin`.
     """,

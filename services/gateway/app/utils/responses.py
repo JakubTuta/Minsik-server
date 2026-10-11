@@ -30,18 +30,28 @@ def success_response(
     data: typing.Any,
     status_code: int = 200,
     cache_control: typing.Optional[str] = None,
+    vary: typing.Optional[str] = None,
 ) -> fastapi.responses.JSONResponse:
     response = app.models.responses.APIResponse(
         success=True,
         data=data,
         error=None
     )
-    headers = {"Cache-Control": cache_control} if cache_control else None
+    headers: typing.Dict[str, str] = {}
+    if cache_control:
+        headers["Cache-Control"] = cache_control
+    if vary:
+        headers["Vary"] = vary
     return fastapi.responses.JSONResponse(
         status_code=status_code,
         content=response.model_dump(),
-        headers=headers,
+        headers=headers or None,
     )
+
+
+# The language comes from ?language=, else the signed-in user, the pref_lang cookie or
+# Accept-Language, so a shared cache must not hand one reader's language to another.
+LANGUAGE_VARY = "Accept-Language, Cookie"
 
 
 def error_response(

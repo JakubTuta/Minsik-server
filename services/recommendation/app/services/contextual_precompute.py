@@ -48,11 +48,16 @@ async def _fetch_popular_author_ids(
     result = await session.execute(
         sqlalchemy.text(
             """
-            SELECT ba.author_id
-            FROM books.book_authors ba
-            JOIN books.books b ON ba.book_id = b.book_id
-            GROUP BY ba.author_id
-            HAVING SUM(COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0)) >= :min
+            SELECT work_ratings.author_id
+            FROM (
+                SELECT ba.author_id, b.work_id,
+                       MAX(COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0)) AS ratings
+                FROM books.book_authors ba
+                JOIN books.books b ON ba.book_id = b.book_id
+                GROUP BY ba.author_id, b.work_id
+            ) work_ratings
+            GROUP BY work_ratings.author_id
+            HAVING SUM(work_ratings.ratings) >= :min
             """
         ),
         {"min": min_ratings},

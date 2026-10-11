@@ -234,6 +234,12 @@ async def login(
                 message="Invalid email or password",
                 status_code=401
             )
+        if e.code() == grpc.StatusCode.PERMISSION_DENIED:
+            return app.utils.responses.error_response(
+                code="ACCOUNT_LOCKED",
+                message="Too many failed sign-in attempts. Try again later.",
+                status_code=429
+            )
         return app.utils.responses.error_response(
             code="INTERNAL_ERROR",
             message="Login failed",
@@ -548,10 +554,10 @@ async def update_profile(
     try:
         response = await app.grpc_clients.auth_client.update_profile(
             user_id=current_user["user_id"],
-            display_name=body.display_name or "",
-            bio=body.bio or "",
-            avatar_url=body.avatar_url or "",
-            preferred_language=body.preferred_language or "",
+            display_name=body.display_name,
+            bio=body.bio,
+            avatar_url=body.avatar_url,
+            preferred_language=body.preferred_language,
         )
         return app.utils.responses.success_response(
             {"user": _user_proto_to_dict(response.user)},

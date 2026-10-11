@@ -1,7 +1,10 @@
+import asyncio
 import datetime
+from unittest.mock import AsyncMock
 
 import app.config
 import app.grpc_clients
+import app.routes.user_data
 import grpc
 import jwt
 import pytest
@@ -611,3 +614,65 @@ class TestPublicBookshelfEndpoints:
         )
         resp = client.get("/api/v1/users/nonexistent_xyz/bookshelves")
         assert resp.status_code == 404
+
+
+class TestPersonalRefreshAfterWrite:
+    @pytest.fixture(autouse=True)
+    def _enabled(self, monkeypatch):
+        monkeypatch.setattr(
+            app.config.settings, "recommendation_recompute_on_user_write", True
+        )
+        app.routes.user_data._personal_refresh_state.clear()
+
+    async def test_refresh_uses_the_readers_language(self, monkeypatch):
+        refresh = AsyncMock()
+        monkeypatch.setattr(
+            app.grpc_clients.recommendation_client, "refresh_personal_home", refresh
+        )
+
+        await app.routes.user_data._refresh_personal_recommendations_after_user_write(
+            7, "pl"
+        )
+
+        refresh.assert_awaited_once_with(user_id=7, language="pl")
+
+    async def test_writes_during_a_refresh_collapse_into_one_trailing_run(
+        self, monkeypatch
+    ):
+        started = asyncio.Event()
+        release = asyncio.Event()
+        calls = []
+
+        async def slow_refresh(user_id: int, language: str):
+            calls.append((user_id, language))
+            started.set()
+            await release.wait()
+
+        monkeypatch.setattr(
+            app.grpc_clients.recommendation_client,
+            "refresh_personal_home",
+            slow_refresh,
+        )
+        refresh = app.routes.user_data._refresh_personal_recommendations_after_user_write
+
+        first = asyncio.create_task(refresh(7, "en"))
+        await started.wait()
+        for _ in range(5):
+            await refresh(7, "en")
+        release.set()
+        await first
+
+        assert calls == [(7, "en"), (7, "en")]
+        assert app.routes.user_data._personal_refresh_state == {}
+
+    async def test_a_failed_refresh_does_not_block_the_next_one(self, monkeypatch):
+        refresh = AsyncMock(side_effect=[RuntimeError("boom"), None])
+        monkeypatch.setattr(
+            app.grpc_clients.recommendation_client, "refresh_personal_home", refresh
+        )
+        run = app.routes.user_data._refresh_personal_recommendations_after_user_write
+
+        await run(7, "en")
+        await run(7, "en")
+
+        assert refresh.await_count == 2

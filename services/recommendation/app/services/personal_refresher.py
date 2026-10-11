@@ -63,6 +63,9 @@ async def refresh_user_personal(
     language: str = "en",
 ) -> None:
     profile = await app.services.taste_profile.build_taste_profile(session_maker, user_id)
+    if profile.get("degraded"):
+        # Keep the previous profile and sections rather than overwrite them with a partial one.
+        raise RuntimeError(f"taste profile for user {user_id} is incomplete: a query failed")
 
     profile_key = f"rec:profile:{user_id}"
     await app.cache.set_cached(profile_key, profile, app.config.settings.cache_profile_ttl)

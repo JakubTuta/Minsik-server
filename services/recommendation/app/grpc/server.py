@@ -5,6 +5,7 @@ import app.config
 import app.db
 import app.proto.recommendation_pb2
 import app.proto.recommendation_pb2_grpc
+import app.services.admin_refresh
 import app.services.book_of_week_builder
 import app.services.contextual_precompute
 import app.services.contextual_provider
@@ -15,6 +16,12 @@ import grpc
 import sqlalchemy
 
 logger = logging.getLogger(__name__)
+
+
+async def _drop_contextual_cache() -> None:
+    """After a finished rebuild, drop cached payloads so readers pick up the new rows."""
+    for entity_type in ("book", "author", "series"):
+        await app.cache.delete_by_pattern(f"rec:{entity_type}:*")
 
 
 def _dict_to_book_item(item: dict) -> app.proto.recommendation_pb2.RecommendationBookItem:
@@ -181,20 +188,23 @@ class RecommendationServicer(app.proto.recommendation_pb2_grpc.RecommendationSer
         context: grpc.aio.ServicerContext,
     ) -> app.proto.recommendation_pb2.RefreshRecommendationsResponse:
         try:
-            home_keys = [
-                f"rec:{cat['key']}" for cat in app.services.list_builder.CATEGORIES
-            ]
-            deleted = await app.cache.delete_keys(*home_keys)
-            await app.services.list_builder.refresh_all(app.db.async_session_maker)
+            started = await app.services.admin_refresh.start(
+                "home",
+                lambda: app.services.list_builder.refresh_all(app.db.async_session_maker),
+            )
             return app.proto.recommendation_pb2.RefreshRecommendationsResponse(
-                success=True,
-                message=f"Flushed {deleted} home cache keys, rebuilt home recommendation lists",
+                success=started,
+                message=(
+                    "Home recommendation lists are rebuilding in the background"
+                    if started
+                    else "A home recommendation refresh is already running"
+                ),
             )
         except grpc.aio.AbortError:
             raise
         except Exception as e:
             logger.error(f"Error in RefreshRecommendations: {str(e)}")
-            await context.abort(grpc.StatusCode.INTERNAL, f"Refresh failed: {str(e)}")
+            await context.abort(grpc.StatusCode.INTERNAL, "Refresh failed")
 
     async def RefreshPersonalRecommendations(
         self,
@@ -202,20 +212,25 @@ class RecommendationServicer(app.proto.recommendation_pb2_grpc.RecommendationSer
         context: grpc.aio.ServicerContext,
     ) -> app.proto.recommendation_pb2.RefreshPersonalRecommendationsResponse:
         try:
-            deleted = await app.cache.delete_by_pattern("rec:profile:*")
-            deleted += await app.cache.delete_by_pattern("rec:personal:*")
-            await app.services.personal_refresher.refresh_all_personal(
-                app.db.async_session_maker
+            started = await app.services.admin_refresh.start(
+                "personal",
+                lambda: app.services.personal_refresher.refresh_all_personal(
+                    app.db.async_session_maker
+                ),
             )
             return app.proto.recommendation_pb2.RefreshPersonalRecommendationsResponse(
-                success=True,
-                message=f"Flushed {deleted} personal cache keys, rebuilt personal recommendations",
+                success=started,
+                message=(
+                    "Personal recommendations are rebuilding in the background"
+                    if started
+                    else "A personal recommendation refresh is already running"
+                ),
             )
         except grpc.aio.AbortError:
             raise
         except Exception as e:
             logger.error(f"Error in RefreshPersonalRecommendations: {str(e)}")
-            await context.abort(grpc.StatusCode.INTERNAL, f"Refresh failed: {str(e)}")
+            await context.abort(grpc.StatusCode.INTERNAL, "Refresh failed")
 
     async def InvalidateUserRecommendations(
         self,
@@ -289,21 +304,26 @@ class RecommendationServicer(app.proto.recommendation_pb2_grpc.RecommendationSer
         context: grpc.aio.ServicerContext,
     ) -> app.proto.recommendation_pb2.RefreshContextualRecommendationsResponse:
         try:
-            deleted = await app.cache.delete_by_pattern("rec:book:*")
-            deleted += await app.cache.delete_by_pattern("rec:author:*")
-            deleted += await app.cache.delete_by_pattern("rec:series:*")
-            await app.services.contextual_precompute.refresh_contextual_recs(
-                app.db.async_session_maker
+            started = await app.services.admin_refresh.start(
+                "contextual",
+                lambda: app.services.contextual_precompute.refresh_contextual_recs(
+                    app.db.async_session_maker
+                ),
+                on_success=_drop_contextual_cache,
             )
             return app.proto.recommendation_pb2.RefreshContextualRecommendationsResponse(
-                success=True,
-                message=f"Flushed {deleted} contextual cache keys, rebuilt contextual recommendations",
+                success=started,
+                message=(
+                    "Contextual recommendations are rebuilding in the background"
+                    if started
+                    else "A contextual recommendation refresh is already running"
+                ),
             )
         except grpc.aio.AbortError:
             raise
         except Exception as e:
             logger.error(f"Error in RefreshContextualRecommendations: {str(e)}")
-            await context.abort(grpc.StatusCode.INTERNAL, f"Refresh failed: {str(e)}")
+            await context.abort(grpc.StatusCode.INTERNAL, "Refresh failed")
 
     async def InvalidateContextualCache(
         self,
@@ -322,42 +342,40 @@ class RecommendationServicer(app.proto.recommendation_pb2_grpc.RecommendationSer
             await context.abort(grpc.StatusCode.INVALID_ARGUMENT, "slug is required")
             return
 
+        # Slugs are only unique per language, so a slug can name several rows; each has its own key.
         table_by_type = {
-            "book": ("books", "book_id"),
-            "author": ("authors", "author_id"),
-            "series": ("series", "series_id"),
+            "book": ("books.books", "book_id"),
+            "author": ("books.authors", "author_id"),
+            "series": ("books.series", "series_id"),
         }
         table, pk = table_by_type[entity_type]
         try:
             async with app.db.async_session_maker() as session:
                 result = await session.execute(
-                    sqlalchemy.text(
-                        f"SELECT {pk} AS id FROM {table} WHERE slug = :slug"
-                    ),
+                    sqlalchemy.text(f"SELECT {pk} AS id FROM {table} WHERE slug = :slug"),
                     {"slug": slug},
                 )
-                row = result.first()
-            if not row:
+                entity_ids = [int(row.id) for row in result]
+            if not entity_ids:
                 await context.abort(
                     grpc.StatusCode.NOT_FOUND,
                     f"{entity_type} with slug '{slug}' not found",
                 )
                 return
-            entity_id = int(row.id)
-            cache_key = f"rec:{entity_type}:{entity_id}"
-            deleted = await app.cache.delete_keys(cache_key)
+            cache_keys = [f"rec:{entity_type}:{entity_id}" for entity_id in entity_ids]
+            deleted = await app.cache.delete_keys(*cache_keys)
             return app.proto.recommendation_pb2.InvalidateContextualCacheResponse(
                 success=True,
                 message=(
-                    f"Deleted {deleted} key for {entity_type} '{slug}' "
-                    f"(id={entity_id}, key={cache_key})"
+                    f"Deleted {deleted} key(s) for {entity_type} '{slug}' "
+                    f"(ids={entity_ids})"
                 ),
             )
         except grpc.aio.AbortError:
             raise
         except Exception as e:
             logger.error(f"Error in InvalidateContextualCache: {str(e)}")
-            await context.abort(grpc.StatusCode.INTERNAL, f"Invalidate failed: {str(e)}")
+            await context.abort(grpc.StatusCode.INTERNAL, "Invalidate failed")
 
     async def RefreshBookOfTheWeek(
         self,
@@ -392,10 +410,10 @@ class RecommendationServicer(app.proto.recommendation_pb2_grpc.RecommendationSer
         context: grpc.aio.ServicerContext,
     ) -> app.proto.recommendation_pb2.BookRecommendationsResponse:
         try:
-            limit = request.limit_per_section if request.limit_per_section > 0 else 15
+            limit = min(request.limit_per_section, 50) if request.limit_per_section > 0 else 15
             user_id = request.user_id if request.user_id > 0 else 0
             sections = await app.services.contextual_provider.get_book_recommendations(
-                request.book_id, limit, user_id
+                request.book_id, limit, user_id, request.language or "en"
             )
             if sections is None:
                 await context.abort(
@@ -421,11 +439,11 @@ class RecommendationServicer(app.proto.recommendation_pb2_grpc.RecommendationSer
         context: grpc.aio.ServicerContext,
     ) -> app.proto.recommendation_pb2.AuthorRecommendationsResponse:
         try:
-            limit = request.limit_per_section if request.limit_per_section > 0 else 15
+            limit = min(request.limit_per_section, 50) if request.limit_per_section > 0 else 15
             user_id = request.user_id if request.user_id > 0 else 0
             sections = (
                 await app.services.contextual_provider.get_author_recommendations(
-                    request.author_id, limit, user_id
+                    request.author_id, limit, user_id, request.language or "en"
                 )
             )
             if sections is None:
@@ -452,7 +470,7 @@ class RecommendationServicer(app.proto.recommendation_pb2_grpc.RecommendationSer
         context: grpc.aio.ServicerContext,
     ) -> app.proto.recommendation_pb2.SeriesRecommendationsResponse:
         try:
-            limit = request.limit_per_section if request.limit_per_section > 0 else 15
+            limit = min(request.limit_per_section, 50) if request.limit_per_section > 0 else 15
             sections = (
                 await app.services.contextual_provider.get_series_recommendations(
                     request.series_id, limit

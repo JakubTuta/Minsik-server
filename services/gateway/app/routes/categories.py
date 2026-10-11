@@ -38,7 +38,7 @@ async def get_popular_categories(
         )
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "in get_popular_categories", e)
-        raise fastapi.HTTPException(status_code=500, detail="Failed to fetch popular categories")
+        raise
     except Exception as e:
         logger.error(f"Unexpected error in get_popular_categories: {str(e)}")
         raise fastapi.HTTPException(status_code=500, detail="Failed to fetch popular categories")
@@ -62,6 +62,8 @@ async def list_categories():
         response = await app.grpc_clients.books_client.list_categories()
         response_dict = google.protobuf.json_format.MessageToDict(response, preserving_proto_field_name=True)
         return {"success": True, "data": {"categories": response_dict.get("categories", [])}}
+    except grpc.RpcError:
+        raise
     except Exception as e:
         logger.error(f"Error fetching categories: {str(e)}")
         raise fastapi.HTTPException(status_code=500, detail="Failed to fetch categories")
@@ -86,10 +88,10 @@ async def get_category(
         response = await app.grpc_clients.books_client.get_category(category_slug)
         response_dict = google.protobuf.json_format.MessageToDict(response, preserving_proto_field_name=True)
         return {"success": True, "data": response_dict.get("category", {})}
+    except grpc.RpcError:
+        raise
     except Exception as e:
         logger.error(f"Error fetching category {category_slug}: {str(e)}")
-        if "Category not found" in str(e):
-            raise fastapi.HTTPException(status_code=404, detail="Category not found")
         raise fastapi.HTTPException(status_code=500, detail="Failed to fetch category")
 
 
@@ -147,6 +149,8 @@ async def get_category_books(
                 "total_count": response_dict.get("total_count", 0),
             },
         }
+    except grpc.RpcError:
+        raise
     except Exception as e:
         logger.error(f"Error fetching books for category {category_slug}: {str(e)}")
         raise fastapi.HTTPException(status_code=500, detail="Failed to fetch category books")

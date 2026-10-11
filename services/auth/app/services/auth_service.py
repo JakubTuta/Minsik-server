@@ -1,5 +1,6 @@
 import typing
 import logging
+import asyncio
 import datetime
 import secrets
 import sqlalchemy
@@ -40,7 +41,7 @@ async def register(
     user = app.models.user.User(
         email=email,
         username=username,
-        password_hash=app.utils.hash_password(password),
+        password_hash=await asyncio.to_thread(app.utils.hash_password, password),
         role="user",
         is_active=True
     )
@@ -68,13 +69,13 @@ async def login(
     user = result.scalar_one_or_none()
 
     if not user or not user.is_active:
-        app.utils.verify_password(password, _DUMMY_PASSWORD_HASH)
+        await asyncio.to_thread(app.utils.verify_password, password, _DUMMY_PASSWORD_HASH)
         raise ValueError("invalid_credentials")
 
     if user.locked_until and user.locked_until > app.utils.utcnow():
         raise PermissionError("account_locked")
 
-    if not user.password_hash or not app.utils.verify_password(password, user.password_hash):
+    if not user.password_hash or not await asyncio.to_thread(app.utils.verify_password, password, user.password_hash):
         user.failed_login_attempts = (user.failed_login_attempts or 0) + 1
         if user.failed_login_attempts >= app.config.settings.max_failed_login_attempts:
             user.locked_until = app.utils.utcnow() + datetime.timedelta(
@@ -177,6 +178,8 @@ async def refresh_tokens(
     user = user_result.scalar_one_or_none()
     if not user:
         raise ValueError("user_not_found")
+    if not user.is_active:
+        raise PermissionError("user_inactive")
 
     new_access_token = app.services.token_service.create_access_token(
         user.user_id, user.role, user.preferred_language or ""
@@ -256,14 +259,25 @@ async def get_current_user(
     return user
 
 
+class InvalidProfileField(ValueError):
+    """A profile value the service refuses; the caller reports it as a bad request."""
+
+
+_AVATAR_SCHEMES = ("http://", "https://")
+
+
 async def update_profile(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     user_id: int,
-    display_name: str,
-    bio: str,
-    avatar_url: str,
-    preferred_language: str = "",
+    display_name: typing.Optional[str],
+    bio: typing.Optional[str],
+    avatar_url: typing.Optional[str],
+    preferred_language: typing.Optional[str] = None,
 ) -> app.models.user.User:
+    """Change the given fields; None leaves one as it is, an empty bio or avatar clears it."""
+    if avatar_url and not avatar_url.lower().startswith(_AVATAR_SCHEMES):
+        raise InvalidProfileField("avatar_url must be an http(s) URL")
+
     result = await session.execute(
         sqlalchemy.select(app.models.user.User).filter(app.models.user.User.user_id == user_id)
     )

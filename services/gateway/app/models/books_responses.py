@@ -103,6 +103,14 @@ class BookDetailData(pydantic.BaseModel):
     title: str
     slug: str
     description: typing.Optional[str] = None
+    fallback_description: typing.Optional[str] = pydantic.Field(
+        default=None,
+        description="Description of the preferred sibling edition, set only when this edition has none of its own",
+    )
+    fallback_language: typing.Optional[str] = pydantic.Field(
+        default=None,
+        description="Language of fallback_description, so the client can label it",
+    )
     first_sentence: typing.Optional[str] = None
     language: str
     original_publication_year: typing.Optional[int] = None
@@ -148,6 +156,11 @@ class BookLanguageVariantSchema(pydantic.BaseModel):
     language: str
     title: str
     primary_cover_url: typing.Optional[str] = None
+    publisher: typing.Optional[str] = None
+    number_of_pages: typing.Optional[int] = None
+    original_publication_year: typing.Optional[int] = None
+    isbn: typing.Optional[str] = None
+    has_description: bool = False
 
 
 class BookLanguageVariantsData(pydantic.BaseModel):
@@ -165,6 +178,13 @@ class AuthorDetailData(pydantic.BaseModel):
     name: str
     slug: str
     bio: typing.Optional[str] = None
+    fallback_bio: typing.Optional[str] = pydantic.Field(
+        default=None,
+        description="Canonical bio, set only when there is none in the requested language",
+    )
+    fallback_language: typing.Optional[str] = pydantic.Field(
+        default=None, description="Language of fallback_bio, so the client can label it"
+    )
     birth_date: typing.Optional[str] = None
     death_date: typing.Optional[str] = None
     birth_place: typing.Optional[str] = None
@@ -223,6 +243,10 @@ class BookSummarySchema(pydantic.BaseModel):
     series: typing.Optional[SeriesMinimalSchema] = None
     rarity: typing.Optional[str] = None
     number_of_pages: typing.Optional[int] = None
+    available_in_language: bool = pydantic.Field(
+        default=True,
+        description="False when this volume has no edition in the requested language and is shown in another",
+    )
 
 
 class AuthorBooksData(pydantic.BaseModel):
@@ -314,6 +338,13 @@ class SeriesDetailData(pydantic.BaseModel):
     name: str
     slug: str
     description: typing.Optional[str] = None
+    fallback_description: typing.Optional[str] = pydantic.Field(
+        default=None,
+        description="Another language's description of the same series, set only when this one has none",
+    )
+    fallback_language: typing.Optional[str] = pydantic.Field(
+        default=None, description="Language of fallback_description, so the client can label it"
+    )
     total_books: typing.Optional[int] = None
     view_count: int
     last_viewed_at: typing.Optional[str] = None

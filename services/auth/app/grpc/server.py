@@ -193,14 +193,16 @@ class AuthServicer(app.proto.auth_pb2_grpc.AuthServiceServicer):
                 user = await app.services.auth_service.update_profile(
                     session,
                     request.user_id,
-                    request.display_name,
-                    request.bio,
-                    request.avatar_url,
-                    request.preferred_language,
+                    request.display_name if request.HasField("display_name") else None,
+                    request.bio if request.HasField("bio") else None,
+                    request.avatar_url if request.HasField("avatar_url") else None,
+                    request.preferred_language if request.HasField("preferred_language") else None,
                 )
                 return app.proto.auth_pb2.UserResponse(user=_build_user_message(user))
-        except ValueError as e:
-            await context.abort(grpc.StatusCode.NOT_FOUND, f"User not found: {str(e)}")
+        except app.services.auth_service.InvalidProfileField as e:
+            await context.abort(grpc.StatusCode.INVALID_ARGUMENT, str(e))
+        except ValueError:
+            await context.abort(grpc.StatusCode.NOT_FOUND, "User not found")
         except grpc.aio.AbortError:
             raise
         except Exception as e:

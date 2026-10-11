@@ -111,6 +111,10 @@ async def start_server() -> None:
             f"[rec:case] Case pool refresh scheduled (cron: '{app.config.settings.case_pool_refresh_cron}')"
         )
 
+        startup_pools = asyncio.create_task(app.jobs.ensure_case_pools_job())
+        _startup_tasks.add(startup_pools)
+        startup_pools.add_done_callback(_startup_tasks.discard)
+
     if app.config.settings.book_of_week_enabled:
         await scheduler.add_schedule(
             app.jobs.book_of_week_job,

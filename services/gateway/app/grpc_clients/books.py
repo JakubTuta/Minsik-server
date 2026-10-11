@@ -53,6 +53,13 @@ class BooksClient(base.GrpcClientBase):
 
         return await self._call("GetBookLanguageVariants", request)
 
+    async def lookup_book_by_isbn(
+        self, isbn: str, language: str = "en"
+    ) -> app.proto.books_pb2.BookLookupResponse:
+        request = app.proto.books_pb2.LookupBookByIsbnRequest(isbn=isbn, language=language)
+
+        return await self._call("LookupBookByIsbn", request)
+
     async def get_author(
         self, slug: str, language: str = "en"
     ) -> app.proto.books_pb2.AuthorDetailResponse:

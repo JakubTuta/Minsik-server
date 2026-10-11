@@ -31,6 +31,15 @@ async def close_redis() -> None:
         await redis_client.aclose()
 
 
+async def _delete_matching(pattern: str) -> None:
+    try:
+        keys = [key async for key in redis_client.scan_iter(match=pattern, count=1000)]
+        if keys:
+            await redis_client.delete(*keys)
+    except Exception as e:
+        logger.error(f"Redis DELETE error for {pattern}: {str(e)}")
+
+
 async def delete_book_cache(*book_slugs: str) -> None:
     """Drop the cached book payloads for the given edition slugs.
 
@@ -40,13 +49,7 @@ async def delete_book_cache(*book_slugs: str) -> None:
     community stats until their TTL expires.
     """
     for book_slug in book_slugs:
-        try:
-            pattern = f"book_slug:{book_slug}:*"
-            keys = [key async for key in redis_client.scan_iter(match=pattern)]
-            if keys:
-                await redis_client.delete(*keys)
-        except Exception as e:
-            logger.error(f"Redis DELETE error for book_slug:{book_slug}:*: {str(e)}")
+        await _delete_matching(f"book_slug:{book_slug}:*")
 
 
 async def get_json(key: str) -> typing.Optional[typing.Any]:
@@ -68,44 +71,21 @@ async def set_json(key: str, value: typing.Any, ttl: int) -> None:
 
 
 async def delete_profile_stats(user_id: int) -> None:
-    try:
-        await redis_client.delete(f"profile_stats:{user_id}")
-    except Exception as e:
-        logger.error(f"Redis DELETE error for profile_stats:{user_id}: {str(e)}")
+    await _delete_matching(f"profile_stats:{user_id}")
 
 
 async def delete_profile_overview(user_id: int) -> None:
-    try:
-        await redis_client.delete(f"profile_overview:{user_id}")
-    except Exception as e:
-        logger.error(f"Redis DELETE error for profile_overview:{user_id}: {str(e)}")
+    # Stored per language (profile_overview:{user_id}:{language}), so a bare key never matched.
+    await _delete_matching(f"profile_overview:{user_id}:*")
 
 
 async def delete_bookshelf_list_cache(user_id: int) -> None:
-    try:
-        pattern = f"bookshelf_list:{user_id}:*"
-        keys = [key async for key in redis_client.scan_iter(match=pattern)]
-        if keys:
-            await redis_client.delete(*keys)
-    except Exception as e:
-        logger.error(f"Redis DELETE error for bookshelf_list:{user_id}:*: {str(e)}")
+    await _delete_matching(f"bookshelf_list:{user_id}:*")
 
 
 async def delete_comment_list_cache(user_id: int) -> None:
-    try:
-        pattern = f"comments_list:{user_id}:*"
-        keys = [key async for key in redis_client.scan_iter(match=pattern)]
-        if keys:
-            await redis_client.delete(*keys)
-    except Exception as e:
-        logger.error(f"Redis DELETE error for comments_list:{user_id}:*: {str(e)}")
+    await _delete_matching(f"comments_list:{user_id}:*")
 
 
 async def delete_year_in_review(user_id: int) -> None:
-    try:
-        pattern = f"year_in_review:{user_id}:*"
-        keys = [key async for key in redis_client.scan_iter(match=pattern)]
-        if keys:
-            await redis_client.delete(*keys)
-    except Exception as e:
-        logger.error(f"Redis DELETE error for year_in_review:{user_id}:*: {str(e)}")
+    await _delete_matching(f"year_in_review:{user_id}:*")

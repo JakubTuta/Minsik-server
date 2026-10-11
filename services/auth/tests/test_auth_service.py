@@ -215,6 +215,21 @@ class TestRefreshTokens:
         mock_session.commit.assert_called_once()
 
     @pytest.mark.asyncio
+    async def test_refresh_tokens_refuses_a_deactivated_account(self, mock_session, mock_user, mock_refresh_token):
+        mock_user.is_active = False
+        mock_session.execute.side_effect = [
+            make_execute_result(mock_refresh_token),
+            make_execute_result(mock_user),
+        ]
+
+        with patch('app.services.token_service.hash_token', return_value='hashed'):
+            with pytest.raises(PermissionError) as exc_info:
+                await auth_service.refresh_tokens(mock_session, "raw_token")
+
+        assert str(exc_info.value) == "user_inactive"
+        assert mock_refresh_token.is_revoked is not True
+
+    @pytest.mark.asyncio
     async def test_refresh_tokens_not_found(self, mock_session):
         mock_session.execute.return_value = make_execute_result(None)
 
@@ -282,6 +297,25 @@ class TestGetCurrentUser:
 
 
 class TestUpdateProfile:
+    @pytest.mark.asyncio
+    async def test_update_profile_clears_bio_only_when_asked_to(self, mock_session, mock_user):
+        mock_session.execute.return_value = make_execute_result(mock_user)
+        mock_user.bio = "Keep me"
+
+        await auth_service.update_profile(mock_session, 1, None, None, None, "pl")
+        assert mock_user.bio == "Keep me"
+        assert mock_user.preferred_language == "pl"
+
+        await auth_service.update_profile(mock_session, 1, None, "", None)
+        assert mock_user.bio == ""
+
+    @pytest.mark.asyncio
+    async def test_update_profile_rejects_a_non_http_avatar(self, mock_session, mock_user):
+        mock_session.execute.return_value = make_execute_result(mock_user)
+
+        with pytest.raises(auth_service.InvalidProfileField):
+            await auth_service.update_profile(mock_session, 1, None, None, "javascript:alert(1)")
+
     @pytest.mark.asyncio
     async def test_update_profile_display_name(self, mock_session, mock_user):
         mock_session.execute.return_value = make_execute_result(mock_user)

@@ -1,4 +1,5 @@
 import logging
+import typing
 import app.config
 from app.grpc_clients import base
 import app.proto.auth_pb2
@@ -61,17 +62,20 @@ class AuthClient(base.GrpcClientBase):
     async def update_profile(
         self,
         user_id: int,
-        display_name: str = "",
-        bio: str = "",
-        avatar_url: str = "",
-        preferred_language: str = "",
+        display_name: typing.Optional[str] = None,
+        bio: typing.Optional[str] = None,
+        avatar_url: typing.Optional[str] = None,
+        preferred_language: typing.Optional[str] = None,
     ) -> app.proto.auth_pb2.UserResponse:
+        fields = {
+            "display_name": display_name,
+            "bio": bio,
+            "avatar_url": avatar_url,
+            "preferred_language": preferred_language,
+        }
         request = app.proto.auth_pb2.UpdateProfileRequest(
             user_id=user_id,
-            display_name=display_name,
-            bio=bio,
-            avatar_url=avatar_url,
-            preferred_language=preferred_language,
+            **{name: value for name, value in fields.items() if value is not None},
         )
 
         return await self._call("UpdateProfile", request)
