@@ -11,7 +11,7 @@ pydantic-settings==2.12.0
 
 python-dotenv==1.2.1
 
-redis==7.0.1
+redis==8.1.0
 
 pytest==9.0.2
 pytest-asyncio==1.3.0
