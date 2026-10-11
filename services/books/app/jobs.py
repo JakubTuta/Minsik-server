@@ -5,6 +5,7 @@ import app.services.author_service
 import app.services.book_service
 import app.services.category_service
 import app.services.es_sync_service
+import app.services.series_service
 import app.services.work_shelf_counts
 
 logger = logging.getLogger(__name__)
@@ -15,6 +16,7 @@ async def flush_view_counts_job() -> None:
         async with app.db.async_session_maker() as session:
             await app.services.book_service.flush_view_counts_to_db(session)
             await app.services.author_service.flush_view_counts_to_db(session)
+            await app.services.series_service.flush_view_counts_to_db(session)
     except Exception as e:
         logger.error(f"[books] View count flush error: {str(e)}")
 
@@ -23,6 +25,7 @@ async def flush_view_counts_final() -> None:
     async with app.db.async_session_maker() as session:
         await app.services.book_service.flush_view_counts_to_db(session)
         await app.services.author_service.flush_view_counts_to_db(session)
+        await app.services.series_service.flush_view_counts_to_db(session)
 
 
 async def reindex_job() -> None:
@@ -34,6 +37,13 @@ async def reindex_job() -> None:
 
 async def work_shelf_counts_refresh_job() -> None:
     await app.services.work_shelf_counts.rebuild_job()
+
+
+async def ensure_category_works_job() -> None:
+    try:
+        await app.services.category_service.category_service.ensure_category_works()
+    except Exception as e:
+        logger.error(f"[books] Category works startup fill failed: {str(e)}")
 
 
 async def category_cache_refresh_job() -> None:

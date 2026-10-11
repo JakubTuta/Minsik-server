@@ -26,6 +26,18 @@ import grpc
 
 logger = logging.getLogger(__name__)
 
+MAX_PAGE_SIZE = 100
+MAX_OFFSET = 100_000
+
+
+def _limit(value: int, default: int) -> int:
+    """Page size from a request: the default when unset, never above MAX_PAGE_SIZE."""
+    return min(value, MAX_PAGE_SIZE) if value > 0 else default
+
+
+def _offset(value: int) -> int:
+    return min(max(value, 0), MAX_OFFSET)
+
 
 def _build_book_detail_proto(
     book: typing.Dict[str, typing.Any],
@@ -68,6 +80,8 @@ def _build_book_detail_proto(
         title=book["title"],
         slug=book["slug"],
         description=book["description"],
+        fallback_description=book.get("fallback_description", ""),
+        fallback_language=book.get("fallback_language", ""),
         language=book["language"],
         original_publication_year=book["original_publication_year"],
         formats=book["formats"],
@@ -159,6 +173,7 @@ def _build_book_summary_proto(
         rarity=item.get("rarity", "") or "",
         language=item.get("language", "") or "",
         first_sentence=item.get("first_sentence", "") or "",
+        available_in_language=item.get("available_in_language", True) is not False,
     )
 
 
@@ -189,8 +204,8 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                     await app.services.search_service.search_books_and_authors(
                         session,
                         request.query,
-                        request.limit or 10,
-                        request.offset or 0,
+                        _limit(request.limit, 10),
+                        _offset(request.offset),
                         request.type_filter or "all",
                         request.language or "en",
                     )
@@ -244,7 +259,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
         try:
             results = await app.services.search_service.suggest(
                 request.query,
-                request.limit or 8,
+                _limit(request.limit, 8),
                 request.language or "en",
             )
 
@@ -307,6 +322,27 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
             book=_build_book_detail_proto(book)
         )
 
+    async def LookupBookByIsbn(
+        self,
+        request: app.proto.books_pb2.LookupBookByIsbnRequest,
+        context: grpc.aio.ServicerContext,
+    ) -> app.proto.books_pb2.BookLookupResponse:
+        try:
+            async with app.db.async_session_maker() as session:
+                book = await app.services.book_service.lookup_by_isbn(
+                    session, request.isbn, request.language or "en"
+                )
+        except Exception as e:
+            logger.error(f"Error in LookupBookByIsbn: {str(e)}")
+            await context.abort(grpc.StatusCode.INTERNAL, "ISBN lookup failed")
+            return
+
+        if not book:
+            await context.abort(grpc.StatusCode.NOT_FOUND, "No book has this ISBN")
+            return
+
+        return app.proto.books_pb2.BookLookupResponse(**book)
+
     async def GetBookLanguageVariants(
         self,
         request: app.proto.books_pb2.GetBookLanguageVariantsRequest,
@@ -329,6 +365,11 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                 language=v["language"],
                 title=v["title"],
                 primary_cover_url=v["primary_cover_url"],
+                publisher=v.get("publisher", ""),
+                number_of_pages=v.get("number_of_pages", 0),
+                original_publication_year=v.get("original_publication_year", 0),
+                isbn=v.get("isbn", ""),
+                has_description=v.get("has_description", False),
             )
             for v in variants
         ]
@@ -388,6 +429,8 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
             ol_want_to_read_count=author["ol_want_to_read_count"],
             ol_currently_reading_count=author["ol_currently_reading_count"],
             ol_already_read_count=author["ol_already_read_count"],
+            fallback_bio=author.get("fallback_bio") or "",
+            fallback_language=author.get("fallback_language") or "",
         )
 
         return app.proto.books_pb2.AuthorDetailResponse(author=author_detail)
@@ -402,8 +445,8 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                 books, total = await app.services.author_service.get_author_books(
                     session,
                     request.author_slug,
-                    request.limit or 10,
-                    request.offset or 0,
+                    _limit(request.limit, 10),
+                    _offset(request.offset),
                     request.sort_by or "view_count",
                     request.order or "desc",
                     request.language or "en",
@@ -516,6 +559,8 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
             total_pages=series.get("total_pages", 0),
             primary_author=primary_author_proto,
             genres=_build_genre_counts(series.get("genres", [])),
+            fallback_description=series.get("fallback_description") or "",
+            fallback_language=series.get("fallback_language") or "",
         )
 
         return app.proto.books_pb2.SeriesDetailResponse(series=series_detail)
@@ -530,8 +575,8 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                 books, total = await app.services.series_service.get_series_books(
                     session,
                     request.series_slug,
-                    request.limit or 10,
-                    request.offset or 0,
+                    _limit(request.limit, 10),
+                    _offset(request.offset),
                     request.language or "en",
                     request.sort_by or "series_position",
                     request.order or "asc",
@@ -1071,8 +1116,8 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
         try:
             books, total = await app.services.category_service.category_service.get_category_books(
                 category_slug=request.category_slug,
-                limit=request.limit or 20,
-                offset=request.offset or 0,
+                limit=_limit(request.limit, 20),
+                offset=_offset(request.offset),
                 language=request.language or "en",
                 sort_by=request.sort_by or "popularity",
                 order=request.order or "desc",
@@ -1094,7 +1139,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
         context: grpc.aio.ServicerContext,
     ) -> app.proto.books_pb2.PopularCategoriesResponse:
         try:
-            limit = request.limit if request.limit > 0 else 12
+            limit = _limit(request.limit, 12)
             categories = await app.services.category_service.category_service.get_popular_categories(limit=limit)
             response = app.proto.books_pb2.PopularCategoriesResponse()
             for cat in categories:
@@ -1158,7 +1203,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
 
     async def GetGenreBubble(self, request, context):
         try:
-            limit = request.limit if request.limit > 0 else 10
+            limit = _limit(request.limit, 10)
             result = await app.services.genre_service.get_genre_bubble(
                 slug=request.slug,
                 limit=limit,
@@ -1221,7 +1266,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
             async with app.db.async_session_maker() as session:
                 items = await app.services.quality_audit_service.audit_books(
                     session,
-                    request.limit or 20,
+                    _limit(request.limit, 20),
                     request.min_authors,
                     request.max_authors,
                     request.min_genres,
@@ -1257,7 +1302,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
             async with app.db.async_session_maker() as session:
                 items = await app.services.quality_audit_service.audit_authors(
                     session,
-                    request.limit or 20,
+                    _limit(request.limit, 20),
                     request.min_books,
                     request.max_books,
                     request.check_missing_bio,
@@ -1284,7 +1329,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
             async with app.db.async_session_maker() as session:
                 items = await app.services.quality_audit_service.audit_series(
                     session,
-                    request.limit or 20,
+                    _limit(request.limit, 20),
                     request.min_books,
                     request.max_books,
                     request.language or None,

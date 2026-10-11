@@ -31,6 +31,7 @@ logger = logging.getLogger(__name__)
 
 grpc_server: grpc.aio.Server = None
 scheduler: apscheduler.AsyncScheduler = None
+_startup_tasks: set[asyncio.Task] = set()
 _shutdown_event: asyncio.Event = None
 
 
@@ -132,6 +133,12 @@ async def start_server() -> None:
             f"[books] Category cache refresh scheduled (cron: '{app.config.settings.category_cache_refresh_cron}')"
         )
     await scheduler.start_in_background()
+
+    # Pages of a category fall back to the slow query until its ranking exists, so fill it
+    # in the background on the first boot after the table is created rather than wait for the cron.
+    startup_fill = asyncio.create_task(app.jobs.ensure_category_works_job())
+    _startup_tasks.add(startup_fill)
+    startup_fill.add_done_callback(_startup_tasks.discard)
 
     logger.info("Books service is running")
 

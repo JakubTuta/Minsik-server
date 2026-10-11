@@ -100,43 +100,49 @@ async def increment_view_count(entity_type: str, entity_id: int) -> None:
         logger.error(f"Redis view count increment error: {str(e)}")
 
 
-async def get_pending_view_counts(entity_type: str) -> typing.Dict[int, typing.Dict[str, int]]:
+# Reads and deletes buffered counters in one step per batch of keys. A reader that
+# fetched the counters and deleted the keys later would drop every view recorded in
+# between; claiming them atomically means a view lands either in this flush or the next.
+_CLAIM_VIEW_COUNTS_LUA = """
+local claimed = {}
+for _, key in ipairs(KEYS) do
+    local count = redis.call('HGET', key, 'count')
+    local last_viewed = redis.call('HGET', key, 'last_viewed')
+    redis.call('DEL', key)
+    claimed[#claimed + 1] = {key, count or '', last_viewed or ''}
+end
+return claimed
+"""
+_CLAIM_BATCH = 500
+
+
+async def claim_pending_view_counts(entity_type: str) -> typing.Dict[int, typing.Dict[str, int]]:
+    """Take every buffered counter of an entity type out of Redis and return it."""
     try:
-        pattern = f"view_count:{entity_type}:*"
-        keys = []
-        async for key in redis_client.scan_iter(match=pattern, count=100):
-            keys.append(key)
-
-        if not keys:
-            return {}
-
-        result = {}
-        for key in keys:
-            entity_id = int(key.split(":")[-1])
-            count = await redis_client.hget(key, "count")
-            last_viewed = await redis_client.hget(key, "last_viewed")
-
-            if count and last_viewed:
-                result[entity_id] = {
-                    "count": int(count),
-                    "last_viewed": int(last_viewed)
-                }
-
-        return result
+        keys = [key async for key in redis_client.scan_iter(match=f"view_count:{entity_type}:*", count=1000)]
+        claimed: typing.Dict[int, typing.Dict[str, int]] = {}
+        for start in range(0, len(keys), _CLAIM_BATCH):
+            batch = keys[start:start + _CLAIM_BATCH]
+            for key, count, last_viewed in await redis_client.eval(_CLAIM_VIEW_COUNTS_LUA, len(batch), *batch):
+                if count and last_viewed:
+                    claimed[int(key.split(":")[-1])] = {"count": int(count), "last_viewed": int(last_viewed)}
+        return claimed
     except Exception as e:
-        logger.error(f"Redis get pending view counts error: {str(e)}")
+        logger.error(f"Redis claim view counts error: {str(e)}")
         return {}
 
 
-async def clear_view_counts(entity_type: str, entity_ids: typing.List[int]) -> None:
+async def restore_view_counts(entity_type: str, counts: typing.Dict[int, typing.Dict[str, int]]) -> None:
+    """Put claimed counters back after a failed database write, so the views are not lost."""
     try:
-        if not entity_ids:
-            return
-
-        keys = [f"view_count:{entity_type}:{entity_id}" for entity_id in entity_ids]
-        await redis_client.delete(*keys)
+        pipeline = redis_client.pipeline()
+        for entity_id, data in counts.items():
+            key = f"view_count:{entity_type}:{entity_id}"
+            pipeline.hincrby(key, "count", data["count"])
+            pipeline.hset(key, "last_viewed", data["last_viewed"])
+        await pipeline.execute()
     except Exception as e:
-        logger.error(f"Redis clear view counts error: {str(e)}")
+        logger.error(f"Redis restore view counts error: {str(e)}")
 
 
 async def flush_view_counts(
@@ -145,38 +151,39 @@ async def flush_view_counts(
     table: str,
     id_column: str,
 ) -> int:
-    """Apply Redis-buffered view counts to `table` and clear them. Returns rows flushed."""
-    pending_counts = await get_pending_view_counts(entity_type)
+    """Apply Redis-buffered view counts to `table`. Returns rows flushed."""
+    pending_counts = await claim_pending_view_counts(entity_type)
     if not pending_counts:
         return 0
 
     # One statement for the whole flush: the buffer holds every entity viewed
     # since the last run, so a statement per entity meant thousands of round
     # trips every few minutes.
-    await session.execute(
-        sqlalchemy.text(
-            f"""
-            UPDATE {table} AS t
-            SET
-                view_count = t.view_count + v.increment,
-                last_viewed_at = to_timestamp(v.last_viewed)
-            FROM UNNEST(
-                CAST(:entity_ids AS bigint[]),
-                CAST(:increments AS int[]),
-                CAST(:last_viewed AS double precision[])
-            ) AS v(entity_id, increment, last_viewed)
-            WHERE t.{id_column} = v.entity_id
-            """
-        ),
-        {
-            "entity_ids": [int(entity_id) for entity_id in pending_counts],
-            "increments": [int(data["count"]) for data in pending_counts.values()],
-            "last_viewed": [
-                float(data["last_viewed"]) for data in pending_counts.values()
-            ],
-        },
-    )
-
-    await session.commit()
-    await clear_view_counts(entity_type, list(pending_counts.keys()))
+    try:
+        await session.execute(
+            sqlalchemy.text(
+                f"""
+                UPDATE {table} AS t
+                SET
+                    view_count = t.view_count + v.increment,
+                    last_viewed_at = to_timestamp(v.last_viewed)
+                FROM UNNEST(
+                    CAST(:entity_ids AS bigint[]),
+                    CAST(:increments AS int[]),
+                    CAST(:last_viewed AS double precision[])
+                ) AS v(entity_id, increment, last_viewed)
+                WHERE t.{id_column} = v.entity_id
+                """
+            ),
+            {
+                "entity_ids": [int(entity_id) for entity_id in pending_counts],
+                "increments": [int(data["count"]) for data in pending_counts.values()],
+                "last_viewed": [float(data["last_viewed"]) for data in pending_counts.values()],
+            },
+        )
+        await session.commit()
+    except Exception:
+        await session.rollback()
+        await restore_view_counts(entity_type, pending_counts)
+        raise
     return len(pending_counts)

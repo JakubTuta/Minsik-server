@@ -2,6 +2,7 @@ import logging
 import typing
 
 import app.cache
+import app.services.renames
 import app.config
 import app.models.book
 import app.models.series
@@ -13,10 +14,33 @@ import sqlalchemy.ext.asyncio
 logger = logging.getLogger(__name__)
 
 
+# One row per WORK of a series, across every language record of it. The per-language
+# series rows are the same series: a volume that has no edition in the reader's language
+# still belongs to it, and is shown in the best language available (requested, then
+# English, then the most rated) instead of leaving a hole in the reading order.
+_SERIES_MEMBERS_CTE = """
+    group_series AS (
+        SELECT series_id FROM books.series WHERE COALESCE(group_id, series_id) = :group_id
+    ),
+    members AS (
+        SELECT DISTINCT ON (b.work_id) b.*, (b.language = :language) AS in_language
+        FROM books.books b
+        WHERE b.series_id IN (SELECT series_id FROM group_series)
+        ORDER BY b.work_id, (b.language = :language) DESC, (b.language = 'en') DESC,
+                 (COALESCE(b.rating_count, 0) + COALESCE(b.ol_rating_count, 0)) DESC, b.book_id ASC
+    )
+"""
+
+
+def _group_id(series: app.models.series.Series) -> int:
+    return series.group_id or series.series_id
+
+
 def _series_stats_query() -> sqlalchemy.TextClause:
-    """Rating, reader and page totals for one language row of a series."""
+    """Rating, reader and page totals over the works of a series."""
     return sqlalchemy.text(
         f"""
+        WITH {_SERIES_MEMBERS_CTE}
         SELECT
             COUNT(*) as total_books,
             COALESCE(SUM(b.rating_count), 0) as rating_count,
@@ -39,18 +63,14 @@ def _series_stats_query() -> sqlalchemy.TextClause:
             COALESCE(SUM(wsc.read_count), 0) AS app_read_count,
             COALESCE(SUM(b.number_of_pages), 0) AS total_pages,
             (
-                SELECT b2.description
-                FROM books.books b2
-                WHERE b2.series_id = :series_id
-                  AND b2.language = :language
-                  AND b2.description IS NOT NULL
-                  AND length(trim(b2.description)) > 0
-                ORDER BY b2.series_position ASC NULLS LAST, b2.created_at ASC
+                SELECT m.description
+                FROM members m
+                WHERE m.in_language AND m.description IS NOT NULL AND length(trim(m.description)) > 0
+                ORDER BY m.series_position ASC NULLS LAST, m.created_at ASC
                 LIMIT 1
             ) AS fallback_description
-        FROM books.books b
+        FROM members b
         {app.services._language_boost.work_shelf_counts_join()}
-        WHERE b.series_id = :series_id AND b.language = :language
         """
     )
 
@@ -80,6 +100,38 @@ async def _fallback_series_edition(
     return max(editions, key=lambda s: s.total_books or 0)
 
 
+_SIBLING_DESCRIPTION_SQL = sqlalchemy.text(
+    """
+    SELECT description, language FROM books.series
+    WHERE COALESCE(group_id, series_id) = :group_id
+      AND series_id <> :series_id
+      AND description IS NOT NULL AND btrim(description) <> ''
+    ORDER BY (language = 'en') DESC, view_count DESC, series_id ASC
+    LIMIT 1
+    """
+)
+
+
+async def _attach_description_fallback(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    series_data: typing.Dict[str, typing.Any],
+    series: app.models.series.Series,
+) -> None:
+    """Another language's description of the same series, offered labelled when this one has none."""
+    series_data["fallback_description"] = None
+    series_data["fallback_language"] = None
+    if series_data["description"]:
+        return
+
+    row = (await session.execute(
+        _SIBLING_DESCRIPTION_SQL,
+        {"group_id": series.group_id or series.series_id, "series_id": series.series_id},
+    )).first()
+    if row:
+        series_data["fallback_description"] = row.description
+        series_data["fallback_language"] = row.language
+
+
 async def get_series_by_slug(
     session: sqlalchemy.ext.asyncio.AsyncSession, slug: str, language: str = "en"
 ) -> typing.Optional[typing.Dict[str, typing.Any]]:
@@ -103,30 +155,28 @@ async def get_series_by_slug(
     if not series:
         return None
 
-    stats_result = await session.execute(
-        _series_stats_query(), {"series_id": series.series_id, "language": series.language}
-    )
+    group_params = {"group_id": _group_id(series), "language": language}
+    stats_result = await session.execute(_series_stats_query(), group_params)
     stats = stats_result.first()
 
     primary_author_query = sqlalchemy.text(
-        """
+        f"""
+        WITH {_SERIES_MEMBERS_CTE}
         SELECT a.author_id, a.name, a.slug, a.photo_url
-        FROM books.book_authors ba
+        FROM members b
+        JOIN books.book_authors ba ON ba.book_id = b.book_id
         JOIN books.authors a ON ba.author_id = a.author_id
-        JOIN books.books b ON ba.book_id = b.book_id
-        WHERE b.series_id = :series_id AND b.language = :language
         ORDER BY b.series_position ASC NULLS LAST, b.created_at ASC
         LIMIT 1
         """
     )
-    primary_author_result = await session.execute(
-        primary_author_query, {"series_id": series.series_id, "language": series.language}
-    )
+    primary_author_result = await session.execute(primary_author_query, group_params)
     primary_author = primary_author_result.first()
 
-    genres = await _get_series_genres(session, series.series_id)
+    genres = await _get_series_genres(session, _group_id(series))
 
     series_data = _series_to_dict(series, stats, primary_author, genres)
+    await _attach_description_fallback(session, series_data, series)
 
     # Cache under the requested language too, so a fallback isn't
     # recomputed on every request for a language this series has no
@@ -178,14 +228,15 @@ async def get_series_books(
     }
     sort_col = sort_options.get(sort_by, "b.series_position")
     order_dir = "DESC" if order == "desc" else "ASC"
-    secondary_sort = (
-        f", b.created_at {order_dir}" if sort_by == "series_position" else ""
-    )
 
     books_query = sqlalchemy.text(
         f"""
+        WITH {_SERIES_MEMBERS_CTE}
         SELECT
             b.book_id,
+            b.work_id,
+            b.language,
+            b.in_language AS available_in_language,
             b.title,
             b.slug,
             b.description,
@@ -228,36 +279,20 @@ async def get_series_books(
                 JOIN books.authors a ON ba.author_id = a.author_id
                 WHERE ba.book_id = b.book_id
             ) AS authors
-        FROM books.books b
+        FROM members b
         {app.services._language_boost.work_shelf_counts_join()}
-        WHERE b.series_id = :series_id AND b.language = :language
-        ORDER BY {sort_col} {order_dir} NULLS LAST{secondary_sort}
+        ORDER BY {sort_col} {order_dir} NULLS LAST, b.book_id ASC
         LIMIT :limit OFFSET :offset
         """
     )
 
-    count_query = sqlalchemy.text(
-        """
-        SELECT COUNT(*)
-        FROM books.books b
-        WHERE b.series_id = :series_id AND b.language = :language
-        """
-    )
+    count_query = sqlalchemy.text(f"WITH {_SERIES_MEMBERS_CTE} SELECT COUNT(*) FROM members")
+    group_params = {"group_id": _group_id(series), "language": language}
 
-    books_result = await session.execute(
-        books_query,
-        {
-            "series_id": series.series_id,
-            "language": series.language,
-            "limit": limit,
-            "offset": offset,
-        },
-    )
+    books_result = await session.execute(books_query, {**group_params, "limit": limit, "offset": offset})
     books_rows = books_result.fetchall()
 
-    count_result = await session.execute(
-        count_query, {"series_id": series.series_id, "language": series.language}
-    )
+    count_result = await session.execute(count_query, group_params)
     total_count = count_result.scalar() or 0
 
     books_list = [_series_book_row_to_dict(row) for row in books_rows]
@@ -282,7 +317,8 @@ async def _get_series_genres(
     stmt = sqlalchemy.text(
         """
         WITH series_works AS (
-            SELECT DISTINCT b.work_id FROM books.books b WHERE b.series_id = :series_id
+            SELECT DISTINCT b.work_id FROM books.books b
+            WHERE b.series_id IN (SELECT series_id FROM books.series WHERE COALESCE(group_id, series_id) = :group_id)
         )
         SELECT g.name, g.slug, COUNT(DISTINCT b.work_id) AS works
         FROM books.books b
@@ -295,7 +331,7 @@ async def _get_series_genres(
         """
     )
 
-    rows = (await session.execute(stmt, {"series_id": series_id})).fetchall()
+    rows = (await session.execute(stmt, {"group_id": series_id})).fetchall()
 
     return [
         {"name": row.name, "slug": row.slug, "count": int(row.works)} for row in rows
@@ -372,9 +408,12 @@ def _series_book_row_to_dict(row: typing.Any) -> typing.Dict[str, typing.Any]:
         "app_want_to_read_count": row.app_want_to_read_count or 0,
         "app_reading_count": row.app_reading_count or 0,
         "app_read_count": row.app_read_count or 0,
-        "series_position": str(row.series_position) if row.series_position else None,
+        "series_position": str(row.series_position) if row.series_position is not None else None,
         "number_of_pages": row.number_of_pages or 0,
         "authors": authors_list,
+        "work_id": row.work_id,
+        "language": row.language,
+        "available_in_language": row.available_in_language,
     }
 
 
@@ -395,9 +434,19 @@ async def update_series(
         return None
 
     old_slug = series.slug
+    old_name = series.name
 
     for field, value in updates.items():
         setattr(series, field, value)
+
+    await session.flush()
+    await app.services.renames.record_slug_change(
+        session, "series", series.series_id, old_slug, series.slug, series.language
+    )
+    if series.slug != old_slug or series.name != old_name:
+        await app.services.renames.propagate_series_rename(
+            session, series.series_id, series.slug, series.name
+        )
 
     await session.commit()
     await session.refresh(series)
@@ -408,12 +457,10 @@ async def update_series(
         await app.cache.delete_localized("series_slug", series.slug)
         await app.cache.delete_localized("series_books", series.slug)
 
-    stats_result = await session.execute(
-        _series_stats_query(), {"series_id": series.series_id, "language": language}
-    )
+    stats_result = await session.execute(_series_stats_query(), {"group_id": _group_id(series), "language": language})
     stats = stats_result.first()
 
-    genres = await _get_series_genres(session, series.series_id)
+    genres = await _get_series_genres(session, _group_id(series))
 
     return _series_to_dict(series, stats, None, genres)
 
@@ -454,6 +501,15 @@ async def _track_series_view(series_id: int) -> None:
         await app.cache.increment_view_count("series", series_id)
     except Exception as e:
         logger.error(f"Error tracking series view: {str(e)}")
+
+
+async def flush_view_counts_to_db(session: sqlalchemy.ext.asyncio.AsyncSession) -> None:
+    try:
+        count = await app.cache.flush_view_counts(session, "series", "books.series", "series_id")
+        if count:
+            logger.info(f"Flushed {count} series view counts to database")
+    except Exception as e:
+        logger.error(f"Failed to flush series view counts: {str(e)}")
 
 
 async def delete_series(

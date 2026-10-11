@@ -9,6 +9,7 @@ import app.db
 import app.models.genre
 import app.services._language_boost
 import app.services._row_helpers
+import app.services.category_works
 import sqlalchemy
 import sqlalchemy.ext.asyncio
 
@@ -19,6 +20,30 @@ CATEGORY_TOP_BOOKS_POOL_SIZE = 60
 CATEGORY_TOP_BOOKS_SORT_OPTIONS = ["popularity", "rating"]
 POPULAR_CATEGORIES_CACHE_KEY = "categories:popular:v2"
 POPULAR_CATEGORIES_CACHE_TTL = 172800
+
+
+def _book_row_to_dict(row: typing.Any) -> dict:
+    return {
+        "book_id": row.book_id,
+        "title": row.title,
+        "slug": row.slug,
+        "work_id": row.work_id or "",
+        "description": row.description or "",
+        "original_publication_year": int(row.original_publication_year or 0),
+        "primary_cover_url": row.primary_cover_url or "",
+        "language": row.language or "",
+        "rating_count": row.rating_count or 0,
+        "avg_rating": str(row.avg_rating) if row.avg_rating else "0.00",
+        "ol_rating_count": row.ol_rating_count or 0,
+        "ol_avg_rating": str(row.ol_avg_rating) if row.ol_avg_rating else "0.00",
+        "ol_want_to_read_count": row.ol_want_to_read_count or 0,
+        "ol_currently_reading_count": row.ol_currently_reading_count or 0,
+        "ol_already_read_count": row.ol_already_read_count or 0,
+        "app_want_to_read_count": int(row.app_want_to_read_count or 0),
+        "app_reading_count": int(row.app_reading_count or 0),
+        "app_read_count": int(row.app_read_count or 0),
+        "authors": app.services._row_helpers.json_agg_list(row.authors),
+    }
 
 
 class CategoryService:
@@ -71,8 +96,36 @@ class CategoryService:
         cat = app.categories_config.CATEGORIES[slug]
         return {"slug": cat.slug, "name": cat.name}
 
+    async def ensure_category_works(self) -> None:
+        """Fill the ranking on first boot after its table appears; later restarts find rows and do nothing."""
+        async with app.db.async_session_maker() as session:
+            has_rows = (
+                await session.execute(sqlalchemy.text("SELECT 1 FROM books.category_works LIMIT 1"))
+            ).first()
+        if has_rows:
+            return
+
+        if not self._is_ready:
+            await self.setup()
+        await self.rebuild_category_works()
+
+    async def rebuild_category_works(self) -> None:
+        """Refresh the ranked works of every category; a failing category keeps its previous rows."""
+        for category_slug in app.categories_config.CATEGORIES:
+            genre_ids = self._category_genre_ids.get(category_slug, set())
+            if not genre_ids:
+                continue
+
+            try:
+                async with app.db.async_session_maker() as session:
+                    await app.services.category_works.rebuild(session, category_slug, sorted(genre_ids))
+            except Exception as e:
+                logger.error(f"Error rebuilding category works for {category_slug}: {str(e)}")
+
     async def populate_category_top_books_cache(self) -> None:
         logger.info("Populating category top books cache...")
+
+        await self.rebuild_category_works()
 
         for category_slug in app.categories_config.CATEGORIES:
             for sort_by in CATEGORY_TOP_BOOKS_SORT_OPTIONS:
@@ -138,6 +191,29 @@ class CategoryService:
             order=order,
         )
 
+    async def _fetch_from_category_works(
+        self,
+        category_slug: str,
+        limit: int,
+        offset: int,
+        language: str,
+        sort_by: str,
+        order: str,
+    ) -> typing.Optional[typing.Tuple[typing.List[dict], int]]:
+        """A page from the precomputed ranking; None while the category has no rows yet."""
+        async with app.db.async_session_maker() as session:
+            total = await app.services.category_works.count(session, category_slug)
+            if total == 0:
+                return None
+
+            result = await session.execute(
+                app.services.category_works.page_query(sort_by, order),
+                {"slug": category_slug, "limit": limit, "offset": offset, "language": language},
+            )
+            rows = result.fetchall()
+
+        return [_book_row_to_dict(row) for row in rows], total
+
     async def _fetch_category_books_from_db(
         self,
         category_slug: str,
@@ -154,6 +230,12 @@ class CategoryService:
 
         if sort_by not in {"popularity", "rating"}:
             sort_by = "popularity"
+
+        ranked = await self._fetch_from_category_works(
+            category_slug, limit, offset, language, sort_by, order
+        )
+        if ranked is not None:
+            return ranked
 
         genre_ids_list = list(genre_ids)
 
@@ -245,37 +327,7 @@ class CategoryService:
 
         total_count = raw_rows[0].total_count
 
-        books_data = []
-        for row in raw_rows:
-            authors_list = app.services._row_helpers.json_agg_list(row.authors)
-
-            books_data.append(
-                {
-                    "book_id": row.book_id,
-                    "title": row.title,
-                    "slug": row.slug,
-                    "work_id": row.work_id or "",
-                    "description": row.description or "",
-                    "original_publication_year": int(
-                        row.original_publication_year or 0
-                    ),
-                    "primary_cover_url": row.primary_cover_url or "",
-                    "language": row.language or "",
-                    "rating_count": row.rating_count or 0,
-                    "avg_rating": str(row.avg_rating) if row.avg_rating else "0.00",
-                    "ol_rating_count": row.ol_rating_count or 0,
-                    "ol_avg_rating": (
-                        str(row.ol_avg_rating) if row.ol_avg_rating else "0.00"
-                    ),
-                    "ol_want_to_read_count": row.ol_want_to_read_count or 0,
-                    "ol_currently_reading_count": row.ol_currently_reading_count or 0,
-                    "ol_already_read_count": row.ol_already_read_count or 0,
-                    "app_want_to_read_count": int(row.app_want_to_read_count or 0),
-                    "app_reading_count": int(row.app_reading_count or 0),
-                    "app_read_count": int(row.app_read_count or 0),
-                    "authors": authors_list,
-                }
-            )
+        books_data = [_book_row_to_dict(row) for row in raw_rows]
 
         return books_data, total_count
 

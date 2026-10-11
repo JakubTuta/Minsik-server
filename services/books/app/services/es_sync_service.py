@@ -19,6 +19,9 @@ ES_LAST_SYNC_KEY_AUTHORS = "es:last_sync_ts:authors"
 ES_LAST_SYNC_KEY_SERIES = "es:last_sync_ts:series"
 ES_REINDEX_RUNNING_KEY = "es_reindex_running"
 ES_REINDEX_RUNNING_TTL = 86400
+# updated_at is the transaction's start time, so a long writer can commit a row stamped
+# before the previous watermark; re-reading a window of recent changes catches it.
+ES_INCREMENTAL_OVERLAP = datetime.timedelta(minutes=10)
 ES_BULK_THROTTLE_SECONDS = 0.5
 ES_INDEXING_REFRESH_INTERVAL = "30s"
 ES_BULK_CHUNK_SIZE = 100
@@ -147,6 +150,11 @@ async def _sync_index(
 # Every edition of a work in one document: titles routed to their own language's
 # analyzed field, the rest of the editions kept as an inert payload so the
 # reader's language decides at query time which one gets rendered.
+#
+# Ratings and reader counters are per WORK, copied onto every edition row (the OL
+# dump phases and the rating re-pool both broadcast them). Summing them across a
+# work's editions credits a 24-edition book 24 times over, so they are folded
+# with MAX, which is the work's own figure.
 _WORKS_QUERY = sqlalchemy.text(
     """
     WITH changed AS (
@@ -173,11 +181,11 @@ _WORKS_QUERY = sqlalchemy.text(
         b.work_id,
         ARRAY_AGG(DISTINCT b.language) FILTER (WHERE b.language IS NOT NULL) AS languages,
         ARRAY_AGG(DISTINCT s.name) FILTER (WHERE s.name IS NOT NULL) AS series_names,
-        COALESCE(SUM(b.rating_count), 0) AS app_rating_count,
-        COALESCE(SUM(COALESCE(b.avg_rating, 0) * COALESCE(b.rating_count, 0)), 0) AS app_rating_sum,
-        COALESCE(SUM(b.ol_rating_count), 0) AS ol_rating_count,
-        COALESCE(SUM(COALESCE(b.ol_avg_rating, 0) * COALESCE(b.ol_rating_count, 0)), 0) AS ol_rating_sum,
-        COALESCE(SUM(
+        COALESCE(MAX(b.rating_count), 0) AS app_rating_count,
+        COALESCE(MAX(COALESCE(b.avg_rating, 0) * COALESCE(b.rating_count, 0)), 0) AS app_rating_sum,
+        COALESCE(MAX(b.ol_rating_count), 0) AS ol_rating_count,
+        COALESCE(MAX(COALESCE(b.ol_avg_rating, 0) * COALESCE(b.ol_rating_count, 0)), 0) AS ol_rating_sum,
+        COALESCE(MAX(
             COALESCE(b.ol_want_to_read_count, 0)
             + COALESCE(b.ol_currently_reading_count, 0)
             + COALESCE(b.ol_already_read_count, 0)
@@ -344,44 +352,65 @@ _SERIES_QUERY = sqlalchemy.text(
     row_stats AS (
         SELECT
             s.series_id, s.slug, s.name, s.language,
-            COUNT(DISTINCT b.book_id) AS book_count,
-            COALESCE(SUM(b.rating_count), 0) AS app_rating_count,
-            COALESCE(SUM(COALESCE(b.avg_rating, 0) * COALESCE(b.rating_count, 0)), 0) AS app_rating_sum,
-            COALESCE(SUM(b.ol_rating_count), 0) AS ol_rating_count,
-            COALESCE(SUM(COALESCE(b.ol_avg_rating, 0) * COALESCE(b.ol_rating_count, 0)), 0) AS ol_rating_sum,
-            COALESCE(SUM(
-                COALESCE(b.ol_want_to_read_count, 0)
-                + COALESCE(b.ol_currently_reading_count, 0)
-                + COALESCE(b.ol_already_read_count, 0)
-            ), 0) AS ol_readers,
-            COALESCE(SUM(COALESCE(wsc.readers, 0)), 0) AS app_readers
+            COUNT(DISTINCT b.book_id) AS book_count
         FROM books.series s
         JOIN changed c ON c.slug = s.slug
         LEFT JOIN books.books b ON b.series_id = s.series_id
-        LEFT JOIN books.work_shelf_counts wsc ON wsc.work_id = b.work_id
         GROUP BY s.series_id, s.slug, s.name, s.language
+    ),
+    -- One figure per work across every language row of the series: a work that
+    -- sits in two language rows is still one book of the series.
+    series_works AS (
+        SELECT
+            s.slug, b.work_id,
+            MAX(COALESCE(b.rating_count, 0)) AS app_rating_count,
+            MAX(COALESCE(b.avg_rating, 0) * COALESCE(b.rating_count, 0)) AS app_rating_sum,
+            MAX(COALESCE(b.ol_rating_count, 0)) AS ol_rating_count,
+            MAX(COALESCE(b.ol_avg_rating, 0) * COALESCE(b.ol_rating_count, 0)) AS ol_rating_sum,
+            MAX(
+                COALESCE(b.ol_want_to_read_count, 0)
+                + COALESCE(b.ol_currently_reading_count, 0)
+                + COALESCE(b.ol_already_read_count, 0)
+            ) AS ol_readers
+        FROM books.series s
+        JOIN changed c ON c.slug = s.slug
+        JOIN books.books b ON b.series_id = s.series_id
+        GROUP BY s.slug, b.work_id
+    ),
+    series_totals AS (
+        SELECT
+            sw.slug,
+            SUM(sw.app_rating_count) AS app_rating_count,
+            SUM(sw.app_rating_sum) AS app_rating_sum,
+            SUM(sw.ol_rating_count) AS ol_rating_count,
+            SUM(sw.ol_rating_sum) AS ol_rating_sum,
+            SUM(sw.ol_readers) + COALESCE(SUM(wsc.readers), 0) AS readers
+        FROM series_works sw
+        LEFT JOIN books.work_shelf_counts wsc ON wsc.work_id = sw.work_id
+        GROUP BY sw.slug
     )
     SELECT
-        slug,
-        ARRAY_AGG(DISTINCT name) FILTER (WHERE name IS NOT NULL) AS names,
-        ARRAY_AGG(DISTINCT language) FILTER (WHERE language IS NOT NULL) AS languages,
-        SUM(app_rating_count) AS app_rating_count,
-        SUM(app_rating_sum) AS app_rating_sum,
-        SUM(ol_rating_count) AS ol_rating_count,
-        SUM(ol_rating_sum) AS ol_rating_sum,
-        SUM(ol_readers) + SUM(app_readers) AS readers,
+        rs.slug,
+        ARRAY_AGG(DISTINCT rs.name) FILTER (WHERE rs.name IS NOT NULL) AS names,
+        ARRAY_AGG(DISTINCT rs.language) FILTER (WHERE rs.language IS NOT NULL) AS languages,
+        COALESCE(MAX(st.app_rating_count), 0) AS app_rating_count,
+        COALESCE(MAX(st.app_rating_sum), 0) AS app_rating_sum,
+        COALESCE(MAX(st.ol_rating_count), 0) AS ol_rating_count,
+        COALESCE(MAX(st.ol_rating_sum), 0) AS ol_rating_sum,
+        COALESCE(MAX(st.readers), 0) AS readers,
         JSONB_AGG(
             JSONB_BUILD_OBJECT(
-                'series_id', series_id,
-                'language', language,
-                'name', name,
-                'book_count', book_count
+                'series_id', rs.series_id,
+                'language', rs.language,
+                'name', rs.name,
+                'book_count', rs.book_count
             )
-            ORDER BY (language = 'en') DESC, series_id ASC
+            ORDER BY (rs.language = 'en') DESC, rs.series_id ASC
         ) AS rows
-    FROM row_stats
-    GROUP BY slug
-    ORDER BY slug
+    FROM row_stats rs
+    LEFT JOIN series_totals st ON st.slug = rs.slug
+    GROUP BY rs.slug
+    ORDER BY rs.slug
 """
 )
 
@@ -426,13 +455,29 @@ async def _read_last_sync(key: str) -> datetime.datetime:
     raw = await app.cache.redis_client.get(key)
     if not raw:
         return EPOCH
-    return datetime.datetime.fromisoformat(raw).replace(tzinfo=None)
+    watermark = datetime.datetime.fromisoformat(raw).replace(tzinfo=None)
+    return max(EPOCH, watermark - ES_INCREMENTAL_OVERLAP)
 
 
 async def reindex_all_to_es(full: bool = False) -> None:
-    await app.cache.redis_client.set(
-        ES_REINDEX_RUNNING_KEY, "1", ex=ES_REINDEX_RUNNING_TTL
+    """Sync the catalogue into ES unless a reindex is already running (atomic SET NX claim)."""
+    claimed = await app.cache.redis_client.set(
+        ES_REINDEX_RUNNING_KEY, "1", nx=True, ex=ES_REINDEX_RUNNING_TTL
     )
+    if not claimed:
+        logger.info("[ES] Reindex skipped: another reindex is already running")
+        return
+
+    try:
+        await _reindex_all_to_es_locked(full)
+    finally:
+        try:
+            await app.cache.redis_client.delete(ES_REINDEX_RUNNING_KEY)
+        except Exception:
+            pass
+
+
+async def _reindex_all_to_es_locked(full: bool) -> None:
     es = app.es_client.get_es()
     settings = app.config.settings
     alias = settings.es_index_catalog
@@ -503,11 +548,6 @@ async def reindex_all_to_es(full: bool = False) -> None:
             logger.error("[ES] Rebuild incomplete, keeping the previous indexes live")
     else:
         try:
-            await app.services.es_reconcile_service.reconcile_deleted_docs()
+            await app.services.es_reconcile_service.reconcile_deleted_docs(sync_caught_up=succeeded)
         except Exception as e:
             logger.error(f"[ES] Ghost reconciliation failed: {str(e)}")
-
-    try:
-        await app.cache.redis_client.delete(ES_REINDEX_RUNNING_KEY)
-    except Exception:
-        pass

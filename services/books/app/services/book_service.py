@@ -6,6 +6,9 @@ import app.config
 import app.models.author
 import app.models.book
 import app.models.genre
+import app.models.slug_history
+import app.services.renames
+import app.services._isbn
 import app.services._user_stats
 import sqlalchemy
 import sqlalchemy.ext.asyncio
@@ -44,10 +47,31 @@ async def _fallback_edition(
         .limit(1)
         .scalar_subquery()
     )
+    # A slug the book no longer has resolves through slug_history to the same work.
+    history_subquery = (
+        sqlalchemy.select(app.models.book.Book.work_id)
+        .select_from(app.models.slug_history.SlugHistory)
+        .join(
+            app.models.book.Book,
+            app.models.book.Book.book_id == app.models.slug_history.SlugHistory.entity_id,
+        )
+        .filter(
+            app.models.slug_history.SlugHistory.entity_type == "book",
+            app.models.slug_history.SlugHistory.old_slug == slug,
+        )
+        .order_by(
+            (app.models.slug_history.SlugHistory.language == language).desc(),
+            app.models.slug_history.SlugHistory.created_at.desc(),
+        )
+        .limit(1)
+        .scalar_subquery()
+    )
     stmt = (
         sqlalchemy.select(app.models.book.Book)
         .options(*_book_query_options())
-        .filter(app.models.book.Book.work_id == work_id_subquery)
+        .filter(
+            app.models.book.Book.work_id == sqlalchemy.func.coalesce(work_id_subquery, history_subquery)
+        )
     )
     result = await session.execute(stmt)
     editions = result.scalars().all()
@@ -96,6 +120,7 @@ async def get_book_by_slug(
     book_data = _book_to_dict(book)
 
     await _attach_work_stats(session, book_data, book.work_id)
+    await _attach_description_fallback(session, book_data, book.work_id, book.book_id)
 
     await app.cache.set_cached(
         cache_key, book_data, app.config.settings.cache_book_detail_ttl
@@ -143,6 +168,75 @@ async def _attach_work_stats(
     book_data["app_read_count"] = int(row.app_read_count or 0) if row else 0
 
 
+async def _attach_description_fallback(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    book_data: typing.Dict[str, typing.Any],
+    work_id: str,
+    book_id: int,
+) -> None:
+    """Offer a sibling edition's description when this edition has none of its own.
+
+    The own-language text is never replaced: the caller labels the fallback with
+    its language, so a Polish page does not silently show English as if it were
+    Polish.
+    """
+    book_data["fallback_description"] = ""
+    book_data["fallback_language"] = ""
+    if book_data["description"].strip():
+        return
+
+    result = await session.execute(
+        sqlalchemy.text(
+            """
+            SELECT description, language
+            FROM books.books
+            WHERE work_id = :work_id
+              AND book_id <> :book_id
+              AND description IS NOT NULL AND btrim(description) <> ''
+            ORDER BY (language = 'en') DESC,
+                     (COALESCE(rating_count, 0) + COALESCE(ol_rating_count, 0)) DESC,
+                     book_id ASC
+            LIMIT 1
+            """
+        ),
+        {"work_id": work_id, "book_id": book_id},
+    )
+    row = result.first()
+    if row:
+        book_data["fallback_description"] = row.description
+        book_data["fallback_language"] = row.language
+
+
+_LOOKUP_BY_ISBN_SQL = sqlalchemy.text(
+    """
+    WITH hit AS (
+        SELECT work_id FROM books.books WHERE isbn ?| CAST(:isbns AS text[]) LIMIT 1
+    )
+    SELECT b.slug, b.language, b.title, b.work_id
+    FROM books.books b
+    JOIN hit ON hit.work_id = b.work_id
+    ORDER BY (b.language = :language) DESC, (b.language = 'en') DESC, b.book_id ASC
+    LIMIT 1
+    """
+)
+
+
+async def lookup_by_isbn(
+    session: sqlalchemy.ext.asyncio.AsyncSession, raw_isbn: str, language: str = "en"
+) -> typing.Optional[typing.Dict[str, str]]:
+    """The book an ISBN belongs to, in the reader's language when that edition exists."""
+    isbn = app.services._isbn.normalise(raw_isbn)
+    if isbn is None:
+        return None
+
+    row = (await session.execute(
+        _LOOKUP_BY_ISBN_SQL, {"isbns": app.services._isbn.variants(isbn), "language": language}
+    )).first()
+    if row is None:
+        return None
+    return {"slug": row.slug, "language": row.language, "title": row.title, "work_id": row.work_id}
+
+
 async def get_language_variants(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     slug: str,
@@ -154,7 +248,9 @@ async def get_language_variants(
         return cached
 
     stmt = sqlalchemy.text(
-        "SELECT book_id, slug, language, title, primary_cover_url "
+        "SELECT book_id, slug, language, title, primary_cover_url, publisher, number_of_pages, "
+        "original_publication_year, isbn->>0 AS first_isbn, "
+        "(description IS NOT NULL AND btrim(description) <> '') AS has_description "
         "FROM books.books "
         "WHERE work_id = ("
         "  SELECT work_id FROM books.books WHERE slug = :slug "
@@ -173,6 +269,11 @@ async def get_language_variants(
             "language": row.language,
             "title": row.title,
             "primary_cover_url": row.primary_cover_url or "",
+            "publisher": row.publisher or "",
+            "number_of_pages": row.number_of_pages or 0,
+            "original_publication_year": row.original_publication_year or 0,
+            "isbn": row.first_isbn or "",
+            "has_description": bool(row.has_description),
         }
         for row in rows
     ]
@@ -234,7 +335,7 @@ def _book_to_dict(book: app.models.book.Book) -> typing.Dict[str, typing.Any]:
         "created_at": book.created_at.isoformat() if book.created_at else "",
         "updated_at": book.updated_at.isoformat() if book.updated_at else "",
         "series": series_dict,
-        "series_position": str(book.series_position) if book.series_position else "",
+        "series_position": str(book.series_position) if book.series_position is not None else "",
         "isbn": book.isbn or [],
         "publisher": book.publisher or "",
         "number_of_pages": book.number_of_pages or 0,
@@ -291,6 +392,10 @@ async def update_book(
                 book.series_slug = series_row.slug
                 book.series_name = series_row.name
 
+    await session.flush()
+    await app.services.renames.record_slug_change(
+        session, "book", book.book_id, old_slug, book.slug, book.language
+    )
     await session.commit()
 
     fresh_stmt = (
@@ -377,6 +482,30 @@ async def flush_view_counts_to_db(session: sqlalchemy.ext.asyncio.AsyncSession) 
         await session.rollback()
 
 
+_USER_CONTENT_TABLES = ("user_data.bookshelves", "user_data.ratings", "user_data.comments")
+
+
+async def _surviving_edition_id(
+    session: sqlalchemy.ext.asyncio.AsyncSession, book: app.models.book.Book
+) -> typing.Optional[int]:
+    """The edition of the same work that takes over readers' content, English first."""
+    if not book.work_id:
+        return None
+
+    result = await session.execute(
+        sqlalchemy.text(
+            """
+            SELECT book_id FROM books.books
+            WHERE work_id = :work_id AND book_id != :book_id
+            ORDER BY (language = 'en') DESC, book_id
+            LIMIT 1
+            """
+        ),
+        {"work_id": book.work_id, "book_id": book.book_id},
+    )
+    return result.scalar()
+
+
 async def delete_book(
     session: sqlalchemy.ext.asyncio.AsyncSession,
     book_id: int,
@@ -404,6 +533,31 @@ async def delete_book(
         {"book_id": book_id},
     )
     affected_user_ids = [row.user_id for row in affected_users_result.fetchall()]
+
+    sibling_id = await _surviving_edition_id(session, book)
+    if sibling_id is not None:
+        # Shelves, ratings and comments belong to the work, not to this translation: move them to
+        # the edition that stays instead of deleting what readers wrote. Only a row that would collide
+        # with one the reader already has there is dropped.
+        for table in _USER_CONTENT_TABLES:
+            await session.execute(
+                sqlalchemy.text(
+                    f"""
+                    UPDATE {table} AS t SET book_id = :sibling_id
+                    WHERE t.book_id = :book_id
+                      AND NOT EXISTS (
+                          SELECT 1 FROM {table} AS kept
+                          WHERE kept.user_id = t.user_id AND kept.book_id = :sibling_id
+                      )
+                    """
+                ),
+                {"book_id": book_id, "sibling_id": sibling_id},
+            )
+        # Lets the search index rebuild the work's document, which may have shown this edition.
+        await session.execute(
+            sqlalchemy.text("UPDATE books.books SET updated_at = NOW() WHERE work_id = :work_id AND book_id != :book_id"),
+            {"work_id": book.work_id, "book_id": book_id},
+        )
 
     comments_result = await session.execute(
         sqlalchemy.text("DELETE FROM user_data.comments WHERE book_id = :book_id"),

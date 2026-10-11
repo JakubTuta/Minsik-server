@@ -8,6 +8,8 @@ import app.models.book
 import app.models.book_author
 import app.models.book_genre
 import app.models.genre
+import app.models.slug_history
+import app.services.renames
 import app.services._language_boost
 import app.services._row_helpers
 import app.services._user_stats
@@ -34,12 +36,16 @@ async def get_author_by_slug(
     author = result.scalars().first()
 
     if not author:
+        author = await _author_from_slug_history(session, slug)
+
+    if not author:
         return None
 
     book_categories = await _get_author_book_categories(session, author.author_id)
     books_aggregates = await _get_author_books_aggregates(session, author.author_id)
 
     author_data = _author_to_dict(author, book_categories, books_aggregates)
+    await _overlay_localization(session, author_data, author.author_id, language)
 
     await app.cache.set_cached(
         cache_key, author_data, app.config.settings.cache_author_detail_ttl
@@ -48,6 +54,61 @@ async def get_author_by_slug(
     await _track_author_view(author.author_id)
 
     return author_data
+
+
+CANONICAL_BIO_LANGUAGE = "en"
+
+
+async def _author_from_slug_history(
+    session: sqlalchemy.ext.asyncio.AsyncSession, slug: str
+) -> typing.Optional[app.models.author.Author]:
+    """The author a retired slug belonged to, so an old link keeps landing on them."""
+    stmt = (
+        sqlalchemy.select(app.models.author.Author)
+        .join(
+            app.models.slug_history.SlugHistory,
+            app.models.slug_history.SlugHistory.entity_id == app.models.author.Author.author_id,
+        )
+        .filter(
+            app.models.slug_history.SlugHistory.entity_type == "author",
+            app.models.slug_history.SlugHistory.old_slug == slug,
+        )
+        .limit(1)
+    )
+    return (await session.execute(stmt)).scalars().first()
+
+_LOCALIZATION_SQL = sqlalchemy.text(
+    "SELECT name, bio, wikipedia_url FROM books.author_localizations "
+    "WHERE author_id = :author_id AND language = :language"
+)
+
+
+async def _overlay_localization(
+    session: sqlalchemy.ext.asyncio.AsyncSession,
+    author_data: typing.Dict[str, typing.Any],
+    author_id: int,
+    language: str,
+) -> None:
+    """Name, bio and Wikipedia link in the reader's language when the author has them.
+
+    authors.bio is the canonical (English) text. For another language it is never
+    passed off as that language's bio: it moves to fallback_bio, labelled.
+    """
+    author_data["fallback_bio"] = None
+    author_data["fallback_language"] = None
+    if language == CANONICAL_BIO_LANGUAGE:
+        return
+
+    row = (await session.execute(_LOCALIZATION_SQL, {"author_id": author_id, "language": language})).first()
+    localized_bio = row.bio if row and row.bio else None
+    if row and row.name:
+        author_data["name"] = row.name
+    if row and row.wikipedia_url:
+        author_data["wikipedia_url"] = row.wikipedia_url
+    if not localized_bio and author_data["bio"]:
+        author_data["fallback_bio"] = author_data["bio"]
+        author_data["fallback_language"] = CANONICAL_BIO_LANGUAGE
+    author_data["bio"] = localized_bio
 
 
 async def get_author_books(
@@ -141,7 +202,7 @@ async def get_author_books(
         LEFT JOIN books.series s ON s.series_id = b.series_id
         {app.services._language_boost.work_shelf_counts_join()}
         WHERE ba.author_id = :author_id AND {preferred_edition}
-        ORDER BY {sort_col} {order_dir} NULLS LAST
+        ORDER BY {sort_col} {order_dir} NULLS LAST, b.book_id ASC
         LIMIT :limit OFFSET :offset
         """
     )
@@ -537,8 +598,17 @@ async def update_author(
 
     old_slug = author.slug
 
+    old_name = author.name
+
     for field, value in updates.items():
         setattr(author, field, value)
+
+    await session.flush()
+    await app.services.renames.record_slug_change(
+        session, "author", author.author_id, old_slug, author.slug
+    )
+    if author.name != old_name or author.slug != old_slug:
+        await app.services.renames.propagate_author_rename(session, author.author_id)
 
     await session.commit()
     await session.refresh(author)

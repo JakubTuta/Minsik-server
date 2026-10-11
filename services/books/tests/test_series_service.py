@@ -226,9 +226,10 @@ class TestSeriesService:
     async def test_get_series_books_falls_back_to_other_language(
         self, mock_session, mock_series, mock_series_book_row
     ):
-        # Requested in Polish, only an English row exists: the page must list
-        # the English series' books instead of rendering an empty shelf, and it
-        # must query with the served language, not the requested one.
+        # Requested in Polish, only an English row exists: the page must list the
+        # series' books instead of rendering an empty shelf. The listing is built
+        # over the whole series group in the REQUESTED language (each volume in the
+        # best edition available), so the language parameter stays "pl".
         mock_series.language = "en"
 
         no_match_result = MagicMock()
@@ -261,7 +262,8 @@ class TestSeriesService:
         assert len(books) == 1
 
         books_params = mock_session.execute.call_args_list[2].args[1]
-        assert books_params["language"] == "en"
+        assert books_params["language"] == "pl"
+        assert books_params["group_id"] == (mock_series.group_id or mock_series.series_id)
 
     @pytest.mark.asyncio
     async def test_get_series_books_with_pagination(

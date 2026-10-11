@@ -22,8 +22,15 @@ _ID_PREFIXES: typing.Dict[str, str] = {"books": "book:", "authors": "author:", "
 _KINDS: typing.Dict[str, str] = {"books": "book", "authors": "author", "series": "series"}
 _IDENTITY_QUERIES: typing.Dict[str, str] = {
     "books": "SELECT DISTINCT work_id AS identity FROM books.books WHERE work_id = ANY(:ids)",
-    "authors": "SELECT author_id::text AS identity FROM books.authors WHERE author_id::text = ANY(:ids)",
+    "authors": "SELECT author_id AS identity FROM books.authors WHERE author_id = ANY(CAST(:ids AS bigint[]))",
     "series": "SELECT DISTINCT slug AS identity FROM books.series WHERE slug = ANY(:ids)",
+}
+# How many documents the sync produces per kind (one per work, per author that has a book, per
+# series slug). A caught-up index holds exactly these, so one holding more has ghosts to delete.
+_EXPECTED_DOC_COUNTS: typing.Dict[str, str] = {
+    "books": "SELECT COUNT(DISTINCT work_id) FROM books.books WHERE work_id IS NOT NULL",
+    "authors": "SELECT COUNT(DISTINCT author_id) FROM books.book_authors",
+    "series": "SELECT COUNT(DISTINCT slug) FROM books.series",
 }
 
 
@@ -32,16 +39,49 @@ async def _find_stale_ids(
 ) -> typing.Set[str]:
     prefix = _ID_PREFIXES[entity]
     bare_ids = [doc_id[len(prefix):] for doc_id in doc_ids]
-    result = await session.execute(
-        sqlalchemy.text(_IDENTITY_QUERIES[entity]), {"ids": bare_ids}
-    )
-    present = {row.identity for row in result.fetchall()}
+
+    if entity == "authors":
+        # Author ids are numeric; a malformed one cannot exist in Postgres, so it is stale.
+        numeric_ids = [bare_id for bare_id in bare_ids if bare_id.isdigit()]
+        result = await session.execute(
+            sqlalchemy.text(_IDENTITY_QUERIES[entity]),
+            {"ids": [int(bare_id) for bare_id in numeric_ids]},
+        )
+        present = {str(row.identity) for row in result.fetchall()}
+    else:
+        result = await session.execute(
+            sqlalchemy.text(_IDENTITY_QUERIES[entity]), {"ids": bare_ids}
+        )
+        present = {row.identity for row in result.fetchall()}
 
     return {
         doc_id
         for doc_id, bare_id in zip(doc_ids, bare_ids)
         if bare_id not in present
     }
+
+
+async def _has_no_surplus_documents(
+    es: elasticsearch.AsyncElasticsearch, index: str, entity: str
+) -> bool:
+    """True when the index holds no more documents of this kind than Postgres has entities.
+
+    Counting is two cheap queries; the scan it avoids reads every id in the index. Only valid
+    while the sync is caught up (missing documents would cancel out ghosts in the comparison).
+    """
+    try:
+        es_count = (
+            await es.count(index=index, query={"term": {"kind": _KINDS[entity]}})
+        )["count"]
+        async with app.db.async_session_maker() as session:
+            expected = (
+                await session.execute(sqlalchemy.text(_EXPECTED_DOC_COUNTS[entity]))
+            ).scalar_one()
+    except Exception as e:
+        logger.warning(f"[ES] Reconcile count check failed for {entity}, scanning instead: {e}")
+        return False
+
+    return es_count <= expected
 
 
 async def _reconcile_index(
@@ -100,7 +140,13 @@ async def _reconcile_index(
     return total_deleted
 
 
-async def reconcile_deleted_docs() -> typing.Dict[str, int]:
+async def reconcile_deleted_docs(sync_caught_up: bool = False) -> typing.Dict[str, int]:
+    """Delete documents whose Postgres row is gone.
+
+    With `sync_caught_up` the full id scan is skipped for kinds whose document count shows
+    nothing surplus, which is nearly always: the scan is throttled and takes about a minute
+    per 300k documents, four times a day.
+    """
     settings = app.config.settings
     stats = {"books_deleted": 0, "authors_deleted": 0, "series_deleted": 0}
 
@@ -113,6 +159,8 @@ async def reconcile_deleted_docs() -> typing.Dict[str, int]:
 
     for entity in ("books", "authors", "series"):
         try:
+            if sync_caught_up and await _has_no_surplus_documents(es, index, entity):
+                continue
             stats[f"{entity}_deleted"] = await _reconcile_index(
                 es, index, entity, batch_size
             )

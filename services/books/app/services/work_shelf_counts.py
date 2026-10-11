@@ -1,6 +1,7 @@
 import logging
 
 import app.db
+import app.services.work_rank
 import sqlalchemy
 import sqlalchemy.ext.asyncio
 
@@ -66,7 +67,8 @@ async def rebuild_job() -> None:
     try:
         async with app.db.async_session_maker() as session:
             rebuilt = await rebuild(session)
-        logger.info(f"[books] Rebuilt work shelf counts for {rebuilt} works")
+            ranked = await app.services.work_rank.rebuild(session)
+        logger.info(f"[books] Rebuilt work shelf counts for {rebuilt} works and the ranking of {ranked} works")
     except Exception as e:
         logger.error(f"[books] Work shelf counts rebuild error: {str(e)}")
 
@@ -79,9 +81,12 @@ async def populate_if_empty() -> None:
             existing = await session.execute(
                 sqlalchemy.text("SELECT 1 FROM books.work_shelf_counts LIMIT 1")
             )
-            if existing.first() is not None:
-                return
-            rebuilt = await rebuild(session)
-        logger.info(f"[books] Initial work shelf counts built for {rebuilt} works")
+            if existing.first() is None:
+                rebuilt = await rebuild(session)
+                logger.info(f"[books] Initial work shelf counts built for {rebuilt} works")
+            ranked = await session.execute(sqlalchemy.text("SELECT 1 FROM books.work_rank LIMIT 1"))
+            if ranked.first() is None:
+                count = await app.services.work_rank.rebuild(session)
+                logger.info(f"[books] Initial work ranking built for {count} works")
     except Exception as e:
         logger.error(f"[books] Initial work shelf counts build error: {str(e)}")

@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock, MagicMock
 
 import app.services._language_boost
 import app.services.sitemap_service as sitemap_service
+import app.services.work_rank as work_rank
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
@@ -114,18 +115,19 @@ class TestSitemapService:
         assert params["languages"] == ["en", "pl"]
 
     def test_books_paging_counts_works_not_editions(self):
-        # Otherwise one heavily translated book eats a whole page of the cap.
-        assert "GROUP BY b.work_id" in sitemap_service._BOOKS_SITEMAP_QUERY
-        assert "LIMIT :limit OFFSET :offset" in sitemap_service._BOOKS_SITEMAP_QUERY.split(
-            "SELECT b.slug"
-        )[0]
+        # Otherwise one heavily translated book eats a whole page of the cap: the
+        # page is a range of work ranks, not of edition rows.
+        query = sitemap_service._BOOKS_SITEMAP_QUERY
+        assert "r.rank > :offset AND r.rank <= :offset + :limit" in query
+        assert "OFFSET :offset" not in query
 
     def test_books_ranked_by_the_shared_popularity_signal(self):
         # The crawler should meet the catalogue in the order the app itself
-        # calls popular, not by Open Library read counts alone.
-        ranking = sitemap_service._BOOKS_SITEMAP_QUERY.split("SELECT b.slug")[0]
-        assert app.services._language_boost.work_popularity_sql() in ranking
-        assert app.services._language_boost.work_shelf_counts_join() in ranking
+        # calls popular, not by Open Library read counts alone. The ordering is
+        # materialised in books.work_rank from that same signal.
+        assert "ORDER BY r.rank" in sitemap_service._BOOKS_SITEMAP_QUERY
+        assert app.services._language_boost.work_popularity_sql() in work_rank._REBUILD_SQL
+        assert app.services._language_boost.work_shelf_counts_join() in work_rank._REBUILD_SQL
 
     @pytest.mark.asyncio
     async def test_series_entity_supported(self, mock_session):

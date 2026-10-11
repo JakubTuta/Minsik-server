@@ -52,28 +52,17 @@ def _entity_query_config(
 # at first is what the app itself treats as most popular. Taken per edition and
 # reduced with MAX: the shelf rollup is already per work, and a work's Open
 # Library counts sit on whichever edition Open Library recorded them against.
-_BOOKS_SITEMAP_QUERY = f"""
-    WITH ranked AS (
-        SELECT
-            b.work_id,
-            MAX({app.services._language_boost.work_popularity_sql()}) AS popularity,
-            MIN(b.book_id) AS anchor_id
-        FROM books.books b
-        {app.services._language_boost.work_shelf_counts_join()}
-        GROUP BY b.work_id
-        ORDER BY popularity DESC, anchor_id ASC
-        LIMIT :limit OFFSET :offset
-    )
+_BOOKS_SITEMAP_QUERY = """
     SELECT b.slug, b.language, b.work_id, b.updated_at
-    FROM books.books b
-    JOIN ranked r ON r.work_id = b.work_id
-    {{language_filter}}
-    ORDER BY r.popularity DESC, r.anchor_id ASC, (b.language = 'en') DESC, b.book_id ASC
+    FROM books.work_rank r
+    JOIN books.books b ON b.work_id = r.work_id
+    WHERE r.rank > :offset AND r.rank <= :offset + :limit {language_filter}
+    ORDER BY r.rank ASC, (b.language = 'en') DESC, b.book_id ASC
 """
 
-_BOOKS_LANGUAGE_FILTER = "WHERE b.language IS NULL OR b.language IN :languages"
+_BOOKS_LANGUAGE_FILTER = "AND (b.language IS NULL OR b.language IN :languages)"
 
-_BOOKS_SITEMAP_COUNT_QUERY = "SELECT COUNT(DISTINCT work_id) FROM books.books"
+_BOOKS_SITEMAP_COUNT_QUERY = "SELECT COUNT(*) FROM books.work_rank"
 
 
 def _books_statement(

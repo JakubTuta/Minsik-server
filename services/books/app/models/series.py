@@ -1,4 +1,5 @@
 import sqlalchemy
+import sqlalchemy.dialects.postgresql
 import sqlalchemy.orm
 import app.db_base
 
@@ -22,6 +23,10 @@ class Series(app.db_base.Base):
     last_viewed_at = sqlalchemy.Column(sqlalchemy.TIMESTAMP)
 
     enrichment_attempted_at = sqlalchemy.Column(sqlalchemy.TIMESTAMP(timezone=True))
+    manually_edited_fields = sqlalchemy.Column(
+        sqlalchemy.dialects.postgresql.ARRAY(sqlalchemy.Text), nullable=False, server_default=sqlalchemy.text("'{}'")
+    )
+    group_id = sqlalchemy.Column(sqlalchemy.BigInteger)
 
     created_at = sqlalchemy.Column(sqlalchemy.TIMESTAMP, nullable=False, server_default=sqlalchemy.text("NOW()"))
     updated_at = sqlalchemy.Column(sqlalchemy.TIMESTAMP, nullable=False, server_default=sqlalchemy.text("NOW()"))

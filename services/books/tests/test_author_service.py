@@ -254,9 +254,7 @@ class TestAuthorService:
             2: {"count": 3, "last_viewed": 1234567891},
         }
 
-        with patch(
-            "app.cache.get_pending_view_counts", return_value=pending_counts
-        ), patch("app.cache.clear_view_counts") as mock_clear:
+        with patch("app.cache.claim_pending_view_counts", return_value=pending_counts):
 
             await author_service.flush_view_counts_to_db(mock_session)
 
@@ -266,11 +264,10 @@ class TestAuthorService:
             assert params["entity_ids"] == [1, 2]
             assert params["increments"] == [5, 3]
             mock_session.commit.assert_called_once()
-            mock_clear.assert_called_once_with("author", [1, 2])
 
     @pytest.mark.asyncio
     async def test_flush_view_counts_to_db_empty(self, mock_session):
-        with patch("app.cache.get_pending_view_counts", return_value=None):
+        with patch("app.cache.claim_pending_view_counts", return_value={}):
             await author_service.flush_view_counts_to_db(mock_session)
 
             mock_session.execute.assert_not_called()

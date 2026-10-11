@@ -1,6 +1,11 @@
+import hashlib
+import json
 import logging
+import random
+import time
 import typing
 
+import app.cache
 import sqlalchemy
 import sqlalchemy.ext.asyncio
 import app.services._language_boost
@@ -47,55 +52,25 @@ _TOTAL_READERS_EXPR = (
     " + COALESCE(wsc.readers, 0))"
 )
 
-_DISCOVERY_SELECT = f"""
-    SELECT
-        b.book_id,
-        b.work_id,
-        b.slug,
-        b.language,
-        {_COMBINED_RATING_EXPR} AS combined_rating,
-        {_TOTAL_READERS_EXPR} AS total_readers
+# Every filter is a plain predicate on one row of books.books (plus the per-work shelf
+# rollup for the popularity filters), so there is nothing to GROUP BY: the old
+# GROUP BY/HAVING version aggregated one row per group of one.
+_DISCOVERY_FROM = "FROM books.books b"
+_DISCOVERY_FROM_WITH_SHELVES = f"""
     FROM books.books b
     {app.services._language_boost.work_shelf_counts_join()}
 """
 
-_DISCOVERY_GROUP_BY = """
-    GROUP BY b.book_id, b.slug, b.language, b.avg_rating, b.rating_count,
-             b.ol_avg_rating, b.ol_rating_count,
-             b.ol_want_to_read_count, b.ol_currently_reading_count,
-             b.ol_already_read_count, wsc.readers
-"""
+# Below this many matching works the filter is selective enough that walking the key
+# from a random point would read most of the table to find a row; the exact pick over
+# the filtered set is cheaper and equally uniform.
+PROBE_MIN_MATCHES = 2000
 
-# quality/popularity/hidden_gem are the only filters that read combined_rating
-# or total_readers, and total_readers is the only one of those that needs
-# work_shelf_counts. Every other combination (including no filters at all,
-# the common "Discover" click with an untouched filter panel) doesn't need
-# either, so it uses this instead: no join, no GROUP BY, nothing computed per
-# row. Running the heavy join+aggregate unconditionally meant a click with no
-# filters selected — matching most of the catalog — paid for both on every
-# row before the random pick even started, which is what made an empty
-# filter set slow while any narrowing filter looked fine.
-_DISCOVERY_SELECT_LEAN = """
-    SELECT
-        b.book_id,
-        b.work_id,
-        b.slug,
-        b.language
-    FROM books.books b
-"""
+COUNT_CACHE_TTL_SECONDS = 600
+BOUNDS_CACHE_TTL_SECONDS = 60
 
+_bounds_cache: typing.Dict[str, typing.Any] = {"expires": 0.0, "low": 1, "high": 1}
 
-def _build_inner_query(
-    where_clauses: typing.List[str], having_clauses: typing.List[str]
-) -> str:
-    needs_aggregates = bool(having_clauses)
-    inner_query = _DISCOVERY_SELECT if needs_aggregates else _DISCOVERY_SELECT_LEAN
-    if where_clauses:
-        inner_query += " WHERE " + " AND ".join(where_clauses)
-    if needs_aggregates:
-        inner_query += _DISCOVERY_GROUP_BY
-        inner_query += " HAVING " + " AND ".join(having_clauses)
-    return inner_query
 
 _BOOK_SUMMARY_SELECT = f"""
     SELECT
@@ -143,23 +118,16 @@ async def discover_book(
     popularity: str,
     exclude_ids: typing.List[int],
 ) -> typing.Optional[typing.Dict[str, typing.Any]]:
-    where_clauses, having_clauses, params = _build_filter_clauses(
-        language,
-        genre_slugs,
-        book_length,
-        quality,
-        moods,
-        era,
-        series_filter,
-        popularity,
-        exclude_ids,
+    filters = _build_filter_clauses(
+        genre_slugs, book_length, quality, moods, era, series_filter, popularity
     )
 
-    matching_count, book_id = await _count_and_pick_random_book(
-        session, where_clauses, having_clauses, params
-    )
+    matching_count = await _cached_matching_count(session, filters) - len(exclude_ids)
+    if matching_count <= 0:
+        return None
 
-    if matching_count == 0 or book_id is None:
+    book_id = await _pick_random_book(session, filters, language, exclude_ids, matching_count)
+    if book_id is None:
         return None
 
     book_summary = await _fetch_book_summary_by_id(session, book_id)
@@ -192,22 +160,27 @@ async def count_matching_books(
     without its random pick or book-detail fetch, which used to run the same
     full DiscoverBook flow (pick + fetch) on every filter tweak.
     """
-    where_clauses, having_clauses, params = _build_filter_clauses(
-        language,
-        genre_slugs,
-        book_length,
-        quality,
-        moods,
-        era,
-        series_filter,
-        popularity,
-        exclude_ids,
+    filters = _build_filter_clauses(
+        genre_slugs, book_length, quality, moods, era, series_filter, popularity
     )
-    return await _count_matching_books(session, where_clauses, having_clauses, params)
+    return max(await _cached_matching_count(session, filters) - len(exclude_ids), 0)
+
+
+class _Filters(typing.NamedTuple):
+    where: typing.List[str]
+    params: typing.Dict[str, typing.Any]
+    needs_shelf_counts: bool
+
+    @property
+    def from_clause(self) -> str:
+        return _DISCOVERY_FROM_WITH_SHELVES if self.needs_shelf_counts else _DISCOVERY_FROM
+
+    def signature(self) -> str:
+        payload = json.dumps([self.where, self.params], sort_keys=True, default=str)
+        return hashlib.sha1(payload.encode()).hexdigest()[:20]
 
 
 def _build_filter_clauses(
-    language: str,
     genre_slugs: typing.List[str],
     book_length: str,
     quality: str,
@@ -215,35 +188,24 @@ def _build_filter_clauses(
     era: str,
     series_filter: str,
     popularity: str,
-    exclude_ids: typing.List[int],
-) -> typing.Tuple[typing.List[str], typing.List[str], typing.Dict[str, typing.Any]]:
-    where_clauses: typing.List[str] = []
-    having_clauses: typing.List[str] = []
+) -> _Filters:
+    where: typing.List[str] = ["b.primary_cover_url IS NOT NULL AND b.primary_cover_url != ''"]
     params: typing.Dict[str, typing.Any] = {}
-
-    params["language"] = language
-
-    where_clauses.append(
-        "b.primary_cover_url IS NOT NULL AND b.primary_cover_url != ''"
-    )
-
-    if exclude_ids:
-        where_clauses.append("b.book_id != ALL(:exclude_ids)")
-        params["exclude_ids"] = exclude_ids
+    needs_shelf_counts = False
 
     if book_length and book_length in BOOK_LENGTH_FILTERS:
-        where_clauses.append(BOOK_LENGTH_FILTERS[book_length])
+        where.append(BOOK_LENGTH_FILTERS[book_length])
 
     if era and era in ERA_FILTERS:
-        where_clauses.append(ERA_FILTERS[era])
+        where.append(ERA_FILTERS[era])
 
     if series_filter == "standalone":
-        where_clauses.append("b.series_id IS NULL")
+        where.append("b.series_id IS NULL")
     elif series_filter == "series":
-        where_clauses.append("b.series_id IS NOT NULL")
+        where.append("b.series_id IS NOT NULL")
 
     if genre_slugs:
-        where_clauses.append(
+        where.append(
             "EXISTS ("
             "SELECT 1 FROM books.book_genres bg2"
             " JOIN books.genres g2 ON bg2.genre_id = g2.genre_id"
@@ -252,29 +214,22 @@ def _build_filter_clauses(
         )
         params["genre_slugs"] = genre_slugs
 
-    if quality == "high":
-        where_clauses.append("(b.rating_count + b.ol_rating_count) > 0")
-        having_clauses.append(f"{_COMBINED_RATING_EXPR} > 4.0")
-    elif quality == "medium":
-        where_clauses.append("(b.rating_count + b.ol_rating_count) > 0")
-        having_clauses.append(
-            f"{_COMBINED_RATING_EXPR} > 3.0 AND {_COMBINED_RATING_EXPR} <= 4.0"
-        )
-    elif quality == "low":
-        where_clauses.append("(b.rating_count + b.ol_rating_count) > 0")
-        having_clauses.append(
-            f"{_COMBINED_RATING_EXPR} > 2.0 AND {_COMBINED_RATING_EXPR} <= 3.0"
-        )
-    elif quality == "very_low":
-        where_clauses.append("(b.rating_count + b.ol_rating_count) > 0")
-        having_clauses.append(f"{_COMBINED_RATING_EXPR} <= 2.0")
+    quality_bounds = {
+        "high": f"{_COMBINED_RATING_EXPR} > 4.0",
+        "medium": f"{_COMBINED_RATING_EXPR} > 3.0 AND {_COMBINED_RATING_EXPR} <= 4.0",
+        "low": f"{_COMBINED_RATING_EXPR} > 2.0 AND {_COMBINED_RATING_EXPR} <= 3.0",
+        "very_low": f"{_COMBINED_RATING_EXPR} <= 2.0",
+    }
+    if quality in quality_bounds:
+        where.append("(b.rating_count + b.ol_rating_count) > 0")
+        where.append(quality_bounds[quality])
 
     for mood in moods:
         jsonb_key = MOOD_TO_JSONB_KEY.get(mood)
         if jsonb_key:
             param_threshold = f"mood_threshold_{jsonb_key}"
             param_min_count = f"mood_min_count_{jsonb_key}"
-            where_clauses.append(
+            where.append(
                 f"(b.sub_rating_stats->'{jsonb_key}'->>'avg')::numeric >= :{param_threshold}"
                 f" AND (b.sub_rating_stats->'{jsonb_key}'->>'count')::int >= :{param_min_count}"
             )
@@ -282,65 +237,92 @@ def _build_filter_clauses(
             params[param_min_count] = MOOD_MIN_RATING_COUNT
 
     if popularity == "popular":
-        having_clauses.append(f"{_TOTAL_READERS_EXPR} > :popular_threshold")
+        needs_shelf_counts = True
+        where.append(f"{_TOTAL_READERS_EXPR} > :popular_threshold")
         params["popular_threshold"] = POPULAR_READER_THRESHOLD
     elif popularity == "hidden_gem":
-        where_clauses.append("(b.rating_count + b.ol_rating_count) > 0")
-        having_clauses.append(f"{_TOTAL_READERS_EXPR} < :gem_max_readers")
-        having_clauses.append(f"{_COMBINED_RATING_EXPR} > :gem_min_rating")
+        needs_shelf_counts = True
+        where.append("(b.rating_count + b.ol_rating_count) > 0")
+        where.append(f"{_TOTAL_READERS_EXPR} < :gem_max_readers")
+        where.append(f"{_COMBINED_RATING_EXPR} > :gem_min_rating")
         params["gem_max_readers"] = HIDDEN_GEM_MAX_READERS
         params["gem_min_rating"] = HIDDEN_GEM_MIN_RATING
 
-    return where_clauses, having_clauses, params
+    return _Filters(where, params, needs_shelf_counts)
 
 
-async def _count_matching_books(
-    session: sqlalchemy.ext.asyncio.AsyncSession,
-    where_clauses: typing.List[str],
-    having_clauses: typing.List[str],
-    params: typing.Dict[str, typing.Any],
+async def _id_bounds(session: sqlalchemy.ext.asyncio.AsyncSession) -> typing.Tuple[int, int]:
+    """Lowest and highest book_id, cached briefly: the random pick starts anywhere in between."""
+    now = time.monotonic()
+    if now >= _bounds_cache["expires"]:
+        row = (await session.execute(sqlalchemy.text("SELECT MIN(book_id) AS low, MAX(book_id) AS high FROM books.books"))).first()
+        _bounds_cache.update(expires=now + BOUNDS_CACHE_TTL_SECONDS, low=row.low or 1, high=row.high or 1)
+    return _bounds_cache["low"], _bounds_cache["high"]
+
+
+async def _cached_matching_count(
+    session: sqlalchemy.ext.asyncio.AsyncSession, filters: _Filters
 ) -> int:
-    inner_query = _build_inner_query(where_clauses, having_clauses)
-    count_query = f"SELECT COUNT(DISTINCT work_id) FROM ({inner_query}) AS filtered"
-    result = await session.execute(sqlalchemy.text(count_query), params)
-    return result.scalar() or 0
+    """Distinct works matching the filters. Counting walks the whole filtered set, so
+    a count is reused for ten minutes instead of being recomputed on every click."""
+    cache_key = f"discover:count:{filters.signature()}"
+    cached = await app.cache.get_cached(cache_key)
+    if cached is not None:
+        return int(cached)
+
+    query = (
+        f"SELECT COUNT(*) FROM (SELECT 1 {filters.from_clause}"
+        f" WHERE {' AND '.join(filters.where)} GROUP BY b.work_id) works"
+    )
+    count = (await session.execute(sqlalchemy.text(query), filters.params)).scalar() or 0
+    await app.cache.set_cached(cache_key, count, COUNT_CACHE_TTL_SECONDS)
+    return count
 
 
-async def _count_and_pick_random_book(
+def _pick_query(filters: _Filters, language_filter: str) -> str:
+    """First matching book at or after a random id, wrapping to the start when there is none.
+
+    Walking the primary key from a random point costs about one row per 1/selectivity
+    of the filter, instead of sorting the whole filtered set by RANDOM(). The second
+    branch only runs when the first finds nothing, so an empty result is a true
+    "no match", not an unlucky starting point.
+    """
+    conditions = " AND ".join([*filters.where, "b.book_id != ALL(:exclude_ids)", *([language_filter] if language_filter else [])])
+    branch = (
+        f"(SELECT b.book_id {filters.from_clause} WHERE b.book_id {{comparison}} :probe AND {conditions}"
+        " ORDER BY b.book_id LIMIT 1)"
+    )
+    return f"{branch.format(comparison='>=')} UNION ALL {branch.format(comparison='<')} LIMIT 1"
+
+
+def _exact_pick_query(filters: _Filters) -> str:
+    conditions = " AND ".join([*filters.where, "b.book_id != ALL(:exclude_ids)"])
+    return (
+        f"SELECT b.book_id {filters.from_clause} WHERE {conditions}"
+        " ORDER BY (b.language = :language) DESC, RANDOM() LIMIT 1"
+    )
+
+
+async def _pick_random_book(
     session: sqlalchemy.ext.asyncio.AsyncSession,
-    where_clauses: typing.List[str],
-    having_clauses: typing.List[str],
-    params: typing.Dict[str, typing.Any],
-) -> typing.Tuple[int, typing.Optional[int]]:
-    """Count and randomly pick from the filtered set in one pass.
+    filters: _Filters,
+    language: str,
+    exclude_ids: typing.List[int],
+    matching_count: int,
+) -> typing.Optional[int]:
+    """A random matching book, in the reader's language when one matches, else any language."""
+    params = {**filters.params, "exclude_ids": exclude_ids or [0], "language": language}
+    if matching_count < PROBE_MIN_MATCHES:
+        row = (await session.execute(sqlalchemy.text(_exact_pick_query(filters)), params)).first()
+        return row.book_id if row else None
 
-    The "Discover" click used to run the filtered scan (canonical join +
-    GROUP BY + HAVING over the whole catalog) twice: once to count matches,
-    once more with `ORDER BY RANDOM() LIMIT 1` to pick one. On the full
-    catalog that second sort is the expensive part, so doubling it was the
-    main cost of the request. The `filtered` CTE is referenced twice below,
-    which makes Postgres materialize it once and reuse it for both the count
-    and the random pick.
-    """
-    inner_query = _build_inner_query(where_clauses, having_clauses)
-    boost = app.services._language_boost.lang_boost_sql(column="language")
-    query = f"""
-        WITH filtered AS MATERIALIZED (
-            {inner_query}
-        )
-        SELECT
-            (SELECT COUNT(DISTINCT work_id) FROM filtered) AS matching_count,
-            (
-                SELECT book_id FROM filtered
-                ORDER BY RANDOM() * {boost} DESC
-                LIMIT 1
-            ) AS book_id
-    """
-    result = await session.execute(sqlalchemy.text(query), params)
-    row = result.first()
-    if row is None:
-        return 0, None
-    return row.matching_count or 0, row.book_id
+    low, high = await _id_bounds(session)
+    params["probe"] = random.randint(low, high)
+    for language_filter in ("b.language = :language", ""):
+        row = (await session.execute(sqlalchemy.text(_pick_query(filters, language_filter)), params)).first()
+        if row is not None:
+            return row.book_id
+    return None
 
 
 async def _fetch_book_summary_by_id(
