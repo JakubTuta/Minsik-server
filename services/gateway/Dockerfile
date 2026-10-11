@@ -13,48 +13,19 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY services/gateway/ .
 COPY proto/ /app/proto_src/
 
-RUN mkdir -p app/proto && \
-    touch app/proto/__init__.py && \
-    python -m grpc_tools.protoc \
-    -I/app/proto_src \
-    --python_out=. \
-    --grpc_python_out=. \
-    --pyi_out=. \
-    /app/proto_src/ingestion.proto && \
-    mv ingestion_pb2.py app/proto/ && \
-    mv ingestion_pb2_grpc.py app/proto/ && \
-    mv ingestion_pb2.pyi app/proto/ && \
-    sed -i 's/^import ingestion_pb2/from . import ingestion_pb2/g' app/proto/ingestion_pb2_grpc.py && \
-    python -m grpc_tools.protoc \
-    -I/app/proto_src \
-    --python_out=. \
-    --grpc_python_out=. \
-    --pyi_out=. \
-    /app/proto_src/books.proto && \
-    mv books_pb2.py app/proto/ && \
-    mv books_pb2_grpc.py app/proto/ && \
-    mv books_pb2.pyi app/proto/ && \
-    sed -i 's/^import books_pb2/from . import books_pb2/g' app/proto/books_pb2_grpc.py && \
-    python -m grpc_tools.protoc \
-    -I/app/proto_src \
-    --python_out=. \
-    --grpc_python_out=. \
-    --pyi_out=. \
-    /app/proto_src/auth.proto && \
-    mv auth_pb2.py app/proto/ && \
-    mv auth_pb2_grpc.py app/proto/ && \
-    mv auth_pb2.pyi app/proto/ && \
-    sed -i 's/^import auth_pb2/from . import auth_pb2/g' app/proto/auth_pb2_grpc.py && \
-    python -m grpc_tools.protoc \
-    -I/app/proto_src \
-    --python_out=. \
-    --grpc_python_out=. \
-    --pyi_out=. \
-    /app/proto_src/user_data.proto && \
-    mv user_data_pb2.py app/proto/ && \
-    mv user_data_pb2_grpc.py app/proto/ && \
-    mv user_data_pb2.pyi app/proto/ && \
-    sed -i 's/^import user_data_pb2/from . import user_data_pb2/g' app/proto/user_data_pb2_grpc.py
+RUN set -e; \
+    mkdir -p app/proto; \
+    touch app/proto/__init__.py; \
+    for name in ingestion books auth user_data recommendation; do \
+        python -m grpc_tools.protoc \
+            -I/app/proto_src \
+            --python_out=. \
+            --grpc_python_out=. \
+            --pyi_out=. \
+            /app/proto_src/${name}.proto; \
+        mv ${name}_pb2.py ${name}_pb2_grpc.py ${name}_pb2.pyi app/proto/; \
+        sed -i "s/^import ${name}_pb2/from . import ${name}_pb2/g" app/proto/${name}_pb2_grpc.py; \
+    done
 
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1

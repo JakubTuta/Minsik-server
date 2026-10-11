@@ -46,12 +46,15 @@ message GetCurrentUserRequest {
   int64 user_id = 1;
 }
 
+// Presence matters: a field that is not sent must stay as it is. With plain proto3
+// strings an update of one field (switching the interface language, say) arrived
+// with the others empty and cleared them.
 message UpdateProfileRequest {
   int64 user_id = 1;
-  string display_name = 2;
-  string bio = 3;
-  string avatar_url = 4;
-  string preferred_language = 5;
+  optional string display_name = 2;
+  optional string bio = 3;
+  optional string avatar_url = 4;
+  optional string preferred_language = 5;
 }
 
 message DeleteAccountRequest {

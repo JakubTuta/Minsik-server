@@ -6,7 +6,6 @@ __pycache__/
 CLAUDE.md
 .claude/
 basic-app.md
-technical-architecture.md
 scripts/
 htmlcov/
 .coverage

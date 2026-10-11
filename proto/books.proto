@@ -7,6 +7,7 @@ service BooksService {
   rpc SuggestSearch(SuggestSearchRequest) returns (SuggestSearchResponse);
   rpc GetBook(GetBookRequest) returns (BookDetailResponse);
   rpc GetBookLanguageVariants(GetBookLanguageVariantsRequest) returns (BookLanguageVariantsResponse);
+  rpc LookupBookByIsbn(LookupBookByIsbnRequest) returns (BookLookupResponse);
   rpc GetAuthor(GetAuthorRequest) returns (AuthorDetailResponse);
   rpc GetAuthorBooks(GetAuthorBooksRequest) returns (BooksListResponse);
   rpc GetAuthorStats(GetAuthorStatsRequest) returns (AuthorStatsResponse);
@@ -159,6 +160,19 @@ message GetBookRequest {
   string language = 2;
 }
 
+message LookupBookByIsbnRequest {
+  string isbn = 1;
+  string language = 2;
+}
+
+// Enough to send a reader to the book: its edition in the requested language when there is one.
+message BookLookupResponse {
+  string slug = 1;
+  string language = 2;
+  string title = 3;
+  string work_id = 4;
+}
+
 message GetBookLanguageVariantsRequest {
   string slug = 1;
   string exclude_language = 2;
@@ -170,6 +184,11 @@ message BookLanguageVariant {
   string language = 3;
   string title = 4;
   string primary_cover_url = 5;
+  string publisher = 6;
+  int32 number_of_pages = 7;
+  int32 original_publication_year = 8;
+  string isbn = 9;
+  bool has_description = 10;
 }
 
 message BookLanguageVariantsResponse {
@@ -220,6 +239,10 @@ message BookDetail {
   int32 app_read_count = 35;
   map<string, int32> rating_distribution = 36;
   string work_id = 37;
+  // Set only when this edition has no description of its own: the text of the
+  // preferred sibling edition and its language, so the page can show it labelled.
+  string fallback_description = 38;
+  string fallback_language = 39;
 }
 
 message AuthorInfo {
@@ -298,6 +321,11 @@ message AuthorDetail {
   int32 ol_want_to_read_count = 29;
   int32 ol_currently_reading_count = 30;
   int32 ol_already_read_count = 31;
+  // name and bio are in the requested language when a localisation exists. When it
+  // has no bio, fallback_bio carries the canonical one and fallback_language says
+  // which language that is, so the page can label it.
+  string fallback_bio = 32;
+  string fallback_language = 33;
 }
 
 message AuthorDetailResponse {
@@ -338,6 +366,9 @@ message BookSummary {
   string first_sentence = 22;
   SeriesInfo series = 23;
   int32 number_of_pages = 24;
+  // Series listings only: false when the volume has no edition in the requested language
+  // and is shown in another one.
+  bool available_in_language = 25;
 }
 
 message GenreCount {
@@ -404,6 +435,10 @@ message SeriesDetail {
   int32 total_pages = 21;
   AuthorInfo primary_author = 22;
   repeated GenreCount genres = 23;
+  // Description of another language's record of the same series, set only when
+  // this record has none of its own.
+  string fallback_description = 24;
+  string fallback_language = 25;
 }
 
 message SeriesDetailResponse {

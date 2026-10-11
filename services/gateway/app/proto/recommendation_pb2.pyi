@@ -224,24 +224,28 @@ class InvalidateUserRecommendationsResponse(_message.Message):
     def __init__(self, success: bool = ..., deleted_keys: _Optional[int] = ...) -> None: ...
 
 class GetBookRecommendationsRequest(_message.Message):
-    __slots__ = ("book_id", "limit_per_section", "user_id")
+    __slots__ = ("book_id", "limit_per_section", "user_id", "language")
     BOOK_ID_FIELD_NUMBER: _ClassVar[int]
     LIMIT_PER_SECTION_FIELD_NUMBER: _ClassVar[int]
     USER_ID_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
     book_id: int
     limit_per_section: int
     user_id: int
-    def __init__(self, book_id: _Optional[int] = ..., limit_per_section: _Optional[int] = ..., user_id: _Optional[int] = ...) -> None: ...
+    language: str
+    def __init__(self, book_id: _Optional[int] = ..., limit_per_section: _Optional[int] = ..., user_id: _Optional[int] = ..., language: _Optional[str] = ...) -> None: ...
 
 class GetAuthorRecommendationsRequest(_message.Message):
-    __slots__ = ("author_id", "limit_per_section", "user_id")
+    __slots__ = ("author_id", "limit_per_section", "user_id", "language")
     AUTHOR_ID_FIELD_NUMBER: _ClassVar[int]
     LIMIT_PER_SECTION_FIELD_NUMBER: _ClassVar[int]
     USER_ID_FIELD_NUMBER: _ClassVar[int]
+    LANGUAGE_FIELD_NUMBER: _ClassVar[int]
     author_id: int
     limit_per_section: int
     user_id: int
-    def __init__(self, author_id: _Optional[int] = ..., limit_per_section: _Optional[int] = ..., user_id: _Optional[int] = ...) -> None: ...
+    language: str
+    def __init__(self, author_id: _Optional[int] = ..., limit_per_section: _Optional[int] = ..., user_id: _Optional[int] = ..., language: _Optional[str] = ...) -> None: ...
 
 class RecommendationSection(_message.Message):
     __slots__ = ("section_key", "display_name", "item_type", "book_items", "author_items", "total", "title_params")

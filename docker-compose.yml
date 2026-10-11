@@ -1,6 +1,6 @@
 services:
   # ============================================================================
-  # PostgreSQL - Development Configuration
+  # PostgreSQL
   # ============================================================================
   postgres:
     image: postgres:15-alpine
@@ -11,7 +11,6 @@ services:
       POSTGRES_PASSWORD: ${DB_PASSWORD}
       POSTGRES_INITDB_ARGS: "--encoding=UTF8"
     ports:
-      # EXPOSED for local access (DB clients, debugging)
       - "5432:5432"
     volumes:
       - postgres_data_dev:/var/lib/postgresql/data
@@ -26,7 +25,7 @@ services:
     restart: unless-stopped
 
   # ============================================================================
-  # Redis - Development Configuration
+  # Redis
   # ============================================================================
   redis:
     image: redis:7-alpine
@@ -35,11 +34,10 @@ services:
       redis-server
       --requirepass ${REDIS_PASSWORD}
       --maxmemory 256mb
-      --maxmemory-policy allkeys-lru
+      --maxmemory-policy volatile-lru
       --save ""
       --appendonly no
     ports:
-      # EXPOSED for local access (Redis CLI, debugging)
       - "6379:6379"
     volumes:
       - redis_data_dev:/data
@@ -53,20 +51,11 @@ services:
     restart: unless-stopped
 
   # ============================================================================
-  # Elasticsearch - Development Configuration
+  # Elasticsearch
   # ============================================================================
   elasticsearch:
     image: docker.elastic.co/elasticsearch/elasticsearch:8.17.4
     container_name: minsik-elasticsearch-dev
-    # Analysis plugins install on start, since Elasticsearch has no way to load
-    # them at runtime and the stock image ships without them:
-    #   analysis-icu     - `icu_folding`, which folds the letters `asciifolding`
-    #                      leaves alone (Polish 'l', Turkish dotless i)
-    #   analysis-stempel - Polish stemming ("ksiazki" -> "ksiaz")
-    # A failed download is not fatal: app/es_client.py detects what the cluster
-    # actually has and builds a weaker analysis chain instead of refusing to
-    # index. The mapping fingerprint covers the plugin set, so a later start
-    # that does get them rebuilds the indexes and swaps the aliases by itself.
     command:
       - bash
       - -c
@@ -82,7 +71,6 @@ services:
       - xpack.security.enabled=false
       - ES_JAVA_OPTS=-Xms512m -Xmx512m
     ports:
-      # EXPOSED for local access (Kibana, debugging)
       - "9200:9200"
     volumes:
       - es_data_dev:/usr/share/elasticsearch/data
@@ -101,7 +89,7 @@ services:
     restart: unless-stopped
 
   # ============================================================================
-  # DB Migrator - Development (runs all migrations before services start)
+  # DB Migrator
   # ============================================================================
   db-migrator:
     build:
@@ -121,7 +109,7 @@ services:
     restart: "no"
 
   # ============================================================================
-  # Gateway Service - Development Configuration
+  # Gateway Service
   # ============================================================================
   gateway-service:
     build:
@@ -136,9 +124,6 @@ services:
       REDIS_HOST: ${REDIS_HOST}
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       JWT_SECRET_KEY: ${JWT_SECRET_KEY}
-      # .env carries the production origin and cookie flags that the prod
-      # compose file reads. Over plain-http localhost a Secure cookie scoped to
-      # the production domain is dropped by the browser, so dev pins its own.
       CORS_ORIGINS: http://localhost:${FRONTEND_PORT}
       COOKIE_SECURE: "false"
       COOKIE_SAMESITE: ${COOKIE_SAMESITE}
@@ -147,7 +132,6 @@ services:
       TRUSTED_PROXY_IPS: ${TRUSTED_PROXY_IPS}
       AVAILABLE_LANGUAGES: ${AVAILABLE_LANGUAGES}
     ports:
-      # EXPOSED for client access
       - "${GATEWAY_HTTP_PORT}:8040"
     volumes:
       - ./services/gateway/app:/app/app
@@ -172,22 +156,18 @@ services:
     restart: unless-stopped
 
   # ============================================================================
-  # Ingestion Service - Development Configuration
+  # Ingestion Service
   # ============================================================================
   ingestion-service:
     build:
       context: .
       dockerfile: services/ingestion/Dockerfile
     container_name: minsik-ingestion-service-dev
-    # gRPC services answer grpc.health.v1 rather than an HTTP probe, so the
-    # gateway is only started once each backend can actually serve. Without it
-    # the gateway reports healthy while its dependencies are still opening
-    # database pools, and the first requests after a deploy fail.
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          "python -c \"import grpc, grpc_health.v1.health_pb2 as p, grpc_health.v1.health_pb2_grpc as g; s = g.HealthStub(grpc.insecure_channel('localhost:50054')).Check(p.HealthCheckRequest(), timeout=3).status; exit(0 if s == p.HealthCheckResponse.SERVING else 1)\"",
+          'python -c "import grpc, grpc_health.v1.health_pb2 as p, grpc_health.v1.health_pb2_grpc as g; s = g.HealthStub(grpc.insecure_channel(''localhost:50054'')).Check(p.HealthCheckRequest(), timeout=3).status; exit(0 if s == p.HealthCheckResponse.SERVING else 1)"',
         ]
       interval: 30s
       timeout: 5s
@@ -208,7 +188,6 @@ services:
       GOOGLE_BOOKS_API_KEY: ${GOOGLE_BOOKS_API_KEY}
       LEDGER_API_KEY: ${LEDGER_API_KEY}
     ports:
-      # EXPOSED for local access (gRPC debugging)
       - "50054:50054"
     volumes:
       - ./services/ingestion/app:/app/app
@@ -227,22 +206,18 @@ services:
     restart: unless-stopped
 
   # ============================================================================
-  # Books Service - Development Configuration
+  # Books Service
   # ============================================================================
   books-service:
     build:
       context: .
       dockerfile: services/books/Dockerfile
     container_name: minsik-books-service-dev
-    # gRPC services answer grpc.health.v1 rather than an HTTP probe, so the
-    # gateway is only started once each backend can actually serve. Without it
-    # the gateway reports healthy while its dependencies are still opening
-    # database pools, and the first requests after a deploy fail.
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          "python -c \"import grpc, grpc_health.v1.health_pb2 as p, grpc_health.v1.health_pb2_grpc as g; s = g.HealthStub(grpc.insecure_channel('localhost:50055')).Check(p.HealthCheckRequest(), timeout=3).status; exit(0 if s == p.HealthCheckResponse.SERVING else 1)\"",
+          'python -c "import grpc, grpc_health.v1.health_pb2 as p, grpc_health.v1.health_pb2_grpc as g; s = g.HealthStub(grpc.insecure_channel(''localhost:50055'')).Check(p.HealthCheckRequest(), timeout=3).status; exit(0 if s == p.HealthCheckResponse.SERVING else 1)"',
         ]
       interval: 30s
       timeout: 5s
@@ -262,7 +237,6 @@ services:
       AVAILABLE_LANGUAGES: ${AVAILABLE_LANGUAGES}
       LEDGER_API_KEY: ${LEDGER_API_KEY}
     ports:
-      # EXPOSED for local access (gRPC debugging)
       - "50055:50055"
     volumes:
       - ./services/books/app:/app/app
@@ -283,22 +257,18 @@ services:
     restart: unless-stopped
 
   # ============================================================================
-  # Auth Service - Development Configuration
+  # Auth Service
   # ============================================================================
   auth-service:
     build:
       context: .
       dockerfile: services/auth/Dockerfile
     container_name: minsik-auth-service-dev
-    # gRPC services answer grpc.health.v1 rather than an HTTP probe, so the
-    # gateway is only started once each backend can actually serve. Without it
-    # the gateway reports healthy while its dependencies are still opening
-    # database pools, and the first requests after a deploy fail.
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          "python -c \"import grpc, grpc_health.v1.health_pb2 as p, grpc_health.v1.health_pb2_grpc as g; s = g.HealthStub(grpc.insecure_channel('localhost:50051')).Check(p.HealthCheckRequest(), timeout=3).status; exit(0 if s == p.HealthCheckResponse.SERVING else 1)\"",
+          'python -c "import grpc, grpc_health.v1.health_pb2 as p, grpc_health.v1.health_pb2_grpc as g; s = g.HealthStub(grpc.insecure_channel(''localhost:50051'')).Check(p.HealthCheckRequest(), timeout=3).status; exit(0 if s == p.HealthCheckResponse.SERVING else 1)"',
         ]
       interval: 30s
       timeout: 5s
@@ -318,7 +288,6 @@ services:
       GOOGLE_CLIENT_SECRET: ${GOOGLE_CLIENT_SECRET}
       LEDGER_API_KEY: ${LEDGER_API_KEY}
     ports:
-      # EXPOSED for local access (gRPC debugging)
       - "50051:50051"
     volumes:
       - ./services/auth/app:/app/app
@@ -335,22 +304,18 @@ services:
     restart: unless-stopped
 
   # ============================================================================
-  # User Data Service - Development Configuration
+  # User Data Service
   # ============================================================================
   user-data-service:
     build:
       context: .
       dockerfile: services/user_data/Dockerfile
     container_name: minsik-user-data-service-dev
-    # gRPC services answer grpc.health.v1 rather than an HTTP probe, so the
-    # gateway is only started once each backend can actually serve. Without it
-    # the gateway reports healthy while its dependencies are still opening
-    # database pools, and the first requests after a deploy fail.
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          "python -c \"import grpc, grpc_health.v1.health_pb2 as p, grpc_health.v1.health_pb2_grpc as g; s = g.HealthStub(grpc.insecure_channel('localhost:50053')).Check(p.HealthCheckRequest(), timeout=3).status; exit(0 if s == p.HealthCheckResponse.SERVING else 1)\"",
+          'python -c "import grpc, grpc_health.v1.health_pb2 as p, grpc_health.v1.health_pb2_grpc as g; s = g.HealthStub(grpc.insecure_channel(''localhost:50053'')).Check(p.HealthCheckRequest(), timeout=3).status; exit(0 if s == p.HealthCheckResponse.SERVING else 1)"',
         ]
       interval: 30s
       timeout: 5s
@@ -369,7 +334,6 @@ services:
       REDIS_PASSWORD: ${REDIS_PASSWORD}
       LEDGER_API_KEY: ${LEDGER_API_KEY}
     ports:
-      # EXPOSED for local access (gRPC debugging)
       - "50053:50053"
     volumes:
       - ./services/user_data/app:/app/app
@@ -388,22 +352,18 @@ services:
     restart: unless-stopped
 
   # ============================================================================
-  # Recommendation Service - Development Configuration
+  # Recommendation Service
   # ============================================================================
   recommendation-service:
     build:
       context: .
       dockerfile: services/recommendation/Dockerfile
     container_name: minsik-recommendation-service-dev
-    # gRPC services answer grpc.health.v1 rather than an HTTP probe, so the
-    # gateway is only started once each backend can actually serve. Without it
-    # the gateway reports healthy while its dependencies are still opening
-    # database pools, and the first requests after a deploy fail.
     healthcheck:
       test:
         [
           "CMD-SHELL",
-          "python -c \"import grpc, grpc_health.v1.health_pb2 as p, grpc_health.v1.health_pb2_grpc as g; s = g.HealthStub(grpc.insecure_channel('localhost:50056')).Check(p.HealthCheckRequest(), timeout=3).status; exit(0 if s == p.HealthCheckResponse.SERVING else 1)\"",
+          'python -c "import grpc, grpc_health.v1.health_pb2 as p, grpc_health.v1.health_pb2_grpc as g; s = g.HealthStub(grpc.insecure_channel(''localhost:50056'')).Check(p.HealthCheckRequest(), timeout=3).status; exit(0 if s == p.HealthCheckResponse.SERVING else 1)"',
         ]
       interval: 30s
       timeout: 5s
@@ -423,7 +383,6 @@ services:
       AVAILABLE_LANGUAGES: ${AVAILABLE_LANGUAGES}
       LEDGER_API_KEY: ${LEDGER_API_KEY}
     ports:
-      # EXPOSED for local access (gRPC debugging)
       - "50056:50056"
     volumes:
       - ./services/recommendation/app:/app/app
@@ -442,7 +401,7 @@ services:
     restart: unless-stopped
 
   # ============================================================================
-  # RQ Worker - Development Configuration
+  # RQ Worker
   # ============================================================================
   rq-worker:
     build:
@@ -478,17 +437,14 @@ services:
     restart: unless-stopped
 
   # ============================================================================
-  # Frontend App - Development Configuration
+  # Frontend App
   # ============================================================================
   frontend:
-    # Sibling repo, so its own build context rather than the server root.
     build:
       context: ../Minsik-web
       dockerfile: Dockerfile
     container_name: minsik-frontend-dev
     environment:
-      # Browser-facing URLs point at this machine's stack, not at the
-      # production hosts .env names for the prod compose file.
       NUXT_PUBLIC_API_BASE: http://localhost:${GATEWAY_HTTP_PORT}
       NUXT_PUBLIC_SITE_URL: http://localhost:${FRONTEND_PORT}
       NUXT_PUBLIC_I18N_BASE_URL: http://localhost:${FRONTEND_PORT}
@@ -496,7 +452,6 @@ services:
       NUXT_API_BASE_INTERNAL: http://gateway-service:8040
       PORT: 3000
     ports:
-      # EXPOSED for client access
       - "${FRONTEND_PORT}:3000"
     depends_on:
       - gateway-service
@@ -505,7 +460,7 @@ services:
     restart: unless-stopped
 
 # ============================================================================
-# Volumes - Development (named volumes for easy cleanup)
+# Volumes
 # ============================================================================
 volumes:
   postgres_data_dev:
@@ -516,7 +471,7 @@ volumes:
     driver: local
 
 # ============================================================================
-# Networks - Development
+# Networks
 # ============================================================================
 networks:
   minsik-network:
