@@ -21,11 +21,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "1.0"
-          memory: 768M
+          cpus: "1.00"
+          memory: 1024M
         reservations:
-          cpus: "0.1"
-          memory: 256M
+          cpus: "0.21"
+          memory: 384M
     networks:
       - minsik-frontend
       - minsik-internal
@@ -70,11 +70,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "1.0"
+          cpus: "0.60"
           memory: 1536M
         reservations:
-          cpus: "0.5"
-          memory: 1G
+          cpus: "0.05"
+          memory: 1536M
     networks:
       - minsik-internal
     restart: unless-stopped
@@ -121,11 +121,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "1.0"
+          cpus: "0.65"
           memory: 1536M
         reservations:
-          cpus: "0.25"
-          memory: 512M
+          cpus: "0.05"
+          memory: 768M
     networks:
       - minsik-internal
     restart: unless-stopped
@@ -166,11 +166,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.25"
+          cpus: "0.15"
           memory: 512M
         reservations:
-          cpus: "0.1"
-          memory: 128M
+          cpus: "0.05"
+          memory: 64M
     networks:
       - minsik-internal
     restart: unless-stopped
@@ -252,11 +252,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.5"
-          memory: 512M
-        reservations:
           cpus: "0.25"
-          memory: 256M
+          memory: 384M
+        reservations:
+          cpus: "0.05"
+          memory: 384M
     networks:
       - minsik-internal
     restart: unless-stopped
@@ -286,7 +286,8 @@ services:
     environment:
       ENV: ${ENV}
       DEBUG: ${DEBUG}
-      LOG_LEVEL: ${LOG_LEVEL}
+      #LOG_LEVEL: ${LOG_LEVEL}
+      LOG_LEVEL: INFO
       DB_HOST: ${DB_HOST}
       DB_NAME: ${DB_NAME}
       DB_USER: ${DB_USER}
@@ -305,11 +306,15 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.5"
-          memory: 512M
+          #cpus: "0.5"
+          #memory: 512M
+          cpus: "0.50"
+          memory: 1280M
         reservations:
-          cpus: "0.15"
-          memory: 192M
+          #cpus: "0.15"
+          #memory: 192M
+          cpus: "0.05"
+          memory: 384M
     networks:
       - minsik-internal
     restart: unless-stopped
@@ -359,11 +364,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.75"
-          memory: 512M
-        reservations:
-          cpus: "0.25"
+          cpus: "0.40"
           memory: 256M
+        reservations:
+          cpus: "0.05"
+          memory: 192M
     networks:
       - minsik-internal
     restart: unless-stopped
@@ -409,11 +414,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.5"
-          memory: 256M
-        reservations:
           cpus: "0.25"
-          memory: 128M
+          memory: 192M
+        reservations:
+          cpus: "0.05"
+          memory: 96M
     networks:
       - minsik-internal
     restart: unless-stopped
@@ -461,10 +466,10 @@ services:
       resources:
         limits:
           cpus: "0.25"
-          memory: 256M
+          memory: 192M
         reservations:
-          cpus: "0.1"
-          memory: 128M
+          cpus: "0.05"
+          memory: 96M
     networks:
       - minsik-internal
     restart: unless-stopped
@@ -512,10 +517,10 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.5"
-          memory: 256M
-        reservations:
           cpus: "0.25"
+          memory: 192M
+        reservations:
+          cpus: "0.05"
           memory: 128M
     networks:
       - minsik-internal
@@ -554,11 +559,11 @@ services:
     deploy:
       resources:
         limits:
-          cpus: "0.25"
-          memory: 256M
-        reservations:
-          cpus: "0.1"
+          cpus: "0.15"
           memory: 64M
+        reservations:
+          cpus: "0.05"
+          memory: 32M
     networks:
       - minsik-internal
     restart: unless-stopped
