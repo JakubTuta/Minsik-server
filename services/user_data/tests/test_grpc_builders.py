@@ -91,25 +91,25 @@ def test_cached_comment_entries_null_their_empty_metadata() -> None:
 
 
 def test_comment_with_rating_nests_the_rating_only_when_the_author_rated() -> None:
-    base = dict(
-        comment_id=1,
-        user_id=2,
-        book_id=3,
-        body="x",
-        is_spoiler=False,
-        created_at=None,
-        updated_at=None,
-        username="alice",
-        review_text=None,
-        pacing=None,
-        emotional_impact=None,
-        intellectual_depth=None,
-        writing_quality=None,
-        rereadability=None,
-        readability=None,
-        plot_complexity=None,
-        humor=3.0,
-    )
+    base = {
+        "comment_id": 1,
+        "user_id": 2,
+        "book_id": 3,
+        "body": "x",
+        "is_spoiler": False,
+        "created_at": None,
+        "updated_at": None,
+        "username": "alice",
+        "review_text": None,
+        "pacing": None,
+        "emotional_impact": None,
+        "intellectual_depth": None,
+        "writing_quality": None,
+        "rereadability": None,
+        "readability": None,
+        "plot_complexity": None,
+        "humor": 3.0,
+    }
 
     unrated = app.grpc.server._row_to_comment_with_rating(
         types.SimpleNamespace(overall_rating=None, **base), "dune"
