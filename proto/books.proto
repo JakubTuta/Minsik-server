@@ -102,16 +102,16 @@ message SuggestionItem {
   int64 id = 2;
   string title = 3;
   string slug = 4;
-  string cover_url = 5;
+  optional string cover_url = 5;
   repeated string authors = 6;
   float score = 7;
   int32 readers = 8;
-  string app_avg_rating = 9;
+  double app_avg_rating = 9;
   int32 app_rating_count = 10;
-  string ol_avg_rating = 11;
+  double ol_avg_rating = 11;
   int32 ol_rating_count = 12;
-  string work_id = 13;
-  string language = 14;
+  optional string work_id = 13;
+  optional string language = 14;
 }
 
 message SuggestSearchResponse {
@@ -141,13 +141,13 @@ message SearchResult {
   reserved 11, 12;
   reserved "avg_rating", "rating_count";
   int32 book_count = 13;
-  string app_avg_rating = 14;
+  double app_avg_rating = 14;
   int32 app_rating_count = 15;
-  string ol_avg_rating = 16;
+  double ol_avg_rating = 16;
   int32 ol_rating_count = 17;
   int32 readers = 18;
-  string work_id = 19;
-  string language = 20;
+  optional string work_id = 19;
+  optional string language = 20;
 }
 
 message SearchResponse {
@@ -183,11 +183,11 @@ message BookLanguageVariant {
   string slug = 2;
   string language = 3;
   string title = 4;
-  string primary_cover_url = 5;
-  string publisher = 6;
-  int32 number_of_pages = 7;
-  int32 original_publication_year = 8;
-  string isbn = 9;
+  optional string primary_cover_url = 5;
+  optional string publisher = 6;
+  optional int32 number_of_pages = 7;
+  optional int32 original_publication_year = 8;
+  optional string isbn = 9;
   bool has_description = 10;
 }
 
@@ -196,7 +196,7 @@ message BookLanguageVariantsResponse {
 }
 
 message SubRatingStat {
-  string avg = 1;
+  double avg = 1;
   int32 count = 2;
 }
 
@@ -212,7 +212,7 @@ message BookDetail {
   reserved 9;
   reserved "cover_history";
   int32 rating_count = 10;
-  string avg_rating = 11;
+  double avg_rating = 11;
   int32 view_count = 12;
   string last_viewed_at = 13;
   repeated AuthorInfo authors = 14;
@@ -222,18 +222,18 @@ message BookDetail {
   string created_at = 18;
   string updated_at = 19;
   SeriesInfo series = 20;
-  string series_position = 21;
+  optional double series_position = 21;
   map<string, SubRatingStat> sub_rating_stats = 22;
   repeated string isbn = 23;
   string publisher = 24;
   int32 number_of_pages = 25;
   map<string, string> external_ids = 26;
   int32 ol_rating_count = 27;
-  string ol_avg_rating = 28;
+  double ol_avg_rating = 28;
   int32 ol_want_to_read_count = 29;
   int32 ol_currently_reading_count = 30;
   int32 ol_already_read_count = 31;
-  string first_sentence = 32;
+  optional string first_sentence = 32;
   int32 app_want_to_read_count = 33;
   int32 app_reading_count = 34;
   int32 app_read_count = 35;
@@ -241,15 +241,15 @@ message BookDetail {
   string work_id = 37;
   // Set only when this edition has no description of its own: the text of the
   // preferred sibling edition and its language, so the page can show it labelled.
-  string fallback_description = 38;
-  string fallback_language = 39;
+  optional string fallback_description = 38;
+  optional string fallback_language = 39;
 }
 
 message AuthorInfo {
   int64 author_id = 1;
   string name = 2;
   string slug = 3;
-  string photo_url = 4;
+  optional string photo_url = 4;
 }
 
 message GenreInfo {
@@ -262,7 +262,7 @@ message SeriesInfo {
   int64 series_id = 1;
   string name = 2;
   string slug = 3;
-  int32 total_books = 4;
+  optional int32 total_books = 4;
 }
 
 message GenreCoOccurrence {
@@ -294,26 +294,26 @@ message AuthorDetail {
   int64 author_id = 1;
   string name = 2;
   string slug = 3;
-  string bio = 4;
-  string birth_date = 5;
-  string death_date = 6;
-  string photo_url = 7;
+  optional string bio = 4;
+  optional string birth_date = 5;
+  optional string death_date = 6;
+  optional string photo_url = 7;
   int32 view_count = 8;
-  string last_viewed_at = 9;
+  optional string last_viewed_at = 9;
   int32 books_count = 10;
-  string open_library_id = 11;
+  optional string open_library_id = 11;
   string created_at = 12;
   string updated_at = 13;
-  string birth_place = 14;
-  string nationality = 15;
+  optional string birth_place = 14;
+  optional string nationality = 15;
   repeated string book_categories = 16;
-  string books_avg_rating = 17;
+  double books_avg_rating = 17;
   int32 books_total_ratings = 18;
-  string wikidata_id = 20;
-  string wikipedia_url = 21;
+  optional string wikidata_id = 20;
+  optional string wikipedia_url = 21;
   map<string, string> remote_ids = 22;
   repeated string alternate_names = 23;
-  string books_ol_avg_rating = 24;
+  double books_ol_avg_rating = 24;
   int32 books_ol_total_ratings = 25;
   int32 app_want_to_read_count = 26;
   int32 app_reading_count = 27;
@@ -324,8 +324,8 @@ message AuthorDetail {
   // name and bio are in the requested language when a localisation exists. When it
   // has no bio, fallback_bio carries the canonical one and fallback_language says
   // which language that is, so the page can label it.
-  string fallback_bio = 32;
-  string fallback_language = 33;
+  optional string fallback_bio = 32;
+  optional string fallback_language = 33;
 }
 
 message AuthorDetailResponse {
@@ -345,27 +345,27 @@ message BookSummary {
   int64 book_id = 1;
   string title = 2;
   string slug = 3;
-  string description = 4;
-  int32 original_publication_year = 19;
-  string primary_cover_url = 5;
+  optional string description = 4;
+  optional int32 original_publication_year = 19;
+  optional string primary_cover_url = 5;
   repeated AuthorInfo authors = 6;
   int32 rating_count = 7;
-  string avg_rating = 8;
+  double avg_rating = 8;
   int32 ol_rating_count = 9;
-  string ol_avg_rating = 10;
+  double ol_avg_rating = 10;
   int32 ol_want_to_read_count = 11;
   int32 ol_currently_reading_count = 12;
   int32 ol_already_read_count = 13;
   int32 app_want_to_read_count = 14;
   int32 app_reading_count = 15;
   int32 app_read_count = 16;
-  string series_position = 17;
-  string rarity = 18;
-  string language = 20;
+  optional double series_position = 17;
+  optional string rarity = 18;
+  optional string language = 20;
   string work_id = 21;
   string first_sentence = 22;
   SeriesInfo series = 23;
-  int32 number_of_pages = 24;
+  optional int32 number_of_pages = 24;
   // Series listings only: false when the volume has no edition in the requested language
   // and is shown in another one.
   bool available_in_language = 25;
@@ -395,8 +395,8 @@ message AuthorReadingProgress {
 
 message AuthorStatsResponse {
   int32 works_count = 1;
-  int32 first_publication_year = 2;
-  int32 last_publication_year = 3;
+  optional int32 first_publication_year = 2;
+  optional int32 last_publication_year = 3;
   repeated DecadeCount decades = 4;
   repeated GenreCount genres = 5;
   AuthorReadingProgress progress = 6;
@@ -422,9 +422,9 @@ message SeriesDetail {
   string last_viewed_at = 7;
   string created_at = 8;
   string updated_at = 9;
-  string avg_rating = 10;
+  double avg_rating = 10;
   int32 rating_count = 11;
-  string ol_avg_rating = 12;
+  double ol_avg_rating = 12;
   int32 ol_rating_count = 13;
   int32 app_want_to_read_count = 15;
   int32 app_reading_count = 16;
@@ -433,12 +433,12 @@ message SeriesDetail {
   int32 ol_currently_reading_count = 19;
   int32 ol_already_read_count = 20;
   int32 total_pages = 21;
-  AuthorInfo primary_author = 22;
+  AuthorInfo author = 22;
   repeated GenreCount genres = 23;
   // Description of another language's record of the same series, set only when
   // this record has none of its own.
-  string fallback_description = 24;
-  string fallback_language = 25;
+  optional string fallback_description = 24;
+  optional string fallback_language = 25;
 }
 
 message SeriesDetailResponse {

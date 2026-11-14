@@ -1,4 +1,5 @@
 import app.grpc_clients
+import app.proto.books_pb2
 import grpc
 import pytest
 
@@ -24,31 +25,22 @@ def mock_user_data_client(mocker):
     return mock_client
 
 
-def make_book_summary(mocker, book_id=1, first_sentence=""):
-    book = mocker.MagicMock()
-    book.book_id = book_id
-    book.work_id = f"OL{book_id}W"
-    book.language = "en"
-    book.title = f"Book {book_id}"
-    book.slug = f"book-{book_id}"
-    book.description = ""
-    book.original_publication_year = 1949
-    book.primary_cover_url = "https://example.com/cover.jpg"
-    book.authors = []
-    book.rating_count = 10
-    book.avg_rating = "4.50"
-    book.ol_rating_count = 5
-    book.ol_avg_rating = "4.00"
-    book.ol_want_to_read_count = 1
-    book.ol_currently_reading_count = 1
-    book.ol_already_read_count = 1
-    book.app_want_to_read_count = 1
-    book.app_reading_count = 1
-    book.app_read_count = 1
-    book.series_position = ""
-    book.rarity = "rare"
-    book.first_sentence = first_sentence
-    return book
+def make_book_summary(book_id=1, first_sentence=""):
+    return app.proto.books_pb2.BookSummary(
+        book_id=book_id,
+        work_id=f"OL{book_id}W",
+        language="en",
+        title=f"Book {book_id}",
+        slug=f"book-{book_id}",
+        original_publication_year=1949,
+        primary_cover_url="https://example.com/cover.jpg",
+        rating_count=10,
+        avg_rating=4.5,
+        ol_rating_count=5,
+        ol_avg_rating=4.0,
+        rarity="rare",
+        first_sentence=first_sentence,
+    )
 
 
 class TestBookCommentsRatingFilter:
@@ -147,8 +139,8 @@ class TestAuthorQuote:
         # One call, not one per candidate book: the summaries already carry it.
         books_response = mocker.MagicMock()
         books_response.books = [
-            make_book_summary(mocker, 1),
-            make_book_summary(mocker, 2, first_sentence="It was a bright cold day."),
+            make_book_summary(1),
+            make_book_summary(2, first_sentence="It was a bright cold day."),
         ]
         mock_books_client.get_author_books = mocker.AsyncMock(
             return_value=books_response
@@ -166,7 +158,7 @@ class TestAuthorQuote:
         self, client, mock_books_client, mocker
     ):
         books_response = mocker.MagicMock()
-        books_response.books = [make_book_summary(mocker, 1)]
+        books_response.books = [make_book_summary(1)]
         mock_books_client.get_author_books = mocker.AsyncMock(
             return_value=books_response
         )
@@ -175,3 +167,107 @@ class TestAuthorQuote:
 
         assert response.status_code == 200
         assert response.json()["data"] is None
+
+
+class TestBookSummaryMapping:
+    def test_unset_optionals_are_null_and_ratings_are_numbers(
+        self, client, mock_books_client, mocker
+    ):
+        mock_books_client.get_author_books = mocker.AsyncMock(
+            return_value=app.proto.books_pb2.BooksListResponse(
+                books=[make_book_summary(2**40)], total_count=1
+            )
+        )
+
+        response = client.get("/api/v1/authors/george-orwell/books")
+
+        book = response.json()["data"]["books"][0]
+        assert book["book_id"] == 2**40
+        assert book["avg_rating"] == 4.5
+        assert book["ol_avg_rating"] == 4.0
+        assert book["series"] is None
+        assert book["series_position"] is None
+        assert book["description"] is None
+        assert book["number_of_pages"] is None
+
+    def test_a_series_volume_carries_its_position_and_series(
+        self, client, mock_books_client, mocker
+    ):
+        volume = make_book_summary(3)
+        volume.series_position = 0.0
+        volume.series.CopyFrom(
+            app.proto.books_pb2.SeriesInfo(series_id=9, name="Dune", slug="dune")
+        )
+        mock_books_client.get_series_books = mocker.AsyncMock(
+            return_value=app.proto.books_pb2.BooksListResponse(
+                books=[volume], total_count=1
+            )
+        )
+
+        response = client.get("/api/v1/series/dune/books")
+
+        book = response.json()["data"]["books"][0]
+        assert book["series_position"] == 0.0
+        assert book["series"] == {
+            "series_id": 9,
+            "name": "Dune",
+            "slug": "dune",
+            "total_books": None,
+        }
+
+
+class TestBookDetailMapping:
+    def test_optional_text_is_null_until_set(self, client, mock_books_client, mocker):
+        detail = app.proto.books_pb2.BookDetail(
+            book_id=1,
+            title="Dune",
+            slug="dune",
+            language="en",
+            avg_rating=4.25,
+            created_at="2020-01-01",
+            updated_at="2020-01-01",
+            fallback_description="Fallback text",
+            rating_distribution={"4.5": 3},
+        )
+        mock_books_client.get_book = mocker.AsyncMock(
+            return_value=app.proto.books_pb2.BookDetailResponse(book=detail)
+        )
+
+        response = client.get("/api/v1/books/dune")
+
+        data = response.json()["data"]
+        assert data["avg_rating"] == 4.25
+        assert data["fallback_description"] == "Fallback text"
+        assert data["fallback_language"] is None
+        assert data["first_sentence"] is None
+        assert data["series"] is None
+        assert data["series_position"] is None
+        assert data["rating_distribution"] == {"4.5": 3}
+
+
+class TestSearchMapping:
+    def test_search_results_keep_int64_ids_as_numbers(
+        self, client, mock_books_client, mocker
+    ):
+        mock_books_client.search_books_and_authors = mocker.AsyncMock(
+            return_value=app.proto.books_pb2.SearchResponse(
+                results=[
+                    app.proto.books_pb2.SearchResult(
+                        type="book",
+                        id=2**40,
+                        title="Dune",
+                        slug="dune",
+                        app_avg_rating=4.5,
+                    )
+                ],
+                total_count=1,
+            )
+        )
+
+        response = client.get("/api/v1/search?q=dune")
+
+        result = response.json()["data"]["results"][0]
+        assert result["id"] == 2**40
+        assert result["app_avg_rating"] == 4.5
+        assert result["work_id"] is None
+        assert result["language"] is None

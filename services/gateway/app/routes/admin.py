@@ -9,6 +9,7 @@ import app.middleware.rate_limit
 import app.models.books_responses
 import app.models.requests
 import app.models.responses
+import app.utils.proto
 import app.utils.responses
 import fastapi
 import grpc
@@ -17,6 +18,23 @@ router = fastapi.APIRouter(prefix="/api/v1/admin", tags=["Admin"])
 
 logger = logging.getLogger(__name__)
 limiter = app.middleware.rate_limit.limiter
+
+_BOOK_UPDATE_FIELDS = frozenset({
+    "book_id", "title", "slug", "description", "first_sentence", "language",
+    "original_publication_year", "primary_cover_url", "formats", "isbn", "publisher",
+    "number_of_pages", "external_ids", "open_library_id", "google_books_id", "series",
+    "series_position", "rating_count", "avg_rating", "ol_rating_count", "ol_avg_rating",
+    "updated_at",
+})
+_AUTHOR_UPDATE_FIELDS = frozenset({
+    "author_id", "name", "slug", "bio", "birth_date", "death_date", "birth_place",
+    "nationality", "photo_url", "wikidata_id", "wikipedia_url", "remote_ids",
+    "alternate_names", "open_library_id", "updated_at",
+})
+_SERIES_UPDATE_FIELDS = frozenset({
+    "series_id", "name", "slug", "total_books", "avg_rating", "rating_count",
+    "ol_avg_rating", "ol_rating_count", "updated_at",
+})
 
 _AUTH_RESPONSES = {
     401: {
@@ -334,43 +352,7 @@ async def update_book(
         response = await app.grpc_clients.books_client.update_book(book_id=book_id, fields=proto_fields)
         book = response.book
         return app.utils.responses.success_response(
-            {
-                "book_id": book.book_id,
-                "title": book.title,
-                "slug": book.slug,
-                "description": book.description,
-                "first_sentence": book.first_sentence or None,
-                "language": book.language,
-                "original_publication_year": book.original_publication_year,
-                "primary_cover_url": book.primary_cover_url,
-                "formats": list(book.formats),
-                "isbn": list(book.isbn),
-                "publisher": book.publisher,
-                "number_of_pages": book.number_of_pages,
-                "external_ids": dict(book.external_ids),
-                "open_library_id": book.open_library_id,
-                "google_books_id": book.google_books_id,
-                "series": (
-                    {
-                        "series_id": book.series.series_id,
-                        "name": book.series.name,
-                        "slug": book.series.slug,
-                        "total_books": book.series.total_books,
-                    }
-                    if book.HasField("series")
-                    else None
-                ),
-                "series_position": (
-                    float(book.series_position) if book.series_position else None
-                ),
-                "rating_count": book.rating_count,
-                "avg_rating": float(book.avg_rating) if book.avg_rating else 0.0,
-                "ol_rating_count": book.ol_rating_count,
-                "ol_avg_rating": (
-                    float(book.ol_avg_rating) if book.ol_avg_rating else 0.0
-                ),
-                "updated_at": book.updated_at,
-            }
+            app.utils.proto.message_to_dict(book, only=_BOOK_UPDATE_FIELDS)
         )
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "updating book", e)
@@ -440,23 +422,7 @@ async def update_author(
         )
         author = response.author
         return app.utils.responses.success_response(
-            {
-                "author_id": author.author_id,
-                "name": author.name,
-                "slug": author.slug,
-                "bio": author.bio or None,
-                "birth_date": author.birth_date or None,
-                "death_date": author.death_date or None,
-                "birth_place": author.birth_place or None,
-                "nationality": author.nationality or None,
-                "photo_url": author.photo_url or None,
-                "wikidata_id": author.wikidata_id or None,
-                "wikipedia_url": author.wikipedia_url or None,
-                "remote_ids": dict(author.remote_ids),
-                "alternate_names": list(author.alternate_names),
-                "open_library_id": author.open_library_id or None,
-                "updated_at": author.updated_at,
-            }
+            app.utils.proto.message_to_dict(author, only=_AUTHOR_UPDATE_FIELDS)
         )
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "updating author", e)
@@ -516,20 +482,8 @@ async def update_series(
         series = response.series
         return app.utils.responses.success_response(
             {
-                "series_id": series.series_id,
-                "name": series.name,
-                "slug": series.slug,
+                **app.utils.proto.message_to_dict(series, only=_SERIES_UPDATE_FIELDS),
                 "description": series.description or None,
-                "total_books": series.total_books,
-                "avg_rating": (
-                    float(series.avg_rating) if series.avg_rating else 0.0
-                ),
-                "rating_count": series.rating_count,
-                "ol_avg_rating": (
-                    float(series.ol_avg_rating) if series.ol_avg_rating else 0.0
-                ),
-                "ol_rating_count": series.ol_rating_count,
-                "updated_at": series.updated_at,
             }
         )
     except grpc.RpcError as e:

@@ -8,6 +8,7 @@ import app.middleware.rate_limit
 import app.models.books_responses
 import app.utils.grpc_errors
 import app.utils.language
+import app.utils.proto
 import app.utils.responses
 import fastapi
 import grpc
@@ -60,29 +61,7 @@ async def suggest_search(
         query=q, limit=limit, language=language
     )
 
-    items = [
-        {
-            "type": item.type,
-            "id": item.id,
-            "title": item.title,
-            "slug": item.slug,
-            "cover_url": item.cover_url or None,
-            "authors": list(item.authors),
-            "score": item.score,
-            "readers": item.readers,
-            "app_avg_rating": (
-                float(item.app_avg_rating) if item.app_avg_rating else 0.0
-            ),
-            "app_rating_count": item.app_rating_count,
-            "ol_avg_rating": (
-                float(item.ol_avg_rating) if item.ol_avg_rating else 0.0
-            ),
-            "ol_rating_count": item.ol_rating_count,
-            "work_id": item.work_id or None,
-            "language": item.language or None,
-        }
-        for item in response.items
-    ]
+    items = [app.utils.proto.message_to_dict(item) for item in response.items]
 
     return {
         "success": True,
@@ -142,33 +121,7 @@ async def search_books_and_authors(
         query=q, limit=limit, offset=offset, type_filter=type, language=language
     )
 
-    results = []
-    for result in response.results:
-        results.append(
-            {
-                "type": result.type,
-                "id": result.id,
-                "title": result.title,
-                "slug": result.slug,
-                "cover_url": result.cover_url,
-                "authors": list(result.authors),
-                "relevance_score": result.relevance_score,
-                "author_slugs": list(result.author_slugs),
-                "series_slug": result.series_slug,
-                "app_avg_rating": (
-                    float(result.app_avg_rating) if result.app_avg_rating else 0.0
-                ),
-                "app_rating_count": result.app_rating_count,
-                "ol_avg_rating": (
-                    float(result.ol_avg_rating) if result.ol_avg_rating else 0.0
-                ),
-                "ol_rating_count": result.ol_rating_count,
-                "book_count": result.book_count,
-                "readers": result.readers,
-                "work_id": result.work_id or None,
-                "language": result.language or None,
-            }
-        )
+    results = [app.utils.proto.message_to_dict(result) for result in response.results]
 
     return {
         "success": True,
@@ -234,7 +187,7 @@ async def get_book(
 
         return {
             "success": True,
-            "data": _book_detail_proto_to_dict(response.book),
+            "data": app.utils.proto.message_to_dict(response.book),
             "error": None,
         }
     except grpc.RpcError as e:
@@ -264,12 +217,7 @@ async def lookup_book_by_isbn(
         response = await app.grpc_clients.books_client.lookup_book_by_isbn(isbn, language=language)
         return {
             "success": True,
-            "data": {
-                "slug": response.slug,
-                "language": response.language,
-                "title": response.title,
-                "work_id": response.work_id,
-            },
+            "data": app.utils.proto.message_to_dict(response),
             "error": None,
         }
     except grpc.RpcError as e:
@@ -301,21 +249,7 @@ async def get_book_language_variants(
         slug, exclude_language=exclude_language
     )
 
-    items = [
-        {
-            "book_id": item.book_id,
-            "slug": item.slug,
-            "language": item.language,
-            "title": item.title,
-            "primary_cover_url": item.primary_cover_url or None,
-            "publisher": item.publisher or None,
-            "number_of_pages": item.number_of_pages or None,
-            "original_publication_year": item.original_publication_year or None,
-            "isbn": item.isbn or None,
-            "has_description": item.has_description,
-        }
-        for item in response.items
-    ]
+    items = [app.utils.proto.message_to_dict(item) for item in response.items]
 
     return {
         "success": True,
@@ -361,48 +295,9 @@ async def get_author(
             slug, language=language
         )
 
-        author = response.author
-
         return {
             "success": True,
-            "data": {
-                "author_id": author.author_id,
-                "name": author.name,
-                "slug": author.slug,
-                "bio": author.bio or None,
-                "fallback_bio": author.fallback_bio or None,
-                "fallback_language": author.fallback_language or None,
-                "birth_date": author.birth_date or None,
-                "death_date": author.death_date or None,
-                "birth_place": author.birth_place or None,
-                "nationality": author.nationality or None,
-                "photo_url": author.photo_url or None,
-                "view_count": author.view_count,
-                "last_viewed_at": author.last_viewed_at or None,
-                "books_count": author.books_count,
-                "book_categories": list(author.book_categories),
-                "books_avg_rating": float(author.books_avg_rating),
-                "books_total_ratings": author.books_total_ratings,
-                "books_ol_avg_rating": (
-                    float(author.books_ol_avg_rating)
-                    if author.books_ol_avg_rating
-                    else 0.0
-                ),
-                "books_ol_total_ratings": author.books_ol_total_ratings,
-                "app_want_to_read_count": author.app_want_to_read_count,
-                "app_reading_count": author.app_reading_count,
-                "app_read_count": author.app_read_count,
-                "ol_want_to_read_count": author.ol_want_to_read_count,
-                "ol_currently_reading_count": author.ol_currently_reading_count,
-                "ol_already_read_count": author.ol_already_read_count,
-                "open_library_id": author.open_library_id or None,
-                "created_at": author.created_at,
-                "updated_at": author.updated_at,
-                "wikidata_id": author.wikidata_id or None,
-                "wikipedia_url": author.wikipedia_url or None,
-                "remote_ids": dict(author.remote_ids),
-                "alternate_names": list(author.alternate_names),
-            },
+            "data": app.utils.proto.message_to_dict(response.author),
             "error": None,
         }
     except grpc.RpcError as e:
@@ -464,9 +359,7 @@ async def get_author_books(
         language=language,
     )
 
-    books = []
-    for book in response.books:
-        books.append(_book_summary_proto_to_dict(book))
+    books = [app.utils.proto.message_to_dict(book) for book in response.books]
 
     return {
         "success": True,
@@ -516,23 +409,7 @@ async def get_author_stats(
 
         return {
             "success": True,
-            "data": {
-                "works_count": response.works_count,
-                "first_publication_year": response.first_publication_year or None,
-                "last_publication_year": response.last_publication_year or None,
-                "decades": [
-                    {"decade": entry.decade, "count": entry.count}
-                    for entry in response.decades
-                ],
-                "genres": [
-                    {"name": genre.name, "slug": genre.slug, "count": genre.count}
-                    for genre in response.genres
-                ],
-                "progress": {
-                    "works_read": response.progress.works_read,
-                    "works_shelved": response.progress.works_shelved,
-                },
-            },
+            "data": app.utils.proto.message_to_dict(response),
             "error": None,
         }
     except grpc.RpcError as e:
@@ -620,7 +497,7 @@ async def get_author_top_books(
         language=language,
     )
 
-    books = [_book_summary_proto_to_dict(book) for book in response.books]
+    books = [app.utils.proto.message_to_dict(book) for book in response.books]
 
     return {"success": True, "data": {"books": books}, "error": None}
 
@@ -659,46 +536,9 @@ async def get_series(
             slug, language=language
         )
 
-        series = response.series
-
         return {
             "success": True,
-            "data": {
-                "series_id": series.series_id,
-                "name": series.name,
-                "slug": series.slug,
-                "description": series.description,
-                "fallback_description": series.fallback_description or None,
-                "fallback_language": series.fallback_language or None,
-                "total_books": series.total_books,
-                "view_count": series.view_count,
-                "last_viewed_at": series.last_viewed_at,
-                "created_at": series.created_at,
-                "updated_at": series.updated_at,
-                "avg_rating": float(series.avg_rating) if series.avg_rating else 0.0,
-                "rating_count": series.rating_count,
-                "ol_avg_rating": (
-                    float(series.ol_avg_rating) if series.ol_avg_rating else 0.0
-                ),
-                "ol_rating_count": series.ol_rating_count,
-                "app_want_to_read_count": series.app_want_to_read_count,
-                "app_reading_count": series.app_reading_count,
-                "app_read_count": series.app_read_count,
-                "ol_want_to_read_count": series.ol_want_to_read_count,
-                "ol_currently_reading_count": series.ol_currently_reading_count,
-                "ol_already_read_count": series.ol_already_read_count,
-                "total_pages": series.total_pages,
-                "genres": [
-                    {"name": genre.name, "slug": genre.slug, "count": genre.count}
-                    for genre in series.genres
-                ],
-                "author": {
-                    "author_id": series.primary_author.author_id,
-                    "name": series.primary_author.name,
-                    "slug": series.primary_author.slug,
-                    "photo_url": series.primary_author.photo_url or None,
-                } if series.HasField("primary_author") else None,
-            },
+            "data": app.utils.proto.message_to_dict(response.series),
             "error": None,
         }
     except grpc.RpcError as e:
@@ -887,9 +727,7 @@ async def get_series_books(
         order=order,
     )
 
-    books = []
-    for book in response.books:
-        books.append(_book_summary_proto_to_dict(book))
+    books = [app.utils.proto.message_to_dict(book) for book in response.books]
 
     return {
         "success": True,
@@ -900,126 +738,6 @@ async def get_series_books(
             "offset": offset,
         },
         "error": None,
-    }
-
-
-def _book_detail_proto_to_dict(book) -> typing.Dict[str, typing.Any]:
-    return {
-        "book_id": book.book_id,
-        "work_id": book.work_id,
-        "title": book.title,
-        "slug": book.slug,
-        "description": book.description,
-        "fallback_description": book.fallback_description or None,
-        "fallback_language": book.fallback_language or None,
-        "language": book.language,
-        "original_publication_year": book.original_publication_year,
-        "formats": list(book.formats),
-        "primary_cover_url": book.primary_cover_url,
-        "rating_count": book.rating_count,
-        "avg_rating": book.avg_rating,
-        "sub_rating_stats": {
-            key: {"avg": float(stat.avg) if stat.avg else 0.0, "count": stat.count}
-            for key, stat in book.sub_rating_stats.items()
-        },
-        "view_count": book.view_count,
-        "last_viewed_at": book.last_viewed_at,
-        "authors": [
-            {
-                "author_id": author.author_id,
-                "name": author.name,
-                "slug": author.slug,
-                "photo_url": author.photo_url,
-            }
-            for author in book.authors
-        ],
-        "genres": [
-            {"genre_id": genre.genre_id, "name": genre.name, "slug": genre.slug}
-            for genre in book.genres
-        ],
-        "series": (
-            {
-                "series_id": book.series.series_id,
-                "name": book.series.name,
-                "slug": book.series.slug,
-                "total_books": book.series.total_books,
-            }
-            if book.HasField("series")
-            else None
-        ),
-        "series_position": (
-            float(book.series_position) if book.series_position else None
-        ),
-        "open_library_id": book.open_library_id,
-        "google_books_id": book.google_books_id,
-        "created_at": book.created_at,
-        "updated_at": book.updated_at,
-        "isbn": list(book.isbn),
-        "publisher": book.publisher,
-        "number_of_pages": book.number_of_pages,
-        "external_ids": dict(book.external_ids),
-        "ol_rating_count": book.ol_rating_count,
-        "ol_avg_rating": float(book.ol_avg_rating) if book.ol_avg_rating else 0.0,
-        "ol_want_to_read_count": book.ol_want_to_read_count,
-        "ol_currently_reading_count": book.ol_currently_reading_count,
-        "ol_already_read_count": book.ol_already_read_count,
-        "first_sentence": book.first_sentence or None,
-        "app_want_to_read_count": book.app_want_to_read_count,
-        "app_reading_count": book.app_reading_count,
-        "app_read_count": book.app_read_count,
-        "rating_distribution": {
-            v: dict(book.rating_distribution).get(v, 0)
-            for v in ["1.0", "1.5", "2.0", "2.5", "3.0", "3.5", "4.0", "4.5", "5.0"]
-        },
-    }
-
-
-def _book_summary_proto_to_dict(item) -> typing.Dict[str, typing.Any]:
-    return {
-        "book_id": item.book_id,
-        "work_id": item.work_id,
-        "available_in_language": item.available_in_language,
-        "language": item.language or None,
-        "title": item.title,
-        "slug": item.slug,
-        "description": item.description or None,
-        "original_publication_year": (
-            item.original_publication_year if item.original_publication_year else None
-        ),
-        "primary_cover_url": item.primary_cover_url or None,
-        "authors": [
-            {
-                "author_id": a.author_id,
-                "name": a.name,
-                "slug": a.slug,
-                "photo_url": a.photo_url or None,
-            }
-            for a in item.authors
-        ],
-        "rating_count": item.rating_count,
-        "avg_rating": float(item.avg_rating) if item.avg_rating else 0.0,
-        "ol_rating_count": item.ol_rating_count,
-        "ol_avg_rating": float(item.ol_avg_rating) if item.ol_avg_rating else 0.0,
-        "ol_want_to_read_count": item.ol_want_to_read_count,
-        "ol_currently_reading_count": item.ol_currently_reading_count,
-        "ol_already_read_count": item.ol_already_read_count,
-        "app_want_to_read_count": item.app_want_to_read_count,
-        "app_reading_count": item.app_reading_count,
-        "app_read_count": item.app_read_count,
-        "series_position": (
-            float(item.series_position) if item.series_position else None
-        ),
-        "series": (
-            {
-                "series_id": item.series.series_id,
-                "name": item.series.name,
-                "slug": item.series.slug,
-            }
-            if item.HasField("series")
-            else None
-        ),
-        "number_of_pages": item.number_of_pages or None,
-        "rarity": item.rarity or None,
     }
 
 
@@ -1062,7 +780,7 @@ async def open_case(
         return {
             "success": True,
             "data": {
-                "winner": _book_summary_proto_to_dict(response.winner),
+                "winner": app.utils.proto.message_to_dict(response.winner),
             },
             "error": None,
         }
@@ -1114,7 +832,7 @@ async def open_pack(
         return {
             "success": True,
             "data": {
-                "items": [_book_summary_proto_to_dict(item) for item in response.items],
+                "items": [app.utils.proto.message_to_dict(item) for item in response.items],
             },
             "error": None,
         }
@@ -1164,7 +882,7 @@ async def spin_slots(
             "success": True,
             "data": {
                 "items": list(response.items),
-                "winner": _book_summary_proto_to_dict(response.winner),
+                "winner": app.utils.proto.message_to_dict(response.winner),
             },
             "error": None,
         }
@@ -1236,7 +954,7 @@ async def discover_book(
         return {
             "success": True,
             "data": {
-                "book": _book_summary_proto_to_dict(response.book),
+                "book": app.utils.proto.message_to_dict(response.book),
                 "matching_count": response.matching_count,
             },
             "error": None,
@@ -1322,16 +1040,9 @@ async def get_genre_bubble(
             limit=limit,
         )
 
-        source = {
-            "genre_id": response.source.genre_id,
-            "name": response.source.name,
-            "slug": response.source.slug,
-        }
         related = [
             {
-                "genre_id": r.genre.genre_id,
-                "name": r.genre.name,
-                "slug": r.genre.slug,
+                **app.utils.proto.message_to_dict(r.genre),
                 "co_occurrence_count": r.co_occurrence_count,
                 "strength": r.strength,
             }
@@ -1341,7 +1052,7 @@ async def get_genre_bubble(
         return {
             "success": True,
             "data": {
-                "source": source,
+                "source": app.utils.proto.message_to_dict(response.source),
                 "related": related,
             },
             "error": None,

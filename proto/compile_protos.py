@@ -18,7 +18,7 @@ ROOT = pathlib.Path(__file__).resolve().parent.parent
 
 DESTINATIONS: dict[str, list[str]] = {
     "ingestion": ["ingestion", "gateway"],
-    "books": ["books", "gateway", "ingestion"],
+    "books": ["books", "gateway"],
     "auth": ["auth", "gateway"],
     "recommendation": ["recommendation", "gateway"],
     "user_data": ["user_data", "gateway"],

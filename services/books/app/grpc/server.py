@@ -39,6 +39,21 @@ def _offset(value: int) -> int:
     return min(max(value, 0), MAX_OFFSET)
 
 
+RATING_BUCKETS = ("1.0", "1.5", "2.0", "2.5", "3.0", "3.5", "4.0", "4.5", "5.0")
+
+
+def _rating(value: typing.Any) -> float:
+    return float(value) if value not in (None, "") else 0.0
+
+
+def _optional_rating(value: typing.Any) -> typing.Optional[float]:
+    return float(value) if value not in (None, "") else None
+
+
+def _rating_distribution(counts: typing.Mapping[str, int]) -> typing.Dict[str, int]:
+    return {bucket: counts.get(bucket, 0) for bucket in RATING_BUCKETS}
+
+
 def _build_book_detail_proto(
     book: typing.Dict[str, typing.Any],
 ) -> app.proto.books_pb2.BookDetail:
@@ -47,7 +62,7 @@ def _build_book_detail_proto(
             author_id=author["author_id"],
             name=author["name"],
             slug=author["slug"],
-            photo_url=author["photo_url"],
+            photo_url=author["photo_url"] or "",
         )
         for author in book["authors"]
     ]
@@ -69,7 +84,7 @@ def _build_book_detail_proto(
         )
     sub_rating_stats = {
         key: app.proto.books_pb2.SubRatingStat(
-            avg=str(val.get("avg")) if val.get("avg") is not None else "",
+            avg=_rating(val.get("avg")),
             count=val.get("count", 0),
         )
         for key, val in book.get("sub_rating_stats", {}).items()
@@ -80,14 +95,14 @@ def _build_book_detail_proto(
         title=book["title"],
         slug=book["slug"],
         description=book["description"],
-        fallback_description=book.get("fallback_description", ""),
-        fallback_language=book.get("fallback_language", ""),
+        fallback_description=book.get("fallback_description") or None,
+        fallback_language=book.get("fallback_language") or None,
         language=book["language"],
         original_publication_year=book["original_publication_year"],
         formats=book["formats"],
         primary_cover_url=book["primary_cover_url"],
         rating_count=book["rating_count"],
-        avg_rating=book["avg_rating"],
+        avg_rating=_rating(book["avg_rating"]),
         view_count=book["view_count"],
         last_viewed_at=book["last_viewed_at"],
         authors=authors,
@@ -97,22 +112,22 @@ def _build_book_detail_proto(
         created_at=book["created_at"],
         updated_at=book["updated_at"],
         series=series_info,
-        series_position=book.get("series_position", ""),
+        series_position=_optional_rating(book.get("series_position")),
         sub_rating_stats=sub_rating_stats,
         isbn=book.get("isbn", []),
         publisher=book.get("publisher", ""),
         number_of_pages=book.get("number_of_pages", 0),
         external_ids=book.get("external_ids", {}),
         ol_rating_count=book.get("ol_rating_count", 0),
-        ol_avg_rating=book.get("ol_avg_rating", "0.00"),
+        ol_avg_rating=_rating(book.get("ol_avg_rating")),
         ol_want_to_read_count=book.get("ol_want_to_read_count", 0),
         ol_currently_reading_count=book.get("ol_currently_reading_count", 0),
         ol_already_read_count=book.get("ol_already_read_count", 0),
-        first_sentence=book.get("first_sentence", ""),
+        first_sentence=book.get("first_sentence") or None,
         app_want_to_read_count=book.get("app_want_to_read_count", 0),
         app_reading_count=book.get("app_reading_count", 0),
         app_read_count=book.get("app_read_count", 0),
-        rating_distribution=book.get("rating_distribution", {}),
+        rating_distribution=_rating_distribution(book.get("rating_distribution", {})),
     )
 
 
@@ -135,7 +150,7 @@ def _build_book_summary_proto(
             author_id=a["author_id"],
             name=a["name"],
             slug=a["slug"],
-            photo_url=a.get("photo_url", ""),
+            photo_url=a.get("photo_url") or None,
         )
         for a in item.get("authors", [])
     ]
@@ -150,28 +165,28 @@ def _build_book_summary_proto(
             if series
             else None
         ),
-        number_of_pages=item.get("number_of_pages", 0) or 0,
+        number_of_pages=item.get("number_of_pages") or None,
         book_id=item["book_id"],
         work_id=item.get("work_id", "") or "",
         title=item["title"],
         slug=item["slug"],
-        description=item.get("description", ""),
-        original_publication_year=item.get("original_publication_year", 0),
-        primary_cover_url=item.get("primary_cover_url", ""),
+        description=item.get("description") or None,
+        original_publication_year=item.get("original_publication_year") or None,
+        primary_cover_url=item.get("primary_cover_url") or None,
         authors=authors,
         rating_count=item["rating_count"],
-        avg_rating=item.get("avg_rating", "0.00"),
+        avg_rating=_rating(item.get("avg_rating")),
         ol_rating_count=item.get("ol_rating_count", 0),
-        ol_avg_rating=item.get("ol_avg_rating", "0.00"),
+        ol_avg_rating=_rating(item.get("ol_avg_rating")),
         ol_want_to_read_count=item.get("ol_want_to_read_count", 0),
         ol_currently_reading_count=item.get("ol_currently_reading_count", 0),
         ol_already_read_count=item.get("ol_already_read_count", 0),
         app_want_to_read_count=item.get("app_want_to_read_count", 0),
         app_reading_count=item.get("app_reading_count", 0),
         app_read_count=item.get("app_read_count", 0),
-        series_position=item.get("series_position", "") or "",
-        rarity=item.get("rarity", "") or "",
-        language=item.get("language", "") or "",
+        series_position=_optional_rating(item.get("series_position")),
+        rarity=item.get("rarity") or None,
+        language=item.get("language") or None,
         first_sentence=item.get("first_sentence", "") or "",
         available_in_language=item.get("available_in_language", True) is not False,
     )
@@ -224,22 +239,14 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                             relevance_score=result["relevance_score"],
                             author_slugs=result["author_slugs"],
                             series_slug=result["series_slug"],
-                            app_avg_rating=(
-                                str(result["app_avg_rating"])
-                                if result.get("app_avg_rating") is not None
-                                else ""
-                            ),
+                            app_avg_rating=_rating(result.get("app_avg_rating")),
                             app_rating_count=int(result.get("app_rating_count") or 0),
-                            ol_avg_rating=(
-                                str(result["ol_avg_rating"])
-                                if result.get("ol_avg_rating") is not None
-                                else ""
-                            ),
+                            ol_avg_rating=_rating(result.get("ol_avg_rating")),
                             ol_rating_count=int(result.get("ol_rating_count") or 0),
                             book_count=int(result.get("book_count") or 0),
                             readers=int(result.get("readers") or 0),
-                            work_id=result.get("work_id") or "",
-                            language=result.get("language") or "",
+                            work_id=result.get("work_id") or None,
+                            language=result.get("language") or None,
                         )
                     )
 
@@ -269,24 +276,16 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                     id=int(result["id"]),
                     title=result["title"],
                     slug=result["slug"],
-                    cover_url=result["cover_url"],
+                    cover_url=result["cover_url"] or None,
                     authors=result["authors"],
                     score=result["relevance_score"],
                     readers=int(result.get("readers") or 0),
-                    app_avg_rating=(
-                        str(result["app_avg_rating"])
-                        if result.get("app_avg_rating") is not None
-                        else ""
-                    ),
+                    app_avg_rating=_rating(result.get("app_avg_rating")),
                     app_rating_count=int(result.get("app_rating_count") or 0),
-                    ol_avg_rating=(
-                        str(result["ol_avg_rating"])
-                        if result.get("ol_avg_rating") is not None
-                        else ""
-                    ),
+                    ol_avg_rating=_rating(result.get("ol_avg_rating")),
                     ol_rating_count=int(result.get("ol_rating_count") or 0),
-                    work_id=result.get("work_id") or "",
-                    language=result.get("language") or "",
+                    work_id=result.get("work_id") or None,
+                    language=result.get("language") or None,
                 )
                 for result in results
             ]
@@ -364,11 +363,11 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                 slug=v["slug"],
                 language=v["language"],
                 title=v["title"],
-                primary_cover_url=v["primary_cover_url"],
-                publisher=v.get("publisher", ""),
-                number_of_pages=v.get("number_of_pages", 0),
-                original_publication_year=v.get("original_publication_year", 0),
-                isbn=v.get("isbn", ""),
+                primary_cover_url=v["primary_cover_url"] or None,
+                publisher=v.get("publisher") or None,
+                number_of_pages=v.get("number_of_pages") or None,
+                original_publication_year=v.get("original_publication_year") or None,
+                isbn=v.get("isbn") or None,
                 has_description=v.get("has_description", False),
             )
             for v in variants
@@ -402,26 +401,26 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
             author_id=author["author_id"],
             name=author["name"],
             slug=author["slug"],
-            bio=author["bio"] or "",
-            birth_date=author["birth_date"] or "",
-            death_date=author["death_date"] or "",
-            photo_url=author["photo_url"] or "",
+            bio=author["bio"] or None,
+            birth_date=author["birth_date"] or None,
+            death_date=author["death_date"] or None,
+            photo_url=author["photo_url"] or None,
             view_count=author["view_count"],
-            last_viewed_at=author["last_viewed_at"] or "",
+            last_viewed_at=author["last_viewed_at"] or None,
             books_count=author["books_count"],
-            open_library_id=author["open_library_id"] or "",
+            open_library_id=author["open_library_id"] or None,
             created_at=author["created_at"],
             updated_at=author["updated_at"],
-            birth_place=author["birth_place"] or "",
-            nationality=author["nationality"] or "",
+            birth_place=author["birth_place"] or None,
+            nationality=author["nationality"] or None,
             book_categories=author["book_categories"],
-            books_avg_rating=author["books_avg_rating"],
+            books_avg_rating=_rating(author["books_avg_rating"]),
             books_total_ratings=author["books_total_ratings"],
-            wikidata_id=author["wikidata_id"] or "",
-            wikipedia_url=author["wikipedia_url"] or "",
+            wikidata_id=author["wikidata_id"] or None,
+            wikipedia_url=author["wikipedia_url"] or None,
             remote_ids=author.get("remote_ids", {}),
             alternate_names=author.get("alternate_names", []),
-            books_ol_avg_rating=author["books_ol_avg_rating"],
+            books_ol_avg_rating=_rating(author["books_ol_avg_rating"]),
             books_ol_total_ratings=author["books_ol_total_ratings"],
             app_want_to_read_count=author["app_want_to_read_count"],
             app_reading_count=author["app_reading_count"],
@@ -429,8 +428,8 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
             ol_want_to_read_count=author["ol_want_to_read_count"],
             ol_currently_reading_count=author["ol_currently_reading_count"],
             ol_already_read_count=author["ol_already_read_count"],
-            fallback_bio=author.get("fallback_bio") or "",
-            fallback_language=author.get("fallback_language") or "",
+            fallback_bio=author.get("fallback_bio") or None,
+            fallback_language=author.get("fallback_language") or None,
         )
 
         return app.proto.books_pb2.AuthorDetailResponse(author=author_detail)
@@ -488,8 +487,8 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
 
         return app.proto.books_pb2.AuthorStatsResponse(
             works_count=stats["works_count"],
-            first_publication_year=stats["first_publication_year"],
-            last_publication_year=stats["last_publication_year"],
+            first_publication_year=stats["first_publication_year"] or None,
+            last_publication_year=stats["last_publication_year"] or None,
             decades=[
                 app.proto.books_pb2.DecadeCount(
                     decade=entry["decade"], count=entry["count"]
@@ -533,7 +532,7 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                 author_id=pa["author_id"],
                 name=pa["name"],
                 slug=pa["slug"],
-                photo_url=pa.get("photo_url") or "",
+                photo_url=pa.get("photo_url") or None,
             )
 
         series_detail = app.proto.books_pb2.SeriesDetail(
@@ -546,9 +545,9 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
             last_viewed_at=series["last_viewed_at"] or "",
             created_at=series["created_at"] or "",
             updated_at=series["updated_at"] or "",
-            avg_rating=series["avg_rating"] or "",
+            avg_rating=_rating(series["avg_rating"]),
             rating_count=series["rating_count"],
-            ol_avg_rating=series["ol_avg_rating"] or "",
+            ol_avg_rating=_rating(series["ol_avg_rating"]),
             ol_rating_count=series["ol_rating_count"],
             app_want_to_read_count=series["app_want_to_read_count"],
             app_reading_count=series["app_reading_count"],
@@ -557,10 +556,10 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
             ol_currently_reading_count=series["ol_currently_reading_count"],
             ol_already_read_count=series["ol_already_read_count"],
             total_pages=series.get("total_pages", 0),
-            primary_author=primary_author_proto,
+            author=primary_author_proto,
             genres=_build_genre_counts(series.get("genres", [])),
-            fallback_description=series.get("fallback_description") or "",
-            fallback_language=series.get("fallback_language") or "",
+            fallback_description=series.get("fallback_description") or None,
+            fallback_language=series.get("fallback_language") or None,
         )
 
         return app.proto.books_pb2.SeriesDetailResponse(series=series_detail)
@@ -746,26 +745,26 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                 author_id=author["author_id"],
                 name=author["name"],
                 slug=author["slug"],
-                bio=author.get("bio") or "",
-                birth_date=author.get("birth_date") or "",
-                death_date=author.get("death_date") or "",
-                birth_place=author.get("birth_place") or "",
-                nationality=author.get("nationality") or "",
-                photo_url=author.get("photo_url") or "",
+                bio=author.get("bio") or None,
+                birth_date=author.get("birth_date") or None,
+                death_date=author.get("death_date") or None,
+                birth_place=author.get("birth_place") or None,
+                nationality=author.get("nationality") or None,
+                photo_url=author.get("photo_url") or None,
                 view_count=author.get("view_count", 0),
-                last_viewed_at=author.get("last_viewed_at") or "",
+                last_viewed_at=author.get("last_viewed_at") or None,
                 books_count=author.get("books_count", 0),
-                open_library_id=author.get("open_library_id") or "",
+                open_library_id=author.get("open_library_id") or None,
                 created_at=author.get("created_at", ""),
                 updated_at=author.get("updated_at", ""),
                 book_categories=author.get("book_categories", []),
-                books_avg_rating=author.get("books_avg_rating", "0.00"),
+                books_avg_rating=_rating(author.get("books_avg_rating")),
                 books_total_ratings=author.get("books_total_ratings", 0),
-                wikidata_id=author.get("wikidata_id") or "",
-                wikipedia_url=author.get("wikipedia_url") or "",
+                wikidata_id=author.get("wikidata_id") or None,
+                wikipedia_url=author.get("wikipedia_url") or None,
                 remote_ids=author.get("remote_ids", {}),
                 alternate_names=author.get("alternate_names", []),
-                books_ol_avg_rating=author.get("books_ol_avg_rating") or "",
+                books_ol_avg_rating=_rating(author.get("books_ol_avg_rating")),
                 books_ol_total_ratings=author.get("books_ol_total_ratings", 0),
                 app_want_to_read_count=author.get("app_want_to_read_count", 0),
                 app_reading_count=author.get("app_reading_count", 0),
@@ -829,9 +828,9 @@ class BooksServicer(app.proto.books_pb2_grpc.BooksServiceServicer):
                 last_viewed_at=series.get("last_viewed_at") or "",
                 created_at=series.get("created_at") or "",
                 updated_at=series.get("updated_at") or "",
-                avg_rating=series.get("avg_rating") or "",
+                avg_rating=_rating(series.get("avg_rating")),
                 rating_count=series.get("rating_count", 0),
-                ol_avg_rating=series.get("ol_avg_rating") or "",
+                ol_avg_rating=_rating(series.get("ol_avg_rating")),
                 ol_rating_count=series.get("ol_rating_count", 0),
                 app_want_to_read_count=series.get("app_want_to_read_count", 0),
                 app_reading_count=series.get("app_reading_count", 0),

@@ -118,13 +118,13 @@ class SuggestionItem(_message.Message):
     authors: _containers.RepeatedScalarFieldContainer[str]
     score: float
     readers: int
-    app_avg_rating: str
+    app_avg_rating: float
     app_rating_count: int
-    ol_avg_rating: str
+    ol_avg_rating: float
     ol_rating_count: int
     work_id: str
     language: str
-    def __init__(self, type: _Optional[str] = ..., id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., cover_url: _Optional[str] = ..., authors: _Optional[_Iterable[str]] = ..., score: _Optional[float] = ..., readers: _Optional[int] = ..., app_avg_rating: _Optional[str] = ..., app_rating_count: _Optional[int] = ..., ol_avg_rating: _Optional[str] = ..., ol_rating_count: _Optional[int] = ..., work_id: _Optional[str] = ..., language: _Optional[str] = ...) -> None: ...
+    def __init__(self, type: _Optional[str] = ..., id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., cover_url: _Optional[str] = ..., authors: _Optional[_Iterable[str]] = ..., score: _Optional[float] = ..., readers: _Optional[int] = ..., app_avg_rating: _Optional[float] = ..., app_rating_count: _Optional[int] = ..., ol_avg_rating: _Optional[float] = ..., ol_rating_count: _Optional[int] = ..., work_id: _Optional[str] = ..., language: _Optional[str] = ...) -> None: ...
 
 class SuggestSearchResponse(_message.Message):
     __slots__ = ("items",)
@@ -175,14 +175,14 @@ class SearchResult(_message.Message):
     author_slugs: _containers.RepeatedScalarFieldContainer[str]
     series_slug: str
     book_count: int
-    app_avg_rating: str
+    app_avg_rating: float
     app_rating_count: int
-    ol_avg_rating: str
+    ol_avg_rating: float
     ol_rating_count: int
     readers: int
     work_id: str
     language: str
-    def __init__(self, type: _Optional[str] = ..., id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., cover_url: _Optional[str] = ..., authors: _Optional[_Iterable[str]] = ..., relevance_score: _Optional[float] = ..., author_slugs: _Optional[_Iterable[str]] = ..., series_slug: _Optional[str] = ..., book_count: _Optional[int] = ..., app_avg_rating: _Optional[str] = ..., app_rating_count: _Optional[int] = ..., ol_avg_rating: _Optional[str] = ..., ol_rating_count: _Optional[int] = ..., readers: _Optional[int] = ..., work_id: _Optional[str] = ..., language: _Optional[str] = ...) -> None: ...
+    def __init__(self, type: _Optional[str] = ..., id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., cover_url: _Optional[str] = ..., authors: _Optional[_Iterable[str]] = ..., relevance_score: _Optional[float] = ..., author_slugs: _Optional[_Iterable[str]] = ..., series_slug: _Optional[str] = ..., book_count: _Optional[int] = ..., app_avg_rating: _Optional[float] = ..., app_rating_count: _Optional[int] = ..., ol_avg_rating: _Optional[float] = ..., ol_rating_count: _Optional[int] = ..., readers: _Optional[int] = ..., work_id: _Optional[str] = ..., language: _Optional[str] = ...) -> None: ...
 
 class SearchResponse(_message.Message):
     __slots__ = ("results", "total_count")
@@ -262,9 +262,9 @@ class SubRatingStat(_message.Message):
     __slots__ = ("avg", "count")
     AVG_FIELD_NUMBER: _ClassVar[int]
     COUNT_FIELD_NUMBER: _ClassVar[int]
-    avg: str
+    avg: float
     count: int
-    def __init__(self, avg: _Optional[str] = ..., count: _Optional[int] = ...) -> None: ...
+    def __init__(self, avg: _Optional[float] = ..., count: _Optional[int] = ...) -> None: ...
 
 class BookDetail(_message.Message):
     __slots__ = ("book_id", "title", "slug", "description", "language", "original_publication_year", "formats", "primary_cover_url", "rating_count", "avg_rating", "view_count", "last_viewed_at", "authors", "genres", "open_library_id", "google_books_id", "created_at", "updated_at", "series", "series_position", "sub_rating_stats", "isbn", "publisher", "number_of_pages", "external_ids", "ol_rating_count", "ol_avg_rating", "ol_want_to_read_count", "ol_currently_reading_count", "ol_already_read_count", "first_sentence", "app_want_to_read_count", "app_reading_count", "app_read_count", "rating_distribution", "work_id", "fallback_description", "fallback_language")
@@ -336,7 +336,7 @@ class BookDetail(_message.Message):
     formats: _containers.RepeatedScalarFieldContainer[str]
     primary_cover_url: str
     rating_count: int
-    avg_rating: str
+    avg_rating: float
     view_count: int
     last_viewed_at: str
     authors: _containers.RepeatedCompositeFieldContainer[AuthorInfo]
@@ -346,14 +346,14 @@ class BookDetail(_message.Message):
     created_at: str
     updated_at: str
     series: SeriesInfo
-    series_position: str
+    series_position: float
     sub_rating_stats: _containers.MessageMap[str, SubRatingStat]
     isbn: _containers.RepeatedScalarFieldContainer[str]
     publisher: str
     number_of_pages: int
     external_ids: _containers.ScalarMap[str, str]
     ol_rating_count: int
-    ol_avg_rating: str
+    ol_avg_rating: float
     ol_want_to_read_count: int
     ol_currently_reading_count: int
     ol_already_read_count: int
@@ -365,7 +365,7 @@ class BookDetail(_message.Message):
     work_id: str
     fallback_description: str
     fallback_language: str
-    def __init__(self, book_id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., description: _Optional[str] = ..., language: _Optional[str] = ..., original_publication_year: _Optional[int] = ..., formats: _Optional[_Iterable[str]] = ..., primary_cover_url: _Optional[str] = ..., rating_count: _Optional[int] = ..., avg_rating: _Optional[str] = ..., view_count: _Optional[int] = ..., last_viewed_at: _Optional[str] = ..., authors: _Optional[_Iterable[_Union[AuthorInfo, _Mapping]]] = ..., genres: _Optional[_Iterable[_Union[GenreInfo, _Mapping]]] = ..., open_library_id: _Optional[str] = ..., google_books_id: _Optional[str] = ..., created_at: _Optional[str] = ..., updated_at: _Optional[str] = ..., series: _Optional[_Union[SeriesInfo, _Mapping]] = ..., series_position: _Optional[str] = ..., sub_rating_stats: _Optional[_Mapping[str, SubRatingStat]] = ..., isbn: _Optional[_Iterable[str]] = ..., publisher: _Optional[str] = ..., number_of_pages: _Optional[int] = ..., external_ids: _Optional[_Mapping[str, str]] = ..., ol_rating_count: _Optional[int] = ..., ol_avg_rating: _Optional[str] = ..., ol_want_to_read_count: _Optional[int] = ..., ol_currently_reading_count: _Optional[int] = ..., ol_already_read_count: _Optional[int] = ..., first_sentence: _Optional[str] = ..., app_want_to_read_count: _Optional[int] = ..., app_reading_count: _Optional[int] = ..., app_read_count: _Optional[int] = ..., rating_distribution: _Optional[_Mapping[str, int]] = ..., work_id: _Optional[str] = ..., fallback_description: _Optional[str] = ..., fallback_language: _Optional[str] = ...) -> None: ...
+    def __init__(self, book_id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., description: _Optional[str] = ..., language: _Optional[str] = ..., original_publication_year: _Optional[int] = ..., formats: _Optional[_Iterable[str]] = ..., primary_cover_url: _Optional[str] = ..., rating_count: _Optional[int] = ..., avg_rating: _Optional[float] = ..., view_count: _Optional[int] = ..., last_viewed_at: _Optional[str] = ..., authors: _Optional[_Iterable[_Union[AuthorInfo, _Mapping]]] = ..., genres: _Optional[_Iterable[_Union[GenreInfo, _Mapping]]] = ..., open_library_id: _Optional[str] = ..., google_books_id: _Optional[str] = ..., created_at: _Optional[str] = ..., updated_at: _Optional[str] = ..., series: _Optional[_Union[SeriesInfo, _Mapping]] = ..., series_position: _Optional[float] = ..., sub_rating_stats: _Optional[_Mapping[str, SubRatingStat]] = ..., isbn: _Optional[_Iterable[str]] = ..., publisher: _Optional[str] = ..., number_of_pages: _Optional[int] = ..., external_ids: _Optional[_Mapping[str, str]] = ..., ol_rating_count: _Optional[int] = ..., ol_avg_rating: _Optional[float] = ..., ol_want_to_read_count: _Optional[int] = ..., ol_currently_reading_count: _Optional[int] = ..., ol_already_read_count: _Optional[int] = ..., first_sentence: _Optional[str] = ..., app_want_to_read_count: _Optional[int] = ..., app_reading_count: _Optional[int] = ..., app_read_count: _Optional[int] = ..., rating_distribution: _Optional[_Mapping[str, int]] = ..., work_id: _Optional[str] = ..., fallback_description: _Optional[str] = ..., fallback_language: _Optional[str] = ...) -> None: ...
 
 class AuthorInfo(_message.Message):
     __slots__ = ("author_id", "name", "slug", "photo_url")
@@ -498,13 +498,13 @@ class AuthorDetail(_message.Message):
     birth_place: str
     nationality: str
     book_categories: _containers.RepeatedScalarFieldContainer[str]
-    books_avg_rating: str
+    books_avg_rating: float
     books_total_ratings: int
     wikidata_id: str
     wikipedia_url: str
     remote_ids: _containers.ScalarMap[str, str]
     alternate_names: _containers.RepeatedScalarFieldContainer[str]
-    books_ol_avg_rating: str
+    books_ol_avg_rating: float
     books_ol_total_ratings: int
     app_want_to_read_count: int
     app_reading_count: int
@@ -514,7 +514,7 @@ class AuthorDetail(_message.Message):
     ol_already_read_count: int
     fallback_bio: str
     fallback_language: str
-    def __init__(self, author_id: _Optional[int] = ..., name: _Optional[str] = ..., slug: _Optional[str] = ..., bio: _Optional[str] = ..., birth_date: _Optional[str] = ..., death_date: _Optional[str] = ..., photo_url: _Optional[str] = ..., view_count: _Optional[int] = ..., last_viewed_at: _Optional[str] = ..., books_count: _Optional[int] = ..., open_library_id: _Optional[str] = ..., created_at: _Optional[str] = ..., updated_at: _Optional[str] = ..., birth_place: _Optional[str] = ..., nationality: _Optional[str] = ..., book_categories: _Optional[_Iterable[str]] = ..., books_avg_rating: _Optional[str] = ..., books_total_ratings: _Optional[int] = ..., wikidata_id: _Optional[str] = ..., wikipedia_url: _Optional[str] = ..., remote_ids: _Optional[_Mapping[str, str]] = ..., alternate_names: _Optional[_Iterable[str]] = ..., books_ol_avg_rating: _Optional[str] = ..., books_ol_total_ratings: _Optional[int] = ..., app_want_to_read_count: _Optional[int] = ..., app_reading_count: _Optional[int] = ..., app_read_count: _Optional[int] = ..., ol_want_to_read_count: _Optional[int] = ..., ol_currently_reading_count: _Optional[int] = ..., ol_already_read_count: _Optional[int] = ..., fallback_bio: _Optional[str] = ..., fallback_language: _Optional[str] = ...) -> None: ...
+    def __init__(self, author_id: _Optional[int] = ..., name: _Optional[str] = ..., slug: _Optional[str] = ..., bio: _Optional[str] = ..., birth_date: _Optional[str] = ..., death_date: _Optional[str] = ..., photo_url: _Optional[str] = ..., view_count: _Optional[int] = ..., last_viewed_at: _Optional[str] = ..., books_count: _Optional[int] = ..., open_library_id: _Optional[str] = ..., created_at: _Optional[str] = ..., updated_at: _Optional[str] = ..., birth_place: _Optional[str] = ..., nationality: _Optional[str] = ..., book_categories: _Optional[_Iterable[str]] = ..., books_avg_rating: _Optional[float] = ..., books_total_ratings: _Optional[int] = ..., wikidata_id: _Optional[str] = ..., wikipedia_url: _Optional[str] = ..., remote_ids: _Optional[_Mapping[str, str]] = ..., alternate_names: _Optional[_Iterable[str]] = ..., books_ol_avg_rating: _Optional[float] = ..., books_ol_total_ratings: _Optional[int] = ..., app_want_to_read_count: _Optional[int] = ..., app_reading_count: _Optional[int] = ..., app_read_count: _Optional[int] = ..., ol_want_to_read_count: _Optional[int] = ..., ol_currently_reading_count: _Optional[int] = ..., ol_already_read_count: _Optional[int] = ..., fallback_bio: _Optional[str] = ..., fallback_language: _Optional[str] = ...) -> None: ...
 
 class AuthorDetailResponse(_message.Message):
     __slots__ = ("author",)
@@ -573,16 +573,16 @@ class BookSummary(_message.Message):
     primary_cover_url: str
     authors: _containers.RepeatedCompositeFieldContainer[AuthorInfo]
     rating_count: int
-    avg_rating: str
+    avg_rating: float
     ol_rating_count: int
-    ol_avg_rating: str
+    ol_avg_rating: float
     ol_want_to_read_count: int
     ol_currently_reading_count: int
     ol_already_read_count: int
     app_want_to_read_count: int
     app_reading_count: int
     app_read_count: int
-    series_position: str
+    series_position: float
     rarity: str
     language: str
     work_id: str
@@ -590,7 +590,7 @@ class BookSummary(_message.Message):
     series: SeriesInfo
     number_of_pages: int
     available_in_language: bool
-    def __init__(self, book_id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., description: _Optional[str] = ..., original_publication_year: _Optional[int] = ..., primary_cover_url: _Optional[str] = ..., authors: _Optional[_Iterable[_Union[AuthorInfo, _Mapping]]] = ..., rating_count: _Optional[int] = ..., avg_rating: _Optional[str] = ..., ol_rating_count: _Optional[int] = ..., ol_avg_rating: _Optional[str] = ..., ol_want_to_read_count: _Optional[int] = ..., ol_currently_reading_count: _Optional[int] = ..., ol_already_read_count: _Optional[int] = ..., app_want_to_read_count: _Optional[int] = ..., app_reading_count: _Optional[int] = ..., app_read_count: _Optional[int] = ..., series_position: _Optional[str] = ..., rarity: _Optional[str] = ..., language: _Optional[str] = ..., work_id: _Optional[str] = ..., first_sentence: _Optional[str] = ..., series: _Optional[_Union[SeriesInfo, _Mapping]] = ..., number_of_pages: _Optional[int] = ..., available_in_language: bool = ...) -> None: ...
+    def __init__(self, book_id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., description: _Optional[str] = ..., original_publication_year: _Optional[int] = ..., primary_cover_url: _Optional[str] = ..., authors: _Optional[_Iterable[_Union[AuthorInfo, _Mapping]]] = ..., rating_count: _Optional[int] = ..., avg_rating: _Optional[float] = ..., ol_rating_count: _Optional[int] = ..., ol_avg_rating: _Optional[float] = ..., ol_want_to_read_count: _Optional[int] = ..., ol_currently_reading_count: _Optional[int] = ..., ol_already_read_count: _Optional[int] = ..., app_want_to_read_count: _Optional[int] = ..., app_reading_count: _Optional[int] = ..., app_read_count: _Optional[int] = ..., series_position: _Optional[float] = ..., rarity: _Optional[str] = ..., language: _Optional[str] = ..., work_id: _Optional[str] = ..., first_sentence: _Optional[str] = ..., series: _Optional[_Union[SeriesInfo, _Mapping]] = ..., number_of_pages: _Optional[int] = ..., available_in_language: bool = ...) -> None: ...
 
 class GenreCount(_message.Message):
     __slots__ = ("name", "slug", "count")
@@ -661,7 +661,7 @@ class GetSeriesRequest(_message.Message):
     def __init__(self, slug: _Optional[str] = ..., language: _Optional[str] = ...) -> None: ...
 
 class SeriesDetail(_message.Message):
-    __slots__ = ("series_id", "name", "slug", "description", "total_books", "view_count", "last_viewed_at", "created_at", "updated_at", "avg_rating", "rating_count", "ol_avg_rating", "ol_rating_count", "app_want_to_read_count", "app_reading_count", "app_read_count", "ol_want_to_read_count", "ol_currently_reading_count", "ol_already_read_count", "total_pages", "primary_author", "genres", "fallback_description", "fallback_language")
+    __slots__ = ("series_id", "name", "slug", "description", "total_books", "view_count", "last_viewed_at", "created_at", "updated_at", "avg_rating", "rating_count", "ol_avg_rating", "ol_rating_count", "app_want_to_read_count", "app_reading_count", "app_read_count", "ol_want_to_read_count", "ol_currently_reading_count", "ol_already_read_count", "total_pages", "author", "genres", "fallback_description", "fallback_language")
     SERIES_ID_FIELD_NUMBER: _ClassVar[int]
     NAME_FIELD_NUMBER: _ClassVar[int]
     SLUG_FIELD_NUMBER: _ClassVar[int]
@@ -682,7 +682,7 @@ class SeriesDetail(_message.Message):
     OL_CURRENTLY_READING_COUNT_FIELD_NUMBER: _ClassVar[int]
     OL_ALREADY_READ_COUNT_FIELD_NUMBER: _ClassVar[int]
     TOTAL_PAGES_FIELD_NUMBER: _ClassVar[int]
-    PRIMARY_AUTHOR_FIELD_NUMBER: _ClassVar[int]
+    AUTHOR_FIELD_NUMBER: _ClassVar[int]
     GENRES_FIELD_NUMBER: _ClassVar[int]
     FALLBACK_DESCRIPTION_FIELD_NUMBER: _ClassVar[int]
     FALLBACK_LANGUAGE_FIELD_NUMBER: _ClassVar[int]
@@ -695,9 +695,9 @@ class SeriesDetail(_message.Message):
     last_viewed_at: str
     created_at: str
     updated_at: str
-    avg_rating: str
+    avg_rating: float
     rating_count: int
-    ol_avg_rating: str
+    ol_avg_rating: float
     ol_rating_count: int
     app_want_to_read_count: int
     app_reading_count: int
@@ -706,11 +706,11 @@ class SeriesDetail(_message.Message):
     ol_currently_reading_count: int
     ol_already_read_count: int
     total_pages: int
-    primary_author: AuthorInfo
+    author: AuthorInfo
     genres: _containers.RepeatedCompositeFieldContainer[GenreCount]
     fallback_description: str
     fallback_language: str
-    def __init__(self, series_id: _Optional[int] = ..., name: _Optional[str] = ..., slug: _Optional[str] = ..., description: _Optional[str] = ..., total_books: _Optional[int] = ..., view_count: _Optional[int] = ..., last_viewed_at: _Optional[str] = ..., created_at: _Optional[str] = ..., updated_at: _Optional[str] = ..., avg_rating: _Optional[str] = ..., rating_count: _Optional[int] = ..., ol_avg_rating: _Optional[str] = ..., ol_rating_count: _Optional[int] = ..., app_want_to_read_count: _Optional[int] = ..., app_reading_count: _Optional[int] = ..., app_read_count: _Optional[int] = ..., ol_want_to_read_count: _Optional[int] = ..., ol_currently_reading_count: _Optional[int] = ..., ol_already_read_count: _Optional[int] = ..., total_pages: _Optional[int] = ..., primary_author: _Optional[_Union[AuthorInfo, _Mapping]] = ..., genres: _Optional[_Iterable[_Union[GenreCount, _Mapping]]] = ..., fallback_description: _Optional[str] = ..., fallback_language: _Optional[str] = ...) -> None: ...
+    def __init__(self, series_id: _Optional[int] = ..., name: _Optional[str] = ..., slug: _Optional[str] = ..., description: _Optional[str] = ..., total_books: _Optional[int] = ..., view_count: _Optional[int] = ..., last_viewed_at: _Optional[str] = ..., created_at: _Optional[str] = ..., updated_at: _Optional[str] = ..., avg_rating: _Optional[float] = ..., rating_count: _Optional[int] = ..., ol_avg_rating: _Optional[float] = ..., ol_rating_count: _Optional[int] = ..., app_want_to_read_count: _Optional[int] = ..., app_reading_count: _Optional[int] = ..., app_read_count: _Optional[int] = ..., ol_want_to_read_count: _Optional[int] = ..., ol_currently_reading_count: _Optional[int] = ..., ol_already_read_count: _Optional[int] = ..., total_pages: _Optional[int] = ..., author: _Optional[_Union[AuthorInfo, _Mapping]] = ..., genres: _Optional[_Iterable[_Union[GenreCount, _Mapping]]] = ..., fallback_description: _Optional[str] = ..., fallback_language: _Optional[str] = ...) -> None: ...
 
 class SeriesDetailResponse(_message.Message):
     __slots__ = ("series",)

@@ -3,9 +3,9 @@ import logging
 import app.grpc_clients
 import app.models.books_responses
 import app.utils.language
+import app.utils.proto
 import app.utils.responses
 import fastapi
-import google.protobuf.json_format
 import grpc
 
 router = fastapi.APIRouter(prefix="/api/v1/categories", tags=["Categories"])
@@ -29,8 +29,8 @@ async def get_popular_categories(
     try:
         response = await app.grpc_clients.books_client.get_popular_categories(limit=limit)
         categories = [
-            {"slug": c.slug, "name": c.name, "book_count": c.book_count}
-            for c in response.categories
+            app.utils.proto.message_to_dict(category)
+            for category in response.categories
         ]
         return app.utils.responses.success_response(
             {"categories": categories},
@@ -59,8 +59,15 @@ async def get_popular_categories(
 async def list_categories():
     try:
         response = await app.grpc_clients.books_client.list_categories()
-        response_dict = google.protobuf.json_format.MessageToDict(response, preserving_proto_field_name=True)
-        return {"success": True, "data": {"categories": response_dict.get("categories", [])}}
+        return {
+            "success": True,
+            "data": {
+                "categories": [
+                    app.utils.proto.message_to_dict(category)
+                    for category in response.categories
+                ]
+            },
+        }
     except grpc.RpcError:
         raise
     except Exception as e:
@@ -85,8 +92,10 @@ async def get_category(
 ):
     try:
         response = await app.grpc_clients.books_client.get_category(category_slug)
-        response_dict = google.protobuf.json_format.MessageToDict(response, preserving_proto_field_name=True)
-        return {"success": True, "data": response_dict.get("category", {})}
+        return {
+            "success": True,
+            "data": app.utils.proto.message_to_dict(response.category),
+        }
     except grpc.RpcError:
         raise
     except Exception as e:
@@ -140,12 +149,13 @@ async def get_category_books(
             order=order,
         )
 
-        response_dict = google.protobuf.json_format.MessageToDict(response, preserving_proto_field_name=True)
         return {
             "success": True,
             "data": {
-                "books": response_dict.get("books", []),
-                "total_count": response_dict.get("total_count", 0),
+                "books": [
+                    app.utils.proto.message_to_dict(book) for book in response.books
+                ],
+                "total_count": response.total_count,
             },
         }
     except grpc.RpcError:
