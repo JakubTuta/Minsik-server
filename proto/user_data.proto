@@ -66,8 +66,8 @@ message Bookshelf {
   string updated_at = 10;
   repeated string book_author_names = 11;
   repeated string book_author_slugs = 12;
-  string book_series_name = 13;
-  string book_series_slug = 14;
+  optional string book_series_name = 13;
+  optional string book_series_slug = 14;
 }
 message BookshelfResponse       { Bookshelf bookshelf = 1; }
 message BookshelvesListResponse { repeated Bookshelf bookshelves = 1; int32 total_count = 2; }
@@ -117,31 +117,26 @@ message Rating {
   string book_title = 5;
   string book_cover_url = 6;
   float overall_rating = 7;
-  string review_text = 8;
-  float pacing = 9;
-  bool has_pacing = 10;
-  float emotional_impact = 11;
-  bool has_emotional_impact = 12;
-  float intellectual_depth = 13;
-  bool has_intellectual_depth = 14;
-  float writing_quality = 15;
-  bool has_writing_quality = 16;
-  float rereadability = 17;
-  bool has_rereadability = 18;
-  float readability = 21;
-  bool has_readability = 22;
-  float plot_complexity = 23;
-  bool has_plot_complexity = 24;
-  float humor = 25;
-  bool has_humor = 26;
+  optional string review_text = 8;
+  optional float pacing = 9;
+  optional float emotional_impact = 11;
+  optional float intellectual_depth = 13;
+  optional float writing_quality = 15;
+  optional float rereadability = 17;
+  optional float readability = 21;
+  optional float plot_complexity = 23;
+  optional float humor = 25;
   string created_at = 19;
   string updated_at = 20;
   repeated string book_author_names = 27;
   repeated string book_author_slugs = 28;
-  string book_series_name = 29;
-  string book_series_slug = 30;
+  optional string book_series_name = 29;
+  optional string book_series_slug = 30;
   double book_avg_rating = 31;
   int32 book_rating_count = 32;
+
+  reserved 10, 12, 14, 16, 18, 22, 24, 26;
+  reserved "has_pacing", "has_emotional_impact", "has_intellectual_depth", "has_writing_quality", "has_rereadability", "has_readability", "has_plot_complexity", "has_humor";
 }
 message RatingResponse      { Rating rating = 1; }
 message RatingsListResponse { repeated Rating ratings = 1; int32 total_count = 2; }
@@ -176,10 +171,10 @@ message Comment {
   string username = 9;
   repeated string book_author_names = 10;
   repeated string book_author_slugs = 11;
-  string book_series_name = 12;
-  string book_series_slug = 13;
-  string book_cover_url = 14;
-  string book_title = 15;
+  optional string book_series_name = 12;
+  optional string book_series_slug = 13;
+  optional string book_cover_url = 14;
+  optional string book_title = 15;
 }
 message CommentResponse      { Comment comment = 1; }
 message CommentsListResponse { repeated Comment comments = 1; int32 total_count = 2; }
@@ -198,6 +193,19 @@ message GetBookCommentsRequest {
   string language               = 9;
 }
 
+message BookCommentRating {
+  float  overall_rating      = 1;
+  optional string review_text = 2;
+  optional float pacing             = 3;
+  optional float emotional_impact   = 4;
+  optional float intellectual_depth = 5;
+  optional float writing_quality    = 6;
+  optional float rereadability      = 7;
+  optional float readability        = 8;
+  optional float plot_complexity    = 9;
+  optional float humor              = 10;
+}
+
 message BookCommentWithRating {
   int64  comment_id             = 1;
   int64  user_id                = 2;
@@ -207,26 +215,16 @@ message BookCommentWithRating {
   bool   is_spoiler             = 6;
   string comment_created_at     = 7;
   string comment_updated_at     = 8;
-  bool   has_rating             = 9;
-  float  overall_rating         = 10;
-  string review_text            = 11;
-  float  pacing                 = 12;
-  bool   has_pacing             = 13;
-  float  emotional_impact       = 14;
-  bool   has_emotional_impact   = 15;
-  float  intellectual_depth     = 16;
-  bool   has_intellectual_depth = 17;
-  float  writing_quality        = 18;
-  bool   has_writing_quality    = 19;
-  float  rereadability          = 20;
-  bool   has_rereadability      = 21;
-  float  readability            = 22;
-  bool   has_readability        = 23;
-  float  plot_complexity        = 24;
-  bool   has_plot_complexity    = 25;
-  float  humor                  = 26;
-  bool   has_humor              = 27;
+  // Unset when the comment's author has not rated the book.
+  BookCommentRating rating      = 9;
   string username               = 28;
+
+  reserved 10 to 27;
+  reserved "has_rating", "overall_rating", "review_text", "pacing", "has_pacing",
+           "emotional_impact", "has_emotional_impact", "intellectual_depth", "has_intellectual_depth",
+           "writing_quality", "has_writing_quality", "rereadability", "has_rereadability",
+           "readability", "has_readability", "plot_complexity", "has_plot_complexity",
+           "humor", "has_humor";
 }
 
 message BookCommentsResponse {
@@ -266,7 +264,9 @@ message ProfileStats {
   string comments_updated_at         = 13;
   string ratings_updated_at          = 14;
   double average_rating              = 15;
-  string rating_distribution_json    = 16;
+  reserved 16;
+  reserved "rating_distribution_json";
+  map<string, int32> rating_distribution = 19;
   int32 pages_read_total             = 17;
   int32 reviews_count                = 18;
 }
@@ -306,7 +306,8 @@ message ProfileOverviewResponse {
   repeated TopGenre       top_genres            = 3;
   repeated FavouriteAuthor favourite_authors    = 4;
   repeated OverviewBook   favourites_this_year  = 5;
-  bool                    reading_now_present   = 6;
+  reserved 6;
+  reserved "reading_now_present";
 }
 
 // Year in review
@@ -326,8 +327,9 @@ message YearBook {
   repeated string author_slugs = 5;
   int32  number_of_pages    = 6;
   string finished_at        = 7;
-  float  my_rating          = 8;
-  bool   has_my_rating      = 9;
+  optional float my_rating  = 8;
+  reserved 9;
+  reserved "has_my_rating";
 }
 message YearInReview {
   int32 year                          = 1;
@@ -341,17 +343,15 @@ message YearInReview {
   int32 comments_written              = 9;
   int32 favourites_added              = 10;
   double average_rating_given         = 11;
-  string rating_distribution_json     = 12;
+  reserved 12, 16, 18, 20, 22;
+  reserved "rating_distribution_json", "has_longest_book", "has_shortest_book", "has_first_finished", "has_highest_rated";
+  map<string, int32> rating_distribution = 30;
   repeated TopGenre top_genres        = 13;
   repeated FavouriteAuthor top_authors = 14;
   YearBook longest_book               = 15;
-  bool has_longest_book               = 16;
   YearBook shortest_book              = 17;
-  bool has_shortest_book              = 18;
   YearBook first_finished             = 19;
-  bool has_first_finished             = 20;
   YearBook highest_rated              = 21;
-  bool has_highest_rated              = 22;
   double average_pages_per_book       = 23;
   int32 busiest_month                 = 24;
   int32 busiest_month_count           = 25;

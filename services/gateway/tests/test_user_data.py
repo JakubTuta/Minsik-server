@@ -4,6 +4,7 @@ from unittest.mock import AsyncMock
 
 import app.config
 import app.grpc_clients
+import app.proto.user_data_pb2 as user_data_pb2
 import app.routes.user_data
 import grpc
 import jwt
@@ -65,93 +66,69 @@ def mock_user_data_client(mocker):
     return mock_client
 
 
-def _bookshelf(mocker):
-    b = mocker.MagicMock()
-    b.bookshelf_id = 1
-    b.user_id = 1
-    b.book_id = 100
-    b.book_slug = "the-hobbit"
-    b.book_title = "The Hobbit"
-    b.book_cover_url = ""
-    b.status = "reading"
-    b.is_favorite = False
-    b.created_at = "2026-01-01T00:00:00"
-    b.updated_at = "2026-01-01T00:00:00"
-    b.book_author_names = []
-    b.book_author_slugs = []
-    b.book_series_name = ""
-    b.book_series_slug = ""
-    return b
+def _bookshelf():
+    return user_data_pb2.Bookshelf(
+        bookshelf_id=1,
+        user_id=1,
+        book_id=100,
+        book_slug="the-hobbit",
+        book_title="The Hobbit",
+        status="reading",
+        created_at="2026-01-01T00:00:00",
+        updated_at="2026-01-01T00:00:00",
+    )
 
 
-def _rating(mocker):
-    r = mocker.MagicMock()
-    r.rating_id = 1
-    r.user_id = 1
-    r.book_id = 100
-    r.book_slug = "the-hobbit"
-    r.book_title = "The Hobbit"
-    r.book_cover_url = ""
-    r.overall_rating = 4.5
-    r.review_text = "Great book"
-    r.pacing = 0.0
-    r.has_pacing = False
-    r.emotional_impact = 0.0
-    r.has_emotional_impact = False
-    r.intellectual_depth = 0.0
-    r.has_intellectual_depth = False
-    r.writing_quality = 0.0
-    r.has_writing_quality = False
-    r.rereadability = 0.0
-    r.has_rereadability = False
-    r.readability = 0.0
-    r.has_readability = False
-    r.plot_complexity = 0.0
-    r.has_plot_complexity = False
-    r.humor = 0.0
-    r.has_humor = False
-    r.created_at = "2026-01-01T00:00:00"
-    r.updated_at = "2026-01-01T00:00:00"
-    r.book_author_names = []
-    r.book_author_slugs = []
-    r.book_series_name = ""
-    r.book_series_slug = ""
-    r.book_avg_rating = 4.2
-    r.book_rating_count = 100
-    return r
+def _rating():
+    return user_data_pb2.Rating(
+        rating_id=1,
+        user_id=1,
+        book_id=100,
+        book_slug="the-hobbit",
+        book_title="The Hobbit",
+        overall_rating=4.5,
+        review_text="Great book",
+        created_at="2026-01-01T00:00:00",
+        updated_at="2026-01-01T00:00:00",
+        book_avg_rating=4.2,
+        book_rating_count=100,
+    )
 
 
-def _comment(mocker):
-    c = mocker.MagicMock()
-    c.comment_id = 1
-    c.user_id = 1
-    c.username = "testuser"
-    c.book_id = 100
-    c.book_slug = "the-hobbit"
-    c.body = "Loved it!"
-    c.is_spoiler = False
-    c.created_at = "2026-01-01T00:00:00"
-    c.updated_at = "2026-01-01T00:00:00"
-    c.book_title = "The Hobbit"
-    c.book_cover_url = ""
-    c.book_author_names = []
-    c.book_author_slugs = []
-    c.book_series_name = ""
-    c.book_series_slug = ""
-    c.comment_created_at = "2026-01-01T00:00:00"
-    c.comment_updated_at = "2026-01-01T00:00:00"
-    c.has_rating = False
-    return c
+def _comment():
+    return user_data_pb2.Comment(
+        comment_id=1,
+        user_id=1,
+        username="testuser",
+        book_id=100,
+        book_slug="the-hobbit",
+        body="Loved it!",
+        created_at="2026-01-01T00:00:00",
+        updated_at="2026-01-01T00:00:00",
+        book_title="The Hobbit",
+    )
+
+
+def _comment_with_rating():
+    return user_data_pb2.BookCommentWithRating(
+        comment_id=1,
+        user_id=1,
+        username="testuser",
+        book_id=100,
+        book_slug="the-hobbit",
+        body="Loved it!",
+        comment_created_at="2026-01-01T00:00:00",
+        comment_updated_at="2026-01-01T00:00:00",
+    )
 
 
 class TestUserBookInfoEndpoint:
     def test_all_data_present(self, client, mock_user_data_client, mocker):
-        resp_obj = mocker.MagicMock()
-        resp_obj.HasField = lambda f: True
-        resp_obj.bookshelf = _bookshelf(mocker)
-        resp_obj.rating = _rating(mocker)
-        resp_obj.comment = _comment(mocker)
-        mock_user_data_client.get_user_book_info.return_value = resp_obj
+        mock_user_data_client.get_user_book_info.return_value = (
+            user_data_pb2.UserBookInfoResponse(
+                bookshelf=_bookshelf(), rating=_rating(), comment=_comment()
+            )
+        )
         resp = client.get("/api/v1/users/me/books/the-hobbit", headers=USER_HEADERS)
         assert resp.status_code == 200
         data = resp.json()["data"]
@@ -164,9 +141,9 @@ class TestUserBookInfoEndpoint:
         assert data["comment"]["username"] == "testuser"
 
     def test_all_data_absent(self, client, mock_user_data_client, mocker):
-        resp_obj = mocker.MagicMock()
-        resp_obj.HasField = lambda f: False
-        mock_user_data_client.get_user_book_info.return_value = resp_obj
+        mock_user_data_client.get_user_book_info.return_value = (
+            user_data_pb2.UserBookInfoResponse()
+        )
         resp = client.get("/api/v1/users/me/books/the-hobbit", headers=USER_HEADERS)
         assert resp.status_code == 200
         data = resp.json()["data"]
@@ -175,10 +152,9 @@ class TestUserBookInfoEndpoint:
         assert data["comment"] is None
 
     def test_partial_data(self, client, mock_user_data_client, mocker):
-        resp_obj = mocker.MagicMock()
-        resp_obj.HasField = lambda f: f == "bookshelf"
-        resp_obj.bookshelf = _bookshelf(mocker)
-        mock_user_data_client.get_user_book_info.return_value = resp_obj
+        mock_user_data_client.get_user_book_info.return_value = (
+            user_data_pb2.UserBookInfoResponse(bookshelf=_bookshelf())
+        )
         resp = client.get("/api/v1/users/me/books/the-hobbit", headers=USER_HEADERS)
         assert resp.status_code == 200
         data = resp.json()["data"]
@@ -199,9 +175,9 @@ class TestUserBookInfoEndpoint:
 
 class TestBookshelfEndpoints:
     def test_upsert_success(self, client, mock_user_data_client, mocker):
-        resp_obj = mocker.MagicMock()
-        resp_obj.bookshelf = _bookshelf(mocker)
-        mock_user_data_client.upsert_bookshelf.return_value = resp_obj
+        mock_user_data_client.upsert_bookshelf.return_value = (
+            user_data_pb2.BookshelfResponse(bookshelf=_bookshelf())
+        )
         resp = client.put(
             "/api/v1/users/me/bookshelves/the-hobbit",
             json={"status": "reading"},
@@ -237,10 +213,11 @@ class TestBookshelfEndpoints:
         assert resp.status_code == 404
 
     def test_get_bookshelves_success(self, client, mock_user_data_client, mocker):
-        resp_obj = mocker.MagicMock()
-        resp_obj.bookshelves = [_bookshelf(mocker)]
-        resp_obj.total_count = 1
-        mock_user_data_client.get_user_bookshelves.return_value = resp_obj
+        mock_user_data_client.get_user_bookshelves.return_value = (
+            user_data_pb2.BookshelvesListResponse(
+                bookshelves=[_bookshelf()], total_count=1
+            )
+        )
         resp = client.get("/api/v1/users/me/bookshelves", headers=USER_HEADERS)
         assert resp.status_code == 200
         assert resp.json()["data"]["total_count"] == 1
@@ -297,11 +274,11 @@ class TestBookshelfEndpoints:
 
 class TestFavouriteEndpoints:
     def test_add_favourite_success(self, client, mock_user_data_client, mocker):
-        r = mocker.MagicMock()
-        r.is_favorite = True
-        r.book_id = 100
-        r.book_slug = "the-hobbit"
-        mock_user_data_client.toggle_favourite.return_value = r
+        mock_user_data_client.toggle_favourite.return_value = (
+            user_data_pb2.FavouriteResponse(
+                is_favorite=True, book_id=100, book_slug="the-hobbit"
+            )
+        )
         resp = client.post("/api/v1/books/the-hobbit/favourite", headers=USER_HEADERS)
         assert resp.status_code == 200
         assert resp.json()["data"]["is_favorite"] is True
@@ -309,11 +286,11 @@ class TestFavouriteEndpoints:
         assert kwargs["is_favorite"] is True
 
     def test_remove_favourite_success(self, client, mock_user_data_client, mocker):
-        r = mocker.MagicMock()
-        r.is_favorite = False
-        r.book_id = 100
-        r.book_slug = "the-hobbit"
-        mock_user_data_client.toggle_favourite.return_value = r
+        mock_user_data_client.toggle_favourite.return_value = (
+            user_data_pb2.FavouriteResponse(
+                is_favorite=False, book_id=100, book_slug="the-hobbit"
+            )
+        )
         resp = client.delete("/api/v1/books/the-hobbit/favourite", headers=USER_HEADERS)
         assert resp.status_code == 200
         assert resp.json()["data"]["is_favorite"] is False
@@ -350,9 +327,9 @@ class TestFavouriteEndpoints:
 
 class TestRatingEndpoints:
     def test_upsert_success(self, client, mock_user_data_client, mocker):
-        resp_obj = mocker.MagicMock()
-        resp_obj.rating = _rating(mocker)
-        mock_user_data_client.upsert_rating.return_value = resp_obj
+        mock_user_data_client.upsert_rating.return_value = (
+            user_data_pb2.RatingResponse(rating=_rating())
+        )
         resp = client.post(
             "/api/v1/books/the-hobbit/rate",
             json={"overall_rating": 4.5, "review_text": "Great!"},
@@ -436,10 +413,9 @@ class TestRatingEndpoints:
         )
 
     def test_get_ratings_success(self, client, mock_user_data_client, mocker):
-        resp_obj = mocker.MagicMock()
-        resp_obj.ratings = [_rating(mocker)]
-        resp_obj.total_count = 1
-        mock_user_data_client.get_user_ratings.return_value = resp_obj
+        mock_user_data_client.get_user_ratings.return_value = (
+            user_data_pb2.RatingsListResponse(ratings=[_rating()], total_count=1)
+        )
         resp = client.get("/api/v1/users/me/ratings", headers=USER_HEADERS)
         assert resp.status_code == 200
         assert resp.json()["data"]["total_count"] == 1
@@ -450,11 +426,11 @@ class TestRatingEndpoints:
 
 class TestCommentEndpoints:
     def test_get_book_comments_is_public(self, client, mock_user_data_client, mocker):
-        resp_obj = mocker.MagicMock()
-        resp_obj.comments = [_comment(mocker)]
-        resp_obj.total_count = 1
-        resp_obj.HasField = lambda f: False
-        mock_user_data_client.get_book_comments.return_value = resp_obj
+        mock_user_data_client.get_book_comments.return_value = (
+            user_data_pb2.BookCommentsResponse(
+                comments=[_comment_with_rating()], total_count=1
+            )
+        )
         resp = client.get("/api/v1/books/the-hobbit/comments")
         assert resp.status_code == 200
         assert resp.json()["data"]["total_count"] == 1
@@ -462,11 +438,9 @@ class TestCommentEndpoints:
     def test_get_book_comments_no_auth_needed(
         self, client, mock_user_data_client, mocker
     ):
-        resp_obj = mocker.MagicMock()
-        resp_obj.comments = []
-        resp_obj.total_count = 0
-        resp_obj.HasField = lambda f: False
-        mock_user_data_client.get_book_comments.return_value = resp_obj
+        mock_user_data_client.get_book_comments.return_value = (
+            user_data_pb2.BookCommentsResponse()
+        )
         assert client.get("/api/v1/books/the-hobbit/comments").status_code == 200
 
     def test_get_book_comments_include_spoilers_forwarded(
@@ -482,9 +456,9 @@ class TestCommentEndpoints:
         assert kwargs["include_spoilers"] is True
 
     def test_create_comment_success(self, client, mock_user_data_client, mocker):
-        resp_obj = mocker.MagicMock()
-        resp_obj.comment = _comment(mocker)
-        mock_user_data_client.create_comment.return_value = resp_obj
+        mock_user_data_client.create_comment.return_value = (
+            user_data_pb2.CommentResponse(comment=_comment())
+        )
         resp = client.post(
             "/api/v1/books/the-hobbit/comments",
             json={"body": "Loved it!", "is_spoiler": False},
@@ -513,9 +487,9 @@ class TestCommentEndpoints:
         )
 
     def test_update_comment_success(self, client, mock_user_data_client, mocker):
-        resp_obj = mocker.MagicMock()
-        resp_obj.comment = _comment(mocker)
-        mock_user_data_client.update_comment.return_value = resp_obj
+        mock_user_data_client.update_comment.return_value = (
+            user_data_pb2.CommentResponse(comment=_comment())
+        )
         assert (
             client.put(
                 "/api/v1/books/the-hobbit/comments/1",
@@ -581,10 +555,11 @@ class TestPublicBookshelfEndpoints:
     def test_get_public_bookshelves_success(
         self, client, mock_user_data_client, mocker
     ):
-        resp_obj = mocker.MagicMock()
-        resp_obj.bookshelves = [_bookshelf(mocker)]
-        resp_obj.total_count = 1
-        mock_user_data_client.get_public_bookshelves.return_value = resp_obj
+        mock_user_data_client.get_public_bookshelves.return_value = (
+            user_data_pb2.BookshelvesListResponse(
+                bookshelves=[_bookshelf()], total_count=1
+            )
+        )
         resp = client.get("/api/v1/users/alice/bookshelves")
         assert resp.status_code == 200
         data = resp.json()["data"]
@@ -676,3 +651,113 @@ class TestPersonalRefreshAfterWrite:
         await run(7, "en")
 
         assert refresh.await_count == 2
+
+
+class TestUserDataMapping:
+    def test_unset_sub_ratings_and_series_are_null_and_set_ones_are_kept(
+        self, client, mock_user_data_client
+    ):
+        rating = _rating()
+        rating.pacing = 0.0
+        rating.book_series_name = "The Hobbit Series"
+        mock_user_data_client.upsert_rating.return_value = user_data_pb2.RatingResponse(
+            rating=rating
+        )
+
+        resp = client.post(
+            "/api/v1/books/the-hobbit/rate",
+            json={"overall_rating": 4.5},
+            headers=USER_HEADERS,
+        )
+
+        data = resp.json()["data"]["rating"]
+        assert data["pacing"] == 0.0
+        assert data["humor"] is None
+        assert data["book_series_name"] == "The Hobbit Series"
+        assert data["book_series_slug"] is None
+
+    def test_a_comment_without_a_rating_has_a_null_rating(
+        self, client, mock_user_data_client
+    ):
+        mock_user_data_client.get_book_comments.return_value = (
+            user_data_pb2.BookCommentsResponse(
+                comments=[_comment_with_rating()], total_count=1
+            )
+        )
+
+        resp = client.get("/api/v1/books/the-hobbit/comments")
+
+        data = resp.json()["data"]
+        assert data["items"][0]["rating"] is None
+        assert data["my_entry"] is None
+
+    def test_a_rated_comment_nests_its_scores(self, client, mock_user_data_client):
+        rated = _comment_with_rating()
+        rated.rating.overall_rating = 4.5
+        rated.rating.humor = 3.0
+        mock_user_data_client.get_book_comments.return_value = (
+            user_data_pb2.BookCommentsResponse(
+                comments=[rated], my_entry=rated, total_count=1
+            )
+        )
+
+        resp = client.get("/api/v1/books/the-hobbit/comments")
+
+        data = resp.json()["data"]
+        assert data["items"][0]["rating"]["overall_rating"] == 4.5
+        assert data["items"][0]["rating"]["humor"] == 3.0
+        assert data["items"][0]["rating"]["pacing"] is None
+        assert data["items"][0]["rating"]["review_text"] is None
+        assert data["my_entry"]["rating"]["humor"] == 3.0
+
+    def test_profile_stats_carry_the_rating_distribution_as_an_object(
+        self, client, mock_user_data_client, mocker
+    ):
+        mock_user_data_client.get_public_profile_stats = mocker.AsyncMock(
+            return_value=user_data_pb2.ProfileStatsResponse(
+                stats=user_data_pb2.ProfileStats(
+                    read_count=3, rating_distribution={"4.5": 2}, average_rating=4.5
+                )
+            )
+        )
+
+        resp = client.get("/api/v1/users/alice/stats")
+
+        stats = resp.json()["data"]["stats"]
+        assert stats["rating_distribution"] == {"4.5": 2}
+        assert stats["read_count"] == 3
+
+    def test_profile_overview_reading_now_is_null_until_set(
+        self, client, mock_user_data_client, mocker
+    ):
+        mock_user_data_client.get_profile_overview = mocker.AsyncMock(
+            return_value=user_data_pb2.ProfileOverviewResponse(
+                user=user_data_pb2.PublicUser(user_id=2**40, username="alice")
+            )
+        )
+
+        resp = client.get("/api/v1/users/alice/profile-overview")
+
+        data = resp.json()["data"]
+        assert data["reading_now"] is None
+        assert data["user"]["user_id"] == 2**40
+
+    def test_year_in_review_marks_absent_books_and_ratings_as_null(
+        self, client, mock_user_data_client, mocker
+    ):
+        review = user_data_pb2.YearInReview(year=2026)
+        review.longest_book.CopyFrom(
+            user_data_pb2.YearBook(book_slug="dune", number_of_pages=600)
+        )
+        review.rating_distribution["5.0"] = 1
+        mock_user_data_client.get_year_in_review = mocker.AsyncMock(
+            return_value=user_data_pb2.YearInReviewResponse(review=review)
+        )
+
+        resp = client.get("/api/v1/users/me/year-in-review", headers=USER_HEADERS)
+
+        data = resp.json()["data"]["review"]
+        assert data["shortest_book"] is None
+        assert data["longest_book"]["book_slug"] == "dune"
+        assert data["longest_book"]["my_rating"] is None
+        assert data["rating_distribution"] == {"5.0": 1}

@@ -1,5 +1,6 @@
 import asyncio
 import datetime
+import json
 import logging
 import time
 import typing
@@ -278,8 +279,7 @@ def _profile_overview_to_proto(
             avatar_url=u.get("avatar_url", ""),
             bio=u.get("bio", ""),
         ),
-        reading_now=_make_book(reading_now_data),
-        reading_now_present=reading_now_data is not None,
+        reading_now=_make_book(reading_now_data) if reading_now_data is not None else None,
         top_genres=[
             app.proto.user_data_pb2.TopGenre(
                 name=g["name"], slug=g["slug"], count=g["count"], percent=g["percent"]
@@ -294,6 +294,13 @@ def _profile_overview_to_proto(
         ],
         favourites_this_year=[_make_book(b) for b in data.get("favourites_this_year", [])],
     )
+
+
+def _rating_distribution(raw: typing.Optional[str]) -> typing.Dict[str, int]:
+    try:
+        return json.loads(raw) if raw else {}
+    except (ValueError, TypeError):
+        return {}
 
 
 def _profile_stats_to_proto(data: typing.Dict[str, typing.Any]) -> app.proto.user_data_pb2.ProfileStats:
@@ -313,7 +320,7 @@ def _profile_stats_to_proto(data: typing.Dict[str, typing.Any]) -> app.proto.use
         comments_updated_at=data.get("comments_updated_at", ""),
         ratings_updated_at=data.get("ratings_updated_at", ""),
         average_rating=float(data.get("average_rating", 0.0)),
-        rating_distribution_json=data.get("rating_distribution_json", "{}"),
+        rating_distribution=_rating_distribution(data.get("rating_distribution_json")),
         pages_read_total=data.get("pages_read_total", 0),
         reviews_count=data.get("reviews_count", 0),
     )
@@ -333,8 +340,7 @@ def _year_in_review_to_proto(
             author_slugs=d.get("author_slugs", []),
             number_of_pages=d.get("number_of_pages", 0),
             finished_at=d.get("finished_at", ""),
-            my_rating=d.get("my_rating") or 0.0,
-            has_my_rating=d.get("my_rating") is not None,
+            my_rating=d.get("my_rating"),
         )
 
     longest_book = data.get("longest_book")
@@ -363,7 +369,7 @@ def _year_in_review_to_proto(
         comments_written=data.get("comments_written", 0),
         favourites_added=data.get("favourites_added", 0),
         average_rating_given=data.get("average_rating_given", 0.0),
-        rating_distribution_json=data.get("rating_distribution_json", "{}"),
+        rating_distribution=_rating_distribution(data.get("rating_distribution_json")),
         top_genres=[
             app.proto.user_data_pb2.TopGenre(
                 name=g["name"], slug=g["slug"], count=g["count"], percent=g["percent"]
@@ -376,14 +382,10 @@ def _year_in_review_to_proto(
             )
             for a in data.get("top_authors", [])
         ],
-        longest_book=_make_year_book(longest_book),
-        has_longest_book=longest_book is not None,
-        shortest_book=_make_year_book(shortest_book),
-        has_shortest_book=shortest_book is not None,
-        first_finished=_make_year_book(first_finished),
-        has_first_finished=first_finished is not None,
-        highest_rated=_make_year_book(highest_rated),
-        has_highest_rated=highest_rated is not None,
+        longest_book=_make_year_book(longest_book) if longest_book is not None else None,
+        shortest_book=_make_year_book(shortest_book) if shortest_book is not None else None,
+        first_finished=_make_year_book(first_finished) if first_finished is not None else None,
+        highest_rated=_make_year_book(highest_rated) if highest_rated is not None else None,
         average_pages_per_book=data.get("average_pages_per_book", 0.0),
         busiest_month=data.get("busiest_month", 0),
         busiest_month_count=data.get("busiest_month_count", 0),
@@ -421,8 +423,24 @@ def _bookshelf_to_proto(
         updated_at=bookshelf.updated_at.isoformat() if bookshelf.updated_at else "",
         book_author_names=author_names,
         book_author_slugs=author_slugs,
-        book_series_name=series_name,
-        book_series_slug=series_slug,
+        book_series_name=series_name or None,
+        book_series_slug=series_slug or None,
+    )
+
+
+_BOOKSHELF_NULLABLE = ("book_series_name", "book_series_slug")
+_COMMENT_NULLABLE = ("book_title", "book_cover_url", "book_series_name", "book_series_slug")
+
+
+def _bookshelf_from_entry(entry: typing.Dict[str, typing.Any]) -> app.proto.user_data_pb2.Bookshelf:
+    return app.proto.user_data_pb2.Bookshelf(
+        **{k: (v or None) if k in _BOOKSHELF_NULLABLE else v for k, v in entry.items()}
+    )
+
+
+def _comment_from_entry(entry: typing.Dict[str, typing.Any]) -> app.proto.user_data_pb2.Comment:
+    return app.proto.user_data_pb2.Comment(
+        **{k: (v or None) if k in _COMMENT_NULLABLE else v for k, v in entry.items()}
     )
 
 
@@ -475,45 +493,21 @@ def _rating_to_proto(
         book_title=book_title,
         book_cover_url=book_cover_url,
         overall_rating=float(rating.overall_rating),
-        review_text=rating.review_text or "",
-        pacing=float(rating.pacing) if rating.pacing is not None else 0.0,
-        has_pacing=rating.pacing is not None,
-        emotional_impact=(
-            float(rating.emotional_impact)
-            if rating.emotional_impact is not None
-            else 0.0
-        ),
-        has_emotional_impact=rating.emotional_impact is not None,
-        intellectual_depth=(
-            float(rating.intellectual_depth)
-            if rating.intellectual_depth is not None
-            else 0.0
-        ),
-        has_intellectual_depth=rating.intellectual_depth is not None,
-        writing_quality=(
-            float(rating.writing_quality) if rating.writing_quality is not None else 0.0
-        ),
-        has_writing_quality=rating.writing_quality is not None,
-        rereadability=(
-            float(rating.rereadability) if rating.rereadability is not None else 0.0
-        ),
-        has_rereadability=rating.rereadability is not None,
-        readability=(
-            float(rating.readability) if rating.readability is not None else 0.0
-        ),
-        has_readability=rating.readability is not None,
-        plot_complexity=(
-            float(rating.plot_complexity) if rating.plot_complexity is not None else 0.0
-        ),
-        has_plot_complexity=rating.plot_complexity is not None,
-        humor=float(rating.humor) if rating.humor is not None else 0.0,
-        has_humor=rating.humor is not None,
+        review_text=rating.review_text or None,
+        pacing=_optional_float(rating.pacing),
+        emotional_impact=_optional_float(rating.emotional_impact),
+        intellectual_depth=_optional_float(rating.intellectual_depth),
+        writing_quality=_optional_float(rating.writing_quality),
+        rereadability=_optional_float(rating.rereadability),
+        readability=_optional_float(rating.readability),
+        plot_complexity=_optional_float(rating.plot_complexity),
+        humor=_optional_float(rating.humor),
         created_at=rating.created_at.isoformat() if rating.created_at else "",
         updated_at=rating.updated_at.isoformat() if rating.updated_at else "",
         book_author_names=author_names,
         book_author_slugs=author_slugs,
-        book_series_name=series_name,
-        book_series_slug=series_slug,
+        book_series_name=series_name or None,
+        book_series_slug=series_slug or None,
         book_avg_rating=book_avg_rating,
         book_rating_count=book_rating_count,
     )
@@ -539,7 +533,7 @@ def _comment_to_proto(
         user_id=comment.user_id,
         book_id=comment.book_id,
         book_slug=book_slug,
-        book_title=book_title,
+        book_title=book_title or None,
         body=comment.body,
         is_spoiler=comment.is_spoiler,
         created_at=comment.created_at.isoformat() if comment.created_at else "",
@@ -547,16 +541,29 @@ def _comment_to_proto(
         username=username,
         book_author_names=author_names,
         book_author_slugs=author_slugs,
-        book_series_name=series_name,
-        book_series_slug=series_slug,
-        book_cover_url=cover_url,
+        book_series_name=series_name or None,
+        book_series_slug=series_slug or None,
+        book_cover_url=cover_url or None,
     )
 
 
 def _row_to_comment_with_rating(
     row, book_slug: str
 ) -> app.proto.user_data_pb2.BookCommentWithRating:
-    has_rating = row.overall_rating is not None
+    rating = None
+    if row.overall_rating is not None:
+        rating = app.proto.user_data_pb2.BookCommentRating(
+            overall_rating=float(row.overall_rating),
+            review_text=row.review_text or None,
+            pacing=_optional_float(row.pacing),
+            emotional_impact=_optional_float(row.emotional_impact),
+            intellectual_depth=_optional_float(row.intellectual_depth),
+            writing_quality=_optional_float(row.writing_quality),
+            rereadability=_optional_float(row.rereadability),
+            readability=_optional_float(row.readability),
+            plot_complexity=_optional_float(row.plot_complexity),
+            humor=_optional_float(row.humor),
+        )
     return app.proto.user_data_pb2.BookCommentWithRating(
         comment_id=row.comment_id,
         user_id=row.user_id,
@@ -566,35 +573,7 @@ def _row_to_comment_with_rating(
         is_spoiler=row.is_spoiler,
         comment_created_at=row.created_at.isoformat() if row.created_at else "",
         comment_updated_at=row.updated_at.isoformat() if row.updated_at else "",
-        has_rating=has_rating,
-        overall_rating=float(row.overall_rating) if has_rating else 0.0,
-        review_text=row.review_text or "" if has_rating else "",
-        pacing=float(row.pacing) if row.pacing is not None else 0.0,
-        has_pacing=row.pacing is not None,
-        emotional_impact=(
-            float(row.emotional_impact) if row.emotional_impact is not None else 0.0
-        ),
-        has_emotional_impact=row.emotional_impact is not None,
-        intellectual_depth=(
-            float(row.intellectual_depth) if row.intellectual_depth is not None else 0.0
-        ),
-        has_intellectual_depth=row.intellectual_depth is not None,
-        writing_quality=(
-            float(row.writing_quality) if row.writing_quality is not None else 0.0
-        ),
-        has_writing_quality=row.writing_quality is not None,
-        rereadability=(
-            float(row.rereadability) if row.rereadability is not None else 0.0
-        ),
-        has_rereadability=row.rereadability is not None,
-        readability=float(row.readability) if row.readability is not None else 0.0,
-        has_readability=row.readability is not None,
-        plot_complexity=(
-            float(row.plot_complexity) if row.plot_complexity is not None else 0.0
-        ),
-        has_plot_complexity=row.plot_complexity is not None,
-        humor=float(row.humor) if row.humor is not None else 0.0,
-        has_humor=row.humor is not None,
+        rating=rating,
         username=row.username if hasattr(row, "username") else "",
     )
 
@@ -716,8 +695,8 @@ def _iso_or_empty(value: typing.Any) -> str:
     return value.isoformat() if value is not None else ""
 
 
-def _sub_rating(value: typing.Any) -> typing.Tuple[float, bool]:
-    return (float(value), True) if value is not None else (0.0, False)
+def _optional_float(value: typing.Any) -> typing.Optional[float]:
+    return float(value) if value is not None else None
 
 
 def _row_to_user_book_info(
@@ -742,19 +721,11 @@ def _row_to_user_book_info(
             is_favorite=row.bs_is_favorite,
             created_at=_iso_or_empty(row.bs_created_at),
             updated_at=_iso_or_empty(row.bs_updated_at),
-            book_series_name=series_name,
-            book_series_slug=series_slug,
+            book_series_name=series_name or None,
+            book_series_slug=series_slug or None,
         )
 
     if row.r_id is not None:
-        pacing, has_pacing = _sub_rating(row.r_pacing)
-        emotional_impact, has_emotional_impact = _sub_rating(row.r_emotional_impact)
-        intellectual_depth, has_intellectual_depth = _sub_rating(row.r_intellectual_depth)
-        writing_quality, has_writing_quality = _sub_rating(row.r_writing_quality)
-        rereadability, has_rereadability = _sub_rating(row.r_rereadability)
-        readability, has_readability = _sub_rating(row.r_readability)
-        plot_complexity, has_plot_complexity = _sub_rating(row.r_plot_complexity)
-        humor, has_humor = _sub_rating(row.r_humor)
         kwargs["rating"] = app.proto.user_data_pb2.Rating(
             rating_id=row.r_id,
             user_id=user_id,
@@ -763,27 +734,19 @@ def _row_to_user_book_info(
             book_title=title,
             book_cover_url=cover,
             overall_rating=float(row.r_overall),
-            review_text=row.r_review or "",
-            pacing=pacing,
-            has_pacing=has_pacing,
-            emotional_impact=emotional_impact,
-            has_emotional_impact=has_emotional_impact,
-            intellectual_depth=intellectual_depth,
-            has_intellectual_depth=has_intellectual_depth,
-            writing_quality=writing_quality,
-            has_writing_quality=has_writing_quality,
-            rereadability=rereadability,
-            has_rereadability=has_rereadability,
-            readability=readability,
-            has_readability=has_readability,
-            plot_complexity=plot_complexity,
-            has_plot_complexity=has_plot_complexity,
-            humor=humor,
-            has_humor=has_humor,
+            review_text=row.r_review or None,
+            pacing=_optional_float(row.r_pacing),
+            emotional_impact=_optional_float(row.r_emotional_impact),
+            intellectual_depth=_optional_float(row.r_intellectual_depth),
+            writing_quality=_optional_float(row.r_writing_quality),
+            rereadability=_optional_float(row.r_rereadability),
+            readability=_optional_float(row.r_readability),
+            plot_complexity=_optional_float(row.r_plot_complexity),
+            humor=_optional_float(row.r_humor),
             created_at=_iso_or_empty(row.r_created_at),
             updated_at=_iso_or_empty(row.r_updated_at),
-            book_series_name=series_name,
-            book_series_slug=series_slug,
+            book_series_name=series_name or None,
+            book_series_slug=series_slug or None,
         )
 
     if row.c_id is not None:
@@ -792,15 +755,15 @@ def _row_to_user_book_info(
             user_id=user_id,
             book_id=row.book_id,
             book_slug=book_slug,
-            book_title=title,
+            book_title=title or None,
             body=row.c_body,
             is_spoiler=row.c_is_spoiler,
             created_at=_iso_or_empty(row.c_created_at),
             updated_at=_iso_or_empty(row.c_updated_at),
             username=row.username or "",
-            book_series_name=series_name,
-            book_series_slug=series_slug,
-            book_cover_url=cover,
+            book_series_name=series_name or None,
+            book_series_slug=series_slug or None,
+            book_cover_url=cover or None,
         )
 
     return app.proto.user_data_pb2.UserBookInfoResponse(**kwargs)
@@ -980,7 +943,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
             cached = await app.cache.get_json(cache_key)
             if cached is not None:
                 protos = [
-                    app.proto.user_data_pb2.Bookshelf(**entry)
+                    _bookshelf_from_entry(entry)
                     for entry in cached["bookshelves"]
                 ]
                 return app.proto.user_data_pb2.BookshelvesListResponse(
@@ -1007,7 +970,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 entries = _bookshelf_cache_entries(rows, meta_map)
 
             await app.cache.set_json(cache_key, {"total_count": total_count, "bookshelves": entries}, ttl=300)
-            protos = [app.proto.user_data_pb2.Bookshelf(**e) for e in entries]
+            protos = [_bookshelf_from_entry(e) for e in entries]
             return app.proto.user_data_pb2.BookshelvesListResponse(
                 bookshelves=protos, total_count=total_count
             )
@@ -1039,7 +1002,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 cached = await app.cache.get_json(cache_key)
                 if cached is not None:
                     protos = [
-                        app.proto.user_data_pb2.Bookshelf(**entry)
+                        _bookshelf_from_entry(entry)
                         for entry in cached["bookshelves"]
                     ]
                     return app.proto.user_data_pb2.BookshelvesListResponse(
@@ -1064,7 +1027,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 entries = _bookshelf_cache_entries(rows, meta_map)
 
             await app.cache.set_json(cache_key, {"total_count": total_count, "bookshelves": entries}, ttl=300)
-            protos = [app.proto.user_data_pb2.Bookshelf(**e) for e in entries]
+            protos = [_bookshelf_from_entry(e) for e in entries]
             return app.proto.user_data_pb2.BookshelvesListResponse(
                 bookshelves=protos, total_count=total_count
             )
@@ -1502,7 +1465,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
             cached = await app.cache.get_json(cache_key)
             if cached is not None:
                 protos = [
-                    app.proto.user_data_pb2.Comment(**entry)
+                    _comment_from_entry(entry)
                     for entry in cached["comments"]
                 ]
                 return app.proto.user_data_pb2.CommentsListResponse(
@@ -1562,7 +1525,7 @@ class UserDataServicer(app.proto.user_data_pb2_grpc.UserDataServiceServicer):
                 ]
 
             await app.cache.set_json(cache_key, {"total_count": total_count, "comments": entries}, ttl=300)
-            protos = [app.proto.user_data_pb2.Comment(**e) for e in entries]
+            protos = [_comment_from_entry(e) for e in entries]
             return app.proto.user_data_pb2.CommentsListResponse(
                 comments=protos, total_count=total_count
             )

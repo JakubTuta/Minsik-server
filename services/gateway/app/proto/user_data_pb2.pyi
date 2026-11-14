@@ -213,7 +213,7 @@ class GetUserRatingsRequest(_message.Message):
     def __init__(self, user_id: _Optional[int] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., sort_by: _Optional[str] = ..., order: _Optional[str] = ..., min_rating: _Optional[float] = ..., max_rating: _Optional[float] = ..., language: _Optional[str] = ...) -> None: ...
 
 class Rating(_message.Message):
-    __slots__ = ("rating_id", "user_id", "book_id", "book_slug", "book_title", "book_cover_url", "overall_rating", "review_text", "pacing", "has_pacing", "emotional_impact", "has_emotional_impact", "intellectual_depth", "has_intellectual_depth", "writing_quality", "has_writing_quality", "rereadability", "has_rereadability", "readability", "has_readability", "plot_complexity", "has_plot_complexity", "humor", "has_humor", "created_at", "updated_at", "book_author_names", "book_author_slugs", "book_series_name", "book_series_slug", "book_avg_rating", "book_rating_count")
+    __slots__ = ("rating_id", "user_id", "book_id", "book_slug", "book_title", "book_cover_url", "overall_rating", "review_text", "pacing", "emotional_impact", "intellectual_depth", "writing_quality", "rereadability", "readability", "plot_complexity", "humor", "created_at", "updated_at", "book_author_names", "book_author_slugs", "book_series_name", "book_series_slug", "book_avg_rating", "book_rating_count")
     RATING_ID_FIELD_NUMBER: _ClassVar[int]
     USER_ID_FIELD_NUMBER: _ClassVar[int]
     BOOK_ID_FIELD_NUMBER: _ClassVar[int]
@@ -223,21 +223,13 @@ class Rating(_message.Message):
     OVERALL_RATING_FIELD_NUMBER: _ClassVar[int]
     REVIEW_TEXT_FIELD_NUMBER: _ClassVar[int]
     PACING_FIELD_NUMBER: _ClassVar[int]
-    HAS_PACING_FIELD_NUMBER: _ClassVar[int]
     EMOTIONAL_IMPACT_FIELD_NUMBER: _ClassVar[int]
-    HAS_EMOTIONAL_IMPACT_FIELD_NUMBER: _ClassVar[int]
     INTELLECTUAL_DEPTH_FIELD_NUMBER: _ClassVar[int]
-    HAS_INTELLECTUAL_DEPTH_FIELD_NUMBER: _ClassVar[int]
     WRITING_QUALITY_FIELD_NUMBER: _ClassVar[int]
-    HAS_WRITING_QUALITY_FIELD_NUMBER: _ClassVar[int]
     REREADABILITY_FIELD_NUMBER: _ClassVar[int]
-    HAS_REREADABILITY_FIELD_NUMBER: _ClassVar[int]
     READABILITY_FIELD_NUMBER: _ClassVar[int]
-    HAS_READABILITY_FIELD_NUMBER: _ClassVar[int]
     PLOT_COMPLEXITY_FIELD_NUMBER: _ClassVar[int]
-    HAS_PLOT_COMPLEXITY_FIELD_NUMBER: _ClassVar[int]
     HUMOR_FIELD_NUMBER: _ClassVar[int]
-    HAS_HUMOR_FIELD_NUMBER: _ClassVar[int]
     CREATED_AT_FIELD_NUMBER: _ClassVar[int]
     UPDATED_AT_FIELD_NUMBER: _ClassVar[int]
     BOOK_AUTHOR_NAMES_FIELD_NUMBER: _ClassVar[int]
@@ -255,21 +247,13 @@ class Rating(_message.Message):
     overall_rating: float
     review_text: str
     pacing: float
-    has_pacing: bool
     emotional_impact: float
-    has_emotional_impact: bool
     intellectual_depth: float
-    has_intellectual_depth: bool
     writing_quality: float
-    has_writing_quality: bool
     rereadability: float
-    has_rereadability: bool
     readability: float
-    has_readability: bool
     plot_complexity: float
-    has_plot_complexity: bool
     humor: float
-    has_humor: bool
     created_at: str
     updated_at: str
     book_author_names: _containers.RepeatedScalarFieldContainer[str]
@@ -278,7 +262,7 @@ class Rating(_message.Message):
     book_series_slug: str
     book_avg_rating: float
     book_rating_count: int
-    def __init__(self, rating_id: _Optional[int] = ..., user_id: _Optional[int] = ..., book_id: _Optional[int] = ..., book_slug: _Optional[str] = ..., book_title: _Optional[str] = ..., book_cover_url: _Optional[str] = ..., overall_rating: _Optional[float] = ..., review_text: _Optional[str] = ..., pacing: _Optional[float] = ..., has_pacing: bool = ..., emotional_impact: _Optional[float] = ..., has_emotional_impact: bool = ..., intellectual_depth: _Optional[float] = ..., has_intellectual_depth: bool = ..., writing_quality: _Optional[float] = ..., has_writing_quality: bool = ..., rereadability: _Optional[float] = ..., has_rereadability: bool = ..., readability: _Optional[float] = ..., has_readability: bool = ..., plot_complexity: _Optional[float] = ..., has_plot_complexity: bool = ..., humor: _Optional[float] = ..., has_humor: bool = ..., created_at: _Optional[str] = ..., updated_at: _Optional[str] = ..., book_author_names: _Optional[_Iterable[str]] = ..., book_author_slugs: _Optional[_Iterable[str]] = ..., book_series_name: _Optional[str] = ..., book_series_slug: _Optional[str] = ..., book_avg_rating: _Optional[float] = ..., book_rating_count: _Optional[int] = ...) -> None: ...
+    def __init__(self, rating_id: _Optional[int] = ..., user_id: _Optional[int] = ..., book_id: _Optional[int] = ..., book_slug: _Optional[str] = ..., book_title: _Optional[str] = ..., book_cover_url: _Optional[str] = ..., overall_rating: _Optional[float] = ..., review_text: _Optional[str] = ..., pacing: _Optional[float] = ..., emotional_impact: _Optional[float] = ..., intellectual_depth: _Optional[float] = ..., writing_quality: _Optional[float] = ..., rereadability: _Optional[float] = ..., readability: _Optional[float] = ..., plot_complexity: _Optional[float] = ..., humor: _Optional[float] = ..., created_at: _Optional[str] = ..., updated_at: _Optional[str] = ..., book_author_names: _Optional[_Iterable[str]] = ..., book_author_slugs: _Optional[_Iterable[str]] = ..., book_series_name: _Optional[str] = ..., book_series_slug: _Optional[str] = ..., book_avg_rating: _Optional[float] = ..., book_rating_count: _Optional[int] = ...) -> None: ...
 
 class RatingResponse(_message.Message):
     __slots__ = ("rating",)
@@ -456,8 +440,32 @@ class GetBookCommentsRequest(_message.Message):
     language: str
     def __init__(self, book_slug: _Optional[str] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., order: _Optional[str] = ..., include_spoilers: bool = ..., sort_by: _Optional[str] = ..., requesting_user_id: _Optional[int] = ..., rating_filters: _Optional[_Iterable[float]] = ..., language: _Optional[str] = ...) -> None: ...
 
+class BookCommentRating(_message.Message):
+    __slots__ = ("overall_rating", "review_text", "pacing", "emotional_impact", "intellectual_depth", "writing_quality", "rereadability", "readability", "plot_complexity", "humor")
+    OVERALL_RATING_FIELD_NUMBER: _ClassVar[int]
+    REVIEW_TEXT_FIELD_NUMBER: _ClassVar[int]
+    PACING_FIELD_NUMBER: _ClassVar[int]
+    EMOTIONAL_IMPACT_FIELD_NUMBER: _ClassVar[int]
+    INTELLECTUAL_DEPTH_FIELD_NUMBER: _ClassVar[int]
+    WRITING_QUALITY_FIELD_NUMBER: _ClassVar[int]
+    REREADABILITY_FIELD_NUMBER: _ClassVar[int]
+    READABILITY_FIELD_NUMBER: _ClassVar[int]
+    PLOT_COMPLEXITY_FIELD_NUMBER: _ClassVar[int]
+    HUMOR_FIELD_NUMBER: _ClassVar[int]
+    overall_rating: float
+    review_text: str
+    pacing: float
+    emotional_impact: float
+    intellectual_depth: float
+    writing_quality: float
+    rereadability: float
+    readability: float
+    plot_complexity: float
+    humor: float
+    def __init__(self, overall_rating: _Optional[float] = ..., review_text: _Optional[str] = ..., pacing: _Optional[float] = ..., emotional_impact: _Optional[float] = ..., intellectual_depth: _Optional[float] = ..., writing_quality: _Optional[float] = ..., rereadability: _Optional[float] = ..., readability: _Optional[float] = ..., plot_complexity: _Optional[float] = ..., humor: _Optional[float] = ...) -> None: ...
+
 class BookCommentWithRating(_message.Message):
-    __slots__ = ("comment_id", "user_id", "book_id", "book_slug", "body", "is_spoiler", "comment_created_at", "comment_updated_at", "has_rating", "overall_rating", "review_text", "pacing", "has_pacing", "emotional_impact", "has_emotional_impact", "intellectual_depth", "has_intellectual_depth", "writing_quality", "has_writing_quality", "rereadability", "has_rereadability", "readability", "has_readability", "plot_complexity", "has_plot_complexity", "humor", "has_humor", "username")
+    __slots__ = ("comment_id", "user_id", "book_id", "book_slug", "body", "is_spoiler", "comment_created_at", "comment_updated_at", "rating", "username")
     COMMENT_ID_FIELD_NUMBER: _ClassVar[int]
     USER_ID_FIELD_NUMBER: _ClassVar[int]
     BOOK_ID_FIELD_NUMBER: _ClassVar[int]
@@ -466,25 +474,7 @@ class BookCommentWithRating(_message.Message):
     IS_SPOILER_FIELD_NUMBER: _ClassVar[int]
     COMMENT_CREATED_AT_FIELD_NUMBER: _ClassVar[int]
     COMMENT_UPDATED_AT_FIELD_NUMBER: _ClassVar[int]
-    HAS_RATING_FIELD_NUMBER: _ClassVar[int]
-    OVERALL_RATING_FIELD_NUMBER: _ClassVar[int]
-    REVIEW_TEXT_FIELD_NUMBER: _ClassVar[int]
-    PACING_FIELD_NUMBER: _ClassVar[int]
-    HAS_PACING_FIELD_NUMBER: _ClassVar[int]
-    EMOTIONAL_IMPACT_FIELD_NUMBER: _ClassVar[int]
-    HAS_EMOTIONAL_IMPACT_FIELD_NUMBER: _ClassVar[int]
-    INTELLECTUAL_DEPTH_FIELD_NUMBER: _ClassVar[int]
-    HAS_INTELLECTUAL_DEPTH_FIELD_NUMBER: _ClassVar[int]
-    WRITING_QUALITY_FIELD_NUMBER: _ClassVar[int]
-    HAS_WRITING_QUALITY_FIELD_NUMBER: _ClassVar[int]
-    REREADABILITY_FIELD_NUMBER: _ClassVar[int]
-    HAS_REREADABILITY_FIELD_NUMBER: _ClassVar[int]
-    READABILITY_FIELD_NUMBER: _ClassVar[int]
-    HAS_READABILITY_FIELD_NUMBER: _ClassVar[int]
-    PLOT_COMPLEXITY_FIELD_NUMBER: _ClassVar[int]
-    HAS_PLOT_COMPLEXITY_FIELD_NUMBER: _ClassVar[int]
-    HUMOR_FIELD_NUMBER: _ClassVar[int]
-    HAS_HUMOR_FIELD_NUMBER: _ClassVar[int]
+    RATING_FIELD_NUMBER: _ClassVar[int]
     USERNAME_FIELD_NUMBER: _ClassVar[int]
     comment_id: int
     user_id: int
@@ -494,27 +484,9 @@ class BookCommentWithRating(_message.Message):
     is_spoiler: bool
     comment_created_at: str
     comment_updated_at: str
-    has_rating: bool
-    overall_rating: float
-    review_text: str
-    pacing: float
-    has_pacing: bool
-    emotional_impact: float
-    has_emotional_impact: bool
-    intellectual_depth: float
-    has_intellectual_depth: bool
-    writing_quality: float
-    has_writing_quality: bool
-    rereadability: float
-    has_rereadability: bool
-    readability: float
-    has_readability: bool
-    plot_complexity: float
-    has_plot_complexity: bool
-    humor: float
-    has_humor: bool
+    rating: BookCommentRating
     username: str
-    def __init__(self, comment_id: _Optional[int] = ..., user_id: _Optional[int] = ..., book_id: _Optional[int] = ..., book_slug: _Optional[str] = ..., body: _Optional[str] = ..., is_spoiler: bool = ..., comment_created_at: _Optional[str] = ..., comment_updated_at: _Optional[str] = ..., has_rating: bool = ..., overall_rating: _Optional[float] = ..., review_text: _Optional[str] = ..., pacing: _Optional[float] = ..., has_pacing: bool = ..., emotional_impact: _Optional[float] = ..., has_emotional_impact: bool = ..., intellectual_depth: _Optional[float] = ..., has_intellectual_depth: bool = ..., writing_quality: _Optional[float] = ..., has_writing_quality: bool = ..., rereadability: _Optional[float] = ..., has_rereadability: bool = ..., readability: _Optional[float] = ..., has_readability: bool = ..., plot_complexity: _Optional[float] = ..., has_plot_complexity: bool = ..., humor: _Optional[float] = ..., has_humor: bool = ..., username: _Optional[str] = ...) -> None: ...
+    def __init__(self, comment_id: _Optional[int] = ..., user_id: _Optional[int] = ..., book_id: _Optional[int] = ..., book_slug: _Optional[str] = ..., body: _Optional[str] = ..., is_spoiler: bool = ..., comment_created_at: _Optional[str] = ..., comment_updated_at: _Optional[str] = ..., rating: _Optional[_Union[BookCommentRating, _Mapping]] = ..., username: _Optional[str] = ...) -> None: ...
 
 class BookCommentsResponse(_message.Message):
     __slots__ = ("comments", "total_count", "my_entry")
@@ -577,7 +549,14 @@ class GetPublicProfileStatsRequest(_message.Message):
     def __init__(self, username: _Optional[str] = ...) -> None: ...
 
 class ProfileStats(_message.Message):
-    __slots__ = ("want_to_read_count", "reading_count", "read_count", "abandoned_count", "favourites_count", "ratings_count", "comments_count", "finished_this_year_count", "pages_read_this_year", "hours_read_this_year", "bookshelf_updated_at", "favourites_updated_at", "comments_updated_at", "ratings_updated_at", "average_rating", "rating_distribution_json", "pages_read_total", "reviews_count")
+    __slots__ = ("want_to_read_count", "reading_count", "read_count", "abandoned_count", "favourites_count", "ratings_count", "comments_count", "finished_this_year_count", "pages_read_this_year", "hours_read_this_year", "bookshelf_updated_at", "favourites_updated_at", "comments_updated_at", "ratings_updated_at", "average_rating", "rating_distribution", "pages_read_total", "reviews_count")
+    class RatingDistributionEntry(_message.Message):
+        __slots__ = ("key", "value")
+        KEY_FIELD_NUMBER: _ClassVar[int]
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        key: str
+        value: int
+        def __init__(self, key: _Optional[str] = ..., value: _Optional[int] = ...) -> None: ...
     WANT_TO_READ_COUNT_FIELD_NUMBER: _ClassVar[int]
     READING_COUNT_FIELD_NUMBER: _ClassVar[int]
     READ_COUNT_FIELD_NUMBER: _ClassVar[int]
@@ -593,7 +572,7 @@ class ProfileStats(_message.Message):
     COMMENTS_UPDATED_AT_FIELD_NUMBER: _ClassVar[int]
     RATINGS_UPDATED_AT_FIELD_NUMBER: _ClassVar[int]
     AVERAGE_RATING_FIELD_NUMBER: _ClassVar[int]
-    RATING_DISTRIBUTION_JSON_FIELD_NUMBER: _ClassVar[int]
+    RATING_DISTRIBUTION_FIELD_NUMBER: _ClassVar[int]
     PAGES_READ_TOTAL_FIELD_NUMBER: _ClassVar[int]
     REVIEWS_COUNT_FIELD_NUMBER: _ClassVar[int]
     want_to_read_count: int
@@ -611,10 +590,10 @@ class ProfileStats(_message.Message):
     comments_updated_at: str
     ratings_updated_at: str
     average_rating: float
-    rating_distribution_json: str
+    rating_distribution: _containers.ScalarMap[str, int]
     pages_read_total: int
     reviews_count: int
-    def __init__(self, want_to_read_count: _Optional[int] = ..., reading_count: _Optional[int] = ..., read_count: _Optional[int] = ..., abandoned_count: _Optional[int] = ..., favourites_count: _Optional[int] = ..., ratings_count: _Optional[int] = ..., comments_count: _Optional[int] = ..., finished_this_year_count: _Optional[int] = ..., pages_read_this_year: _Optional[int] = ..., hours_read_this_year: _Optional[int] = ..., bookshelf_updated_at: _Optional[str] = ..., favourites_updated_at: _Optional[str] = ..., comments_updated_at: _Optional[str] = ..., ratings_updated_at: _Optional[str] = ..., average_rating: _Optional[float] = ..., rating_distribution_json: _Optional[str] = ..., pages_read_total: _Optional[int] = ..., reviews_count: _Optional[int] = ...) -> None: ...
+    def __init__(self, want_to_read_count: _Optional[int] = ..., reading_count: _Optional[int] = ..., read_count: _Optional[int] = ..., abandoned_count: _Optional[int] = ..., favourites_count: _Optional[int] = ..., ratings_count: _Optional[int] = ..., comments_count: _Optional[int] = ..., finished_this_year_count: _Optional[int] = ..., pages_read_this_year: _Optional[int] = ..., hours_read_this_year: _Optional[int] = ..., bookshelf_updated_at: _Optional[str] = ..., favourites_updated_at: _Optional[str] = ..., comments_updated_at: _Optional[str] = ..., ratings_updated_at: _Optional[str] = ..., average_rating: _Optional[float] = ..., rating_distribution: _Optional[_Mapping[str, int]] = ..., pages_read_total: _Optional[int] = ..., reviews_count: _Optional[int] = ...) -> None: ...
 
 class ProfileStatsResponse(_message.Message):
     __slots__ = ("stats",)
@@ -683,20 +662,18 @@ class FavouriteAuthor(_message.Message):
     def __init__(self, name: _Optional[str] = ..., slug: _Optional[str] = ..., count: _Optional[int] = ..., photo_url: _Optional[str] = ...) -> None: ...
 
 class ProfileOverviewResponse(_message.Message):
-    __slots__ = ("user", "reading_now", "top_genres", "favourite_authors", "favourites_this_year", "reading_now_present")
+    __slots__ = ("user", "reading_now", "top_genres", "favourite_authors", "favourites_this_year")
     USER_FIELD_NUMBER: _ClassVar[int]
     READING_NOW_FIELD_NUMBER: _ClassVar[int]
     TOP_GENRES_FIELD_NUMBER: _ClassVar[int]
     FAVOURITE_AUTHORS_FIELD_NUMBER: _ClassVar[int]
     FAVOURITES_THIS_YEAR_FIELD_NUMBER: _ClassVar[int]
-    READING_NOW_PRESENT_FIELD_NUMBER: _ClassVar[int]
     user: PublicUser
     reading_now: OverviewBook
     top_genres: _containers.RepeatedCompositeFieldContainer[TopGenre]
     favourite_authors: _containers.RepeatedCompositeFieldContainer[FavouriteAuthor]
     favourites_this_year: _containers.RepeatedCompositeFieldContainer[OverviewBook]
-    reading_now_present: bool
-    def __init__(self, user: _Optional[_Union[PublicUser, _Mapping]] = ..., reading_now: _Optional[_Union[OverviewBook, _Mapping]] = ..., top_genres: _Optional[_Iterable[_Union[TopGenre, _Mapping]]] = ..., favourite_authors: _Optional[_Iterable[_Union[FavouriteAuthor, _Mapping]]] = ..., favourites_this_year: _Optional[_Iterable[_Union[OverviewBook, _Mapping]]] = ..., reading_now_present: bool = ...) -> None: ...
+    def __init__(self, user: _Optional[_Union[PublicUser, _Mapping]] = ..., reading_now: _Optional[_Union[OverviewBook, _Mapping]] = ..., top_genres: _Optional[_Iterable[_Union[TopGenre, _Mapping]]] = ..., favourite_authors: _Optional[_Iterable[_Union[FavouriteAuthor, _Mapping]]] = ..., favourites_this_year: _Optional[_Iterable[_Union[OverviewBook, _Mapping]]] = ...) -> None: ...
 
 class GetYearInReviewRequest(_message.Message):
     __slots__ = ("user_id", "year", "language")
@@ -723,7 +700,7 @@ class MonthlyBucket(_message.Message):
     def __init__(self, month: _Optional[int] = ..., books_finished: _Optional[int] = ..., pages_read: _Optional[int] = ..., ratings_given: _Optional[int] = ..., books: _Optional[_Iterable[_Union[YearBook, _Mapping]]] = ...) -> None: ...
 
 class YearBook(_message.Message):
-    __slots__ = ("book_slug", "book_title", "book_cover_url", "author_names", "author_slugs", "number_of_pages", "finished_at", "my_rating", "has_my_rating")
+    __slots__ = ("book_slug", "book_title", "book_cover_url", "author_names", "author_slugs", "number_of_pages", "finished_at", "my_rating")
     BOOK_SLUG_FIELD_NUMBER: _ClassVar[int]
     BOOK_TITLE_FIELD_NUMBER: _ClassVar[int]
     BOOK_COVER_URL_FIELD_NUMBER: _ClassVar[int]
@@ -732,7 +709,6 @@ class YearBook(_message.Message):
     NUMBER_OF_PAGES_FIELD_NUMBER: _ClassVar[int]
     FINISHED_AT_FIELD_NUMBER: _ClassVar[int]
     MY_RATING_FIELD_NUMBER: _ClassVar[int]
-    HAS_MY_RATING_FIELD_NUMBER: _ClassVar[int]
     book_slug: str
     book_title: str
     book_cover_url: str
@@ -741,11 +717,17 @@ class YearBook(_message.Message):
     number_of_pages: int
     finished_at: str
     my_rating: float
-    has_my_rating: bool
-    def __init__(self, book_slug: _Optional[str] = ..., book_title: _Optional[str] = ..., book_cover_url: _Optional[str] = ..., author_names: _Optional[_Iterable[str]] = ..., author_slugs: _Optional[_Iterable[str]] = ..., number_of_pages: _Optional[int] = ..., finished_at: _Optional[str] = ..., my_rating: _Optional[float] = ..., has_my_rating: bool = ...) -> None: ...
+    def __init__(self, book_slug: _Optional[str] = ..., book_title: _Optional[str] = ..., book_cover_url: _Optional[str] = ..., author_names: _Optional[_Iterable[str]] = ..., author_slugs: _Optional[_Iterable[str]] = ..., number_of_pages: _Optional[int] = ..., finished_at: _Optional[str] = ..., my_rating: _Optional[float] = ...) -> None: ...
 
 class YearInReview(_message.Message):
-    __slots__ = ("year", "months_elapsed", "monthly", "total_books_finished", "total_pages_read", "total_hours_read", "ratings_given", "reviews_written", "comments_written", "favourites_added", "average_rating_given", "rating_distribution_json", "top_genres", "top_authors", "longest_book", "has_longest_book", "shortest_book", "has_shortest_book", "first_finished", "has_first_finished", "highest_rated", "has_highest_rated", "average_pages_per_book", "busiest_month", "busiest_month_count", "average_days_to_finish", "currently_reading_count", "added_to_shelf_count", "finished_cover_urls")
+    __slots__ = ("year", "months_elapsed", "monthly", "total_books_finished", "total_pages_read", "total_hours_read", "ratings_given", "reviews_written", "comments_written", "favourites_added", "average_rating_given", "rating_distribution", "top_genres", "top_authors", "longest_book", "shortest_book", "first_finished", "highest_rated", "average_pages_per_book", "busiest_month", "busiest_month_count", "average_days_to_finish", "currently_reading_count", "added_to_shelf_count", "finished_cover_urls")
+    class RatingDistributionEntry(_message.Message):
+        __slots__ = ("key", "value")
+        KEY_FIELD_NUMBER: _ClassVar[int]
+        VALUE_FIELD_NUMBER: _ClassVar[int]
+        key: str
+        value: int
+        def __init__(self, key: _Optional[str] = ..., value: _Optional[int] = ...) -> None: ...
     YEAR_FIELD_NUMBER: _ClassVar[int]
     MONTHS_ELAPSED_FIELD_NUMBER: _ClassVar[int]
     MONTHLY_FIELD_NUMBER: _ClassVar[int]
@@ -757,17 +739,13 @@ class YearInReview(_message.Message):
     COMMENTS_WRITTEN_FIELD_NUMBER: _ClassVar[int]
     FAVOURITES_ADDED_FIELD_NUMBER: _ClassVar[int]
     AVERAGE_RATING_GIVEN_FIELD_NUMBER: _ClassVar[int]
-    RATING_DISTRIBUTION_JSON_FIELD_NUMBER: _ClassVar[int]
+    RATING_DISTRIBUTION_FIELD_NUMBER: _ClassVar[int]
     TOP_GENRES_FIELD_NUMBER: _ClassVar[int]
     TOP_AUTHORS_FIELD_NUMBER: _ClassVar[int]
     LONGEST_BOOK_FIELD_NUMBER: _ClassVar[int]
-    HAS_LONGEST_BOOK_FIELD_NUMBER: _ClassVar[int]
     SHORTEST_BOOK_FIELD_NUMBER: _ClassVar[int]
-    HAS_SHORTEST_BOOK_FIELD_NUMBER: _ClassVar[int]
     FIRST_FINISHED_FIELD_NUMBER: _ClassVar[int]
-    HAS_FIRST_FINISHED_FIELD_NUMBER: _ClassVar[int]
     HIGHEST_RATED_FIELD_NUMBER: _ClassVar[int]
-    HAS_HIGHEST_RATED_FIELD_NUMBER: _ClassVar[int]
     AVERAGE_PAGES_PER_BOOK_FIELD_NUMBER: _ClassVar[int]
     BUSIEST_MONTH_FIELD_NUMBER: _ClassVar[int]
     BUSIEST_MONTH_COUNT_FIELD_NUMBER: _ClassVar[int]
@@ -786,17 +764,13 @@ class YearInReview(_message.Message):
     comments_written: int
     favourites_added: int
     average_rating_given: float
-    rating_distribution_json: str
+    rating_distribution: _containers.ScalarMap[str, int]
     top_genres: _containers.RepeatedCompositeFieldContainer[TopGenre]
     top_authors: _containers.RepeatedCompositeFieldContainer[FavouriteAuthor]
     longest_book: YearBook
-    has_longest_book: bool
     shortest_book: YearBook
-    has_shortest_book: bool
     first_finished: YearBook
-    has_first_finished: bool
     highest_rated: YearBook
-    has_highest_rated: bool
     average_pages_per_book: float
     busiest_month: int
     busiest_month_count: int
@@ -804,7 +778,7 @@ class YearInReview(_message.Message):
     currently_reading_count: int
     added_to_shelf_count: int
     finished_cover_urls: _containers.RepeatedScalarFieldContainer[str]
-    def __init__(self, year: _Optional[int] = ..., months_elapsed: _Optional[int] = ..., monthly: _Optional[_Iterable[_Union[MonthlyBucket, _Mapping]]] = ..., total_books_finished: _Optional[int] = ..., total_pages_read: _Optional[int] = ..., total_hours_read: _Optional[int] = ..., ratings_given: _Optional[int] = ..., reviews_written: _Optional[int] = ..., comments_written: _Optional[int] = ..., favourites_added: _Optional[int] = ..., average_rating_given: _Optional[float] = ..., rating_distribution_json: _Optional[str] = ..., top_genres: _Optional[_Iterable[_Union[TopGenre, _Mapping]]] = ..., top_authors: _Optional[_Iterable[_Union[FavouriteAuthor, _Mapping]]] = ..., longest_book: _Optional[_Union[YearBook, _Mapping]] = ..., has_longest_book: bool = ..., shortest_book: _Optional[_Union[YearBook, _Mapping]] = ..., has_shortest_book: bool = ..., first_finished: _Optional[_Union[YearBook, _Mapping]] = ..., has_first_finished: bool = ..., highest_rated: _Optional[_Union[YearBook, _Mapping]] = ..., has_highest_rated: bool = ..., average_pages_per_book: _Optional[float] = ..., busiest_month: _Optional[int] = ..., busiest_month_count: _Optional[int] = ..., average_days_to_finish: _Optional[float] = ..., currently_reading_count: _Optional[int] = ..., added_to_shelf_count: _Optional[int] = ..., finished_cover_urls: _Optional[_Iterable[str]] = ...) -> None: ...
+    def __init__(self, year: _Optional[int] = ..., months_elapsed: _Optional[int] = ..., monthly: _Optional[_Iterable[_Union[MonthlyBucket, _Mapping]]] = ..., total_books_finished: _Optional[int] = ..., total_pages_read: _Optional[int] = ..., total_hours_read: _Optional[int] = ..., ratings_given: _Optional[int] = ..., reviews_written: _Optional[int] = ..., comments_written: _Optional[int] = ..., favourites_added: _Optional[int] = ..., average_rating_given: _Optional[float] = ..., rating_distribution: _Optional[_Mapping[str, int]] = ..., top_genres: _Optional[_Iterable[_Union[TopGenre, _Mapping]]] = ..., top_authors: _Optional[_Iterable[_Union[FavouriteAuthor, _Mapping]]] = ..., longest_book: _Optional[_Union[YearBook, _Mapping]] = ..., shortest_book: _Optional[_Union[YearBook, _Mapping]] = ..., first_finished: _Optional[_Union[YearBook, _Mapping]] = ..., highest_rated: _Optional[_Union[YearBook, _Mapping]] = ..., average_pages_per_book: _Optional[float] = ..., busiest_month: _Optional[int] = ..., busiest_month_count: _Optional[int] = ..., average_days_to_finish: _Optional[float] = ..., currently_reading_count: _Optional[int] = ..., added_to_shelf_count: _Optional[int] = ..., finished_cover_urls: _Optional[_Iterable[str]] = ...) -> None: ...
 
 class YearInReviewResponse(_message.Message):
     __slots__ = ("review",)

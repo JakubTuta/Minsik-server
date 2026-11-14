@@ -549,40 +549,6 @@ async def get_series(
         raise
 
 
-def _comment_with_rating_to_dict(c) -> typing.Dict[str, typing.Any]:
-    return {
-        "comment_id": c.comment_id,
-        "user_id": c.user_id,
-        "username": c.username,
-        "book_id": c.book_id,
-        "book_slug": c.book_slug,
-        "body": c.body,
-        "is_spoiler": c.is_spoiler,
-        "comment_created_at": c.comment_created_at,
-        "comment_updated_at": c.comment_updated_at,
-        "rating": (
-            {
-                "overall_rating": c.overall_rating,
-                "review_text": c.review_text or None,
-                "pacing": c.pacing if c.has_pacing else None,
-                "emotional_impact": (
-                    c.emotional_impact if c.has_emotional_impact else None
-                ),
-                "intellectual_depth": (
-                    c.intellectual_depth if c.has_intellectual_depth else None
-                ),
-                "writing_quality": c.writing_quality if c.has_writing_quality else None,
-                "rereadability": c.rereadability if c.has_rereadability else None,
-                "readability": c.readability if c.has_readability else None,
-                "plot_complexity": c.plot_complexity if c.has_plot_complexity else None,
-                "humor": c.humor if c.has_humor else None,
-            }
-            if c.has_rating
-            else None
-        ),
-    }
-
-
 @router.get(
     "/books/{slug}/comments",
     response_model=app.models.books_responses.BookCommentsResponse,
@@ -654,14 +620,14 @@ async def get_book_comments(
             language=language,
         )
         my_entry = (
-            _comment_with_rating_to_dict(response.my_entry)
+            app.utils.proto.message_to_dict(response.my_entry)
             if response.HasField("my_entry")
             else None
         )
         return {
             "success": True,
             "data": {
-                "items": [_comment_with_rating_to_dict(c) for c in response.comments],
+                "items": [app.utils.proto.message_to_dict(c) for c in response.comments],
                 "total_count": response.total_count,
                 "limit": limit,
                 "offset": offset,

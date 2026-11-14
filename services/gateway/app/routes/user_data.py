@@ -1,5 +1,4 @@
 import asyncio
-import json
 import logging
 import typing
 
@@ -10,6 +9,7 @@ import app.middleware.rate_limit
 import app.models.user_data_responses
 import app.utils.grpc_errors
 import app.utils.language
+import app.utils.proto
 import app.utils.responses
 import fastapi
 import grpc
@@ -19,76 +19,6 @@ logger = logging.getLogger(__name__)
 router = fastapi.APIRouter(prefix="/api/v1", tags=["User Data"])
 
 limiter = app.middleware.rate_limit.limiter
-
-
-def _bookshelf_proto_to_dict(b) -> typing.Dict[str, typing.Any]:
-    return {
-        "bookshelf_id": b.bookshelf_id,
-        "user_id": b.user_id,
-        "book_id": b.book_id,
-        "book_slug": b.book_slug,
-        "book_title": b.book_title,
-        "book_cover_url": b.book_cover_url,
-        "status": b.status,
-        "is_favorite": b.is_favorite,
-        "created_at": b.created_at,
-        "updated_at": b.updated_at,
-        "book_author_names": list(b.book_author_names),
-        "book_author_slugs": list(b.book_author_slugs),
-        "book_series_name": b.book_series_name or None,
-        "book_series_slug": b.book_series_slug or None,
-    }
-
-
-def _rating_proto_to_dict(r) -> typing.Dict[str, typing.Any]:
-    return {
-        "rating_id": r.rating_id,
-        "user_id": r.user_id,
-        "book_id": r.book_id,
-        "book_slug": r.book_slug,
-        "book_title": r.book_title,
-        "book_cover_url": r.book_cover_url,
-        "overall_rating": r.overall_rating,
-        "review_text": r.review_text or None,
-        "pacing": r.pacing if r.has_pacing else None,
-        "emotional_impact": r.emotional_impact if r.has_emotional_impact else None,
-        "intellectual_depth": (
-            r.intellectual_depth if r.has_intellectual_depth else None
-        ),
-        "writing_quality": r.writing_quality if r.has_writing_quality else None,
-        "rereadability": r.rereadability if r.has_rereadability else None,
-        "readability": r.readability if r.has_readability else None,
-        "plot_complexity": r.plot_complexity if r.has_plot_complexity else None,
-        "humor": r.humor if r.has_humor else None,
-        "created_at": r.created_at,
-        "updated_at": r.updated_at,
-        "book_author_names": list(r.book_author_names),
-        "book_author_slugs": list(r.book_author_slugs),
-        "book_series_name": r.book_series_name or None,
-        "book_series_slug": r.book_series_slug or None,
-        "book_avg_rating": r.book_avg_rating,
-        "book_rating_count": r.book_rating_count,
-    }
-
-
-def _comment_proto_to_dict(c) -> typing.Dict[str, typing.Any]:
-    return {
-        "comment_id": c.comment_id,
-        "user_id": c.user_id,
-        "username": c.username,
-        "book_id": c.book_id,
-        "book_slug": c.book_slug,
-        "book_title": c.book_title or None,
-        "body": c.body,
-        "is_spoiler": c.is_spoiler,
-        "created_at": c.created_at,
-        "updated_at": c.updated_at,
-        "book_cover_url": c.book_cover_url or None,
-        "book_author_names": list(c.book_author_names),
-        "book_author_slugs": list(c.book_author_slugs),
-        "book_series_name": c.book_series_name or None,
-        "book_series_slug": c.book_series_slug or None,
-    }
 
 
 _background_tasks: typing.Set[asyncio.Task] = set()
@@ -185,24 +115,9 @@ async def get_user_book_info(
             book_slug=book_slug,
             language=language,
         )
-        data: typing.Dict[str, typing.Any] = {
-            "bookshelf": (
-                _bookshelf_proto_to_dict(response.bookshelf)
-                if response.HasField("bookshelf")
-                else None
-            ),
-            "rating": (
-                _rating_proto_to_dict(response.rating)
-                if response.HasField("rating")
-                else None
-            ),
-            "comment": (
-                _comment_proto_to_dict(response.comment)
-                if response.HasField("comment")
-                else None
-            ),
-        }
-        return app.utils.responses.success_response(data)
+        return app.utils.responses.success_response(
+            app.utils.proto.message_to_dict(response)
+        )
     except grpc.RpcError:
         raise
     except Exception as e:
@@ -242,17 +157,9 @@ async def get_book_statuses(
         response = await app.grpc_clients.user_data_client.get_book_statuses(
             user_id=current_user["user_id"], book_ids=body.book_ids
         )
-        data = {
-            "statuses": [
-                {
-                    "book_id": s.book_id,
-                    "status": s.status,
-                    "is_favorite": s.is_favorite,
-                }
-                for s in response.statuses
-            ]
-        }
-        return app.utils.responses.success_response(data)
+        return app.utils.responses.success_response(
+            app.utils.proto.message_to_dict(response)
+        )
     except grpc.RpcError:
         raise
     except Exception as e:
@@ -304,7 +211,7 @@ async def upsert_bookshelf(
             )
         )
         return app.utils.responses.success_response(
-            {"bookshelf": _bookshelf_proto_to_dict(response.bookshelf)}, status_code=200
+            {"bookshelf": app.utils.proto.message_to_dict(response.bookshelf)}, status_code=200
         )
     except grpc.RpcError:
         raise
@@ -408,7 +315,7 @@ async def get_user_bookshelves(
             order=order,
             language=language,
         )
-        items = [_bookshelf_proto_to_dict(b) for b in response.bookshelves]
+        items = [app.utils.proto.message_to_dict(b) for b in response.bookshelves]
         return app.utils.responses.success_response(
             {
                 "items": items,
@@ -471,7 +378,7 @@ async def get_public_bookshelves(
             order=order,
             language=language,
         )
-        items = [_bookshelf_proto_to_dict(b) for b in response.bookshelves]
+        items = [app.utils.proto.message_to_dict(b) for b in response.bookshelves]
         return app.utils.responses.success_response(
             {
                 "items": items,
@@ -513,34 +420,8 @@ async def get_public_profile_stats(
         response = await app.grpc_clients.user_data_client.get_public_profile_stats(
             username=username
         )
-        s = response.stats
-        try:
-            rating_distribution = json.loads(s.rating_distribution_json) if s.rating_distribution_json else {}
-        except (ValueError, TypeError):
-            rating_distribution = {}
         return app.utils.responses.success_response(
-            {
-                "stats": {
-                    "want_to_read_count": s.want_to_read_count,
-                    "reading_count": s.reading_count,
-                    "read_count": s.read_count,
-                    "abandoned_count": s.abandoned_count,
-                    "favourites_count": s.favourites_count,
-                    "ratings_count": s.ratings_count,
-                    "comments_count": s.comments_count,
-                    "finished_this_year_count": s.finished_this_year_count,
-                    "pages_read_this_year": s.pages_read_this_year,
-                    "hours_read_this_year": s.hours_read_this_year,
-                    "bookshelf_updated_at": s.bookshelf_updated_at,
-                    "favourites_updated_at": s.favourites_updated_at,
-                    "comments_updated_at": s.comments_updated_at,
-                    "ratings_updated_at": s.ratings_updated_at,
-                    "average_rating": s.average_rating,
-                    "rating_distribution": rating_distribution,
-                    "pages_read_total": s.pages_read_total,
-                    "reviews_count": s.reviews_count,
-                }
-            }
+            app.utils.proto.message_to_dict(response)
         )
     except grpc.RpcError:
         raise
@@ -571,45 +452,9 @@ async def get_profile_overview(
             username=username,
             language=language,
         )
-        u = response.user
-        reading_now = None
-        if response.reading_now_present:
-            rn = response.reading_now
-            reading_now = {
-                "book_slug": rn.book_slug,
-                "book_title": rn.book_title,
-                "book_cover_url": rn.book_cover_url,
-                "book_author_names": list(rn.book_author_names),
-                "book_author_slugs": list(rn.book_author_slugs),
-            }
-        return app.utils.responses.success_response({
-            "user": {
-                "user_id": u.user_id,
-                "username": u.username,
-                "display_name": u.display_name,
-                "avatar_url": u.avatar_url,
-                "bio": u.bio,
-            },
-            "reading_now": reading_now,
-            "top_genres": [
-                {"name": g.name, "slug": g.slug, "count": g.count, "percent": g.percent}
-                for g in response.top_genres
-            ],
-            "favourite_authors": [
-                {"name": a.name, "slug": a.slug, "count": a.count, "photo_url": a.photo_url}
-                for a in response.favourite_authors
-            ],
-            "favourites_this_year": [
-                {
-                    "book_slug": b.book_slug,
-                    "book_title": b.book_title,
-                    "book_cover_url": b.book_cover_url,
-                    "book_author_names": list(b.book_author_names),
-                    "book_author_slugs": list(b.book_author_slugs),
-                }
-                for b in response.favourites_this_year
-            ],
-        })
+        return app.utils.responses.success_response(
+            app.utils.proto.message_to_dict(response)
+        )
     except grpc.RpcError:
         raise
     except Exception as e:
@@ -650,73 +495,8 @@ async def get_year_in_review(
             year=year or 0,
             language=language,
         )
-        r = response.review
-        try:
-            rating_distribution = (
-                json.loads(r.rating_distribution_json) if r.rating_distribution_json else {}
-            )
-        except (ValueError, TypeError):
-            rating_distribution = {}
-
-        def _year_book(b, present: bool) -> typing.Optional[typing.Dict[str, typing.Any]]:
-            if not present:
-                return None
-            return {
-                "book_slug": b.book_slug,
-                "book_title": b.book_title,
-                "book_cover_url": b.book_cover_url,
-                "author_names": list(b.author_names),
-                "author_slugs": list(b.author_slugs),
-                "number_of_pages": b.number_of_pages,
-                "finished_at": b.finished_at,
-                "my_rating": b.my_rating if b.has_my_rating else None,
-            }
-
         return app.utils.responses.success_response(
-            {
-                "review": {
-                    "year": r.year,
-                    "months_elapsed": r.months_elapsed,
-                    "monthly": [
-                        {
-                            "month": m.month,
-                            "books_finished": m.books_finished,
-                            "pages_read": m.pages_read,
-                            "ratings_given": m.ratings_given,
-                            "books": [_year_book(b, True) for b in m.books],
-                        }
-                        for m in r.monthly
-                    ],
-                    "total_books_finished": r.total_books_finished,
-                    "total_pages_read": r.total_pages_read,
-                    "total_hours_read": r.total_hours_read,
-                    "ratings_given": r.ratings_given,
-                    "reviews_written": r.reviews_written,
-                    "comments_written": r.comments_written,
-                    "favourites_added": r.favourites_added,
-                    "average_rating_given": r.average_rating_given,
-                    "rating_distribution": rating_distribution,
-                    "top_genres": [
-                        {"name": g.name, "slug": g.slug, "count": g.count, "percent": g.percent}
-                        for g in r.top_genres
-                    ],
-                    "top_authors": [
-                        {"name": a.name, "slug": a.slug, "count": a.count, "photo_url": a.photo_url}
-                        for a in r.top_authors
-                    ],
-                    "longest_book": _year_book(r.longest_book, r.has_longest_book),
-                    "shortest_book": _year_book(r.shortest_book, r.has_shortest_book),
-                    "first_finished": _year_book(r.first_finished, r.has_first_finished),
-                    "highest_rated": _year_book(r.highest_rated, r.has_highest_rated),
-                    "average_pages_per_book": r.average_pages_per_book,
-                    "busiest_month": r.busiest_month,
-                    "busiest_month_count": r.busiest_month_count,
-                    "average_days_to_finish": r.average_days_to_finish,
-                    "currently_reading_count": r.currently_reading_count,
-                    "added_to_shelf_count": r.added_to_shelf_count,
-                    "finished_cover_urls": list(r.finished_cover_urls),
-                }
-            }
+            app.utils.proto.message_to_dict(response)
         )
     except grpc.RpcError:
         raise
@@ -764,11 +544,7 @@ async def add_favourite(
             )
         )
         return app.utils.responses.success_response(
-            {
-                "is_favorite": response.is_favorite,
-                "book_id": response.book_id,
-                "book_slug": response.book_slug,
-            }
+            app.utils.proto.message_to_dict(response)
         )
     except grpc.RpcError:
         raise
@@ -816,11 +592,7 @@ async def remove_favourite(
             )
         )
         return app.utils.responses.success_response(
-            {
-                "is_favorite": response.is_favorite,
-                "book_id": response.book_id,
-                "book_slug": response.book_slug,
-            }
+            app.utils.proto.message_to_dict(response)
         )
     except grpc.RpcError:
         raise
@@ -862,7 +634,7 @@ async def get_user_favourites(
             offset=offset,
             language=language,
         )
-        items = [_bookshelf_proto_to_dict(b) for b in response.bookshelves]
+        items = [app.utils.proto.message_to_dict(b) for b in response.bookshelves]
         return app.utils.responses.success_response(
             {
                 "items": items,
@@ -939,7 +711,7 @@ async def upsert_rating(
             )
         )
         return app.utils.responses.success_response(
-            {"rating": _rating_proto_to_dict(response.rating)}, status_code=201
+            {"rating": app.utils.proto.message_to_dict(response.rating)}, status_code=201
         )
     except grpc.RpcError:
         raise
@@ -1042,7 +814,7 @@ async def get_user_ratings(
             max_rating=max_rating or 0.0,
             language=language,
         )
-        items = [_rating_proto_to_dict(r) for r in response.ratings]
+        items = [app.utils.proto.message_to_dict(r) for r in response.ratings]
         return app.utils.responses.success_response(
             {
                 "items": items,
@@ -1103,7 +875,7 @@ async def create_comment(
             language=language,
         )
         return app.utils.responses.success_response(
-            {"comment": _comment_proto_to_dict(response.comment)}, status_code=201
+            {"comment": app.utils.proto.message_to_dict(response.comment)}, status_code=201
         )
     except grpc.RpcError:
         raise
@@ -1150,7 +922,7 @@ async def update_comment(
             language=language,
         )
         return app.utils.responses.success_response(
-            {"comment": _comment_proto_to_dict(response.comment)}
+            {"comment": app.utils.proto.message_to_dict(response.comment)}
         )
     except grpc.RpcError:
         raise
@@ -1241,7 +1013,7 @@ async def get_user_comments(
             book_slug=book_slug or "",
             language=language,
         )
-        items = [_comment_proto_to_dict(c) for c in response.comments]
+        items = [app.utils.proto.message_to_dict(c) for c in response.comments]
         return app.utils.responses.success_response(
             {
                 "items": items,
