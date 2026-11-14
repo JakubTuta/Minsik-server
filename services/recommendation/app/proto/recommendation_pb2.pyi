@@ -21,7 +21,7 @@ class GetRecommendationListRequest(_message.Message):
     def __init__(self, category: _Optional[str] = ..., limit: _Optional[int] = ..., offset: _Optional[int] = ..., language: _Optional[str] = ..., user_id: _Optional[int] = ...) -> None: ...
 
 class RecommendationListResponse(_message.Message):
-    __slots__ = ("category", "display_name", "item_type", "book_items", "author_items", "total", "title_params")
+    __slots__ = ("key", "display_name", "item_type", "book_items", "author_items", "total", "title_params")
     class TitleParamsEntry(_message.Message):
         __slots__ = ("key", "value")
         KEY_FIELD_NUMBER: _ClassVar[int]
@@ -29,21 +29,21 @@ class RecommendationListResponse(_message.Message):
         key: str
         value: str
         def __init__(self, key: _Optional[str] = ..., value: _Optional[str] = ...) -> None: ...
-    CATEGORY_FIELD_NUMBER: _ClassVar[int]
+    KEY_FIELD_NUMBER: _ClassVar[int]
     DISPLAY_NAME_FIELD_NUMBER: _ClassVar[int]
     ITEM_TYPE_FIELD_NUMBER: _ClassVar[int]
     BOOK_ITEMS_FIELD_NUMBER: _ClassVar[int]
     AUTHOR_ITEMS_FIELD_NUMBER: _ClassVar[int]
     TOTAL_FIELD_NUMBER: _ClassVar[int]
     TITLE_PARAMS_FIELD_NUMBER: _ClassVar[int]
-    category: str
+    key: str
     display_name: str
     item_type: str
     book_items: _containers.RepeatedCompositeFieldContainer[RecommendationBookItem]
     author_items: _containers.RepeatedCompositeFieldContainer[RecommendationAuthorItem]
     total: int
     title_params: _containers.ScalarMap[str, str]
-    def __init__(self, category: _Optional[str] = ..., display_name: _Optional[str] = ..., item_type: _Optional[str] = ..., book_items: _Optional[_Iterable[_Union[RecommendationBookItem, _Mapping]]] = ..., author_items: _Optional[_Iterable[_Union[RecommendationAuthorItem, _Mapping]]] = ..., total: _Optional[int] = ..., title_params: _Optional[_Mapping[str, str]] = ...) -> None: ...
+    def __init__(self, key: _Optional[str] = ..., display_name: _Optional[str] = ..., item_type: _Optional[str] = ..., book_items: _Optional[_Iterable[_Union[RecommendationBookItem, _Mapping]]] = ..., author_items: _Optional[_Iterable[_Union[RecommendationAuthorItem, _Mapping]]] = ..., total: _Optional[int] = ..., title_params: _Optional[_Mapping[str, str]] = ...) -> None: ...
 
 class RecommendationBookItem(_message.Message):
     __slots__ = ("book_id", "title", "slug", "language", "primary_cover_url", "author_names", "author_slugs", "avg_rating", "rating_count", "score", "readers", "work_id")
@@ -66,12 +66,12 @@ class RecommendationBookItem(_message.Message):
     primary_cover_url: str
     author_names: _containers.RepeatedScalarFieldContainer[str]
     author_slugs: _containers.RepeatedScalarFieldContainer[str]
-    avg_rating: str
+    avg_rating: float
     rating_count: int
     score: float
     readers: int
     work_id: str
-    def __init__(self, book_id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., language: _Optional[str] = ..., primary_cover_url: _Optional[str] = ..., author_names: _Optional[_Iterable[str]] = ..., author_slugs: _Optional[_Iterable[str]] = ..., avg_rating: _Optional[str] = ..., rating_count: _Optional[int] = ..., score: _Optional[float] = ..., readers: _Optional[int] = ..., work_id: _Optional[str] = ...) -> None: ...
+    def __init__(self, book_id: _Optional[int] = ..., title: _Optional[str] = ..., slug: _Optional[str] = ..., language: _Optional[str] = ..., primary_cover_url: _Optional[str] = ..., author_names: _Optional[_Iterable[str]] = ..., author_slugs: _Optional[_Iterable[str]] = ..., avg_rating: _Optional[float] = ..., rating_count: _Optional[int] = ..., score: _Optional[float] = ..., readers: _Optional[int] = ..., work_id: _Optional[str] = ...) -> None: ...
 
 class RecommendationAuthorItem(_message.Message):
     __slots__ = ("author_id", "name", "slug", "photo_url", "book_count", "score", "avg_rating", "readers", "rating_count")
@@ -90,10 +90,10 @@ class RecommendationAuthorItem(_message.Message):
     photo_url: str
     book_count: int
     score: float
-    avg_rating: str
+    avg_rating: float
     readers: int
     rating_count: int
-    def __init__(self, author_id: _Optional[int] = ..., name: _Optional[str] = ..., slug: _Optional[str] = ..., photo_url: _Optional[str] = ..., book_count: _Optional[int] = ..., score: _Optional[float] = ..., avg_rating: _Optional[str] = ..., readers: _Optional[int] = ..., rating_count: _Optional[int] = ...) -> None: ...
+    def __init__(self, author_id: _Optional[int] = ..., name: _Optional[str] = ..., slug: _Optional[str] = ..., photo_url: _Optional[str] = ..., book_count: _Optional[int] = ..., score: _Optional[float] = ..., avg_rating: _Optional[float] = ..., readers: _Optional[int] = ..., rating_count: _Optional[int] = ...) -> None: ...
 
 class GetHomePageRequest(_message.Message):
     __slots__ = ("items_per_category", "user_id", "language")
@@ -122,14 +122,14 @@ class AvailableCategoriesResponse(_message.Message):
     def __init__(self, categories: _Optional[_Iterable[_Union[CategoryInfo, _Mapping]]] = ...) -> None: ...
 
 class CategoryInfo(_message.Message):
-    __slots__ = ("category", "display_name", "item_type")
-    CATEGORY_FIELD_NUMBER: _ClassVar[int]
+    __slots__ = ("key", "display_name", "item_type")
+    KEY_FIELD_NUMBER: _ClassVar[int]
     DISPLAY_NAME_FIELD_NUMBER: _ClassVar[int]
     ITEM_TYPE_FIELD_NUMBER: _ClassVar[int]
-    category: str
+    key: str
     display_name: str
     item_type: str
-    def __init__(self, category: _Optional[str] = ..., display_name: _Optional[str] = ..., item_type: _Optional[str] = ...) -> None: ...
+    def __init__(self, key: _Optional[str] = ..., display_name: _Optional[str] = ..., item_type: _Optional[str] = ...) -> None: ...
 
 class RefreshRecommendationsRequest(_message.Message):
     __slots__ = ()
@@ -248,7 +248,7 @@ class GetAuthorRecommendationsRequest(_message.Message):
     def __init__(self, author_id: _Optional[int] = ..., limit_per_section: _Optional[int] = ..., user_id: _Optional[int] = ..., language: _Optional[str] = ...) -> None: ...
 
 class RecommendationSection(_message.Message):
-    __slots__ = ("section_key", "display_name", "item_type", "book_items", "author_items", "total", "title_params")
+    __slots__ = ("key", "display_name", "item_type", "book_items", "author_items", "total", "title_params")
     class TitleParamsEntry(_message.Message):
         __slots__ = ("key", "value")
         KEY_FIELD_NUMBER: _ClassVar[int]
@@ -256,21 +256,21 @@ class RecommendationSection(_message.Message):
         key: str
         value: str
         def __init__(self, key: _Optional[str] = ..., value: _Optional[str] = ...) -> None: ...
-    SECTION_KEY_FIELD_NUMBER: _ClassVar[int]
+    KEY_FIELD_NUMBER: _ClassVar[int]
     DISPLAY_NAME_FIELD_NUMBER: _ClassVar[int]
     ITEM_TYPE_FIELD_NUMBER: _ClassVar[int]
     BOOK_ITEMS_FIELD_NUMBER: _ClassVar[int]
     AUTHOR_ITEMS_FIELD_NUMBER: _ClassVar[int]
     TOTAL_FIELD_NUMBER: _ClassVar[int]
     TITLE_PARAMS_FIELD_NUMBER: _ClassVar[int]
-    section_key: str
+    key: str
     display_name: str
     item_type: str
     book_items: _containers.RepeatedCompositeFieldContainer[RecommendationBookItem]
     author_items: _containers.RepeatedCompositeFieldContainer[RecommendationAuthorItem]
     total: int
     title_params: _containers.ScalarMap[str, str]
-    def __init__(self, section_key: _Optional[str] = ..., display_name: _Optional[str] = ..., item_type: _Optional[str] = ..., book_items: _Optional[_Iterable[_Union[RecommendationBookItem, _Mapping]]] = ..., author_items: _Optional[_Iterable[_Union[RecommendationAuthorItem, _Mapping]]] = ..., total: _Optional[int] = ..., title_params: _Optional[_Mapping[str, str]] = ...) -> None: ...
+    def __init__(self, key: _Optional[str] = ..., display_name: _Optional[str] = ..., item_type: _Optional[str] = ..., book_items: _Optional[_Iterable[_Union[RecommendationBookItem, _Mapping]]] = ..., author_items: _Optional[_Iterable[_Union[RecommendationAuthorItem, _Mapping]]] = ..., total: _Optional[int] = ..., title_params: _Optional[_Mapping[str, str]] = ...) -> None: ...
 
 class BookRecommendationsResponse(_message.Message):
     __slots__ = ("book_id", "sections")

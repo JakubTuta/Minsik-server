@@ -5,6 +5,7 @@ import fastapi
 import grpc
 
 import app.models.responses
+import app.utils.proto
 
 _CLIENT_ERROR_CODES = {
     grpc.StatusCode.NOT_FOUND,
@@ -75,46 +76,8 @@ def error_response(
     )
 
 
-def recommendation_section_to_dict(key: str, item: typing.Any) -> typing.Dict[str, typing.Any]:
-    item_type = item.item_type
-    result = {
-        "key": key,
-        "display_name": item.display_name,
-        "title_params": dict(item.title_params),
-        "item_type": item_type,
-        "total": item.total,
-    }
-    if item_type == "book":
-        result["book_items"] = [
-            {
-                "book_id": i.book_id,
-                "work_id": i.work_id or None,
-                "title": i.title,
-                "slug": i.slug,
-                "language": i.language,
-                "primary_cover_url": i.primary_cover_url or None,
-                "author_names": list(i.author_names),
-                "author_slugs": list(i.author_slugs),
-                "avg_rating": float(i.avg_rating) if i.avg_rating else 0.0,
-                "rating_count": i.rating_count,
-                "readers": i.readers,
-                "score": i.score,
-            }
-            for i in item.book_items
-        ]
-    else:
-        result["author_items"] = [
-            {
-                "author_id": i.author_id,
-                "name": i.name,
-                "slug": i.slug,
-                "photo_url": i.photo_url or None,
-                "book_count": i.book_count,
-                "avg_rating": float(i.avg_rating) if i.avg_rating else 0.0,
-                "rating_count": i.rating_count,
-                "readers": i.readers,
-                "score": i.score,
-            }
-            for i in item.author_items
-        ]
-    return result
+def recommendation_section_to_dict(item: typing.Any) -> typing.Dict[str, typing.Any]:
+    """A section carries book items or author items, never both."""
+    section = app.utils.proto.message_to_dict(item)
+    del section["author_items" if item.item_type == "book" else "book_items"]
+    return section

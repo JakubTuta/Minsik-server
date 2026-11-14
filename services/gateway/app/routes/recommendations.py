@@ -7,6 +7,7 @@ import app.middleware.auth
 import app.middleware.rate_limit
 import app.models.recommendation_responses
 import app.utils.language
+import app.utils.proto
 import app.utils.responses
 import fastapi
 import grpc
@@ -58,7 +59,7 @@ async def get_home_page(
         response = await app.grpc_clients.recommendation_client.get_home_page(
             items_per_category=items_per_category, language=lang
         )
-        sections = [_to_section_dict(cat.category, cat) for cat in response.categories]
+        sections = [_to_section_dict(cat) for cat in response.categories]
         return app.utils.responses.success_response(
             {"sections": sections},
             cache_control="public, max-age=300, stale-while-revalidate=3600",
@@ -105,12 +106,7 @@ async def get_available_categories(request: fastapi.Request):
             await app.grpc_clients.recommendation_client.get_available_categories()
         )
         categories = [
-            {
-                "key": cat.category,
-                "display_name": cat.display_name,
-                "item_type": cat.item_type,
-            }
-            for cat in response.categories
+            app.utils.proto.message_to_dict(cat) for cat in response.categories
         ]
         return app.utils.responses.success_response({"categories": categories})
     except grpc.RpcError as e:
@@ -154,26 +150,8 @@ async def get_book_of_the_week(
 ):
     try:
         response = await app.grpc_clients.recommendation_client.get_book_of_the_week(language=lang)
-        data = {
-            "book_id": response.book_id,
-            "title": response.title,
-            "slug": response.slug,
-            "language": response.language,
-            "primary_cover_url": response.primary_cover_url,
-            "first_sentence": response.first_sentence,
-            "weighted_avg_rating": response.weighted_avg_rating,
-            "rating_count": response.rating_count,
-            "authors": [
-                {"author_id": a.author_id, "name": a.name, "slug": a.slug}
-                for a in response.authors
-            ],
-            "categories": [
-                {"genre_id": c.genre_id, "name": c.name, "slug": c.slug}
-                for c in response.categories
-            ],
-        }
         return app.utils.responses.success_response(
-            data,
+            app.utils.proto.message_to_dict(response),
             cache_control="public, max-age=3600, stale-while-revalidate=86400",
             vary=app.utils.responses.LANGUAGE_VARY,
         )
@@ -241,7 +219,7 @@ async def get_recommendation_list(
             category=category, limit=limit, offset=offset, language=lang, user_id=user_id
         )
         return app.utils.responses.success_response(
-            _to_section_dict(response.category, response)
+            _to_section_dict(response)
         )
     except grpc.RpcError as e:
         logger.error(
@@ -304,7 +282,7 @@ async def get_book_recommendations(
                 book_id=book_id, limit_per_section=limit_per_section
             )
         )
-        sections = [_to_section_dict(s.section_key, s) for s in response.sections]
+        sections = [_to_section_dict(s) for s in response.sections]
         return app.utils.responses.success_response(
             {"book_id": response.book_id, "sections": sections}
         )
@@ -361,7 +339,7 @@ async def get_author_recommendations(
                 author_id=author_id, limit_per_section=limit_per_section
             )
         )
-        sections = [_to_section_dict(s.section_key, s) for s in response.sections]
+        sections = [_to_section_dict(s) for s in response.sections]
         return app.utils.responses.success_response(
             {"author_id": response.author_id, "sections": sections}
         )
@@ -416,7 +394,7 @@ async def get_series_recommendations(
                 series_id=series_id, limit_per_section=limit_per_section
             )
         )
-        sections = [_to_section_dict(s.section_key, s) for s in response.sections]
+        sections = [_to_section_dict(s) for s in response.sections]
         return app.utils.responses.success_response(
             {"series_id": response.series_id, "sections": sections}
         )

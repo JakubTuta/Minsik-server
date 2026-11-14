@@ -62,7 +62,7 @@ async def get_personal_home_page(
         response = await app.grpc_clients.recommendation_client.get_home_page(
             items_per_category=items_per_category, user_id=user_id, language=language
         )
-        sections = [_to_section_dict(cat.category, cat) for cat in response.categories]
+        sections = [_to_section_dict(cat) for cat in response.categories]
         # `private` is mandatory — this must never enter a shared cache. A
         # short max-age just lets the browser skip an identical refetch on
         # back/forward nav within the same minute.
@@ -127,7 +127,7 @@ async def get_personal_book_recommendations(
                 language=language,
             )
         )
-        sections = [_to_section_dict(s.section_key, s) for s in response.sections]
+        sections = [_to_section_dict(s) for s in response.sections]
         return app.utils.responses.success_response(
             {"book_id": response.book_id, "sections": sections}
         )
@@ -193,7 +193,7 @@ async def get_personal_author_recommendations(
                 language=language,
             )
         )
-        sections = [_to_section_dict(s.section_key, s) for s in response.sections]
+        sections = [_to_section_dict(s) for s in response.sections]
         return app.utils.responses.success_response(
             {"author_id": response.author_id, "sections": sections}
         )

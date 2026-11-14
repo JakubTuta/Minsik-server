@@ -28,7 +28,7 @@ message GetRecommendationListRequest {
 }
 
 message RecommendationListResponse {
-  string category = 1;
+  string key = 1;
   string display_name = 2;
   string item_type = 3;
   repeated RecommendationBookItem book_items = 4;
@@ -45,24 +45,24 @@ message RecommendationBookItem {
   string title = 2;
   string slug = 3;
   string language = 4;
-  string primary_cover_url = 5;
+  optional string primary_cover_url = 5;
   repeated string author_names = 6;
   repeated string author_slugs = 7;
-  string avg_rating = 8;
+  double avg_rating = 8;
   int32 rating_count = 9;
   double score = 10;
   int32 readers = 11;
-  string work_id = 12;
+  optional string work_id = 12;
 }
 
 message RecommendationAuthorItem {
   int64 author_id = 1;
   string name = 2;
   string slug = 3;
-  string photo_url = 4;
+  optional string photo_url = 4;
   int32 book_count = 5;
   double score = 6;
-  string avg_rating = 7;
+  double avg_rating = 7;
   int32 readers = 8;
   int32 rating_count = 9;
 }
@@ -84,7 +84,7 @@ message AvailableCategoriesResponse {
 }
 
 message CategoryInfo {
-  string category = 1;
+  string key = 1;
   string display_name = 2;
   string item_type = 3;
 }
@@ -160,7 +160,7 @@ message GetAuthorRecommendationsRequest {
 }
 
 message RecommendationSection {
-  string section_key = 1;
+  string key = 1;
   string display_name = 2;
   string item_type = 3;
   repeated RecommendationBookItem book_items = 4;

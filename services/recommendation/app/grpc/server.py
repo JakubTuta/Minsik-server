@@ -1,4 +1,5 @@
 import logging
+import typing
 
 import app.cache
 import app.config
@@ -24,17 +25,21 @@ async def _drop_contextual_cache() -> None:
         await app.cache.delete_by_pattern(f"rec:{entity_type}:*")
 
 
+def _rating(value: typing.Any) -> float:
+    return float(value) if value not in (None, "") else 0.0
+
+
 def _dict_to_book_item(item: dict) -> app.proto.recommendation_pb2.RecommendationBookItem:
     return app.proto.recommendation_pb2.RecommendationBookItem(
         book_id=item["book_id"],
-        work_id=item.get("work_id", "") or "",
+        work_id=item.get("work_id") or None,
         title=item["title"],
         slug=item["slug"],
         language=item["language"],
-        primary_cover_url=item["primary_cover_url"],
+        primary_cover_url=item["primary_cover_url"] or None,
         author_names=item["author_names"],
         author_slugs=item["author_slugs"],
-        avg_rating=item["avg_rating"],
+        avg_rating=_rating(item["avg_rating"]),
         rating_count=item["rating_count"],
         score=item["score"],
         readers=item.get("readers", 0),
@@ -46,10 +51,10 @@ def _dict_to_author_item(item: dict) -> app.proto.recommendation_pb2.Recommendat
         author_id=item["author_id"],
         name=item["name"],
         slug=item["slug"],
-        photo_url=item["photo_url"],
+        photo_url=item["photo_url"] or None,
         book_count=item["book_count"],
         score=item["score"],
-        avg_rating=item.get("avg_rating", ""),
+        avg_rating=_rating(item.get("avg_rating")),
         rating_count=item.get("rating_count", 0),
         readers=item.get("readers", 0),
     )
@@ -58,7 +63,7 @@ def _dict_to_author_item(item: dict) -> app.proto.recommendation_pb2.Recommendat
 def _dict_to_section(section: dict) -> app.proto.recommendation_pb2.RecommendationSection:
     item_type = section.get("item_type", "book")
     proto_section = app.proto.recommendation_pb2.RecommendationSection(
-        section_key=section["section_key"],
+        key=section["section_key"],
         display_name=section["display_name"],
         item_type=item_type,
         total=section["total"],
@@ -76,7 +81,7 @@ def _dict_to_section(section: dict) -> app.proto.recommendation_pb2.Recommendati
 def _dict_to_list_response(data: dict) -> app.proto.recommendation_pb2.RecommendationListResponse:
     item_type = data.get("item_type", "book")
     response = app.proto.recommendation_pb2.RecommendationListResponse(
-        category=data["category"],
+        key=data["category"],
         display_name=data["display_name"],
         item_type=item_type,
         total=data["total"],
@@ -170,7 +175,7 @@ class RecommendationServicer(app.proto.recommendation_pb2_grpc.RecommendationSer
             for cat in categories:
                 response.categories.append(
                     app.proto.recommendation_pb2.CategoryInfo(
-                        category=cat["category"],
+                        key=cat["category"],
                         display_name=cat["display_name"],
                         item_type=cat["item_type"],
                     )

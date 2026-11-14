@@ -1,3 +1,4 @@
+import app.proto.recommendation_pb2 as recommendation_pb2
 import grpc
 
 
@@ -14,65 +15,55 @@ class MockRpcError(grpc.RpcError):
         return self._details
 
 
-def make_book_item(mocker, book_id=1):
-    item = mocker.MagicMock()
-    item.book_id = book_id
-    # work_id is the cross-language identity the route passes through so the
-    # client can dedupe translations of one work; unset it would be a MagicMock
-    # and fail serialization.
-    item.work_id = f"OL{book_id}W"
-    item.title = f"Book {book_id}"
-    item.slug = f"book-{book_id}"
-    item.language = "en"
-    item.primary_cover_url = "https://example.com/cover.jpg"
-    item.author_names = ["Author One"]
-    item.author_slugs = ["author-one"]
-    item.avg_rating = "4.50"
-    item.rating_count = 100
-    item.readers = 5000
-    item.score = 9000.0
-    return item
+def make_book_item(book_id=1):
+    return recommendation_pb2.RecommendationBookItem(
+        book_id=book_id,
+        work_id=f"OL{book_id}W",
+        title=f"Book {book_id}",
+        slug=f"book-{book_id}",
+        language="en",
+        primary_cover_url="https://example.com/cover.jpg",
+        author_names=["Author One"],
+        author_slugs=["author-one"],
+        avg_rating=4.5,
+        rating_count=100,
+        readers=5000,
+        score=9000.0,
+    )
 
 
-def make_author_item(mocker, author_id=1):
-    item = mocker.MagicMock()
-    item.author_id = author_id
-    item.name = "Famous Author"
-    item.slug = "famous-author"
-    item.photo_url = "https://example.com/photo.jpg"
-    item.book_count = 10
-    item.avg_rating = "4.20"
-    item.rating_count = 50
-    item.readers = 1000
-    item.score = 50000.0
-    return item
+def make_author_item(author_id=1):
+    return recommendation_pb2.RecommendationAuthorItem(
+        author_id=author_id,
+        name="Famous Author",
+        slug="famous-author",
+        photo_url="https://example.com/photo.jpg",
+        book_count=10,
+        avg_rating=4.2,
+        rating_count=50,
+        readers=1000,
+        score=50000.0,
+    )
 
 
-def make_list_response(mocker, item_type="book", category="most_read", title_params=None):
-    resp = mocker.MagicMock()
-    resp.category = category
-    resp.display_name = "Most Read Books"
-    # The route resolves section titles client-side from `category` plus these
-    # params, so it always reads the field. Leaving it unset on a MagicMock
-    # yields a mock that dict() cannot serialize, which surfaces as a 500.
-    resp.title_params = title_params or {}
-    resp.item_type = item_type
-    resp.total = 1
-    if item_type == "book":
-        resp.book_items = [make_book_item(mocker)]
-        resp.author_items = []
-    else:
-        resp.author_items = [make_author_item(mocker)]
-        resp.book_items = []
-    return resp
+def make_list_response(item_type="book", key="most_read", title_params=None):
+    return recommendation_pb2.RecommendationListResponse(
+        key=key,
+        display_name="Most Read Books",
+        item_type=item_type,
+        total=1,
+        title_params=title_params or {},
+        book_items=[make_book_item()] if item_type == "book" else [],
+        author_items=[make_author_item()] if item_type != "book" else [],
+    )
 
 
 class TestGetHomePage:
     def test_success_returns_categories(self, client, mock_recommendation_client, mocker):
-        cat = make_list_response(mocker, item_type="book", category="most_read")
-        home_response = mocker.MagicMock()
-        home_response.categories = [cat]
-        mock_recommendation_client.get_home_page.return_value = home_response
+        cat = make_list_response(item_type="book", key="most_read")
+        mock_recommendation_client.get_home_page.return_value = (
+            recommendation_pb2.HomePageResponse(categories=[cat])
+        )
 
         response = client.get("/api/v1/recommendations/home?items_per_category=5")
 
@@ -83,10 +74,10 @@ class TestGetHomePage:
         assert len(body["data"]["sections"]) == 1
 
     def test_category_structure_for_book_type(self, client, mock_recommendation_client, mocker):
-        cat = make_list_response(mocker, item_type="book", category="most_read")
-        home_response = mocker.MagicMock()
-        home_response.categories = [cat]
-        mock_recommendation_client.get_home_page.return_value = home_response
+        cat = make_list_response(item_type="book", key="most_read")
+        mock_recommendation_client.get_home_page.return_value = (
+            recommendation_pb2.HomePageResponse(categories=[cat])
+        )
 
         response = client.get("/api/v1/recommendations/home")
 
@@ -97,10 +88,10 @@ class TestGetHomePage:
         assert category["book_items"][0]["book_id"] == 1
 
     def test_category_structure_for_author_type(self, client, mock_recommendation_client, mocker):
-        cat = make_list_response(mocker, item_type="author", category="top_authors")
-        home_response = mocker.MagicMock()
-        home_response.categories = [cat]
-        mock_recommendation_client.get_home_page.return_value = home_response
+        cat = make_list_response(item_type="author", key="top_authors")
+        mock_recommendation_client.get_home_page.return_value = (
+            recommendation_pb2.HomePageResponse(categories=[cat])
+        )
 
         response = client.get("/api/v1/recommendations/home")
 
@@ -135,14 +126,15 @@ class TestGetHomePage:
 
 class TestGetAvailableCategories:
     def test_success_returns_category_list(self, client, mock_recommendation_client, mocker):
-        cat_info = mocker.MagicMock()
-        cat_info.category = "most_read"
-        cat_info.display_name = "Most Read Books"
-        cat_info.item_type = "book"
-
-        avail_response = mocker.MagicMock()
-        avail_response.categories = [cat_info]
-        mock_recommendation_client.get_available_categories.return_value = avail_response
+        mock_recommendation_client.get_available_categories.return_value = (
+            recommendation_pb2.AvailableCategoriesResponse(
+                categories=[
+                    recommendation_pb2.CategoryInfo(
+                        key="most_read", display_name="Most Read Books", item_type="book"
+                    )
+                ]
+            )
+        )
 
         response = client.get("/api/v1/recommendations/categories")
 
@@ -172,7 +164,7 @@ class TestGetAvailableCategories:
 
 class TestGetRecommendationList:
     def test_success_returns_list(self, client, mock_recommendation_client, mocker):
-        list_resp = make_list_response(mocker, item_type="book", category="most_read")
+        list_resp = make_list_response(item_type="book", key="most_read")
         mock_recommendation_client.get_recommendation_list.return_value = list_resp
 
         response = client.get("/api/v1/recommendations/most_read?limit=10&offset=0")
@@ -184,7 +176,7 @@ class TestGetRecommendationList:
         assert "book_items" in body["data"]
 
     def test_passes_limit_and_offset(self, client, mock_recommendation_client, mocker):
-        list_resp = make_list_response(mocker)
+        list_resp = make_list_response()
         mock_recommendation_client.get_recommendation_list.return_value = list_resp
 
         client.get("/api/v1/recommendations/most_read?limit=5&offset=10")
@@ -226,7 +218,7 @@ class TestGetRecommendationList:
         assert response.status_code == 500
 
     def test_author_category_returns_author_items(self, client, mock_recommendation_client, mocker):
-        list_resp = make_list_response(mocker, item_type="author", category="top_authors")
+        list_resp = make_list_response(item_type="author", key="top_authors")
         mock_recommendation_client.get_recommendation_list.return_value = list_resp
 
         response = client.get("/api/v1/recommendations/top_authors")
@@ -316,3 +308,36 @@ def _make_user_token() -> str:
         "exp": datetime.datetime.now(datetime.timezone.utc) + datetime.timedelta(minutes=15),
     }
     return jwt.encode(payload, app.config.settings.jwt_secret_key, algorithm=app.config.settings.jwt_algorithm)
+
+
+class TestSectionShape:
+    def test_a_book_section_has_no_author_items_and_nulls_unset_optionals(
+        self, client, mock_recommendation_client
+    ):
+        book = recommendation_pb2.RecommendationBookItem(
+            book_id=2**40, title="Dune", slug="dune", avg_rating=4.5
+        )
+        mock_recommendation_client.get_recommendation_list.return_value = (
+            recommendation_pb2.RecommendationListResponse(
+                key="most_read", item_type="book", book_items=[book]
+            )
+        )
+
+        data = client.get("/api/v1/recommendations/most_read").json()["data"]
+
+        assert "author_items" not in data
+        item = data["book_items"][0]
+        assert item["book_id"] == 2**40
+        assert item["avg_rating"] == 4.5
+        assert item["work_id"] is None
+        assert item["primary_cover_url"] is None
+
+    def test_an_author_section_has_no_book_items(self, client, mock_recommendation_client):
+        mock_recommendation_client.get_recommendation_list.return_value = make_list_response(
+            item_type="author", key="top_authors"
+        )
+
+        data = client.get("/api/v1/recommendations/top_authors").json()["data"]
+
+        assert "book_items" not in data
+        assert data["author_items"][0]["photo_url"] == "https://example.com/photo.jpg"
