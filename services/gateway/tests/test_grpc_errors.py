@@ -77,3 +77,29 @@ def test_an_unhandled_rpc_error_becomes_an_enveloped_response(client, monkeypatc
     assert body["success"] is False
     assert body["error"]["code"] == "SERVICE_UNAVAILABLE"
     assert "connect failed" not in json.dumps(body)
+
+
+def test_error_response_for_defaults_to_the_mapped_code_and_message():
+    response = app.utils.grpc_errors.error_response_for(
+        FakeRpcError(grpc.StatusCode.UNAVAILABLE, "connect failed")
+    )
+
+    body = json.loads(response.body)
+    assert response.status_code == 503
+    assert body["error"]["code"] == "SERVICE_UNAVAILABLE"
+    assert body["error"]["message"] == "Service temporarily unavailable"
+    assert body["error"]["details"] == {"grpc_code": "UNAVAILABLE"}
+
+
+def test_error_response_for_overrides_code_and_message_but_keeps_the_status():
+    response = app.utils.grpc_errors.error_response_for(
+        FakeRpcError(grpc.StatusCode.UNAVAILABLE, "connect failed"),
+        code="INTERNAL_ERROR",
+        message="Open case failed",
+    )
+
+    body = json.loads(response.body)
+    assert response.status_code == 503
+    assert body["error"]["code"] == "INTERNAL_ERROR"
+    assert body["error"]["message"] == "Open case failed"
+    assert body["error"]["details"] == {"grpc_code": "UNAVAILABLE"}

@@ -81,13 +81,6 @@ class GrpcClientBase:
         timeout: typing.Optional[float] = None,
     ) -> typing.Any:
         method = getattr(self.stub, method_name)
-        try:
-            return await method(
-                request, timeout=timeout or app.config.settings.grpc_timeout
-            )
-        except grpc.RpcError as e:
-            logger.error(
-                f"gRPC {self.service_label}.{method_name} failed: "
-                f"{e.code()} - {e.details()}"
-            )
-            raise
+        return await method(
+            request, timeout=timeout or app.config.settings.grpc_timeout
+        )

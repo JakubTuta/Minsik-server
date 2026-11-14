@@ -36,8 +36,7 @@ async def get_popular_categories(
             {"categories": categories},
             cache_control="public, max-age=3600, stale-while-revalidate=86400",
         )
-    except grpc.RpcError as e:
-        app.utils.responses.log_grpc_error(logger, "in get_popular_categories", e)
+    except grpc.RpcError:
         raise
     except Exception as e:
         logger.error(f"Unexpected error in get_popular_categories: {str(e)}")

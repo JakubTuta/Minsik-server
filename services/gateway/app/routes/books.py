@@ -34,17 +34,6 @@ def _no_eligible_books(language: str) -> fastapi.responses.JSONResponse:
     )
 
 
-def _upstream_error(
-    code: str, message: str, e: grpc.RpcError
-) -> fastapi.responses.JSONResponse:
-    return app.utils.responses.error_response(
-        code=code,
-        message=message,
-        details={"grpc_code": e.code().name},
-        status_code=app.utils.grpc_errors.to_http_error(e)[0],
-    )
-
-
 @router.get(
     "/search/suggest",
     response_model=app.models.books_responses.SuggestResponse,
@@ -67,43 +56,39 @@ async def suggest_search(
     limit: int = fastapi.Query(8, ge=1, le=20, description="Max suggestions to return"),
     language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
-    try:
-        response = await app.grpc_clients.books_client.suggest_search(
-            query=q, limit=limit, language=language
-        )
+    response = await app.grpc_clients.books_client.suggest_search(
+        query=q, limit=limit, language=language
+    )
 
-        items = [
-            {
-                "type": item.type,
-                "id": item.id,
-                "title": item.title,
-                "slug": item.slug,
-                "cover_url": item.cover_url or None,
-                "authors": list(item.authors),
-                "score": item.score,
-                "readers": item.readers,
-                "app_avg_rating": (
-                    float(item.app_avg_rating) if item.app_avg_rating else 0.0
-                ),
-                "app_rating_count": item.app_rating_count,
-                "ol_avg_rating": (
-                    float(item.ol_avg_rating) if item.ol_avg_rating else 0.0
-                ),
-                "ol_rating_count": item.ol_rating_count,
-                "work_id": item.work_id or None,
-                "language": item.language or None,
-            }
-            for item in response.items
-        ]
-
-        return {
-            "success": True,
-            "data": {"items": items},
-            "error": None,
+    items = [
+        {
+            "type": item.type,
+            "id": item.id,
+            "title": item.title,
+            "slug": item.slug,
+            "cover_url": item.cover_url or None,
+            "authors": list(item.authors),
+            "score": item.score,
+            "readers": item.readers,
+            "app_avg_rating": (
+                float(item.app_avg_rating) if item.app_avg_rating else 0.0
+            ),
+            "app_rating_count": item.app_rating_count,
+            "ol_avg_rating": (
+                float(item.ol_avg_rating) if item.ol_avg_rating else 0.0
+            ),
+            "ol_rating_count": item.ol_rating_count,
+            "work_id": item.work_id or None,
+            "language": item.language or None,
         }
-    except grpc.RpcError as e:
-        app.utils.responses.log_grpc_error(logger, "in suggest", e)
-        raise
+        for item in response.items
+    ]
+
+    return {
+        "success": True,
+        "data": {"items": items},
+        "error": None,
+    }
 
 
 @router.get(
@@ -153,52 +138,48 @@ async def search_books_and_authors(
     offset: int = fastapi.Query(0, ge=0, description="Pagination offset"),
     language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
-    try:
-        response = await app.grpc_clients.books_client.search_books_and_authors(
-            query=q, limit=limit, offset=offset, type_filter=type, language=language
+    response = await app.grpc_clients.books_client.search_books_and_authors(
+        query=q, limit=limit, offset=offset, type_filter=type, language=language
+    )
+
+    results = []
+    for result in response.results:
+        results.append(
+            {
+                "type": result.type,
+                "id": result.id,
+                "title": result.title,
+                "slug": result.slug,
+                "cover_url": result.cover_url,
+                "authors": list(result.authors),
+                "relevance_score": result.relevance_score,
+                "author_slugs": list(result.author_slugs),
+                "series_slug": result.series_slug,
+                "app_avg_rating": (
+                    float(result.app_avg_rating) if result.app_avg_rating else 0.0
+                ),
+                "app_rating_count": result.app_rating_count,
+                "ol_avg_rating": (
+                    float(result.ol_avg_rating) if result.ol_avg_rating else 0.0
+                ),
+                "ol_rating_count": result.ol_rating_count,
+                "book_count": result.book_count,
+                "readers": result.readers,
+                "work_id": result.work_id or None,
+                "language": result.language or None,
+            }
         )
 
-        results = []
-        for result in response.results:
-            results.append(
-                {
-                    "type": result.type,
-                    "id": result.id,
-                    "title": result.title,
-                    "slug": result.slug,
-                    "cover_url": result.cover_url,
-                    "authors": list(result.authors),
-                    "relevance_score": result.relevance_score,
-                    "author_slugs": list(result.author_slugs),
-                    "series_slug": result.series_slug,
-                    "app_avg_rating": (
-                        float(result.app_avg_rating) if result.app_avg_rating else 0.0
-                    ),
-                    "app_rating_count": result.app_rating_count,
-                    "ol_avg_rating": (
-                        float(result.ol_avg_rating) if result.ol_avg_rating else 0.0
-                    ),
-                    "ol_rating_count": result.ol_rating_count,
-                    "book_count": result.book_count,
-                    "readers": result.readers,
-                    "work_id": result.work_id or None,
-                    "language": result.language or None,
-                }
-            )
-
-        return {
-            "success": True,
-            "data": {
-                "results": results,
-                "total_count": response.total_count,
-                "limit": limit,
-                "offset": offset,
-            },
-            "error": None,
-        }
-    except grpc.RpcError as e:
-        app.utils.responses.log_grpc_error(logger, "in search", e)
-        raise
+    return {
+        "success": True,
+        "data": {
+            "results": results,
+            "total_count": response.total_count,
+            "limit": limit,
+            "offset": offset,
+        },
+        "error": None,
+    }
 
 
 @router.get(
@@ -257,7 +238,6 @@ async def get_book(
             "error": None,
         }
     except grpc.RpcError as e:
-        app.utils.responses.log_grpc_error(logger, "getting book", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
             raise fastapi.HTTPException(
                 status_code=404, detail=f"Book not found: {slug}"
@@ -298,7 +278,9 @@ async def lookup_book_by_isbn(
             return app.utils.responses.error_response(
                 code="NOT_FOUND", message="No book has this ISBN", status_code=404
             )
-        return _upstream_error("INTERNAL_ERROR", "ISBN lookup failed", e)
+        return app.utils.grpc_errors.error_response_for(
+            e, code="INTERNAL_ERROR", message="ISBN lookup failed"
+        )
 
 
 @router.get(
@@ -315,35 +297,31 @@ async def get_book_language_variants(
         "en", min_length=2, max_length=10, description="Language to exclude (currently displayed)"
     ),
 ):
-    try:
-        response = await app.grpc_clients.books_client.get_book_language_variants(
-            slug, exclude_language=exclude_language
-        )
+    response = await app.grpc_clients.books_client.get_book_language_variants(
+        slug, exclude_language=exclude_language
+    )
 
-        items = [
-            {
-                "book_id": item.book_id,
-                "slug": item.slug,
-                "language": item.language,
-                "title": item.title,
-                "primary_cover_url": item.primary_cover_url or None,
-                "publisher": item.publisher or None,
-                "number_of_pages": item.number_of_pages or None,
-                "original_publication_year": item.original_publication_year or None,
-                "isbn": item.isbn or None,
-                "has_description": item.has_description,
-            }
-            for item in response.items
-        ]
-
-        return {
-            "success": True,
-            "data": {"items": items},
-            "error": None,
+    items = [
+        {
+            "book_id": item.book_id,
+            "slug": item.slug,
+            "language": item.language,
+            "title": item.title,
+            "primary_cover_url": item.primary_cover_url or None,
+            "publisher": item.publisher or None,
+            "number_of_pages": item.number_of_pages or None,
+            "original_publication_year": item.original_publication_year or None,
+            "isbn": item.isbn or None,
+            "has_description": item.has_description,
         }
-    except grpc.RpcError as e:
-        app.utils.responses.log_grpc_error(logger, "getting book language variants", e)
-        raise
+        for item in response.items
+    ]
+
+    return {
+        "success": True,
+        "data": {"items": items},
+        "error": None,
+    }
 
 
 @router.get(
@@ -428,7 +406,6 @@ async def get_author(
             "error": None,
         }
     except grpc.RpcError as e:
-        app.utils.responses.log_grpc_error(logger, "getting author", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
             raise fastapi.HTTPException(
                 status_code=404, detail=f"Author not found: {slug}"
@@ -478,33 +455,29 @@ async def get_author_books(
     order: str = fastapi.Query("desc", regex="^(asc|desc)$", description="Sort order"),
     language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
-    try:
-        response = await app.grpc_clients.books_client.get_author_books(
-            author_slug=slug,
-            limit=limit,
-            offset=offset,
-            sort_by=sort_by,
-            order=order,
-            language=language,
-        )
+    response = await app.grpc_clients.books_client.get_author_books(
+        author_slug=slug,
+        limit=limit,
+        offset=offset,
+        sort_by=sort_by,
+        order=order,
+        language=language,
+    )
 
-        books = []
-        for book in response.books:
-            books.append(_book_summary_proto_to_dict(book))
+    books = []
+    for book in response.books:
+        books.append(_book_summary_proto_to_dict(book))
 
-        return {
-            "success": True,
-            "data": {
-                "books": books,
-                "total_count": response.total_count,
-                "limit": limit,
-                "offset": offset,
-            },
-            "error": None,
-        }
-    except grpc.RpcError as e:
-        app.utils.responses.log_grpc_error(logger, "getting author books", e)
-        raise
+    return {
+        "success": True,
+        "data": {
+            "books": books,
+            "total_count": response.total_count,
+            "limit": limit,
+            "offset": offset,
+        },
+        "error": None,
+    }
 
 
 @router.get(
@@ -565,7 +538,6 @@ async def get_author_stats(
     except grpc.RpcError as e:
         if e.code() == grpc.StatusCode.NOT_FOUND:
             raise fastapi.HTTPException(status_code=404, detail="Author not found")
-        app.utils.responses.log_grpc_error(logger, "getting author stats", e)
         raise
 
 
@@ -589,39 +561,35 @@ async def get_author_quote(
     slug: str = fastapi.Path(..., description="Author slug"),
     language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
-    try:
-        books_response = await app.grpc_clients.books_client.get_author_books(
-            author_slug=slug,
-            limit=20,
-            offset=0,
-            sort_by="readers_count",
-            order="desc",
-            language=language,
-        )
+    books_response = await app.grpc_clients.books_client.get_author_books(
+        author_slug=slug,
+        limit=20,
+        offset=0,
+        sort_by="readers_count",
+        order="desc",
+        language=language,
+    )
 
-        # The summaries already carry the sentence. Fetching each book to read
-        # it cost up to twenty-one sequential round trips per author page.
-        for book in books_response.books:
-            if book.first_sentence:
-                return {
-                    "success": True,
-                    "data": {
-                        "first_sentence": book.first_sentence,
-                        "book_title": book.title,
-                        "book_slug": book.slug,
-                        "publication_year": (
-                            book.original_publication_year
-                            if book.original_publication_year
-                            else None
-                        ),
-                    },
-                    "error": None,
-                }
+    # The summaries already carry the sentence. Fetching each book to read
+    # it cost up to twenty-one sequential round trips per author page.
+    for book in books_response.books:
+        if book.first_sentence:
+            return {
+                "success": True,
+                "data": {
+                    "first_sentence": book.first_sentence,
+                    "book_title": book.title,
+                    "book_slug": book.slug,
+                    "publication_year": (
+                        book.original_publication_year
+                        if book.original_publication_year
+                        else None
+                    ),
+                },
+                "error": None,
+            }
 
-        return {"success": True, "data": None, "error": None}
-    except grpc.RpcError as e:
-        app.utils.responses.log_grpc_error(logger, "getting author quote", e)
-        raise
+    return {"success": True, "data": None, "error": None}
 
 
 @router.get(
@@ -643,22 +611,18 @@ async def get_author_top_books(
     slug: str = fastapi.Path(..., description="Author slug"),
     language: str = fastapi.Depends(app.utils.language.resolve_language),
 ):
-    try:
-        response = await app.grpc_clients.books_client.get_author_books(
-            author_slug=slug,
-            limit=3,
-            offset=0,
-            sort_by="readers_count",
-            order="desc",
-            language=language,
-        )
+    response = await app.grpc_clients.books_client.get_author_books(
+        author_slug=slug,
+        limit=3,
+        offset=0,
+        sort_by="readers_count",
+        order="desc",
+        language=language,
+    )
 
-        books = [_book_summary_proto_to_dict(book) for book in response.books]
+    books = [_book_summary_proto_to_dict(book) for book in response.books]
 
-        return {"success": True, "data": {"books": books}, "error": None}
-    except grpc.RpcError as e:
-        app.utils.responses.log_grpc_error(logger, "getting author top books", e)
-        raise
+    return {"success": True, "data": {"books": books}, "error": None}
 
 
 @router.get(
@@ -738,7 +702,6 @@ async def get_series(
             "error": None,
         }
     except grpc.RpcError as e:
-        app.utils.responses.log_grpc_error(logger, "getting series", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
             raise fastapi.HTTPException(
                 status_code=404, detail=f"Series not found: {slug}"
@@ -867,7 +830,6 @@ async def get_book_comments(
             "error": None,
         }
     except grpc.RpcError as e:
-        app.utils.responses.log_grpc_error(logger, "getting book comments", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
             raise fastapi.HTTPException(
                 status_code=404, detail=f"Book not found: {slug}"
@@ -916,33 +878,29 @@ async def get_series_books(
     ),
     order: str = fastapi.Query("asc", regex="^(asc|desc)$", description="Sort order"),
 ):
-    try:
-        response = await app.grpc_clients.books_client.get_series_books(
-            series_slug=slug,
-            limit=limit,
-            offset=offset,
-            language=language,
-            sort_by=sort_by,
-            order=order,
-        )
+    response = await app.grpc_clients.books_client.get_series_books(
+        series_slug=slug,
+        limit=limit,
+        offset=offset,
+        language=language,
+        sort_by=sort_by,
+        order=order,
+    )
 
-        books = []
-        for book in response.books:
-            books.append(_book_summary_proto_to_dict(book))
+    books = []
+    for book in response.books:
+        books.append(_book_summary_proto_to_dict(book))
 
-        return {
-            "success": True,
-            "data": {
-                "books": books,
-                "total_count": response.total_count,
-                "limit": limit,
-                "offset": offset,
-            },
-            "error": None,
-        }
-    except grpc.RpcError as e:
-        app.utils.responses.log_grpc_error(logger, "getting series books", e)
-        raise
+    return {
+        "success": True,
+        "data": {
+            "books": books,
+            "total_count": response.total_count,
+            "limit": limit,
+            "offset": offset,
+        },
+        "error": None,
+    }
 
 
 def _book_detail_proto_to_dict(book) -> typing.Dict[str, typing.Any]:
@@ -1112,7 +1070,9 @@ async def open_case(
         app.utils.responses.log_grpc_error(logger, "opening case", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
             return _no_eligible_books(language)
-        return _upstream_error("INTERNAL_ERROR", "Open case failed", e)
+        return app.utils.grpc_errors.error_response_for(
+            e, code="INTERNAL_ERROR", message="Open case failed"
+        )
 
 
 @router.get(
@@ -1162,7 +1122,9 @@ async def open_pack(
         app.utils.responses.log_grpc_error(logger, "opening pack", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
             return _no_eligible_books(language)
-        return _upstream_error("INTERNAL_ERROR", "Open pack failed", e)
+        return app.utils.grpc_errors.error_response_for(
+            e, code="INTERNAL_ERROR", message="Open pack failed"
+        )
 
 
 @router.get(
@@ -1210,7 +1172,9 @@ async def spin_slots(
         app.utils.responses.log_grpc_error(logger, "spinning slots", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
             return _no_eligible_books(language)
-        return _upstream_error("INTERNAL_ERROR", "Spin slots failed", e)
+        return app.utils.grpc_errors.error_response_for(
+            e, code="INTERNAL_ERROR", message="Spin slots failed"
+        )
 
 
 @router.post(
@@ -1285,7 +1249,9 @@ async def discover_book(
                 message="No books match the provided filters. Try relaxing some criteria.",
                 status_code=404,
             )
-        return _upstream_error("INTERNAL_ERROR", "Discover book failed", e)
+        return app.utils.grpc_errors.error_response_for(
+            e, code="INTERNAL_ERROR", message="Discover book failed"
+        )
 
 
 @router.post(
@@ -1327,7 +1293,9 @@ async def count_matching_books(
         }
     except grpc.RpcError as e:
         app.utils.responses.log_grpc_error(logger, "counting matching books", e)
-        return _upstream_error("INTERNAL_ERROR", "Count matching books failed", e)
+        return app.utils.grpc_errors.error_response_for(
+            e, code="INTERNAL_ERROR", message="Count matching books failed"
+        )
 
 
 @router.get(
@@ -1379,7 +1347,6 @@ async def get_genre_bubble(
             "error": None,
         }
     except grpc.RpcError as e:
-        app.utils.responses.log_grpc_error(logger, "getting genre bubble", e)
         if e.code() == grpc.StatusCode.NOT_FOUND:
             raise fastapi.HTTPException(
                 status_code=404,

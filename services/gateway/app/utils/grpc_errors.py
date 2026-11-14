@@ -41,11 +41,15 @@ def to_http_error(e: grpc.RpcError) -> typing.Tuple[int, str, str]:
     return status, code, _GENERIC_MESSAGES.get(code, "Request failed")
 
 
-def error_response_for(e: grpc.RpcError) -> fastapi.responses.JSONResponse:
-    status, code, message = to_http_error(e)
+def error_response_for(
+    e: grpc.RpcError,
+    code: typing.Optional[str] = None,
+    message: typing.Optional[str] = None,
+) -> fastapi.responses.JSONResponse:
+    status, mapped_code, mapped_message = to_http_error(e)
     return app.utils.responses.error_response(
-        code=code,
-        message=message,
+        code=code or mapped_code,
+        message=message or mapped_message,
         details={"grpc_code": e.code().name},
         status_code=status,
     )
