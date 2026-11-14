@@ -8,6 +8,7 @@ from fastapi.security import HTTPAuthorizationCredentials
 import app.config
 import app.grpc_clients
 import app.middleware.auth
+import app.proto.auth_pb2
 
 
 class MockRpcError(grpc.RpcError):
@@ -50,18 +51,16 @@ def make_expired_token(user_id: int = 1, role: str = "user") -> str:
 
 
 def make_mock_user(mocker, user_id: int = 1, role: str = "user"):
-    user = mocker.MagicMock()
-    user.user_id = user_id
-    user.email = "user@example.com"
-    user.username = "bookworm42"
-    user.display_name = "Book Lover"
-    user.avatar_url = ""
-    user.bio = ""
-    user.role = role
-    user.is_active = True
-    user.created_at = "2026-01-01T00:00:00"
-    user.preferred_language = "en"
-    return user
+    return app.proto.auth_pb2.User(
+        user_id=user_id,
+        email="user@example.com",
+        username="bookworm42",
+        display_name="Book Lover",
+        role=role,
+        is_active=True,
+        created_at="2026-01-01T00:00:00",
+        preferred_language="en",
+    )
 
 
 class FakeRequest:
@@ -70,18 +69,16 @@ class FakeRequest:
 
 
 def make_mock_auth_response(mocker, user_id: int = 1, role: str = "user"):
-    response = mocker.MagicMock()
-    response.access_token = "test_access_token"
-    response.refresh_token = "test_refresh_token"
-    response.token_type = "Bearer"
-    response.user = make_mock_user(mocker, user_id, role)
-    return response
+    return app.proto.auth_pb2.AuthResponse(
+        access_token="test_access_token",
+        refresh_token="test_refresh_token",
+        token_type="Bearer",
+        user=make_mock_user(mocker, user_id, role),
+    )
 
 
 def make_mock_user_response(mocker, user_id: int = 1, role: str = "user"):
-    response = mocker.MagicMock()
-    response.user = make_mock_user(mocker, user_id, role)
-    return response
+    return app.proto.auth_pb2.UserResponse(user=make_mock_user(mocker, user_id, role))
 
 
 class TestAuthMiddleware:
@@ -827,3 +824,20 @@ class TestGoogleAuthEndpoint:
         )
 
         assert response.status_code == 422
+
+
+class TestUserMapping:
+    def test_unset_profile_fields_are_null_and_set_ones_are_kept(
+        self, client, mock_auth_client, mocker
+    ):
+        mock_auth_client.get_current_user.return_value = make_mock_user_response(mocker)
+
+        response = client.get(
+            "/api/v1/users/me", headers={"Authorization": f"Bearer {make_token()}"}
+        )
+
+        user = response.json()["data"]["user"]
+        assert user["display_name"] == "Book Lover"
+        assert user["avatar_url"] is None
+        assert user["bio"] is None
+        assert user["preferred_language"] == "en"

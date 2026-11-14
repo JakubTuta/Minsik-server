@@ -9,6 +9,7 @@ import app.middleware.rate_limit
 import app.models.auth_responses
 import app.models.responses
 import app.utils.cookies
+import app.utils.proto
 import app.utils.responses
 
 logger = logging.getLogger(__name__)
@@ -18,24 +19,9 @@ router = fastapi.APIRouter(prefix="/api/v1", tags=["Auth"])
 limiter = app.middleware.rate_limit.limiter
 
 
-def _user_proto_to_dict(user) -> typing.Dict[str, typing.Any]:
-    return {
-        "user_id": user.user_id,
-        "email": user.email,
-        "username": user.username,
-        "display_name": user.display_name or None,
-        "avatar_url": user.avatar_url or None,
-        "bio": user.bio or None,
-        "role": user.role,
-        "is_active": user.is_active,
-        "created_at": user.created_at,
-        "preferred_language": user.preferred_language or "en",
-    }
-
-
 def _session_data(response) -> typing.Dict[str, typing.Any]:
     return {
-        "user": _user_proto_to_dict(response.user),
+        "user": app.utils.proto.message_to_dict(response.user),
         "expires_in": app.config.settings.jwt_access_token_expire_minutes * 60,
     }
 
@@ -474,7 +460,7 @@ async def get_current_user(
             user_id=current_user["user_id"]
         )
         return app.utils.responses.success_response(
-            {"user": _user_proto_to_dict(response.user)},
+            {"user": app.utils.proto.message_to_dict(response.user)},
             status_code=200
         )
     except grpc.RpcError as e:
@@ -560,7 +546,7 @@ async def update_profile(
             preferred_language=body.preferred_language,
         )
         return app.utils.responses.success_response(
-            {"user": _user_proto_to_dict(response.user)},
+            {"user": app.utils.proto.message_to_dict(response.user)},
             status_code=200
         )
     except grpc.RpcError as e:
